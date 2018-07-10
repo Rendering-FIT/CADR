@@ -1,0 +1,19 @@
+
+@PACKAGE_INIT@
+
+get_filename_component(_@LIB_NAME@_install_prefix "${CMAKE_CURRENT_LIST_DIR}/../" ABSOLUTE)
+include(${_@LIB_NAME@_install_prefix}/cmake/CADRMacros.cmake)
+
+if(NOT TARGET @LIB_NAME@)
+
+   #find dependencies
+   foreach(_dep @Internal_deps@)
+      Find_Package(CADR COMPONENTS ${_dep} ${GPUEngine_FIND_QUIETLY} PATHS "${CMAKE_CURRENT_LIST_DIR}/.." NO_DEFAULT_PATH)
+   endforeach()
+
+   add_library(@LIB_NAME@ SHARED IMPORTED)
+   _cadr_populate_imported_target(@LIB_NAME@ _@LIB_NAME@_install_prefix @LIB_NAME@ GPUEngine_FIND_REQUIRED_@LIB_NAME@ GPUEngine_FIND_QUIETLY)
+   set_target_properties(@LIB_NAME@ PROPERTIES INTERFACE_LINK_LIBRARIES "@Internal_deps@")
+   list(APPEND GPUEngine_modules @LIB_NAME@)
+
+endif(NOT TARGET @LIB_NAME@)
