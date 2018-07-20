@@ -7,6 +7,8 @@ namespace cd {
 
 //class RenderingWindow;
 class Renderer;
+class AttribConfig;
+class AttribStorage;
 class Drawable;
 class Geode;
 //class MarkerSet;
@@ -24,6 +26,7 @@ public:
 
 	//virtual RenderingWindow* createRenderingWindow(QWidget* parent,Gui::Viewer* viewer) = 0;
 	//virtual Scene* createScene(Gui::GuiDocument* guiDoc) = 0;
+	virtual AttribStorage* createAttribStorage(Renderer* renderer,const AttribConfig& config) = 0;
 	virtual Drawable* createDrawable(Renderer* renderer) = 0;
 	virtual Geode* createGeode(Renderer* renderer) = 0;
 	//virtual MarkerSet* createMarkerSet(Scene* scene,Gui::ViewProviderElementInterface* vp) = 0;
@@ -31,6 +34,7 @@ public:
 	//virtual Transformation* createTransformation(Scene* scene) = 0;
 	//virtual std::shared_ptr<RenderingWindow> makeRenderingWindow(QWidget* parent,Gui::Viewer* viewer) = 0;
 	//virtual std::shared_ptr<Scene> makeScene(Gui::GuiDocument* guiDoc) = 0;
+	virtual std::shared_ptr<AttribStorage> makeAttribStorage(Renderer* renderer,const AttribConfig& config) = 0;
 	virtual std::shared_ptr<Drawable> makeDrawable(Renderer* renderer) = 0;
 	virtual std::shared_ptr<Geode> makeGeode(Renderer* renderer) = 0;
 	//virtual std::shared_ptr<MarkerSet> makeMarkerSet(Scene* scene,Gui::ViewProviderElementInterface* vp) = 0;
