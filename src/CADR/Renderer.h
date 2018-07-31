@@ -5,25 +5,27 @@
 
 namespace cd {
 
+class AttribConfig;
+class Drawable;
+
 
 class CADR_EXPORT Renderer {
 protected:
 	vk::Device* _device;
-	AttribStorage* _nullAttribStorage;
 public:
 
 	Renderer();
 	virtual ~Renderer();
 
 	inline vk::Device* device() const;
-	inline AttribStorage* nullAttribStorage() const;
+
+	void allocDrawableData(Drawable* d,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands);
 
 };
 
 
 // inline methods
 inline vk::Device* Renderer::device() const  { return _device; }
-inline AttribStorage* Renderer::nullAttribStorage() const  { return _nullAttribStorage; }
 
 
 }

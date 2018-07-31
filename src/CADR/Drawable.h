@@ -3,45 +3,12 @@
 #include <memory>
 #include <vector>
 #include <CADR/Export.h>
+#include <CADR/DrawCommand.h>
 
 namespace cd {
 
 class AttribConfig;
 struct Buffer;
-class Scene;
-
-
-namespace Topology {
-	static constexpr const uint8_t PointList = 0;  // Corresponds with VK_PRIMITIVE_TOPOLOGY_POINT_LIST=0 and GL_POINTS=0.
-	static constexpr const uint8_t LineList = 1;   // Corresponds with VK_PRIMITIVE_TOPOLOGY_LINE_LIST=1 and GL_LINES=1.
-	static constexpr const uint8_t LineStrip = 2;  // Corresponds with VK_PRIMITIVE_TOPOLOGY_LINE_STRIP=2 and GL_LINE_STRIP=3.
-	static constexpr const uint8_t TriangleList = 3;   // Corresponds with VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST=3 and GL_TRIANGLES=4.
-	static constexpr const uint8_t TriangleStrip = 4;  // Corresponds with VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP=4 and GL_TRIANGLE_STRIP=5.
-	static constexpr const uint8_t TriangleFan = 5;    // Corresponds with VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN=5 and GL_TRIANGLE_FAN=6.
-	static constexpr const uint8_t LineListWithAdjacency = 6;   // Corresponds with VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY=6 and GL_LINES_ADJACENCY=0xA.
-	static constexpr const uint8_t LineStripWithAdjacency = 7;  // Corresponds with VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY=7 and GL_LINE_STRIP_ADJACENCY=0xB.
-	static constexpr const uint8_t TriangleListWithAdjacency = 8;   // Corresponds with VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY=8 and GL_TRIANGLES_ADJACENCY=0xC.
-	static constexpr const uint8_t TriangleStripWithAdjacency = 9;  // Corresponds with VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY=9 and GL_TRIANGLE_STRIP_ADJACENCY=0xD.
-	static constexpr const uint8_t PatchList = 10;  // Corresponds with VK_PRIMITIVE_TOPOLOGY_PATCH_LIST=10 and GL_PATCHES=0xE.
-	static constexpr const uint8_t RangeSize = PatchList+1;  // Number of topologies
-	static constexpr const uint8_t Invalid = 0xff;  // Invalid topology. If used inside Primitive, the primitive will be ignored during rendering.
-};
-
-
-/** DrawCommand represents single rendering command (such as vkCmdDraw, glDrawElements,...).
- *  In reality, it is used in indirect manner. So, it is similar to VkDrawIndirectCommand
- *  and VkDrawIndexedIndirect structures.
- *
- *  The size of DrawCommand is strictly 12 bytes (verified by assert in the source code).
- */
-struct DrawCommand {
-	uint8_t topology;
-	bool indexed : 8;
-	unsigned first;
-	unsigned count;
-	inline DrawCommand() = default;
-	constexpr inline DrawCommand(uint8_t topology,bool indexed,unsigned first,unsigned count);
-};
 
 
 /** Drawable class represents geometry data that can be rendered.
@@ -61,26 +28,76 @@ protected:
 	size_t _indicesDataId;  ///< Id of index data allocation inside AttribStorage.
 	size_t _drawCommandDataId;  ///< Id od DrawCommand data allocation.
 	DrawCommandList _drawCommandList;
-	GeodeList _geodeList;
 
 public:
 
-	static inline Drawable* create(Scene* scene);
-	static inline std::shared_ptr<Drawable> make_shared(Scene* scene);
-	virtual ~Drawable() {}
+	static inline Drawable* create(Renderer* r);
+	static inline std::shared_ptr<Drawable> make_shared(Renderer* r);
+	inline Drawable();  ///< Default constructor. Object is largerly uninitialized, valid() returns false and attribStorage() nullptr. Call init() before using the object.
+	inline Drawable(Renderer *r,const AttribConfig& ac,size_t numVertices,
+	                size_t numIndices,size_t numDrawCommands);  ///< Constructs the object by parameters.
+	inline Drawable(Drawable&& d);  ///< Move constructor.
+	inline Drawable& operator=(Drawable&& rhs);  ///< Move operator.
+	virtual ~Drawable()  { freeData(); }  ///< Destructor.
+	inline void init(Renderer *r,const AttribConfig& ac,size_t numVertices,
+	                 size_t numIndices,size_t numDrawCommands);
 
-	virtual void allocData(const AttribConfig& attribConfig,size_t numVertices,
-	                       size_t numIndices,size_t numDrawCommands) = 0;
-	virtual void reallocData(size_t numVertices,size_t numIndices,
-	                         size_t numDrawCommands,bool preserveContent=true) = 0;
-	virtual void freeData() = 0;
+	Drawable(const Drawable&) = delete;  ///< No copy constructor. Object copies are not allowed. Only moves.
+	Drawable& operator=(const Drawable&) = delete;  ///< No assignment operator. Only move operator is allowed.
 
-	virtual void uploadVertices(std::vector<Buffer>&& vertexData,size_t dstIndex=0) = 0;
-	virtual void uploadAttrib(unsigned attribIndex,Buffer&& attribData,size_t dstIndex=0) = 0;
-	virtual void uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0) = 0;
-	virtual void uploadDrawCommands(const std::vector<DrawCommand>&& drawCommands,
-	                                size_t dstIndex=0) = 0;
+	//?inline void set(AttribStorage* a,size_t vId,size_t iId,size_t dcId);
 
+	inline AttribStorage* attribStorage() const;
+	inline size_t verticesDataId() const;
+	inline size_t indicesDataId() const;
+	inline size_t drawCommandDataId() const;
+	inline bool valid() const;
+
+	inline const DrawCommandList& drawCommandList() const;
+	//?inline DrawCommandList& drawCommandList();
+
+	inline void allocData(const AttribConfig& ac,size_t numVertices,
+	                      size_t numIndices,size_t numDrawCommands);
+	inline void reallocData(size_t numVertices,size_t numIndices,
+	                        size_t numDrawCommands,bool preserveContent=true);
+	inline void freeData();
+
+	inline size_t numVertices() const;
+	inline size_t numIndices() const;
+	inline size_t numPrimitives() const;
+
+	inline void uploadVertices(std::vector<Buffer>&& vertexData,size_t dstIndex=0);
+	inline void uploadAttrib(unsigned attribIndex,Buffer&& attribData,size_t dstIndex=0);
+	inline void uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+#if 0
+	inline void uploadDrawCommands(const std::vector<DrawCommand>&& drawCommands,
+	                               size_t dstIndex=0);
+
+         inline void uploadPrimitives(const PrimitiveGpuData *bufferData,
+                                      unsigned numPrimitives,unsigned dstIndex=0);
+         inline void setPrimitives(const Primitive *primitiveList,
+                                   unsigned numPrimitives,unsigned startIndex=0,
+                                   bool truncate=true);
+         inline void setAndUploadPrimitives(PrimitiveGpuData *nonConstBufferData,
+                                            const Primitive *primitiveList,unsigned numPrimitives);
+         inline void setAndUploadPrimitives(PrimitiveGpuData *nonConstBufferData,
+                                            const unsigned *modesAndOffsets4,unsigned numPrimitives);
+         inline void updateVertexOffsets(void *primitiveBuffer,
+                                         const Primitive *primitiveList,unsigned numPrimitives);
+         inline static std::vector<Primitive> generatePrimitiveList(
+                                         const unsigned *modesAndOffsets4,unsigned numPrimitives);
+
+         inline void clearPrimitives();
+         inline void setNumPrimitives(unsigned num);
+
+	inline DrawableId createGeode(MatrixList *matrixList,StateSet *stateSet);
+	inline DrawableId createGeode(const unsigned *primitiveIndices,
+	                              const unsigned primitiveCount,
+	                              MatrixList *matrixList,StateSet *stateSet);
+	inline void deleteGeode(DrawableId id);
+#endif
+
+	friend AttribStorage;
 };
 
 
@@ -89,10 +106,32 @@ public:
 
 // inline methods
 #include <CADR/Factory.h>
-namespace ri {
+#include <CADR/Renderer.h>
+namespace cd {
 
-constexpr inline DrawCommand::DrawCommand(uint8_t topology,bool indexed,unsigned first,unsigned count) : topology(topology), indexed(indexed), first(first), count(count)  {}
-inline Drawable* Drawable::create(Scene* scene)  { return Factory::get()->createDrawable(scene); }
-inline std::shared_ptr<Drawable> Drawable::make_shared(Scene* scene)  { return Factory::get()->makeDrawable(scene); }
+inline Drawable* Drawable::create(Renderer* r)  { return Factory::get()->createDrawable(r); }
+inline std::shared_ptr<Drawable> Drawable::make_shared(Renderer* r)  { return Factory::get()->makeDrawable(r); }
+inline Drawable::Drawable() : _attribStorage(nullptr)  {}
+inline Drawable::Drawable(Drawable&& d) : _attribStorage(d._attribStorage), _verticesDataId(d._verticesDataId), _indicesDataId(d._indicesDataId), _drawCommandDataId(d._drawCommandDataId), _drawCommandList(std::move(d._drawCommandList))  { d._attribStorage=nullptr; }
+inline Drawable& Drawable::operator=(Drawable&& d)  { _attribStorage=d._attribStorage; _verticesDataId=d._verticesDataId; _indicesDataId=d._indicesDataId; _drawCommandDataId=d._drawCommandDataId; _drawCommandList=std::move(d._drawCommandList); d._attribStorage=nullptr; return *this; }
+inline Drawable::Drawable(Renderer* r,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands) : _attribStorage(nullptr)  { r->allocDrawableData(this,ac,numVertices,numIndices,numDrawCommands); }
+inline void Drawable::init(Renderer *r,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands)  { freeData(); r->allocDrawableData(this,ac,numVertices,numIndices,numDrawCommands); }
+inline AttribStorage* Drawable::attribStorage() const  { return _attribStorage; }
+inline size_t Drawable::verticesDataId() const  { return _verticesDataId; }
+inline size_t Drawable::indicesDataId() const  { return _indicesDataId; }
+inline size_t Drawable::drawCommandDataId() const  { return _drawCommandDataId; }
+inline bool Drawable::valid() const  { return _attribStorage!=nullptr; }
+inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
+//inline void Drawable::allocData(const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands)  { _attribStorage->renderer()->
+//inline void Drawable::reallocData(size_t numVertices,size_t numIndices,
+//								size_t numDrawCommands,bool preserveContent=true);
+inline void Drawable::freeData()  { if(_attribStorage) _attribStorage->freeData(this); }
+inline size_t Drawable::numVertices() const  { return _attribStorage ? _attribStorage->vertexArrayAllocation(_verticesDataId).numItems : 0; }
+inline size_t Drawable::numIndices() const  { return _attribStorage ? _attribStorage->indexArrayAllocation(_indicesDataId).numItems : 0; }
+//inline size_t Drawable::numPrimitives() const  { return _attribStorage ? _attribStorage->renderer()->primitiveStorage()->operator[](_primitivesDataId).numItems : 0; }
+/*inline void Drawable::uploadVertices(std::vector<Buffer>&& vertexData,size_t dstIndex=0);
+inline void Drawable::uploadAttrib(unsigned attribIndex,Buffer&& attribData,size_t dstIndex=0);
+inline void Drawable::uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+inline void Drawable::setNullAttribStorage()  { _attribStorage=_attribStorage->nullAttribStorage(); }*/
 
 }

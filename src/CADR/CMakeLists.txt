@@ -14,6 +14,9 @@ endif()
 
 # public headers
 set(CADR_PUBLIC_HEADERS
+    AllocationManagers.h
+    AttribConfig.h
+    AttribStorage.h
     Export.h
     Buffer.h
     Drawable.h
@@ -27,10 +30,14 @@ set(CADR_PRIVATE_HEADERS
 
 # sources
 set(CADR_SOURCES
+    AttribStorage.cpp
+    DrawCommand.cpp
     Factory.cpp
+    Renderer.cpp
     )
 
 # dependencies
+find_package(Vulkan REQUIRED)
 find_package(glm REQUIRED)
 
 # CADR library
