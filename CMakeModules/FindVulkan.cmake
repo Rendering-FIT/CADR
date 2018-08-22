@@ -1,7 +1,7 @@
 #
 # Module for finding Vulkan
 #
-# Vulkan target will be created
+# Vulkan and VulkanHeaders targets will be created
 #
 
 
@@ -11,23 +11,44 @@ find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSIO
 # use regular old-style approach
 if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
-	# find glm include path
+	# find Vulkan include path
 	find_path(VULKAN_INCLUDE_DIR vulkan/vulkan.h
 		/usr/include
 		/usr/local/include
 		/opt/local/include
+		"$ENV{VULKAN_SDK}/include"
+	)
+
+	# find Vulkan library
+	find_library(VULKAN_LIBRARY vulkan
+		/usr/lib64
+		/usr/local/lib64
+		/usr/lib
+		/usr/local/lib
+		"$ENV{VULKAN_SDK}/lib"
 	)
 
 	# set *_FOUND flag
-	if(VULKAN_INCLUDE_DIR)
+	if(VULKAN_INCLUDE_DIR AND VULKAN_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 	endif()
 
-	# target
+	# Vulkan target
 	if(${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		if(NOT TARGET ${CMAKE_FIND_PACKAGE_NAME})
 			add_library(${CMAKE_FIND_PACKAGE_NAME} INTERFACE IMPORTED)
 			set_target_properties(${CMAKE_FIND_PACKAGE_NAME} PROPERTIES
+				INTERFACE_INCLUDE_DIRECTORIES "${VULKAN_INCLUDE_DIR}"
+				INTERFACE_LINK_LIBRARIES "${VULKAN_LIBRARY}"
+			)
+		endif()
+	endif()
+
+	# VulkanHeaders target
+	if(VULKAN_INCLUDE_DIR)
+		if(NOT TARGET VulkanHeaders)
+			add_library(VulkanHeaders INTERFACE IMPORTED)
+			set_target_properties(VulkanHeaders PROPERTIES
 				INTERFACE_INCLUDE_DIRECTORIES "${VULKAN_INCLUDE_DIR}"
 			)
 		endif()

@@ -1,9 +1,12 @@
-cmake_minimum_required(VERSION 3.1.0)
+cmake_minimum_required(VERSION 3.5.0)
 
 project(CADR)
 
 # dynamic or static library
 option(CADR_DYNAMIC_LINKAGE "Build CADR as libs for dynamic linkage. Use OFF for static libs." ON)
+
+# build examples
+set(CADR_BUILD_EXAMPLES OFF CACHE BOOL "Build examples (examples directory).")
 
 # file postfixes
 set(CMAKE_DEBUG_POSTFIX "d" CACHE STRING "add a postfix, usually d on windows")
@@ -34,3 +37,8 @@ endif()
 
 # src
 add_subdirectory(src)
+
+# build examples
+if(CADR_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()

@@ -1,5 +1,5 @@
 set(PACKAGES
-    CADR
+    tut01-deviceList
    )
 
 foreach(pkg ${PACKAGES})

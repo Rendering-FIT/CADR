@@ -36,10 +36,6 @@ set(CADR_SOURCES
     Renderer.cpp
     )
 
-# dependencies
-find_package(Vulkan REQUIRED)
-find_package(glm REQUIRED)
-
 # CADR library
 add_library(${LIB_NAME}
     ${GPUENGINE_USER_DEFINED_DYNAMIC_OR_STATIC}
@@ -47,6 +43,10 @@ add_library(${LIB_NAME}
     ${CADR_PRIVATE_HEADERS}
     ${CADR_SOURCES}
     )
+
+# dependencies
+find_package(Vulkan REQUIRED)
+find_package(glm REQUIRED)
 
 # target dependencies
 #
