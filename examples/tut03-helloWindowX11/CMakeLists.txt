@@ -1,4 +1,4 @@
-set(APP_NAME tut01-deviceList)
+set(APP_NAME tut03-helloWindowX11)
 
 project(${APP_NAME})
 
@@ -13,6 +13,7 @@ add_executable(${APP_NAME} WIN32 ${APP_SOURCES} ${APP_INCLUDES})
 
 # dependencies
 find_package(Vulkan REQUIRED)
+find_package(X11 REQUIRED)
 
-target_link_libraries(${APP_NAME} Vulkan)
+target_link_libraries(${APP_NAME} Vulkan X11)
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")
