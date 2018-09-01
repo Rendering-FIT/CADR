@@ -21,14 +21,20 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # MSVC
 if(MSVC)
-	# no support for MSVC prior to 2017
-	if(MSVC_VERSION LESS 1910)
-		message(FATAL_ERROR "Microsoft Visual C++ 2015 and earlier are not supported "
-		                    "for their limited support of C++11 and C++14.")
-	else()
 
-		# enable exceptions
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+	# enable exceptions
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+
+	# no support for MSVC prior to 2015
+	if(MSVC_VERSION LESS 1900)
+		message(FATAL_ERROR "Microsoft Visual C++ 2013 and earlier are not supported "
+		                    "because of their limited support of C++11 and C++14.")
+	elseif(MSVC_VERSION LESS 1910)
+
+		# MSVC 2015 workarounds
+		
+		# disable warning C4251: class T1 (usually std::vector or so) needs to have dll-interface to be used by clients of class T2 (class containing member T1)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")
 
 	endif()
 endif()

@@ -81,7 +81,11 @@ inline void DrawCommand::setIndexed(bool value)  { data=(data&0x7fffffff)|(value
 inline void DrawCommand::setTopology(vk::PrimitiveTopology value)  { assert(unsigned(value)<=0xf); data=(data&0x87ffffff)|(unsigned(value)<<27); } // set bits 27..30
 inline void DrawCommand::setOffset4(unsigned value)  { assert(value<=0x07ffffff); data=(data&0xf8000000)|value; } // set bits 0..26, value must fit to 27 bits
 inline void DrawCommand::set(bool indexed,vk::PrimitiveTopology topology,unsigned offset4)  { assert(unsigned(topology)<=0xf && offset4<=0x07ffffff); data=(indexed<<31)|(unsigned(topology)<<27)|offset4; } // set data, offset4 must fit to 27 bits
+#if defined(_MSC_VER) && _MSC_VER<=1900 // no constexpr assert support in MSVC 2015
+constexpr inline DrawCommand::DrawCommand(bool indexed,unsigned topology,unsigned offset4) : data((indexed<<31)|(topology<<27)|offset4)  {}
+#else
 constexpr inline DrawCommand::DrawCommand(bool indexed,unsigned topology,unsigned offset4) : data((indexed<<31)|(topology<<27)|offset4)  { assert(topology<=0xf && offset4<=0x07ffffff); }
+#endif
 
 
 }
