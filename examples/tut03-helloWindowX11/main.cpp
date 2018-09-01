@@ -58,21 +58,42 @@ int main(int,char**)
 		// create surface
 		vk::UniqueHandle<vk::SurfaceKHR> s=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),d,w));
 
+		// get VisualID
+		XWindowAttributes a;
+		XGetWindowAttributes(d,w,&a);
+		VisualID v=XVisualIDFromVisual(a.visual);
+
+		// find physical device the window is presented on
+		// (there should be only one compatible device)
+		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
+		vector<string> compatibleDevices;
+		for(vk::PhysicalDevice pd:deviceList) {
+			uint32_t c;
+			pd.getQueueFamilyProperties(&c,nullptr);
+			for(uint32_t i=0; i<c; i++)
+				if(pd.getXlibPresentationSupportKHR(i,d,v)) {
+					compatibleDevices.push_back(pd.getProperties().deviceName);
+					break;
+				}
+		}
+		if(compatibleDevices.size()==1)
+			cout<<"Active device: "<<compatibleDevices[0]<<endl;
+		else if(compatibleDevices.size()==0)
+			cout<<"Warning: no compatible devices."<<endl;
+		else {
+			auto it=compatibleDevices.cbegin();
+			cout<<"Warning: more compatible devices ("<<*it;
+			for(it++; it!=compatibleDevices.end(); it++)
+				cout<<", "<<*it;
+			cout<<")"<<endl;
+		}
+
 		// run event loop
 		while(true) {
 			XEvent e;
 			XNextEvent(d,&e);
 			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
 				break;
-		}
-
-		// enumerate physical devices
-		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
-		cout<<"Physical devices:"<<endl;
-		for(vk::PhysicalDevice d:deviceList) {
-			vk::PhysicalDeviceProperties p=d.getProperties();
-			cout<<"   "<<p.deviceName<<endl;
-
 		}
 
 	// catch exceptions
