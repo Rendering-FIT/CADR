@@ -24,9 +24,9 @@ class CADR_EXPORT Drawable {
 protected:
 
 	AttribStorage* _attribStorage;  ///< AttribStorage where vertex and index data are stored.
-	size_t _verticesDataId;  ///< Id of vertex data allocation inside AttribStorage.
-	size_t _indicesDataId;  ///< Id of index data allocation inside AttribStorage.
-	size_t _drawCommandDataId;  ///< Id od DrawCommand data allocation.
+	unsigned _verticesDataId;  ///< Id of vertex data allocation inside AttribStorage.
+	unsigned _indicesDataId;  ///< Id of index data allocation inside AttribStorage.
+	unsigned _drawCommandDataId;  ///< Id od DrawCommand data allocation.
 	DrawCommandList _drawCommandList;
 
 public:
@@ -48,9 +48,9 @@ public:
 	//?inline void set(AttribStorage* a,size_t vId,size_t iId,size_t dcId);
 
 	inline AttribStorage* attribStorage() const;
-	inline size_t verticesDataId() const;
-	inline size_t indicesDataId() const;
-	inline size_t drawCommandDataId() const;
+	inline unsigned verticesDataId() const;
+	inline unsigned indicesDataId() const;
+	inline unsigned drawCommandDataId() const;
 	inline bool valid() const;
 
 	inline const DrawCommandList& drawCommandList() const;
@@ -117,17 +117,17 @@ inline Drawable& Drawable::operator=(Drawable&& d)  { _attribStorage=d._attribSt
 inline Drawable::Drawable(Renderer* r,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands) : _attribStorage(nullptr)  { r->allocDrawableData(this,ac,numVertices,numIndices,numDrawCommands); }
 inline void Drawable::init(Renderer *r,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands)  { freeData(); r->allocDrawableData(this,ac,numVertices,numIndices,numDrawCommands); }
 inline AttribStorage* Drawable::attribStorage() const  { return _attribStorage; }
-inline size_t Drawable::verticesDataId() const  { return _verticesDataId; }
-inline size_t Drawable::indicesDataId() const  { return _indicesDataId; }
-inline size_t Drawable::drawCommandDataId() const  { return _drawCommandDataId; }
+inline unsigned Drawable::verticesDataId() const  { return _verticesDataId; }
+inline unsigned Drawable::indicesDataId() const  { return _indicesDataId; }
+inline unsigned Drawable::drawCommandDataId() const  { return _drawCommandDataId; }
 inline bool Drawable::valid() const  { return _attribStorage!=nullptr; }
 inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
 //inline void Drawable::allocData(const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands)  { _attribStorage->renderer()->
 //inline void Drawable::reallocData(size_t numVertices,size_t numIndices,
-//								size_t numDrawCommands,bool preserveContent=true);
+//                                  size_t numDrawCommands,bool preserveContent=true);
 inline void Drawable::freeData()  { if(_attribStorage) _attribStorage->freeData(this); }
-inline size_t Drawable::numVertices() const  { return _attribStorage ? _attribStorage->vertexArrayAllocation(_verticesDataId).numItems : 0; }
-inline size_t Drawable::numIndices() const  { return _attribStorage ? _attribStorage->indexArrayAllocation(_indicesDataId).numItems : 0; }
+inline size_t Drawable::numVertices() const  { return _attribStorage ? size_t(_attribStorage->vertexArrayAllocation(_verticesDataId).numItems) : 0; }
+inline size_t Drawable::numIndices() const  { return _attribStorage ? size_t(_attribStorage->indexArrayAllocation(_indicesDataId).numItems) : 0; }
 //inline size_t Drawable::numPrimitives() const  { return _attribStorage ? _attribStorage->renderer()->primitiveStorage()->operator[](_primitivesDataId).numItems : 0; }
 /*inline void Drawable::uploadVertices(std::vector<Buffer>&& vertexData,size_t dstIndex=0);
 inline void Drawable::uploadAttrib(unsigned attribIndex,Buffer&& attribData,size_t dstIndex=0);

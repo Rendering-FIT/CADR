@@ -9,7 +9,7 @@ set(APP_SOURCES
 set(APP_INCLUDES
    )
 
-add_executable(${APP_NAME} WIN32 ${APP_SOURCES} ${APP_INCLUDES})
+add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
 
 # dependencies
 find_package(Vulkan REQUIRED)

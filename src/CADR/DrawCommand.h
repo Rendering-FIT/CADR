@@ -74,7 +74,7 @@ constexpr inline DrawCommandGpuData::DrawCommandGpuData(unsigned countAndIndexed
 	: countAndIndexedFlag(countAndIndexedFlag_), first(first_), vertexOffset(0)  {}
 constexpr inline DrawCommandGpuData::DrawCommandGpuData(unsigned count,unsigned first_,bool indexed)
 	: countAndIndexedFlag(count|(indexed?0x80000000:0)), first(first_), vertexOffset(0)  {}
-constexpr inline bool DrawCommand::indexed() const  { return bool(data>>31); } // returns bit 31
+constexpr inline bool DrawCommand::indexed() const  { return (data>>31)!=0; } // returns bit 31
 constexpr inline vk::PrimitiveTopology DrawCommand::topology() const  { return vk::PrimitiveTopology((data>>27)&0x0000000f); } // returns bits 27..30
 constexpr inline unsigned DrawCommand::offset4() const  { return data&0x07ffffff; } // returns bits 0..26
 inline void DrawCommand::setIndexed(bool value)  { data=(data&0x7fffffff)|(value<<31); } // set bit 31

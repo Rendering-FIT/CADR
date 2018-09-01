@@ -11,7 +11,7 @@ int main(int,char**)
 	try {
 
 		// Vulkan instance
-		vk::UniqueHandle<vk::Instance> instance(
+		vk::UniqueInstance instance(
 			vk::createInstance(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags

@@ -46,29 +46,15 @@ add_library(${LIB_NAME}
 
 # dependencies
 find_package(Vulkan REQUIRED)
-find_package(glm REQUIRED)
-
-# target dependencies
-#
-# Internal_deps - only 'ge' targets goes here (e.g. geCore), it configures this package intra project dependencies and also configures the config file
-# External_deps_Export - other than 'ge' packages goes here (e.g. glew), it configures this package extra project dependencies and also configures the config file
-# External_libs - external libs or targets to link with
-# Internal_inc - additional include directories
-# Includes_to_export - includes to be exported from this target to application
-get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
-set(internal_deps)
-set(external_deps_export glm)
-set(external_libs glm)
-set(internal_includes "${parent_dir}")
-set(includes_to_export "${parent_dir}")
 
 # target libraries
-target_link_libraries(${LIB_NAME} ${internal_deps} ${external_libs})
+target_link_libraries(${LIB_NAME} Vulkan)
 
 # target includes
+get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set_target_properties(${LIB_NAME} PROPERTIES
-   INCLUDE_DIRECTORIES "${internal_includes}"
-   INTERFACE_INCLUDE_DIRECTORIES "${includes_to_export}"
+   INCLUDE_DIRECTORIES "${parent_dir}"
+   INTERFACE_INCLUDE_DIRECTORIES Vulkan
    )
 
 # headers installation
