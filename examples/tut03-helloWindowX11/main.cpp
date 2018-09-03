@@ -33,14 +33,7 @@ int main(int,char**)
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
-#ifdef NDEBUG
 					0, nullptr, // no debug layers
-#else
-					3,          // enabled layer count
-					array<const char*,3>{{"VK_LAYER_LUNARG_standard_validation",
-						                   "VK_LAYER_LUNARG_core_validation",
-					                      "VK_LAYER_LUNARG_parameter_validation"}}.data(),  // enabled layer names
-#endif
 					2,        // enabled extension count
 					array<const char*,2>{{"VK_KHR_surface","VK_KHR_xlib_surface"}}.data(),  // enabled extension names
 				}));
@@ -63,8 +56,10 @@ int main(int,char**)
 		XGetWindowAttributes(d,w,&a);
 		VisualID v=XVisualIDFromVisual(a.visual);
 
-		// find physical device the window is presented on
-		// (there should be only one compatible device)
+		// find compatible devices
+		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
+		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
+		// renders the window).
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
@@ -76,17 +71,9 @@ int main(int,char**)
 					break;
 				}
 		}
-		if(compatibleDevices.size()==1)
-			cout<<"Active device: "<<compatibleDevices[0]<<endl;
-		else if(compatibleDevices.size()==0)
-			cout<<"Warning: no compatible devices."<<endl;
-		else {
-			auto it=compatibleDevices.cbegin();
-			cout<<"Warning: more compatible devices ("<<*it;
-			for(it++; it!=compatibleDevices.end(); it++)
-				cout<<", "<<*it;
-			cout<<")"<<endl;
-		}
+		cout<<"Compatible devices:"<<endl;
+		for(string& name:compatibleDevices)
+			cout<<"   "<<name<<endl;
 
 		// run event loop
 		while(true) {

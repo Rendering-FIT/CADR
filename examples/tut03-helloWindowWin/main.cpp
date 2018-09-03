@@ -31,6 +31,7 @@ int main(int,char**)
 					array<const char*,2>{{"VK_KHR_surface","VK_KHR_win32_surface"}}.data(),  // enabled extension names
 				}));
 
+		// window's message handling procedure
 		auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
 			switch(msg)
 			{
@@ -80,9 +81,9 @@ int main(int,char**)
 		vk::UniqueSurfaceKHR s=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,w));
 
 		// find compatible devices
-		// (on Windows, all graphics adapters capable of monitor output are usually compatible devices,
-		// on Linux X11 platform, only one graphics adapter is compatible device (the one that
-		// renders the window))
+		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
+		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
+		// renders the window).
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
