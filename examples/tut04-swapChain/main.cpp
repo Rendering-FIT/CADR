@@ -11,12 +11,14 @@
 
 using namespace std;
 
+#ifdef _WIN32
+static HWND w=nullptr;
+#endif
+
 
 int main(int,char**)
 {
-#ifdef _WIN32
-	HWND w=nullptr;
-#else
+#ifndef _WIN32
 	Display* d=nullptr;
 	Window w=0;
 #endif
@@ -33,16 +35,8 @@ int main(int,char**)
 #endif
 
 		// Vulkan instance
-const char *info_instance_extensions[] = {VK_EXT_DISPLAY_SURFACE_COUNTER_EXTENSION_NAME,
-                                              VK_KHR_DISPLAY_EXTENSION_NAME,
-                                              VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
-                                              VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
-                                              //VK_KHR_SHARED_PRESENTABLE_IMAGE_EXTENSION_NAME,
-                                              VK_KHR_SURFACE_EXTENSION_NAME,
-//VK_KHR_DEVICE_GROUP_CREATION_EXTENSION_NAME,
-VK_KHR_XLIB_SURFACE_EXTENSION_NAME };
-		vk::UniqueHandle<vk::Instance> instance(
-			vk::createInstance(
+		vk::UniqueInstance instance=
+			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
@@ -52,20 +46,64 @@ VK_KHR_XLIB_SURFACE_EXTENSION_NAME };
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
-#ifdef NDEBUG
-					0, nullptr, // no debug layers
-#else
-					3,          // enabled layer count
-					array<const char*,3>{{"VK_LAYER_LUNARG_standard_validation",
-						                   "VK_LAYER_LUNARG_core_validation",
-					                      "VK_LAYER_LUNARG_parameter_validation"}}.data(),  // enabled layer names
-#endif
-					6,        // enabled extension count
+					0,nullptr,  // no layers
+					2,          // enabled extension count
 					//array<const char*,2>{{"VK_KHR_surface","VK_KHR_xlib_surface"}}.data(),  // enabled extension names
-					info_instance_extensions
-				}));
+					array<const char*,2>{{"VK_KHR_surface","VK_KHR_win32_surface"}}.data(),  // enabled extension names
+				});
 
 #ifdef _WIN32
+
+		// window's message handling procedure
+		auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
+			switch(msg)
+			{
+				case WM_CLOSE:
+					DestroyWindow(hwnd);
+					w=nullptr;
+				break;
+				case WM_DESTROY:
+					PostQuitMessage(0);
+				break;
+				default:
+					return DefWindowProc(hwnd,msg,wParam,lParam);
+			}
+			return 0;
+		};
+
+		// register window class
+		WNDCLASSEX wc;
+		wc.cbSize        = sizeof(WNDCLASSEX);
+		wc.style         = 0;
+		wc.lpfnWndProc   = wndProc;
+		wc.cbClsExtra    = 0;
+		wc.cbWndExtra    = 0;
+		wc.hInstance     = GetModuleHandle(NULL);
+		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
+		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+		wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+		wc.lpszMenuName  = NULL;
+		wc.lpszClassName = "HelloWindow";
+		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
+		if(!RegisterClassEx(&wc))
+			throw runtime_error("Can not register window class.");
+
+		// create window
+		w=CreateWindowEx(
+			WS_EX_CLIENTEDGE,
+			"HelloWindow",
+			"Hello window!",
+			WS_OVERLAPPEDWINDOW,
+			CW_USEDEFAULT,CW_USEDEFAULT,240,120,
+			NULL,NULL,wc.hInstance,NULL);
+		if(w==NULL)
+			throw runtime_error("Can not create window.");
+		ShowWindow(w,SW_SHOWDEFAULT);
+		UpdateWindow(w);
+
+		// create surface
+		vk::UniqueSurfaceKHR s=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,w));
+
 #else
 
 		// create window
@@ -88,59 +126,110 @@ VK_KHR_XLIB_SURFACE_EXTENSION_NAME };
 		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 		// renders the window).
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
-		vector<vk::PhysicalDevice> compatibleDevices;
+		vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
+		vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
 		for(vk::PhysicalDevice pd:deviceList) {
-			uint32_t c;
-			pd.getQueueFamilyProperties(&c,nullptr);
-			for(uint32_t i=0; i<c; i++)
-				if(pd.getSurfaceSupportKHR(i,s.get())) {
-					auto extensionList=pd.enumerateDeviceExtensionProperties();
-					for(vk::ExtensionProperties& e:extensionList)
-						if(strcmp(e.extensionName,"VK_KHR_swapchain")==0) {
-							compatibleDevices.push_back(pd);
-							break;
-						}
+
+			// skip devices without VK_KHR_swapchain
+			auto extensionList=pd.enumerateDeviceExtensionProperties();
+			for(vk::ExtensionProperties& e:extensionList)
+				if(strcmp(e.extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME)==0)
+					goto swapchainSupported;
+			continue;
+			swapchainSupported:
+
+			// select queues (for graphics rendering and for presentation)
+			uint32_t graphicsQueueFamily=UINT32_MAX;
+			uint32_t presentationQueueFamily=UINT32_MAX;
+			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
+			vector<bool> presentationSupport;
+			presentationSupport.reserve(queueFamilyList.size());
+			uint32_t i=0;
+			for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
+				bool p=pd.getSurfaceSupportKHR(i,s.get())!=0;
+				if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
+					if(p) {
+						compatibleDevicesSingleQueue.emplace_back(pd,i);
+						goto nextDevice;
+					}
+					presentationSupport.push_back(p);
+					if(graphicsQueueFamily==UINT32_MAX)
+						graphicsQueueFamily=i;
 				}
+				else {
+					presentationSupport.push_back(p);
+					if(p)
+						if(presentationQueueFamily==UINT32_MAX)
+							presentationQueueFamily=i;
+				}
+			}
+			compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
+			nextDevice:;
 		}
 		cout<<"Compatible devices:"<<endl;
-		for(vk::PhysicalDevice& pd:compatibleDevices)
-			cout<<"   "<<pd.getProperties().deviceName<<endl;
+		for(auto& t:compatibleDevicesSingleQueue)
+			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
+		for(auto& t:compatibleDevicesTwoQueues)
+			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 
-		for(vk::PhysicalDevice& pd:compatibleDevices) {
-			std::vector<vk::SurfaceFormatKHR> surfaceFormats;
-			uint32_t surfaceFormatCount=1;
-			vk::DispatchLoaderDynamic dld(instance.get());
-			vk::Result result;
-			result = static_cast<vk::Result>( dld.vkGetPhysicalDeviceSurfaceFormatsKHR( pd, s.get(), &surfaceFormatCount, nullptr ) );
-#if 0
--   //do {
-		 surfaceFormatCount*=2;
-      //result = static_cast<vk::Result>( vkGetPhysicalDeviceSurfaceFormatsKHR( pd, s.get(), &surfaceFormatCount, nullptr ) );
-      //if ( ( result == vk::Result::eSuccess ) && surfaceFormatCount )
-      {
-        surfaceFormats.resize( surfaceFormatCount );
-        result = static_cast<vk::Result>( vkGetPhysicalDeviceSurfaceFormatsKHR( pd, s.get(), &surfaceFormatCount, reinterpret_cast<VkSurfaceFormatKHR*>( surfaceFormats.data() ) ) );
-      }
-    //} while ( 0);//result == vk::Result::eIncomplete );
-    /*VULKAN_HPP_ASSERT( surfaceFormatCount <= surfaceFormats.size() );
-    surfaceFormats.resize( surfaceFormatCount );
-    auto formatList=createResultValue( result, surfaceFormats, VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR" );*/
-			//auto formatList=pd.getSurfaceFormatsKHR(s.get());
+		/*for(vk::PhysicalDevice& pd:compatibleDevices) {
+			auto formatList=pd.getSurfaceFormatsKHR(s.get());
 			//for(auto f:formatList)
-			//	cout<<vk::to_string(f)<<endl;
-			/*auto presentModeList=pd.getSurfacePresentModesKHR(s.get());
+				//cout<<vk::to_string(f)<<endl;
+			auto presentModeList=pd.getSurfacePresentModesKHR(s.get());
 			for(auto p:presentModeList)
-				cout<<vk::to_string(p)<<endl;*/
-#endif
+				cout<<vk::to_string(p)<<endl;
+		}*/
+
+		// choose device
+		vk::PhysicalDevice pd;
+		uint32_t graphicsQueue,presentationQueue;
+		if(compatibleDevicesSingleQueue.size()>0) {
+			auto t=compatibleDevicesSingleQueue.front();
+			pd=get<0>(t);
+			graphicsQueue=get<1>(t);
+		}
+		else if(compatibleDevicesTwoQueues.size()>0) {
+			auto t=compatibleDevicesTwoQueues.front();
+			pd=get<0>(t);
+			graphicsQueue=get<1>(t);
+			presentationQueue=get<2>(t);
+		}
+		else {
+			cout<<"No compatible devices. Exiting..."<<endl;
+			return 1;
 		}
 
+		vk::UniqueDevice device=pd.createDeviceUnique(
+			vk::DeviceCreateInfo(
+				vk::DeviceCreateFlags(),
+				compatibleDevicesSingleQueue.size()>0?1:2,
+				vk::DeviceQueueCreateInfo{
+					vk::DeviceQueueCreateFlags(),
+					inde,
+				1,
+				},
+				O,nullptr,  // no layers
+				1,          // number of enabled extensions
+				array<const char*,1>{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}}.data(),  // enabled extension names
+				nullptr,    // enabled features
+				))
+
 		// run event loop
+#ifdef _WIN32
+		MSG msg;
+		while(GetMessage(&msg,NULL,0,0)>0) {
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+#else
 		while(true) {
 			XEvent e;
 			XNextEvent(d,&e);
 			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
 				break;
 		}
+#endif
 
 	// catch exceptions
 	} catch(vk::Error &e) {
@@ -152,10 +241,15 @@ VK_KHR_XLIB_SURFACE_EXTENSION_NAME };
 	}
 
 	// clean up
+#ifdef _WIN32
+	if(w)
+		DestroyWindow(w);
+#else
 	if(w)
 		XDestroyWindow(d,w);
 	if(d)
 		XCloseDisplay(d);
+#endif
 
 	return 0;
 }

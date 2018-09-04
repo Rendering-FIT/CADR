@@ -5,11 +5,11 @@
 
 using namespace std;
 
+static HWND w=nullptr;
+
 
 int main(int,char**)
 {
-	HWND w=nullptr;
-
 	// catch exceptions
 	// (vulkan.hpp fuctions throws if they fail)
 	try {
@@ -37,6 +37,7 @@ int main(int,char**)
 			{
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
+					w=nullptr;
 				break;
 				case WM_DESTROY:
 					PostQuitMessage(0);
