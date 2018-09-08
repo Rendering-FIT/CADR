@@ -110,7 +110,7 @@ int main(int,char**)
 		int blackColor=BlackPixel(d,DefaultScreen(d));
 		Screen* screen=XDefaultScreenOfDisplay(d);
 		w=XCreateSimpleWindow(d,DefaultRootWindow(d),0,0,XWidthOfScreen(screen)/2,
-		                             XHeightOfScreen(screen)/2,0,blackColor,blackColor);
+		                      XHeightOfScreen(screen)/2,0,blackColor,blackColor);
 		XSetStandardProperties(d,w,"Hello window!","Hello window!",None,NULL,0,NULL);
 		Atom wmDeleteMessage=XInternAtom(d,"WM_DELETE_WINDOW",False);
 		XSetWMProtocols(d,w,&wmDeleteMessage,1);
@@ -137,6 +137,14 @@ int main(int,char**)
 					goto swapchainSupported;
 			continue;
 			swapchainSupported:
+
+			// skip devices without surface formats and presentation modes
+			uint32_t formatCount;
+			vk::createResultValue(pd.getSurfaceFormatsKHR(s.get(),&formatCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
+			uint32_t presentationModeCount;
+			vk::createResultValue(pd.getSurfacePresentModesKHR(s.get(),&presentationModeCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
+			if(formatCount==0||presentationModeCount==0)
+				continue;
 
 			// select queues (for graphics rendering and for presentation)
 			uint32_t graphicsQueueFamily=UINT32_MAX;
@@ -183,37 +191,55 @@ int main(int,char**)
 
 		// choose device
 		vk::PhysicalDevice pd;
-		uint32_t graphicsQueue,presentationQueue;
+		uint32_t graphicsQueueFamily,presentationQueueFamily;
 		if(compatibleDevicesSingleQueue.size()>0) {
 			auto t=compatibleDevicesSingleQueue.front();
 			pd=get<0>(t);
-			graphicsQueue=get<1>(t);
+			graphicsQueueFamily=get<1>(t);
+			presentationQueueFamily=UINT32_MAX;
 		}
 		else if(compatibleDevicesTwoQueues.size()>0) {
 			auto t=compatibleDevicesTwoQueues.front();
 			pd=get<0>(t);
-			graphicsQueue=get<1>(t);
-			presentationQueue=get<2>(t);
+			graphicsQueueFamily=get<1>(t);
+			presentationQueueFamily=get<2>(t);
 		}
 		else {
 			cout<<"No compatible devices. Exiting..."<<endl;
 			return 1;
 		}
+		cout<<"Using device:\n"
+		      "   "<<pd.getProperties().deviceName<<endl;
 
+		// create device
 		vk::UniqueDevice device=pd.createDeviceUnique(
-			vk::DeviceCreateInfo(
-				vk::DeviceCreateFlags(),
-				compatibleDevicesSingleQueue.size()>0?1:2,
-				vk::DeviceQueueCreateInfo{
-					vk::DeviceQueueCreateFlags(),
-					inde,
-				1,
-				},
-				O,nullptr,  // no layers
+			vk::DeviceCreateInfo{
+				vk::DeviceCreateFlags(),  // flags
+				compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
+				array<const vk::DeviceQueueCreateInfo,2>{  // pQueueCreateInfos
+					vk::DeviceQueueCreateInfo{
+						vk::DeviceQueueCreateFlags(),
+						graphicsQueueFamily,
+						1,
+						&(const float&)1.f,
+					},vk::DeviceQueueCreateInfo{
+						vk::DeviceQueueCreateFlags(),
+						presentationQueueFamily,
+						1,
+						&(const float&)1.f,
+					}
+				}.data(),
+				0,nullptr,  // no layers
 				1,          // number of enabled extensions
 				array<const char*,1>{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}}.data(),  // enabled extension names
 				nullptr,    // enabled features
-				))
+			}
+		);
+
+		//
+
+		// create swapchain
+
 
 		// run event loop
 #ifdef _WIN32
