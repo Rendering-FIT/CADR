@@ -212,7 +212,7 @@ int main(int,char**)
 		      "   "<<pd.getProperties().deviceName<<endl;
 
 		// create device
-		vk::UniqueDevice device=pd.createDeviceUnique(
+		vk::UniqueDevice device(pd.createDevice(
 			vk::DeviceCreateInfo{
 				vk::DeviceCreateFlags(),  // flags
 				compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
@@ -234,7 +234,7 @@ int main(int,char**)
 				array<const char*,1>{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}}.data(),  // enabled extension names
 				nullptr,    // enabled features
 			}
-		);
+		));
 
 		//
 
