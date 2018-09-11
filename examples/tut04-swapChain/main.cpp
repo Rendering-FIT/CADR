@@ -88,13 +88,20 @@ int main(int,char**)
 		if(!RegisterClassEx(&wc))
 			throw runtime_error("Can not register window class.");
 
+		// window size
+		RECT screenSize;
+		if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
+			throw runtime_error("GetWindowRect() failed.");
+		uint32_t windowWidth=(screenSize.right-screenSize.left)/2;
+		uint32_t windowHeight=(screenSize.bottom-screenSize.top)/2;
+
 		// create window
 		w=CreateWindowEx(
 			WS_EX_CLIENTEDGE,
 			"HelloWindow",
 			"Hello window!",
 			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT,CW_USEDEFAULT,240,120,
+			CW_USEDEFAULT,CW_USEDEFAULT,windowWidth,windowHeight,
 			NULL,NULL,wc.hInstance,NULL);
 		if(w==NULL)
 			throw runtime_error("Can not create window.");
@@ -212,34 +219,76 @@ int main(int,char**)
 		      "   "<<pd.getProperties().deviceName<<endl;
 
 		// create device
-		vk::UniqueDevice device(pd.createDevice(
-			vk::DeviceCreateInfo{
-				vk::DeviceCreateFlags(),  // flags
-				compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
-				array<const vk::DeviceQueueCreateInfo,2>{  // pQueueCreateInfos
-					vk::DeviceQueueCreateInfo{
-						vk::DeviceQueueCreateFlags(),
-						graphicsQueueFamily,
-						1,
-						&(const float&)1.f,
-					},vk::DeviceQueueCreateInfo{
-						vk::DeviceQueueCreateFlags(),
-						presentationQueueFamily,
-						1,
-						&(const float&)1.f,
-					}
-				}.data(),
-				0,nullptr,  // no layers
-				1,          // number of enabled extensions
-				array<const char*,1>{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}}.data(),  // enabled extension names
-				nullptr,    // enabled features
-			}
-		));
+		vk::UniqueDevice device(
+			pd.createDevice(
+				vk::DeviceCreateInfo{
+					vk::DeviceCreateFlags(),  // flags
+					compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
+					array<const vk::DeviceQueueCreateInfo,2>{  // pQueueCreateInfos
+						vk::DeviceQueueCreateInfo{
+							vk::DeviceQueueCreateFlags(),
+							graphicsQueueFamily,
+							1,
+							&(const float&)1.f,
+						},vk::DeviceQueueCreateInfo{
+							vk::DeviceQueueCreateFlags(),
+							presentationQueueFamily,
+							1,
+							&(const float&)1.f,
+						}
+					}.data(),
+					0,nullptr,  // no layers
+					1,          // number of enabled extensions
+					array<const char*,1>{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}}.data(),  // enabled extension names
+					nullptr,    // enabled features
+				}
+			)
+		);
 
-		//
+		// choose surface format
+		vector<vk::SurfaceFormatKHR> surfaceFormats=pd.getSurfaceFormatsKHR(s.get());
+		const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
+		const vk::SurfaceFormatKHR chosenSurfaceFormat=
+			surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
+				?wantedSurfaceFormat
+				:std::find(surfaceFormats.begin(),surfaceFormats.end(),
+				           wantedSurfaceFormat)!=surfaceFormats.end()
+					?wantedSurfaceFormat
+					:surfaceFormats[0];
 
 		// create swapchain
-
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities=pd.getSurfaceCapabilitiesKHR(s.get());
+		vk::UniqueSwapchainKHR swapchain(
+			device->createSwapchainKHRUnique(
+				vk::SwapchainCreateInfoKHR(
+					vk::SwapchainCreateFlagsKHR(),   // flags
+					s.get(),                         // surface
+					surfaceCapabilities.maxImageCount==0  // minImageCount
+						?surfaceCapabilities.minImageCount+1
+						:min(surfaceCapabilities.maxImageCount,surfaceCapabilities.minImageCount+1),
+					chosenSurfaceFormat.format,      // imageFormat
+					chosenSurfaceFormat.colorSpace,  // imageColorSpace
+					surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max()  // imageExtent
+						?surfaceCapabilities.currentExtent
+						:VkExtent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
+						            max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)},
+					1,  // imageArrayLayers
+					vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+					compatibleDevicesSingleQueue.size()>0?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
+					compatibleDevicesSingleQueue.size()>0?uint32_t(0):uint32_t(2),  // queueFamilyIndexCount
+					compatibleDevicesSingleQueue.size()>0?nullptr:array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
+					surfaceCapabilities.currentTransform,    // preTransform
+					vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+					[](vector<vk::PresentModeKHR>& modes){   // presentMode
+							return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
+								?vk::PresentModeKHR::eMailbox
+								:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
+						}(pd.getSurfacePresentModesKHR(s.get())),
+					VK_TRUE,  // clipped
+					nullptr   // oldSwapchain
+				)
+			)
+		);
 
 		// run event loop
 #ifdef _WIN32

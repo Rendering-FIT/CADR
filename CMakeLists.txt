@@ -25,6 +25,9 @@ if(MSVC)
 	# enable exceptions
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
 
+	# avoid min and max macros
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX")
+
 	# no support for MSVC prior to 2015
 	if(MSVC_VERSION LESS 1900)
 		message(FATAL_ERROR "Microsoft Visual C++ 2013 and earlier are not supported "
