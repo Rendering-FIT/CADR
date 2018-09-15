@@ -91,11 +91,11 @@ int main(int,char**)
 		uint32_t windowHeight=(screenSize.bottom-screenSize.top)/2;
 
 		// provide destructor to clean up in the case of exception
-		struct Win32 {
-			~Xlib() {
+		struct Win32Cleaner {
+			~Win32Cleaner() {
 				if(window)  DestroyWindow(window);
 			}
-		} win32;
+		} win32Cleaner;
 
 		// create window
 		window=CreateWindowEx(
@@ -107,8 +107,8 @@ int main(int,char**)
 			NULL,NULL,wc.hInstance,NULL);
 		if(window==NULL)
 			throw runtime_error("Can not create window.");
-		ShowWindow(w,SW_SHOWDEFAULT);
-		UpdateWindow(w);
+		ShowWindow(window,SW_SHOWDEFAULT);
+		UpdateWindow(window);
 
 		// create surface
 		vk::UniqueSurfaceKHR surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
