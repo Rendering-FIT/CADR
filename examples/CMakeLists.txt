@@ -1,10 +1,11 @@
 set(PACKAGES
 	tut01-deviceList
+	tut04-swapChain
 	)
 if(UNIX)
-	set(PACKAGES ${PACKAGES} tut03-helloWindowX11)
+	list(INSERT PACKAGES 1 tut03-helloWindowX11)
 elseif(WIN32)
-	set(PACKAGES ${PACKAGES} tut03-helloWindowWin)
+	list(INSERT PACKAGES 1 tut03-helloWindowWin)
 endif()
 
 foreach(pkg ${PACKAGES})

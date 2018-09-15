@@ -12,27 +12,18 @@
 using namespace std;
 
 #ifdef _WIN32
-static HWND w=nullptr;
+static HWND window=nullptr;
+#else
+Display* display=nullptr;
+Window window=0;
 #endif
 
 
 int main(int,char**)
 {
-#ifndef _WIN32
-	Display* d=nullptr;
-	Window w=0;
-#endif
-
 	// catch exceptions
 	// (vulkan.hpp fuctions throws if they fail)
 	try {
-
-#ifndef _WIN32
-		// open X connection
-		d=XOpenDisplay(nullptr);
-		if(d==nullptr)
-			throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
-#endif
 
 		// Vulkan instance
 		vk::UniqueInstance instance=
@@ -48,9 +39,13 @@ int main(int,char**)
 					},
 					0,nullptr,  // no layers
 					2,          // enabled extension count
-					//array<const char*,2>{{"VK_KHR_surface","VK_KHR_xlib_surface"}}.data(),  // enabled extension names
+#ifdef _WIN32
 					array<const char*,2>{{"VK_KHR_surface","VK_KHR_win32_surface"}}.data(),  // enabled extension names
+#else
+					array<const char*,2>{{"VK_KHR_surface","VK_KHR_xlib_surface"}}.data(),  // enabled extension names
+#endif
 				});
+
 
 #ifdef _WIN32
 
@@ -60,7 +55,7 @@ int main(int,char**)
 			{
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
-					w=nullptr;
+					window=nullptr;
 				break;
 				case WM_DESTROY:
 					PostQuitMessage(0);
@@ -95,36 +90,59 @@ int main(int,char**)
 		uint32_t windowWidth=(screenSize.right-screenSize.left)/2;
 		uint32_t windowHeight=(screenSize.bottom-screenSize.top)/2;
 
+		// provide destructor to clean up in the case of exception
+		struct Win32 {
+			~Xlib() {
+				if(window)  DestroyWindow(window);
+			}
+		} win32;
+
 		// create window
-		w=CreateWindowEx(
+		window=CreateWindowEx(
 			WS_EX_CLIENTEDGE,
 			"HelloWindow",
 			"Hello window!",
 			WS_OVERLAPPEDWINDOW,
 			CW_USEDEFAULT,CW_USEDEFAULT,windowWidth,windowHeight,
 			NULL,NULL,wc.hInstance,NULL);
-		if(w==NULL)
+		if(window==NULL)
 			throw runtime_error("Can not create window.");
 		ShowWindow(w,SW_SHOWDEFAULT);
 		UpdateWindow(w);
 
 		// create surface
-		vk::UniqueSurfaceKHR s=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,w));
+		vk::UniqueSurfaceKHR surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
 
 #else
 
+		// open X connection
+		// and provide destructor to clean up in the case of exception
+		struct Xlib {
+			Xlib() {
+				display=XOpenDisplay(nullptr);
+				if(display==nullptr)
+					throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
+			}
+			~Xlib() {
+				if(window)  XDestroyWindow(display,window);
+				if(display)  XCloseDisplay(display);
+			}
+		} xlib;
+
 		// create window
-		int blackColor=BlackPixel(d,DefaultScreen(d));
-		Screen* screen=XDefaultScreenOfDisplay(d);
-		w=XCreateSimpleWindow(d,DefaultRootWindow(d),0,0,XWidthOfScreen(screen)/2,
-		                      XHeightOfScreen(screen)/2,0,blackColor,blackColor);
-		XSetStandardProperties(d,w,"Hello window!","Hello window!",None,NULL,0,NULL);
-		Atom wmDeleteMessage=XInternAtom(d,"WM_DELETE_WINDOW",False);
-		XSetWMProtocols(d,w,&wmDeleteMessage,1);
-		XMapWindow(d,w);
+		int blackColor=BlackPixel(display,DefaultScreen(display));
+		Screen* screen=XDefaultScreenOfDisplay(display);
+		uint32_t windowWidth=XWidthOfScreen(screen)/2;
+		uint32_t windowHeight=XHeightOfScreen(screen)/2;
+		window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowWidth,
+		                           windowHeight,0,blackColor,blackColor);
+		XSetStandardProperties(display,window,"Hello window!","Hello window!",None,NULL,0,NULL);
+		Atom wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
+		XSetWMProtocols(display,window,&wmDeleteMessage,1);
+		XMapWindow(display,window);
 
 		// create surface
-		vk::UniqueHandle<vk::SurfaceKHR> s=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),d,w));
+		vk::UniqueSurfaceKHR surface=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window));
 
 #endif
 
@@ -147,9 +165,9 @@ int main(int,char**)
 
 			// skip devices without surface formats and presentation modes
 			uint32_t formatCount;
-			vk::createResultValue(pd.getSurfaceFormatsKHR(s.get(),&formatCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
+			vk::createResultValue(pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
 			uint32_t presentationModeCount;
-			vk::createResultValue(pd.getSurfacePresentModesKHR(s.get(),&presentationModeCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
+			vk::createResultValue(pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
 			if(formatCount==0||presentationModeCount==0)
 				continue;
 
@@ -161,7 +179,7 @@ int main(int,char**)
 			presentationSupport.reserve(queueFamilyList.size());
 			uint32_t i=0;
 			for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
-				bool p=pd.getSurfaceSupportKHR(i,s.get())!=0;
+				bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
 				if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
 					if(p) {
 						compatibleDevicesSingleQueue.emplace_back(pd,i);
@@ -186,15 +204,6 @@ int main(int,char**)
 			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 		for(auto& t:compatibleDevicesTwoQueues)
 			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
-
-		/*for(vk::PhysicalDevice& pd:compatibleDevices) {
-			auto formatList=pd.getSurfaceFormatsKHR(s.get());
-			//for(auto f:formatList)
-				//cout<<vk::to_string(f)<<endl;
-			auto presentModeList=pd.getSurfacePresentModesKHR(s.get());
-			for(auto p:presentModeList)
-				cout<<vk::to_string(p)<<endl;
-		}*/
 
 		// choose device
 		vk::PhysicalDevice pd;
@@ -246,7 +255,7 @@ int main(int,char**)
 		);
 
 		// choose surface format
-		vector<vk::SurfaceFormatKHR> surfaceFormats=pd.getSurfaceFormatsKHR(s.get());
+		vector<vk::SurfaceFormatKHR> surfaceFormats=pd.getSurfaceFormatsKHR(surface.get());
 		const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
 		const vk::SurfaceFormatKHR chosenSurfaceFormat=
 			surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
@@ -257,12 +266,12 @@ int main(int,char**)
 					:surfaceFormats[0];
 
 		// create swapchain
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities=pd.getSurfaceCapabilitiesKHR(s.get());
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities=pd.getSurfaceCapabilitiesKHR(surface.get());
 		vk::UniqueSwapchainKHR swapchain(
 			device->createSwapchainKHRUnique(
 				vk::SwapchainCreateInfoKHR(
 					vk::SwapchainCreateFlagsKHR(),   // flags
-					s.get(),                         // surface
+					surface.get(),                   // surface
 					surfaceCapabilities.maxImageCount==0  // minImageCount
 						?surfaceCapabilities.minImageCount+1
 						:min(surfaceCapabilities.maxImageCount,surfaceCapabilities.minImageCount+1),
@@ -270,8 +279,8 @@ int main(int,char**)
 					chosenSurfaceFormat.colorSpace,  // imageColorSpace
 					surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max()  // imageExtent
 						?surfaceCapabilities.currentExtent
-						:VkExtent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
-						            max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)},
+						:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
+						              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)},
 					1,  // imageArrayLayers
 					vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 					compatibleDevicesSingleQueue.size()>0?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
@@ -279,11 +288,11 @@ int main(int,char**)
 					compatibleDevicesSingleQueue.size()>0?nullptr:array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
 					surfaceCapabilities.currentTransform,    // preTransform
 					vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
-					[](vector<vk::PresentModeKHR>& modes){   // presentMode
+					[](vector<vk::PresentModeKHR>&& modes){  // presentMode
 							return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
 								?vk::PresentModeKHR::eMailbox
 								:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
-						}(pd.getSurfacePresentModesKHR(s.get())),
+						}(pd.getSurfacePresentModesKHR(surface.get())),
 					VK_TRUE,  // clipped
 					nullptr   // oldSwapchain
 				)
@@ -300,7 +309,7 @@ int main(int,char**)
 #else
 		while(true) {
 			XEvent e;
-			XNextEvent(d,&e);
+			XNextEvent(display,&e);
 			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
 				break;
 		}
@@ -314,17 +323,6 @@ int main(int,char**)
 	} catch(...) {
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
-
-	// clean up
-#ifdef _WIN32
-	if(w)
-		DestroyWindow(w);
-#else
-	if(w)
-		XDestroyWindow(d,w);
-	if(d)
-		XCloseDisplay(d);
-#endif
 
 	return 0;
 }
