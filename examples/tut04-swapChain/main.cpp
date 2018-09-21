@@ -40,9 +40,9 @@ int main(int,char**)
 					0,nullptr,  // no layers
 					2,          // enabled extension count
 #ifdef _WIN32
-					array<const char*,2>{{"VK_KHR_surface","VK_KHR_win32_surface"}}.data(),  // enabled extension names
+					array<const char*,2>{"VK_KHR_surface","VK_KHR_win32_surface"}.data(),  // enabled extension names
 #else
-					array<const char*,2>{{"VK_KHR_surface","VK_KHR_xlib_surface"}}.data(),  // enabled extension names
+					array<const char*,2>{"VK_KHR_surface","VK_KHR_xlib_surface"}.data(),  // enabled extension names
 #endif
 				});
 
@@ -158,7 +158,7 @@ int main(int,char**)
 			// skip devices without VK_KHR_swapchain
 			auto extensionList=pd.enumerateDeviceExtensionProperties();
 			for(vk::ExtensionProperties& e:extensionList)
-				if(strcmp(e.extensionName,VK_KHR_SWAPCHAIN_EXTENSION_NAME)==0)
+				if(strcmp(e.extensionName,"VK_KHR_swapchain")==0)
 					goto swapchainSupported;
 			continue;
 			swapchainSupported:
@@ -212,7 +212,7 @@ int main(int,char**)
 			auto t=compatibleDevicesSingleQueue.front();
 			pd=get<0>(t);
 			graphicsQueueFamily=get<1>(t);
-			presentationQueueFamily=UINT32_MAX;
+			presentationQueueFamily=graphicsQueueFamily;
 		}
 		else if(compatibleDevicesTwoQueues.size()>0) {
 			auto t=compatibleDevicesTwoQueues.front();
@@ -248,11 +248,15 @@ int main(int,char**)
 					}.data(),
 					0,nullptr,  // no layers
 					1,          // number of enabled extensions
-					array<const char*,1>{{VK_KHR_SWAPCHAIN_EXTENSION_NAME}}.data(),  // enabled extension names
+					array<const char*,1>{"VK_KHR_swapchain"}.data(),  // enabled extension names
 					nullptr,    // enabled features
 				}
 			)
 		);
+
+		// get queues
+		vk::Queue graphicsQueue=device->getQueue(graphicsQueueFamily,0);
+		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0);
 
 		// choose surface format
 		vector<vk::SurfaceFormatKHR> surfaceFormats=pd.getSurfaceFormatsKHR(surface.get());
@@ -267,6 +271,10 @@ int main(int,char**)
 
 		// create swapchain
 		vk::SurfaceCapabilitiesKHR surfaceCapabilities=pd.getSurfaceCapabilitiesKHR(surface.get());
+		vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
+				?surfaceCapabilities.currentExtent
+				:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
+				              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
 		vk::UniqueSwapchainKHR swapchain(
 			device->createSwapchainKHRUnique(
 				vk::SwapchainCreateInfoKHR(
@@ -277,10 +285,7 @@ int main(int,char**)
 						:min(surfaceCapabilities.maxImageCount,surfaceCapabilities.minImageCount+1),
 					chosenSurfaceFormat.format,      // imageFormat
 					chosenSurfaceFormat.colorSpace,  // imageColorSpace
-					surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max()  // imageExtent
-						?surfaceCapabilities.currentExtent
-						:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
-						              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)},
+					currentSurfaceExtent,  // imageExtent
 					1,  // imageArrayLayers
 					vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 					compatibleDevicesSingleQueue.size()>0?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
@@ -299,12 +304,183 @@ int main(int,char**)
 			)
 		);
 
+		// swapchain images and image views
+		vector<vk::Image> swapchainImages=device->getSwapchainImagesKHR(swapchain.get());
+		vector<vk::UniqueImageView> swapchainImageViews;
+		swapchainImageViews.reserve(swapchainImages.size());
+		for(vk::Image image:swapchainImages)
+			swapchainImageViews.emplace_back(
+				device->createImageViewUnique(
+					vk::ImageViewCreateInfo(
+						vk::ImageViewCreateFlags(),  // flags
+						image,                       // image
+						vk::ImageViewType::e2D,      // viewType
+						chosenSurfaceFormat.format,  // format
+						vk::ComponentMapping(),      // components
+						vk::ImageSubresourceRange(   // subresourceRange
+							vk::ImageAspectFlagBits::eColor,  // aspectMask
+							0,  // baseMipLevel
+							1,  // levelCount
+							0,  // baseArrayLayer
+							1   // layerCount
+						)
+					)
+				)
+			);
+
+		// render pass
+		vk::UniqueRenderPass renderPass=
+			device->createRenderPassUnique(
+				vk::RenderPassCreateInfo(
+					vk::RenderPassCreateFlags(),  // flags
+					1,                            // attachmentCount
+					&vk::AttachmentDescription(   // pAttachments
+						vk::AttachmentDescriptionFlags(),  // flags
+						chosenSurfaceFormat.format,        // format
+						vk::SampleCountFlagBits::e1,       // samples
+						vk::AttachmentLoadOp::eClear,      // loadOp
+						vk::AttachmentStoreOp::eStore,     // storeOp
+						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+						vk::ImageLayout::eUndefined,       // initialLayout
+						vk::ImageLayout::ePresentSrcKHR    // finalLayout
+					),
+					1,  // subpassCount
+					&vk::SubpassDescription(  // pSubpasses
+						vk::SubpassDescriptionFlags(),     // flags
+						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+						0,        // inputAttachmentCount
+						nullptr,  // pInputAttachments
+						1,        // colorAttachmentCount
+						&vk::AttachmentReference(  // pColorAttachments
+							0,  // attachment
+							vk::ImageLayout::eColorAttachmentOptimal  // layout
+						),
+						nullptr,  // pResolveAttachments
+						nullptr,  // pDepthStencilAttachment
+						0,        // preserveAttachmentCount
+						nullptr   // pPreserveAttachments
+					),
+					1,        // dependencyCount
+					&vk::SubpassDependency(  // pDependencies
+						VK_SUBPASS_EXTERNAL,  // srcSubpass
+						0,  // dstSubpass
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
+						vk::AccessFlags(),  // srcAccessMask
+						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
+						vk::DependencyFlags()  // dependencyFlags
+					)
+				)
+			);
+
+		// framebuffers
+		vector<vk::UniqueFramebuffer> framebuffers;
+		framebuffers.reserve(swapchainImages.size());
+		for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+			framebuffers.emplace_back(
+				device->createFramebufferUnique(
+					vk::FramebufferCreateInfo(
+						vk::FramebufferCreateFlags(),   // flags
+						renderPass.get(),               // renderPass
+						1,  // attachmentCount
+						&swapchainImageViews[i].get(),  // pAttachments
+						currentSurfaceExtent.width,     // width
+						currentSurfaceExtent.height,    // height
+						1  // layers
+					)
+				)
+			);
+
+		// command pool and command buffers
+		vk::UniqueCommandPool commandPool=
+			device->createCommandPoolUnique(
+				vk::CommandPoolCreateInfo(
+					vk::CommandPoolCreateFlags(),  // flags
+					graphicsQueueFamily  // queueFamilyIndex
+				)
+			);
+		vector<vk::UniqueCommandBuffer> commandBuffers=
+			device->allocateCommandBuffersUnique(
+				vk::CommandBufferAllocateInfo(
+					commandPool.get(),                 // commandPool
+					vk::CommandBufferLevel::ePrimary,  // level
+					uint32_t(swapchainImages.size())   // commandBufferCount
+				)
+			);
+
+		// record command buffers
+		for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
+			vk::CommandBuffer& cb=commandBuffers[i].get();
+			cb.begin(vk::CommandBufferBeginInfo(
+				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+				nullptr  // pInheritanceInfo
+			));
+			cb.beginRenderPass(vk::RenderPassBeginInfo(
+					renderPass.get(),  // renderPass
+					framebuffers[i].get(),  // framebuffer
+					vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
+					1, // clearValueCount
+					&vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
+				),
+				vk::SubpassContents::eInline
+			);
+			cb.endRenderPass();
+			cb.end();
+		}
+
+		// semaphores
+		vk::UniqueSemaphore imageAvailableSemaphore=
+			device->createSemaphoreUnique(
+				vk::SemaphoreCreateInfo(
+					vk::SemaphoreCreateFlags()  // flags
+				)
+			);
+		vk::UniqueSemaphore renderFinishedSemaphore=
+			device->createSemaphoreUnique(
+				vk::SemaphoreCreateInfo(
+					vk::SemaphoreCreateFlags()  // flags
+				)
+			);
+
+
 		// run event loop
 #ifdef _WIN32
 		MSG msg;
-		while(GetMessage(&msg,NULL,0,0)>0) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+		while(true){
+			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+			}
+			if(msg.message==WM_QUIT)
+				break;
+
+			uint32_t imageIndex=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr)).value;
+			graphicsQueue.submit(
+				vk::ArrayProxy<const vk::SubmitInfo>(
+					1,
+					&vk::SubmitInfo(
+						1, // waitSemaphoreCount
+						&imageAvailableSemaphore.get(),  // pWaitSemaphores
+						&vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+						1,  // commandBufferCount
+						&commandBuffers[imageIndex].get(),  // pCommandBuffers
+						1,  // signalSemaphoreCount
+						&renderFinishedSemaphore.get()  // pSignalSemaphores
+					)
+				),
+				vk::Fence(nullptr)
+			);
+			presentationQueue.presentKHR(
+				vk::PresentInfoKHR(
+					1,  // waitSemaphoreCount
+					&renderFinishedSemaphore.get(),  // pWaitSemaphores
+					1,  // swapchainCount
+					&swapchain.get(),  // pSwapchains
+					&imageIndex,  // pImageIndices
+					nullptr  // pResults
+				)
+			);
 		}
 #else
 		while(true) {
