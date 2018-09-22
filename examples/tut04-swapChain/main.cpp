@@ -74,14 +74,22 @@ int main(int,char**)
 		wc.cbClsExtra    = 0;
 		wc.cbWndExtra    = 0;
 		wc.hInstance     = GetModuleHandle(NULL);
-		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
-		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-		wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+		wc.hIcon         = LoadIcon(NULL,IDI_APPLICATION);
+		wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
+		wc.hbrBackground = NULL;
 		wc.lpszMenuName  = NULL;
 		wc.lpszClassName = "HelloWindow";
-		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
+		wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
 		if(!RegisterClassEx(&wc))
 			throw runtime_error("Can not register window class.");
+
+		// provide destructor to clean up in the case of exception
+		struct Win32Cleaner {
+			~Win32Cleaner() {
+				if(window)  DestroyWindow(window);
+				UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+			}
+		} win32Cleaner;
 
 		// window size
 		RECT screenSize;
@@ -89,13 +97,6 @@ int main(int,char**)
 			throw runtime_error("GetWindowRect() failed.");
 		uint32_t windowWidth=(screenSize.right-screenSize.left)/2;
 		uint32_t windowHeight=(screenSize.bottom-screenSize.top)/2;
-
-		// provide destructor to clean up in the case of exception
-		struct Win32Cleaner {
-			~Win32Cleaner() {
-				if(window)  DestroyWindow(window);
-			}
-		} win32Cleaner;
 
 		// create window
 		window=CreateWindowEx(
@@ -107,8 +108,6 @@ int main(int,char**)
 			NULL,NULL,wc.hInstance,NULL);
 		if(window==NULL)
 			throw runtime_error("Can not create window.");
-		ShowWindow(window,SW_SHOWDEFAULT);
-		UpdateWindow(window);
 
 		// create surface
 		vk::UniqueSurfaceKHR surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
@@ -361,13 +360,13 @@ int main(int,char**)
 						0,        // preserveAttachmentCount
 						nullptr   // pPreserveAttachments
 					),
-					1,        // dependencyCount
-					&vk::SubpassDependency(  // pDependencies
-						VK_SUBPASS_EXTERNAL,  // srcSubpass
-						0,  // dstSubpass
+					1,  // dependencyCount
+					&vk::SubpassDependency(   // pDependencies
+						VK_SUBPASS_EXTERNAL,   // srcSubpass
+						0,                     // dstSubpass
 						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
 						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
-						vk::AccessFlags(),  // srcAccessMask
+						vk::AccessFlags(),     // srcAccessMask
 						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
 						vk::DependencyFlags()  // dependencyFlags
 					)
@@ -417,10 +416,10 @@ int main(int,char**)
 				nullptr  // pInheritanceInfo
 			));
 			cb.beginRenderPass(vk::RenderPassBeginInfo(
-					renderPass.get(),  // renderPass
+					renderPass.get(),       // renderPass
 					framebuffers[i].get(),  // framebuffer
 					vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
-					1, // clearValueCount
+					1,                      // clearValueCount
 					&vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
 				),
 				vk::SubpassContents::eInline
@@ -444,10 +443,17 @@ int main(int,char**)
 			);
 
 
-		// run event loop
 #ifdef _WIN32
+
+		// show window
+		ShowWindow(window,SW_SHOWDEFAULT);
+		UpdateWindow(window);
+
+		// run event loop
 		MSG msg;
 		while(true){
+
+			// process messages
 			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);
@@ -455,30 +461,31 @@ int main(int,char**)
 			if(msg.message==WM_QUIT)
 				break;
 
+			// render frame
 			uint32_t imageIndex=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr)).value;
 			graphicsQueue.submit(
 				vk::ArrayProxy<const vk::SubmitInfo>(
 					1,
 					&vk::SubmitInfo(
-						1, // waitSemaphoreCount
+						1,                               // waitSemaphoreCount
 						&imageAvailableSemaphore.get(),  // pWaitSemaphores
 						&vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-						1,  // commandBufferCount
+						1,                               // commandBufferCount
 						&commandBuffers[imageIndex].get(),  // pCommandBuffers
-						1,  // signalSemaphoreCount
-						&renderFinishedSemaphore.get()  // pSignalSemaphores
+						1,                               // signalSemaphoreCount
+						&renderFinishedSemaphore.get()   // pSignalSemaphores
 					)
 				),
 				vk::Fence(nullptr)
 			);
 			presentationQueue.presentKHR(
 				vk::PresentInfoKHR(
-					1,  // waitSemaphoreCount
+					1,                 // waitSemaphoreCount
 					&renderFinishedSemaphore.get(),  // pWaitSemaphores
-					1,  // swapchainCount
+					1,                 // swapchainCount
 					&swapchain.get(),  // pSwapchains
-					&imageIndex,  // pImageIndices
-					nullptr  // pResults
+					&imageIndex,       // pImageIndices
+					nullptr            // pResults
 				)
 			);
 		}
