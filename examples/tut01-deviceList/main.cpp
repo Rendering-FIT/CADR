@@ -12,7 +12,7 @@ int main(int,char**)
 
 		// Vulkan instance
 		vk::UniqueInstance instance(
-			vk::createInstance(
+			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
@@ -31,8 +31,8 @@ int main(int,char**)
 		// print device list
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		cout<<"Physical devices:"<<endl;
-		for(vk::PhysicalDevice d:deviceList) {
-			vk::PhysicalDeviceProperties p=d.getProperties();
+		for(vk::PhysicalDevice pd:deviceList) {
+			vk::PhysicalDeviceProperties p=pd.getProperties();
 			cout<<"   "<<p.deviceName<<endl;
 		}
 
