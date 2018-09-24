@@ -11,7 +11,12 @@ int main(int,char**)
 	try {
 
 		// vulkan version
-		uint32_t version=vk::enumerateInstanceVersion();
+		// (VulkanDispatchDynamic must be used as vkEnumerateInstanceVersion() is available since Vulkan 1.1 only.
+		// On Vulkan 1.0, vkEnumerateInstanceVersion is nullptr.)
+		struct VulkanDispatchDynamic {
+			PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion=PFN_vkEnumerateInstanceVersion(vk::Instance().getProcAddr("vkEnumerateInstanceVersion"));;
+		} d;
+		uint32_t version=(d.vkEnumerateInstanceVersion==nullptr)?VK_MAKE_VERSION(1,0,0):vk::enumerateInstanceVersion(d);
 		cout<<"Vulkan info:"<<endl;
 		cout<<"   Version: "<<VK_VERSION_MAJOR(version)<<"."<<VK_VERSION_MINOR(version)<<"."<<VK_VERSION_PATCH(version)
 		    <<" (header version: "<<VK_HEADER_VERSION<<")"<<endl;
@@ -61,12 +66,15 @@ int main(int,char**)
 
 			// print device displays
 			cout<<"      Displays:"<<endl;
-			vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR();
-			for(vk::DisplayPropertiesKHR& dp:dpList)
-				cout<<"         "<<(dp.displayName?dp.displayName:"< no name >")<<", "
-				    <<dp.physicalResolution.width<<"x"<<dp.physicalResolution.height<<endl;
-			if(dpList.empty())
-				cout<<"         < none >"<<endl;
+			if(hasKhrDisplay) {
+				vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR();
+				for(vk::DisplayPropertiesKHR& dp:dpList)
+					cout<<"         "<<(dp.displayName?dp.displayName:"< no name >")<<", "
+						 <<dp.physicalResolution.width<<"x"<<dp.physicalResolution.height<<endl;
+				if(dpList.empty())
+					cout<<"         < none >"<<endl;
+			} else
+				cout<<"         < VK_KHR_display not supported >"<<endl;
 		}
 
 	} catch(vk::Error &e) {
