@@ -63,6 +63,21 @@ int main(int,char**)
 		for(vk::PhysicalDevice pd:deviceList) {
 			vk::PhysicalDeviceProperties p=pd.getProperties();
 			cout<<"   "<<p.deviceName<<endl;
+			cout<<"      Vulkan version: "<<VK_VERSION_MAJOR(p.apiVersion)<<"."<<VK_VERSION_MINOR(p.apiVersion)<<"."<<VK_VERSION_PATCH(p.apiVersion)<<endl;
+			cout<<"      Driver version: 0x"<<hex<<p.driverVersion<<dec
+			    <<" ("<<VK_VERSION_MAJOR(p.driverVersion)<<"."<<VK_VERSION_MINOR(p.driverVersion)<<"."<<VK_VERSION_PATCH(p.driverVersion)<<")"<<endl;
+			cout<<"      VendorID: 0x"<<hex<<p.vendorID<<dec<<endl;
+			cout<<"      DeviceID: 0x"<<hex<<p.deviceID<<dec<<endl;
+
+			// queues
+			cout<<"      Queues:"<<endl;
+			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
+			for(size_t i=0,c=queueFamilyList.size(); i<c; i++) {
+				const vk::QueueFamilyProperties& qf=queueFamilyList[i];
+				cout<<"         Family["<<i<<"]"<<endl;
+				cout<<"            flags: "<<vk::to_string(qf.queueFlags)<<endl;
+				cout<<"            count: "<<qf.queueCount<<endl;
+			}
 
 			// print device displays
 			cout<<"      Displays:"<<endl;
@@ -75,6 +90,13 @@ int main(int,char**)
 					cout<<"         < none >"<<endl;
 			} else
 				cout<<"         < VK_KHR_display not supported >"<<endl;
+
+			// extensions
+			cout<<"      Extensions:"<<endl;
+			vector<vk::ExtensionProperties> epList=pd.enumerateDeviceExtensionProperties();
+			for(vk::ExtensionProperties& e:epList)
+				cout<<"         "<<e.extensionName<<" (version: "<<e.specVersion<<")"<<endl;
+
 		}
 
 	} catch(vk::Error &e) {
