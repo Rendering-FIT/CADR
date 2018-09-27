@@ -14,7 +14,7 @@ int main(int,char**)
 		// (VulkanDispatchDynamic must be used as vkEnumerateInstanceVersion() is available since Vulkan 1.1 only.
 		// On Vulkan 1.0, vkEnumerateInstanceVersion is nullptr.)
 		struct VulkanDispatchDynamic {
-			PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion=PFN_vkEnumerateInstanceVersion(vk::Instance().getProcAddr("vkEnumerateInstanceVersion"));;
+			PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion=PFN_vkEnumerateInstanceVersion(vk::Instance().getProcAddr("vkEnumerateInstanceVersion"));
 		} d;
 		uint32_t version=(d.vkEnumerateInstanceVersion==nullptr)?VK_MAKE_VERSION(1,0,0):vk::enumerateInstanceVersion(d);
 		cout<<"Vulkan info:"<<endl;

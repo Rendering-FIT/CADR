@@ -333,7 +333,7 @@ int main(int,char**)
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
 					1,                            // attachmentCount
-					&vk::AttachmentDescription(   // pAttachments
+					&(const vk::AttachmentDescription&)vk::AttachmentDescription(  // pAttachments
 						vk::AttachmentDescriptionFlags(),  // flags
 						chosenSurfaceFormat.format,        // format
 						vk::SampleCountFlagBits::e1,       // samples
@@ -345,13 +345,13 @@ int main(int,char**)
 						vk::ImageLayout::ePresentSrcKHR    // finalLayout
 					),
 					1,  // subpassCount
-					&vk::SubpassDescription(  // pSubpasses
+					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
 						vk::SubpassDescriptionFlags(),     // flags
 						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
 						0,        // inputAttachmentCount
 						nullptr,  // pInputAttachments
 						1,        // colorAttachmentCount
-						&vk::AttachmentReference(  // pColorAttachments
+						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
 							0,  // attachment
 							vk::ImageLayout::eColorAttachmentOptimal  // layout
 						),
@@ -361,7 +361,7 @@ int main(int,char**)
 						nullptr   // pPreserveAttachments
 					),
 					1,  // dependencyCount
-					&vk::SubpassDependency(   // pDependencies
+					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
 						VK_SUBPASS_EXTERNAL,   // srcSubpass
 						0,                     // dstSubpass
 						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
@@ -420,7 +420,7 @@ int main(int,char**)
 					framebuffers[i].get(),  // framebuffer
 					vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
 					1,                      // clearValueCount
-					&vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
+					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
 				),
 				vk::SubpassContents::eInline
 			);
@@ -449,7 +449,7 @@ int main(int,char**)
 		ShowWindow(window,SW_SHOWDEFAULT);
 		UpdateWindow(window);
 
-		// run event loop
+		// run Win32 event loop
 		MSG msg;
 		while(true){
 
@@ -459,17 +459,32 @@ int main(int,char**)
 				DispatchMessage(&msg);
 			}
 			if(msg.message==WM_QUIT)
-				break;
+				goto ExitMainLoop;
+
+#else
+
+		// run Xlib event loop
+		XEvent e;
+		while(true) {
+
+			// process messages
+			while(XPending(display)>0) {
+				XNextEvent(display,&e);
+				if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
+					goto ExitMainLoop;
+			}
+
+#endif
 
 			// render frame
 			uint32_t imageIndex=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr)).value;
 			graphicsQueue.submit(
 				vk::ArrayProxy<const vk::SubmitInfo>(
 					1,
-					&vk::SubmitInfo(
+					&(const vk::SubmitInfo&)vk::SubmitInfo(
 						1,                               // waitSemaphoreCount
 						&imageAvailableSemaphore.get(),  // pWaitSemaphores
-						&vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+						&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
 						1,                               // commandBufferCount
 						&commandBuffers[imageIndex].get(),  // pCommandBuffers
 						1,                               // signalSemaphoreCount
@@ -488,15 +503,10 @@ int main(int,char**)
 					nullptr            // pResults
 				)
 			);
+			presentationQueue.waitIdle();
 		}
-#else
-		while(true) {
-			XEvent e;
-			XNextEvent(display,&e);
-			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
-				break;
-		}
-#endif
+	ExitMainLoop:
+		device->waitIdle();
 
 	// catch exceptions
 	} catch(vk::Error &e) {
