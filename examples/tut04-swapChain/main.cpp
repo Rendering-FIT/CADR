@@ -238,7 +238,8 @@ int main(int,char**)
 							graphicsQueueFamily,
 							1,
 							&(const float&)1.f,
-						},vk::DeviceQueueCreateInfo{
+						},
+						vk::DeviceQueueCreateInfo{
 							vk::DeviceQueueCreateFlags(),
 							presentationQueueFamily,
 							1,
@@ -411,11 +412,14 @@ int main(int,char**)
 		// record command buffers
 		for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
 			vk::CommandBuffer& cb=commandBuffers[i].get();
-			cb.begin(vk::CommandBufferBeginInfo(
-				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-				nullptr  // pInheritanceInfo
-			));
-			cb.beginRenderPass(vk::RenderPassBeginInfo(
+			cb.begin(
+				vk::CommandBufferBeginInfo(
+					vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+					nullptr  // pInheritanceInfo
+				)
+			);
+			cb.beginRenderPass(
+				vk::RenderPassBeginInfo(
 					renderPass.get(),       // renderPass
 					framebuffers[i].get(),  // framebuffer
 					vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea

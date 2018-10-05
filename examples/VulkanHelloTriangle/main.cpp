@@ -341,7 +341,7 @@ int main(int,char**)
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
 					1,                            // attachmentCount
-					&vk::AttachmentDescription(   // pAttachments
+					&(const vk::AttachmentDescription&)vk::AttachmentDescription(  // pAttachments
 						vk::AttachmentDescriptionFlags(),  // flags
 						chosenSurfaceFormat.format,        // format
 						vk::SampleCountFlagBits::e1,       // samples
@@ -353,13 +353,13 @@ int main(int,char**)
 						vk::ImageLayout::ePresentSrcKHR    // finalLayout
 					),
 					1,  // subpassCount
-					&vk::SubpassDescription(  // pSubpasses
+					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
 						vk::SubpassDescriptionFlags(),     // flags
 						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
 						0,        // inputAttachmentCount
 						nullptr,  // pInputAttachments
 						1,        // colorAttachmentCount
-						&vk::AttachmentReference(  // pColorAttachments
+						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
 							0,  // attachment
 							vk::ImageLayout::eColorAttachmentOptimal  // layout
 						),
@@ -369,7 +369,7 @@ int main(int,char**)
 						nullptr   // pPreserveAttachments
 					),
 					1,  // dependencyCount
-					&vk::SubpassDependency(   // pDependencies
+					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
 						VK_SUBPASS_EXTERNAL,   // srcSubpass
 						0,                     // dstSubpass
 						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
@@ -439,27 +439,27 @@ int main(int,char**)
 						nullptr  // pSpecializationInfo
 					}
 				}.data(),
-				&vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
 					vk::PipelineVertexInputStateCreateFlags(),  // flags
 					0,        // vertexBindingDescriptionCount
 					nullptr,  // pVertexBindingDescriptions
 					0,        // vertexAttributeDescriptionCount
 					nullptr   // pVertexAttributeDescriptions
 				},
-				&vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
 					vk::PrimitiveTopology::eTriangleList,  // topology
 					VK_FALSE  // primitiveRestartEnable
 				},
 				nullptr, // pTessellationState
-				&vk::PipelineViewportStateCreateInfo{  // pViewportState
+				&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
 					vk::PipelineViewportStateCreateFlags(),  // flags
 					1,  // viewportCount
-					&vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
+					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
 					1,  // scissorCount
-					&vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
+					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
 				},
-				&vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
 					vk::PipelineRasterizationStateCreateFlags(),  // flags
 					VK_FALSE,  // depthClampEnable
 					VK_FALSE,  // rasterizerDiscardEnable
@@ -472,7 +472,7 @@ int main(int,char**)
 					0.f,  // depthBiasSlopeFactor
 					1.f   // lineWidth
 				},
-				&vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+				&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
 					vk::PipelineMultisampleStateCreateFlags(),  // flags
 					vk::SampleCountFlagBits::e1,  // rasterizationSamples
 					VK_FALSE,  // sampleShadingEnable
@@ -481,7 +481,7 @@ int main(int,char**)
 					VK_FALSE,  // alphaToCoverageEnable
 					VK_FALSE   // alphaToOneEnable
 				},
-				&vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
+				&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
 					vk::PipelineDepthStencilStateCreateFlags(),  // flags
 					VK_TRUE,  // depthTestEnable
 					VK_TRUE,  // depthWriteEnable
@@ -493,12 +493,12 @@ int main(int,char**)
 					0.f,  // minDepthBounds
 					0.f   // maxDepthBounds
 				},
-				&vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+				&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
 					vk::PipelineColorBlendStateCreateFlags(),  // flags
 					VK_FALSE,  // logicOpEnable
 					vk::LogicOp::eClear,  // logicOp
 					1,  // attachmentCount
-					&vk::PipelineColorBlendAttachmentState{  // pAttachments
+					&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
 						VK_FALSE,  // blendEnable
 						vk::BlendFactor::eZero,  // srcColorBlendFactor
 						vk::BlendFactor::eZero,  // dstColorBlendFactor
@@ -558,17 +558,19 @@ int main(int,char**)
 		// record command buffers
 		for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
 			vk::CommandBuffer& cb=commandBuffers[i].get();
-			cb.begin(vk::CommandBufferBeginInfo(
-				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-				nullptr  // pInheritanceInfo
-			));
+			cb.begin(
+				vk::CommandBufferBeginInfo(
+					vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+					nullptr  // pInheritanceInfo
+				)
+			);
 			cb.beginRenderPass(
 				vk::RenderPassBeginInfo(
 					renderPass.get(),       // renderPass
 					framebuffers[i].get(),  // framebuffer
 					vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
 					1,                      // clearValueCount
-					&vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}))  // pClearValues
+					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}))  // pClearValues
 				),
 				vk::SubpassContents::eInline
 			);
@@ -599,7 +601,7 @@ int main(int,char**)
 		ShowWindow(window,SW_SHOWDEFAULT);
 		UpdateWindow(window);
 
-		// run event loop
+		// run Win32 event loop
 		MSG msg;
 		while(true){
 
@@ -609,17 +611,32 @@ int main(int,char**)
 				DispatchMessage(&msg);
 			}
 			if(msg.message==WM_QUIT)
-				break;
+				goto ExitMainLoop;
+
+#else
+
+		// run Xlib event loop
+		XEvent e;
+		while(true) {
+
+			// process messages
+			while(XPending(display)>0) {
+				XNextEvent(display,&e);
+				if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
+					goto ExitMainLoop;
+			}
+
+#endif
 
 			// render frame
 			uint32_t imageIndex=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr)).value;
 			graphicsQueue.submit(
 				vk::ArrayProxy<const vk::SubmitInfo>(
 					1,
-					&vk::SubmitInfo(
+					&(const vk::SubmitInfo&)vk::SubmitInfo(
 						1,                               // waitSemaphoreCount
 						&imageAvailableSemaphore.get(),  // pWaitSemaphores
-						&vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+						&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
 						1,                               // commandBufferCount
 						&commandBuffers[imageIndex].get(),  // pCommandBuffers
 						1,                               // signalSemaphoreCount
@@ -638,15 +655,10 @@ int main(int,char**)
 					nullptr            // pResults
 				)
 			);
+			presentationQueue.waitIdle();
 		}
-#else
-		while(true) {
-			XEvent e;
-			XNextEvent(display,&e);
-			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
-				break;
-		}
-#endif
+	ExitMainLoop:
+		device->waitIdle();
 
 	// catch exceptions
 	} catch(vk::Error &e) {
