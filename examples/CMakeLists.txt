@@ -1,7 +1,11 @@
+# folder name in IDE (Visual C++,...) where all examples will go
+set(examples_folder_name "Examples")
+
 set(PACKAGES
 	tut01-deviceList
 	tut02-vulkanInfo
 	tut04-swapChain
+	VulkanHelloTriangle
 	)
 if(UNIX)
 	list(INSERT PACKAGES 2 tut03-helloWindowX11)
