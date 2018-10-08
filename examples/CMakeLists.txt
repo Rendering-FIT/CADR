@@ -5,6 +5,7 @@ set(PACKAGES
 	tut01-deviceList
 	tut02-vulkanInfo
 	tut04-swapChain
+	tut05-resizableWindow
 	VulkanHelloTriangle
 	)
 if(UNIX)
