@@ -9,7 +9,7 @@ of very many small objects as typical for CAD scenes.
 Prerequisities:
 * Windows: Microsoft Visual C++ 2017 or
            Microsoft Visual C++ 2015 Update 3 (previous updates might work as well)
-* Linux: gcc 4.8 (<=4.7 not tested)
+* Linux: gcc 7.3 (previous not tested)
 * cmake 3.5.0 or newer
-* Vulkan
+* Vulkan 1.1.70 headers or newer (previous not tested)
 * glm 0.9.7.0 or newer

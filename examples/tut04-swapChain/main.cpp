@@ -49,6 +49,13 @@ int main(int,char**)
 
 #ifdef _WIN32
 
+		// initial window size
+		RECT screenSize;
+		if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
+			throw runtime_error("GetWindowRect() failed.");
+		uint32_t windowWidth=(screenSize.right-screenSize.left)/2;
+		uint32_t windowHeight=(screenSize.bottom-screenSize.top)/2;
+
 		// window's message handling procedure
 		auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
 			switch(msg)
@@ -56,14 +63,13 @@ int main(int,char**)
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
 					window=nullptr;
-				break;
+					return 0;
 				case WM_DESTROY:
 					PostQuitMessage(0);
-				break;
+					return 0;
 				default:
 					return DefWindowProc(hwnd,msg,wParam,lParam);
 			}
-			return 0;
 		};
 
 		// register window class
@@ -90,13 +96,6 @@ int main(int,char**)
 				UnregisterClass("HelloWindow",GetModuleHandle(NULL));
 			}
 		} win32Cleaner;
-
-		// window size
-		RECT screenSize;
-		if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
-			throw runtime_error("GetWindowRect() failed.");
-		uint32_t windowWidth=(screenSize.right-screenSize.left)/2;
-		uint32_t windowHeight=(screenSize.bottom-screenSize.top)/2;
 
 		// create window
 		window=CreateWindowEx(

@@ -13,12 +13,193 @@ using namespace std;
 
 #ifdef _WIN32
 static HWND window=nullptr;
+struct Win32Cleaner {  // destructor to clean up in the case of exception
+	~Win32Cleaner() {
+		if(window) {
+			DestroyWindow(window);
+			UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+		}
+	}
+} win32Cleaner;
 #else
 static Display* display=nullptr;
 static Window window=0;
 #endif
 static uint32_t windowWidth;
 static uint32_t windowHeight;
+
+
+static vk::UniqueInstance instance;
+static vk::UniqueSurfaceKHR surface;
+static vk::PhysicalDevice physicalDevice;
+static uint32_t graphicsQueueFamily;
+static uint32_t presentationQueueFamily;
+static vk::UniqueDevice device;
+static vk::SurfaceFormatKHR chosenSurfaceFormat;
+static vk::UniqueRenderPass renderPass;
+static vk::UniqueSwapchainKHR swapchain;
+static vk::UniqueCommandPool commandPool;
+static vector<vk::UniqueCommandBuffer> commandBuffers;
+
+
+bool recreateSwapchainAndPipeline()
+{
+	// stop device and clear resources
+	device->waitIdle();
+	commandBuffers.clear();
+
+	// currentSurfaceExtent
+recreateSwapchain:
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
+	vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
+			?surfaceCapabilities.currentExtent
+			:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
+			              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
+
+	// avoid 0,0 surface extent
+	// by waiting for valid window size
+	// (0,0 is returned on some platforms (for instance Windows) when window is minimized.
+	// The creation of swapchain then raises an exception, for instance vk::Result::eErrorOutOfDeviceMemory on Windows)
+#ifdef _WIN32
+	// run Win32 event loop
+	if(currentSurfaceExtent.width==0||currentSurfaceExtent.height==0) {
+		// wait for and process a message
+		MSG msg;
+		if(GetMessage(&msg,NULL,0,0)<=0)
+			return false;
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+		// process remaining messages
+		while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
+			if(msg.message==WM_QUIT)
+				return false;
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		// try to recreate swapchain again
+		goto recreateSwapchain;
+	}
+#else
+	// run Xlib event loop
+	while(true) {
+		// process messages
+		XEvent e;
+		while(XPending(display)>0) {
+			XNextEvent(display,&e);
+			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
+				goto ExitApp;
+		}
+	}
+#endif
+
+	// create swapchain
+	swapchain=
+		device->createSwapchainKHRUnique(
+			vk::SwapchainCreateInfoKHR(
+				vk::SwapchainCreateFlagsKHR(),   // flags
+				surface.get(),                   // surface
+				surfaceCapabilities.maxImageCount==0  // minImageCount
+					?surfaceCapabilities.minImageCount+1
+					:min(surfaceCapabilities.maxImageCount,surfaceCapabilities.minImageCount+1),
+				chosenSurfaceFormat.format,      // imageFormat
+				chosenSurfaceFormat.colorSpace,  // imageColorSpace
+				currentSurfaceExtent,  // imageExtent
+				1,  // imageArrayLayers
+				vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+				(graphicsQueueFamily==presentationQueueFamily)?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
+				(graphicsQueueFamily==presentationQueueFamily)?uint32_t(0):uint32_t(2),  // queueFamilyIndexCount
+				(graphicsQueueFamily==presentationQueueFamily)?nullptr:array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
+				surfaceCapabilities.currentTransform,    // preTransform
+				vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+				[](vector<vk::PresentModeKHR>&& modes){  // presentMode
+						return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
+							?vk::PresentModeKHR::eMailbox
+							:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
+					}(physicalDevice.getSurfacePresentModesKHR(surface.get())),
+				VK_TRUE,         // clipped
+				swapchain.get()  // oldSwapchain
+			)
+		);
+
+	// swapchain images and image views
+	vector<vk::Image> swapchainImages=device->getSwapchainImagesKHR(swapchain.get());
+	vector<vk::UniqueImageView> swapchainImageViews;
+	swapchainImageViews.reserve(swapchainImages.size());
+	for(vk::Image image:swapchainImages)
+		swapchainImageViews.emplace_back(
+			device->createImageViewUnique(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					image,                       // image
+					vk::ImageViewType::e2D,      // viewType
+					chosenSurfaceFormat.format,  // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			)
+		);
+
+	// framebuffers
+	vector<vk::UniqueFramebuffer> framebuffers;
+	framebuffers.reserve(swapchainImages.size());
+	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+		framebuffers.emplace_back(
+			device->createFramebufferUnique(
+				vk::FramebufferCreateInfo(
+					vk::FramebufferCreateFlags(),   // flags
+					renderPass.get(),               // renderPass
+					1,  // attachmentCount
+					&swapchainImageViews[i].get(),  // pAttachments
+					currentSurfaceExtent.width,     // width
+					currentSurfaceExtent.height,    // height
+					1  // layers
+				)
+			)
+		);
+
+	// reallocate command buffers
+	if(commandBuffers.size()!=swapchainImages.size()) {
+		commandBuffers=
+			device->allocateCommandBuffersUnique(
+				vk::CommandBufferAllocateInfo(
+					commandPool.get(),                 // commandPool
+					vk::CommandBufferLevel::ePrimary,  // level
+					uint32_t(swapchainImages.size())   // commandBufferCount
+				)
+			);
+	}
+
+	// record command buffers
+	for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
+		vk::CommandBuffer& cb=commandBuffers[i].get();
+		cb.begin(
+			vk::CommandBufferBeginInfo(
+				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+				nullptr  // pInheritanceInfo
+			)
+		);
+		cb.beginRenderPass(
+			vk::RenderPassBeginInfo(
+				renderPass.get(),       // renderPass
+				framebuffers[i].get(),  // framebuffer
+				vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
+				1,                      // clearValueCount
+				&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
+			),
+			vk::SubpassContents::eInline
+		);
+		cb.endRenderPass();
+		cb.end();
+	}
+
+	return true;
+}
 
 
 int main(int,char**)
@@ -28,7 +209,7 @@ int main(int,char**)
 	try {
 
 		// Vulkan instance
-		vk::UniqueInstance instance=
+		instance=
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
@@ -68,6 +249,7 @@ int main(int,char**)
 					return DefWindowProc(hwnd,msg,wParam,lParam);
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
+					UnregisterClass("HelloWindow",GetModuleHandle(NULL));
 					window=nullptr;
 					return 0;
 				case WM_DESTROY:
@@ -95,14 +277,6 @@ int main(int,char**)
 		if(!RegisterClassEx(&wc))
 			throw runtime_error("Can not register window class.");
 
-		// provide destructor to clean up in the case of exception
-		struct Win32Cleaner {
-			~Win32Cleaner() {
-				if(window)  DestroyWindow(window);
-				UnregisterClass("HelloWindow",GetModuleHandle(NULL));
-			}
-		} win32Cleaner;
-
 		// create window
 		window=CreateWindowEx(
 			WS_EX_CLIENTEDGE,
@@ -118,7 +292,7 @@ int main(int,char**)
 		ShowWindow(window,SW_SHOWDEFAULT);
 
 		// create surface
-		vk::UniqueSurfaceKHR surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
+		surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
 
 #else
 
@@ -149,7 +323,7 @@ int main(int,char**)
 		XMapWindow(display,window);
 
 		// create surface
-		vk::UniqueSurfaceKHR surface=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window));
+		surface=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window));
 
 #endif
 
@@ -213,17 +387,15 @@ int main(int,char**)
 			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 
 		// choose device
-		vk::PhysicalDevice pd;
-		uint32_t graphicsQueueFamily,presentationQueueFamily;
 		if(compatibleDevicesSingleQueue.size()>0) {
 			auto t=compatibleDevicesSingleQueue.front();
-			pd=get<0>(t);
+			physicalDevice=get<0>(t);
 			graphicsQueueFamily=get<1>(t);
 			presentationQueueFamily=graphicsQueueFamily;
 		}
 		else if(compatibleDevicesTwoQueues.size()>0) {
 			auto t=compatibleDevicesTwoQueues.front();
-			pd=get<0>(t);
+			physicalDevice=get<0>(t);
 			graphicsQueueFamily=get<1>(t);
 			presentationQueueFamily=get<2>(t);
 		}
@@ -232,11 +404,11 @@ int main(int,char**)
 			return 1;
 		}
 		cout<<"Using device:\n"
-		      "   "<<pd.getProperties().deviceName<<endl;
+		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 		// create device
-		vk::UniqueDevice device(
-			pd.createDevice(
+		device.reset(  // move assignment and physicalDevice.createDeviceUnique() does not work here because of bug in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git). Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp.
+			physicalDevice.createDevice(
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
 					compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
@@ -267,9 +439,9 @@ int main(int,char**)
 		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0);
 
 		// choose surface format
-		vector<vk::SurfaceFormatKHR> surfaceFormats=pd.getSurfaceFormatsKHR(surface.get());
+		vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(surface.get());
 		const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
-		const vk::SurfaceFormatKHR chosenSurfaceFormat=
+		chosenSurfaceFormat=
 			surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
 				?wantedSurfaceFormat
 				:std::find(surfaceFormats.begin(),surfaceFormats.end(),
@@ -278,7 +450,7 @@ int main(int,char**)
 					:surfaceFormats[0];
 
 		// render pass
-		vk::UniqueRenderPass renderPass{
+		renderPass=
 			device->createRenderPassUnique(
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
@@ -321,19 +493,16 @@ int main(int,char**)
 						vk::DependencyFlags()  // dependencyFlags
 					)
 				)
-			)
-		};
+			);
 
-		// command pool and command buffers
-		vk::UniqueCommandPool commandPool{
+		// command pool
+		commandPool=
 			device->createCommandPoolUnique(
 				vk::CommandPoolCreateInfo(
 					vk::CommandPoolCreateFlags(),  // flags
 					graphicsQueueFamily  // queueFamilyIndex
 				)
-			)
-		};
-		vector<vk::UniqueCommandBuffer> commandBuffers;
+			);
 
 		// semaphores
 		vk::UniqueSemaphore imageAvailableSemaphore=
@@ -350,156 +519,9 @@ int main(int,char**)
 			);
 
 
-		// currentSurfaceExtent
-		vk::UniqueSwapchainKHR swapchain;
-	recreateSwapchain:
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities=pd.getSurfaceCapabilitiesKHR(surface.get());
-		vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
-				?surfaceCapabilities.currentExtent
-				:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
-				              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
-
-		// avoid 0,0 surface extent
-		// by waiting for valid window size
-		// (0,0 is returned on some platforms (for instance Windows) when window is minimized.
-		// The creation of swapchain then raises an exception, for instance vk::Result::eErrorOutOfDeviceMemory on Windows)
-#ifdef _WIN32
-		// run Win32 event loop
-		if(currentSurfaceExtent.width==0||currentSurfaceExtent.height==0) {
-			// wait for and process a message
-			MSG msg;
-			if(GetMessage(&msg,NULL,0,0)<=0)
-				goto ExitApp;
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-			// process remaining messages
-			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
-				if(msg.message==WM_QUIT)
-					goto ExitApp;
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-			// try to recreate swapchain again
-			goto recreateSwapchain;
-		}
-#else
-		// run Xlib event loop
-		while(true) {
-			// process messages
-			XEvent e;
-			while(XPending(display)>0) {
-				XNextEvent(display,&e);
-				if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
-					goto ExitApp;
-			}
-		}
-#endif
-
-		// create swapchain
-		swapchain=
-			device->createSwapchainKHRUnique(
-				vk::SwapchainCreateInfoKHR(
-					vk::SwapchainCreateFlagsKHR(),   // flags
-					surface.get(),                   // surface
-					surfaceCapabilities.maxImageCount==0  // minImageCount
-						?surfaceCapabilities.minImageCount+1
-						:min(surfaceCapabilities.maxImageCount,surfaceCapabilities.minImageCount+1),
-					chosenSurfaceFormat.format,      // imageFormat
-					chosenSurfaceFormat.colorSpace,  // imageColorSpace
-					currentSurfaceExtent,  // imageExtent
-					1,  // imageArrayLayers
-					vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
-					compatibleDevicesSingleQueue.size()>0?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
-					compatibleDevicesSingleQueue.size()>0?uint32_t(0):uint32_t(2),  // queueFamilyIndexCount
-					compatibleDevicesSingleQueue.size()>0?nullptr:array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
-					surfaceCapabilities.currentTransform,    // preTransform
-					vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
-					[](vector<vk::PresentModeKHR>&& modes){  // presentMode
-							return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
-								?vk::PresentModeKHR::eMailbox
-								:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
-						}(pd.getSurfacePresentModesKHR(surface.get())),
-					VK_TRUE,         // clipped
-					swapchain.get()  // oldSwapchain
-				)
-			);
-
-		// swapchain images and image views
-		vector<vk::Image> swapchainImages=device->getSwapchainImagesKHR(swapchain.get());
-		vector<vk::UniqueImageView> swapchainImageViews;
-		swapchainImageViews.reserve(swapchainImages.size());
-		for(vk::Image image:swapchainImages)
-			swapchainImageViews.emplace_back(
-				device->createImageViewUnique(
-					vk::ImageViewCreateInfo(
-						vk::ImageViewCreateFlags(),  // flags
-						image,                       // image
-						vk::ImageViewType::e2D,      // viewType
-						chosenSurfaceFormat.format,  // format
-						vk::ComponentMapping(),      // components
-						vk::ImageSubresourceRange(   // subresourceRange
-							vk::ImageAspectFlagBits::eColor,  // aspectMask
-							0,  // baseMipLevel
-							1,  // levelCount
-							0,  // baseArrayLayer
-							1   // layerCount
-						)
-					)
-				)
-			);
-
-		// framebuffers
-		vector<vk::UniqueFramebuffer> framebuffers;
-		framebuffers.reserve(swapchainImages.size());
-		for(size_t i=0,c=swapchainImages.size(); i<c; i++)
-			framebuffers.emplace_back(
-				device->createFramebufferUnique(
-					vk::FramebufferCreateInfo(
-						vk::FramebufferCreateFlags(),   // flags
-						renderPass.get(),               // renderPass
-						1,  // attachmentCount
-						&swapchainImageViews[i].get(),  // pAttachments
-						currentSurfaceExtent.width,     // width
-						currentSurfaceExtent.height,    // height
-						1  // layers
-					)
-				)
-			);
-
-		// reallocate command buffers
-		if(commandBuffers.size()!=swapchainImages.size()) {
-			commandBuffers=
-				device->allocateCommandBuffersUnique(
-					vk::CommandBufferAllocateInfo(
-						commandPool.get(),                 // commandPool
-						vk::CommandBufferLevel::ePrimary,  // level
-						uint32_t(swapchainImages.size())   // commandBufferCount
-					)
-				);
-		}
-
-		// record command buffers
-		for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
-			vk::CommandBuffer& cb=commandBuffers[i].get();
-			cb.begin(
-				vk::CommandBufferBeginInfo(
-					vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-					nullptr  // pInheritanceInfo
-				)
-			);
-			cb.beginRenderPass(
-				vk::RenderPassBeginInfo(
-					renderPass.get(),       // renderPass
-					framebuffers[i].get(),  // framebuffer
-					vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
-					1,                      // clearValueCount
-					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
-				),
-				vk::SubpassContents::eInline
-			);
-			cb.endRenderPass();
-			cb.end();
-		}
+		// create swapchain and pipeline
+		if(!recreateSwapchainAndPipeline())
+			goto ExitMainLoop;
 
 
 #ifdef _WIN32
@@ -535,7 +557,7 @@ int main(int,char**)
 			uint32_t imageIndex;
 			vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
 			if(r!=vk::Result::eSuccess)
-				if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { device->waitIdle(); goto recreateSwapchain; }
+				if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) goto ExitMainLoop; }
 				else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 			graphicsQueue.submit(
 				vk::ArrayProxy<const vk::SubmitInfo>(
@@ -563,7 +585,7 @@ int main(int,char**)
 				)
 			);
 			if(r!=vk::Result::eSuccess)
-				if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { device->waitIdle(); goto recreateSwapchain; }
+				if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) goto ExitMainLoop; }
 				else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 			presentationQueue.waitIdle();
 		}
@@ -578,7 +600,6 @@ int main(int,char**)
 	} catch(...) {
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
-	ExitApp:
 
 	return 0;
 }

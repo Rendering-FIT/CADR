@@ -71,7 +71,7 @@ int main(int,char**)
 			"HelloWindow",
 			"Hello window!",
 			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT,CW_USEDEFAULT,240,120,
+			CW_USEDEFAULT,CW_USEDEFAULT,400,300,
 			NULL,NULL,wc.hInstance,NULL);
 		if(w==NULL)
 			throw runtime_error("Can not create window.");
