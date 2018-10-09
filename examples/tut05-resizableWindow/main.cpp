@@ -35,14 +35,18 @@ static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static uint32_t presentationQueueFamily;
 static vk::UniqueDevice device;
+static vk::Queue graphicsQueue;
+static vk::Queue presentationQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
 static vk::UniqueRenderPass renderPass;
 static vk::UniqueSwapchainKHR swapchain;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
+static vk::UniqueSemaphore imageAvailableSemaphore;
+static vk::UniqueSemaphore renderFinishedSemaphore;
 
 
-bool recreateSwapchainAndPipeline()
+static bool recreateSwapchainAndPipeline()
 {
 	// stop device and clear resources
 	device->waitIdle();
@@ -202,6 +206,52 @@ recreateSwapchain:
 }
 
 
+static bool queueFrame()
+{
+	// acquire next image
+	uint32_t imageIndex;
+	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
+	if(r!=vk::Result::eSuccess)
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
+		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
+
+	// submit work
+	graphicsQueue.submit(
+		vk::ArrayProxy<const vk::SubmitInfo>(
+			1,
+			&(const vk::SubmitInfo&)vk::SubmitInfo(
+				1,                               // waitSemaphoreCount
+				&imageAvailableSemaphore.get(),  // pWaitSemaphores
+				&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+				1,                               // commandBufferCount
+				&commandBuffers[imageIndex].get(),  // pCommandBuffers
+				1,                               // signalSemaphoreCount
+				&renderFinishedSemaphore.get()   // pSignalSemaphores
+			)
+		),
+		vk::Fence(nullptr)
+	);
+
+	// submit image for presentation
+	r=presentationQueue.presentKHR(
+		&vk::PresentInfoKHR(
+			1,                 // waitSemaphoreCount
+			&renderFinishedSemaphore.get(),  // pWaitSemaphores
+			1,                 // swapchainCount
+			&swapchain.get(),  // pSwapchains
+			&imageIndex,       // pImageIndices
+			nullptr            // pResults
+		)
+	);
+	if(r!=vk::Result::eSuccess)
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
+		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
+
+	// return success
+	return true;
+}
+
+
 int main(int,char**)
 {
 	// catch exceptions
@@ -270,7 +320,7 @@ int main(int,char**)
 		wc.hInstance     = GetModuleHandle(NULL);
 		wc.hIcon         = LoadIcon(NULL,IDI_APPLICATION);
 		wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
-		wc.hbrBackground = NULL;
+		wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 		wc.lpszMenuName  = NULL;
 		wc.lpszClassName = "HelloWindow";
 		wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
@@ -435,8 +485,8 @@ int main(int,char**)
 		);
 
 		// get queues
-		vk::Queue graphicsQueue=device->getQueue(graphicsQueueFamily,0);
-		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0);
+		graphicsQueue=device->getQueue(graphicsQueueFamily,0);
+		presentationQueue=device->getQueue(presentationQueueFamily,0);
 
 		// choose surface format
 		vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(surface.get());
@@ -505,13 +555,13 @@ int main(int,char**)
 			);
 
 		// semaphores
-		vk::UniqueSemaphore imageAvailableSemaphore=
+		imageAvailableSemaphore=
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
 				)
 			);
-		vk::UniqueSemaphore renderFinishedSemaphore=
+		renderFinishedSemaphore=
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
@@ -553,40 +603,11 @@ int main(int,char**)
 
 #endif
 
-			// render frame
-			uint32_t imageIndex;
-			vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
-			if(r!=vk::Result::eSuccess)
-				if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) goto ExitMainLoop; }
-				else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
-			graphicsQueue.submit(
-				vk::ArrayProxy<const vk::SubmitInfo>(
-					1,
-					&(const vk::SubmitInfo&)vk::SubmitInfo(
-						1,                               // waitSemaphoreCount
-						&imageAvailableSemaphore.get(),  // pWaitSemaphores
-						&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-						1,                               // commandBufferCount
-						&commandBuffers[imageIndex].get(),  // pCommandBuffers
-						1,                               // signalSemaphoreCount
-						&renderFinishedSemaphore.get()   // pSignalSemaphores
-					)
-				),
-				vk::Fence(nullptr)
-			);
-			r=presentationQueue.presentKHR(
-				&vk::PresentInfoKHR(
-					1,                 // waitSemaphoreCount
-					&renderFinishedSemaphore.get(),  // pWaitSemaphores
-					1,                 // swapchainCount
-					&swapchain.get(),  // pSwapchains
-					&imageIndex,       // pImageIndices
-					nullptr            // pResults
-				)
-			);
-			if(r!=vk::Result::eSuccess)
-				if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) goto ExitMainLoop; }
-				else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
+			// queue frame
+			if(!queueFrame())
+				goto ExitMainLoop;
+
+			// wait for rendering to complete
 			presentationQueue.waitIdle();
 		}
 	ExitMainLoop:
