@@ -11,9 +11,14 @@
 
 using namespace std;
 
+// Vulkan instance
+// (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
+static vk::UniqueInstance instance;
+
+// windowing variables
 #ifdef _WIN32
 static HWND window=nullptr;
-struct Win32Cleaner {  // destructor to clean up in the case of exception
+struct Win32Cleaner {
 	~Win32Cleaner() {
 		if(window) {
 			DestroyWindow(window);
@@ -24,12 +29,18 @@ struct Win32Cleaner {  // destructor to clean up in the case of exception
 #else
 static Display* display=nullptr;
 static Window window=0;
+struct XlibCleaner {
+	~XlibCleaner() {
+		if(window)  XDestroyWindow(display,window);
+		if(display)  XCloseDisplay(display);
+	}
+} xlibCleaner;
+Atom wmDeleteMessage;
 #endif
 static uint32_t windowWidth;
 static uint32_t windowHeight;
 
-
-static vk::UniqueInstance instance;
+// Vulkan objects
 static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
@@ -46,6 +57,7 @@ static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
 
 
+/// Init Vulkan and open the window.
 static void init()
 {
 	// Vulkan instance
@@ -139,18 +151,9 @@ static void init()
 #else
 
 	// open X connection
-	// and provide destructor to clean up in the case of exception
-	struct Xlib {
-		Xlib() {
-			display=XOpenDisplay(nullptr);
-			if(display==nullptr)
-				throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
-		}
-		~Xlib() {
-			if(window)  XDestroyWindow(display,window);
-			if(display)  XCloseDisplay(display);
-		}
-	} xlib;
+	display=XOpenDisplay(nullptr);
+	if(display==nullptr)
+		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 	// create window
 	int blackColor=BlackPixel(display,DefaultScreen(display));
@@ -160,7 +163,7 @@ static void init()
 	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowWidth,
 		                        windowHeight,0,blackColor,blackColor);
 	XSetStandardProperties(display,window,"Hello window!","Hello window!",None,NULL,0,NULL);
-	Atom wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
+	wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
 	XSetWMProtocols(display,window,&wmDeleteMessage,1);
 	XMapWindow(display,window);
 
@@ -360,6 +363,7 @@ static void init()
 }
 
 
+/// Recreate swapchain and pipeline. The function is usually used on each window resize event and on application start.
 static bool recreateSwapchainAndPipeline()
 {
 	// stop device and clear resources
@@ -399,14 +403,16 @@ recreateSwapchain:
 	}
 #else
 	// run Xlib event loop
-	while(true) {
+	if(currentSurfaceExtent.width==0||currentSurfaceExtent.height==0) {
 		// process messages
 		XEvent e;
 		while(XPending(display)>0) {
 			XNextEvent(display,&e);
 			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
-				goto ExitApp;
+				return false;
 		}
+		// try to recreate swapchain again
+		goto recreateSwapchain;
 	}
 #endif
 
@@ -520,14 +526,16 @@ recreateSwapchain:
 }
 
 
+/// Queue one frame for rendering
 static bool queueFrame()
 {
 	// acquire next image
 	uint32_t imageIndex;
 	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
-	if(r!=vk::Result::eSuccess)
+	if(r!=vk::Result::eSuccess) {
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
+	}
 
 	// submit work
 	graphicsQueue.submit(
@@ -548,7 +556,7 @@ static bool queueFrame()
 
 	// submit image for presentation
 	r=presentationQueue.presentKHR(
-		&vk::PresentInfoKHR(
+		&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(
 			1,                 // waitSemaphoreCount
 			&renderFinishedSemaphore.get(),  // pWaitSemaphores
 			1,                 // swapchainCount
@@ -557,15 +565,17 @@ static bool queueFrame()
 			nullptr            // pResults
 		)
 	);
-	if(r!=vk::Result::eSuccess)
+	if(r!=vk::Result::eSuccess) {
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
+	}
 
 	// return success
 	return true;
 }
 
 
+/// main function of the application
 int main(int,char**)
 {
 	// catch exceptions
