@@ -11,6 +11,7 @@
 
 using namespace std;
 
+
 // Vulkan instance
 // (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
 static vk::UniqueInstance instance;
@@ -40,7 +41,8 @@ Atom wmDeleteMessage;
 static uint32_t windowWidth;
 static uint32_t windowHeight;
 
-// Vulkan objects
+// Vulkan handles and objects
+// (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
 static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
@@ -55,6 +57,7 @@ static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
+
 
 
 /// Init Vulkan and open the window.
