@@ -7,6 +7,7 @@ set(PACKAGES
 	tut04-swapChain
 	tut05-resizableWindow
 	VulkanHelloTriangle
+	VulkanDepthBuffer
 	)
 if(UNIX)
 	list(INSERT PACKAGES 2 tut03-helloWindowX11)
