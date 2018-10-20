@@ -53,6 +53,8 @@ static vk::Queue presentationQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
 static vk::UniqueRenderPass renderPass;
 static vk::UniqueSwapchainKHR swapchain;
+static vector<vk::UniqueImageView> swapchainImageViews;
+static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
 static vk::UniqueSemaphore imageAvailableSemaphore;
@@ -372,6 +374,8 @@ static bool recreateSwapchainAndPipeline()
 	// stop device and clear resources
 	device->waitIdle();
 	commandBuffers.clear();
+	framebuffers.clear();
+	swapchainImageViews.clear();
 
 	// currentSurfaceExtent
 recreateSwapchain:
@@ -450,7 +454,6 @@ recreateSwapchain:
 
 	// swapchain images and image views
 	vector<vk::Image> swapchainImages=device->getSwapchainImagesKHR(swapchain.get());
-	vector<vk::UniqueImageView> swapchainImageViews;
 	swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image:swapchainImages)
 		swapchainImageViews.emplace_back(
@@ -473,7 +476,6 @@ recreateSwapchain:
 		);
 
 	// framebuffers
-	vector<vk::UniqueFramebuffer> framebuffers;
 	framebuffers.reserve(swapchainImages.size());
 	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
 		framebuffers.emplace_back(

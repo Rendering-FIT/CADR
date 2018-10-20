@@ -34,7 +34,7 @@ int main(int,char**)
 						VK_API_VERSION_1_0,      // api version
 					},
 					0, nullptr, // no debug layers
-					2,        // enabled extension count
+					2,          // enabled extension count
 					array<const char*,2>{{"VK_KHR_surface","VK_KHR_xlib_surface"}}.data(),  // enabled extension names
 				}));
 

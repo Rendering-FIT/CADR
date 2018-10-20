@@ -57,6 +57,9 @@ static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout pipelineLayout;
 static vk::UniqueSwapchainKHR swapchain;
+static vector<vk::UniqueImageView> swapchainImageViews;
+static vk::UniquePipeline pipeline;
+static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
 static vk::UniqueSemaphore imageAvailableSemaphore;
@@ -419,6 +422,9 @@ static bool recreateSwapchainAndPipeline()
 	// stop device and clear resources
 	device->waitIdle();
 	commandBuffers.clear();
+	framebuffers.clear();
+	pipeline.reset();
+	swapchainImageViews.clear();
 
 	// currentSurfaceExtent
 recreateSwapchain:
@@ -497,7 +503,6 @@ recreateSwapchain:
 
 	// swapchain images and image views
 	vector<vk::Image> swapchainImages=device->getSwapchainImagesKHR(swapchain.get());
-	vector<vk::UniqueImageView> swapchainImageViews;
 	swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image:swapchainImages)
 		swapchainImageViews.emplace_back(
@@ -520,7 +525,7 @@ recreateSwapchain:
 		);
 
 	// pipeline
-	vk::UniquePipeline pipeline=device->createGraphicsPipelineUnique(
+	pipeline=device->createGraphicsPipelineUnique(
 		pipelineCache.get(),
 		vk::GraphicsPipelineCreateInfo(
 			vk::PipelineCreateFlags(),  // flags
@@ -583,18 +588,7 @@ recreateSwapchain:
 				VK_FALSE,  // alphaToCoverageEnable
 				VK_FALSE   // alphaToOneEnable
 			},
-			&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
-				vk::PipelineDepthStencilStateCreateFlags(),  // flags
-				VK_TRUE,  // depthTestEnable
-				VK_TRUE,  // depthWriteEnable
-				vk::CompareOp::eLess,  // depthCompareOp
-				VK_FALSE,  // depthBoundsTestEnable
-				VK_FALSE,  // stencilTestEnable
-				vk::StencilOpState(),  // front
-				vk::StencilOpState(),  // back
-				0.f,  // minDepthBounds
-				0.f   // maxDepthBounds
-			},
+			nullptr,  // pDepthStencilState
 			&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
 				vk::PipelineColorBlendStateCreateFlags(),  // flags
 				VK_FALSE,  // logicOpEnable
@@ -623,7 +617,6 @@ recreateSwapchain:
 	);
 
 	// framebuffers
-	vector<vk::UniqueFramebuffer> framebuffers;
 	framebuffers.reserve(swapchainImages.size());
 	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
 		framebuffers.emplace_back(
