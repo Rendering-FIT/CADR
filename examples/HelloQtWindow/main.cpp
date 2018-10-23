@@ -9,7 +9,7 @@ using namespace std;
 // Vulkan instance
 // (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
 static vk::UniqueInstance instance;
-static QVulkanInstance qtInstance;
+static QVulkanInstance qtVulkanInstance;
 
 // windowing variables
 static unique_ptr<QGuiApplication> qtApp;
@@ -36,7 +36,7 @@ static void init(int& argc,char** argv)
 			vk::InstanceCreateInfo{
 				vk::InstanceCreateFlags(),  // flags
 				&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-					"CADR Vk HelloTriangle", // application name
+					"CADR Vk HelloQtWindow", // application name
 					VK_MAKE_VERSION(0,0,0),  // application version
 					"CADR",                  // engine name
 					VK_MAKE_VERSION(0,0,0),  // engine version
@@ -51,10 +51,12 @@ static void init(int& argc,char** argv)
 #endif
 			});
 
-	qtInstance.setVkInstance(intptr_t(VkInstance(instance.get())));
+	qtVulkanInstance.setVkInstance(instance.get());
 
 	qtApp.reset(new QGuiApplication(argc,argv));
 	window.reset(new VulkanWindow);
+	window->setVulkanInstance(&qtVulkanInstance);
+	window->show();
 
 #if 0
 #ifdef _WIN32
@@ -848,14 +850,15 @@ static bool queueFrame()
 
 
 /// main function of the application
-int argcx=0;
+//int argcx=0;
 //QGuiApplication app(argcx,nullptr);
-	unique_ptr<QGuiApplication> app;
+//	unique_ptr<QGuiApplication> app;
 int main(int argc,char** argv)
 {
-	app.reset(new QGuiApplication(argcx,nullptr));
-/*	// catch exceptions
+//	app.reset(new QGuiApplication(argcx,nullptr));
+	// catch exceptions
 	// (vulkan.hpp fuctions throws if they fail)
+	int r=1;
 	try {
 
 		// init Vulkan and open window
@@ -866,35 +869,6 @@ int main(int argc,char** argv)
 			goto ExitMainLoop;
 
 #if 0
-#ifdef _WIN32
-
-		// run Win32 event loop
-		MSG msg;
-		while(true){
-
-			// process messages
-			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
-				if(msg.message==WM_QUIT)
-					goto ExitMainLoop;
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-
-#else
-
-		// run Xlib event loop
-		XEvent e;
-		while(true) {
-
-			// process messages
-			while(XPending(display)>0) {
-				XNextEvent(display,&e);
-				if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
-					goto ExitMainLoop;
-			}
-
-#endif
-
 			// queue frame
 			if(!queueFrame())
 				goto ExitMainLoop;
@@ -903,6 +877,7 @@ int main(int argc,char** argv)
 			presentationQueue.waitIdle();
 		}
 #endif
+		r=qtApp->exec();
 	ExitMainLoop:;
 //		device->waitIdle();
 
@@ -913,7 +888,7 @@ int main(int argc,char** argv)
 		cout<<"Failed because of exception: "<<e.what()<<endl;
 	} catch(...) {
 		cout<<"Failed because of unspecified exception."<<endl;
-	}*/
+	}
 
-	return 0;
+	return r;
 }

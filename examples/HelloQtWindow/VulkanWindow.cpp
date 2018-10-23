@@ -1,5 +1,7 @@
 #include "VulkanWindow.h"
-#include <QX11Info>
+#ifndef _WIN32
+# include <QX11Info>
+#endif
 
 
 
@@ -10,13 +12,12 @@ void VulkanWindow::showEvent(QShowEvent* e)
 	if(!_surface) {
 
 		// create surface
-		vk::Instance instance(VkInstance(intptr_t(vulkanInstance()->vkInstance())));
+		vk::Instance instance(vulkanInstance()->vkInstance());
 #ifdef _WIN32
-		_surface=instance.createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
+		_surface=instance.createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),GetModuleHandle(NULL),(HWND)winId()));
 #else
 		_surface=instance.createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),QX11Info::display(),winId()));
 #endif
-		throw std::string("Got it");
 
 	}
 }

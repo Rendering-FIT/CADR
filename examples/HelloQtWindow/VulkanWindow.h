@@ -9,14 +9,16 @@
 #include <vulkan/vulkan.hpp>
 
 
-#if QT_VERSION<0x050a00 // provide QVulkanInstance for Qt 5.9 and earlier
+#if QT_VERSION>=0x050a00 // include QVulkanInstance for Qt 5.10 and newer or provide alternative
+#include <QVulkanInstance>
+#else
 class QVulkanInstance {
 protected:
 	vk::Instance _instance;
 	bool _owned;
 public:
-	inline int vkInstance() const  { return intptr_t(VkInstance(_instance)); }
-	void setVkInstance(int existingVkInstance)  { destroy(); _instance=VkInstance(intptr_t(existingVkInstance)); _owned=false; }
+	inline VkInstance vkInstance() const  { return _instance; }
+	void setVkInstance(VkInstance existingVkInstance)  { destroy(); _instance=existingVkInstance; _owned=false; }
 	void destroy()  { if(_instance && _owned) { _instance.destroy(); _instance=nullptr; } }
 };
 #endif
