@@ -71,6 +71,8 @@ public:
 
 protected:
 	virtual void showEvent(QShowEvent* e) override;
+	virtual void resizeEvent(QResizeEvent* e) override;
+	virtual void exposeEvent(QExposeEvent* e) override;
 };
 
 
