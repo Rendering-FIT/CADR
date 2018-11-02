@@ -25,8 +25,12 @@ public:
 
 
 class VulkanWindow : public QWindow {
+public:
+	typedef void ExceptionHandler(const std::exception* e);
 protected:
 	typedef QWindow inherited;
+
+	ExceptionHandler* _exceptionHandler=defaultExceptionHandler;
 
 #if QT_VERSION<0x050a00 // provide missing methods for Qt 5.9 and earlier
 	QVulkanInstance* _vulkanInstance;  ///< Vulkan instance used by the window. The instance must not be destroyed before the window is destroyed.
@@ -48,6 +52,7 @@ protected:
 	vk::UniqueShaderModule fsModule;
 	vk::UniquePipelineCache pipelineCache;
 	vk::UniquePipelineLayout pipelineLayout;
+	vk::Extent2D _currentSurfaceExtent;
 	vk::UniqueSwapchainKHR swapchain;
 	std::vector<vk::UniqueImageView> swapchainImageViews;
 	vk::UniqueImage depthImage;
@@ -63,6 +68,7 @@ protected:
 public:
 
 	virtual ~VulkanWindow()  {}
+	static void defaultExceptionHandler(const std::exception* e);
 
 	#if QT_VERSION<0x050a00 // provide missing methods for Qt 5.9 and earlier
 	inline QVulkanInstance* vulkanInstance() const  { return _vulkanInstance; }
@@ -70,6 +76,7 @@ public:
 #endif
 
 protected:
+	virtual bool event(QEvent* e) override;
 	virtual void showEvent(QShowEvent* e) override;
 	virtual void resizeEvent(QResizeEvent* e) override;
 	virtual void exposeEvent(QExposeEvent* e) override;

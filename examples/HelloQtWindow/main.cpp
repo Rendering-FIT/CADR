@@ -14,9 +14,9 @@ static QVulkanInstance qtVulkanInstance;
 
 
 /// Init Vulkan and open the window.
+#if 0
 static void init()
 {
-#if 0
 #ifdef _WIN32
 
 	// initial window size
@@ -40,8 +40,8 @@ static void init()
 
 #endif
 
-#endif
 }
+#endif
 
 
 /// main function of the application

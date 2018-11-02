@@ -1,8 +1,10 @@
+#include <QCoreApplication>
 #include <QResizeEvent>
-#include "VulkanWindow.h"
 #ifndef _WIN32
 # include <QX11Info>
+# include <QBackingStore>
 #endif
+#include "VulkanWindow.h"
 #include <vector>
 #include <iostream>
 
@@ -22,7 +24,6 @@ static const uint32_t fsSpirv[]={
 /// Allocate Vulkan resources.
 void VulkanWindow::showEvent(QShowEvent* e)
 {
-	cout<<"show"<<endl;
 	inherited::showEvent(e);
 
 	if(_surface)
@@ -290,10 +291,16 @@ void VulkanWindow::showEvent(QShowEvent* e)
 /// Recreate swapchain and pipeline.
 void VulkanWindow::resizeEvent(QResizeEvent* e)
 {
-	cout<<"Resize"<<endl;
+	cout<<"Resize "<<e->size().width()<<"x"<<e->size().height()<<endl;
 	inherited::resizeEvent(e);
 
-	cout<<"Resize: "<<e->size().width()<<endl;
+	// Linux (xcb platform) needs something like "touch" the resized window (?). Anyway, it makes the things work.
+#ifndef _WIN32
+	QBackingStore bs(this);
+	bs.resize(QSize(1,1));
+	bs.flush(QRect(0, 0, width(), height()));
+#endif
+
 	// stop device and clear resources
 	device->waitIdle();
 	commandBuffers.clear();
@@ -308,7 +315,7 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 	// currentSurfaceExtent
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(_surface.get());
 	const QSize& windowSize=e->size();
-	vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
+	_currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
 			?surfaceCapabilities.currentExtent
 			:vk::Extent2D{max(min(uint32_t(windowSize.width()),surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
 			              max(min(uint32_t(windowSize.height()),surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
@@ -316,7 +323,7 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 	// do not try to create swapchain if surface extent is 0,0
 	// (0,0 is returned on some platforms (for instance Windows) when window is minimized.
 	// The creation of swapchain then raises an exception, for instance vk::Result::eErrorOutOfDeviceMemory on Windows)
-	if(currentSurfaceExtent.width==0||currentSurfaceExtent.height==0)
+	if(_currentSurfaceExtent.width==0||_currentSurfaceExtent.height==0)
 		return;
 
 	// create swapchain
@@ -330,7 +337,7 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 					:min(surfaceCapabilities.maxImageCount,surfaceCapabilities.minImageCount+1),
 				chosenSurfaceFormat.format,      // imageFormat
 				chosenSurfaceFormat.colorSpace,  // imageColorSpace
-				currentSurfaceExtent,  // imageExtent
+				_currentSurfaceExtent,  // imageExtent
 				1,  // imageArrayLayers
 				vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 				(graphicsQueueFamily==presentationQueueFamily)?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
@@ -378,7 +385,7 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 				vk::ImageCreateFlags(),  // flags
 				vk::ImageType::e2D,      // imageType
 				depthFormat,             // format
-				vk::Extent3D(currentSurfaceExtent.width,currentSurfaceExtent.height,1),  // extent
+				vk::Extent3D(_currentSurfaceExtent.width,_currentSurfaceExtent.height,1),  // extent
 				1,                       // mipLevels
 				1,                       // arrayLayers
 				vk::SampleCountFlagBits::e1,  // samples
@@ -526,9 +533,9 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 				&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
 					vk::PipelineViewportStateCreateFlags(),  // flags
 					1,  // viewportCount
-					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
+					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(_currentSurfaceExtent.width),float(_currentSurfaceExtent.height),0.f,1.f),  // pViewports
 					1,  // scissorCount
-					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
+					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),_currentSurfaceExtent)  // pScissors
 				},
 				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
 					vk::PipelineRasterizationStateCreateFlags(),  // flags
@@ -604,8 +611,8 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 						swapchainImageViews[i].get(),
 						depthImageView.get()
 					}.data(),
-					currentSurfaceExtent.width,     // width
-					currentSurfaceExtent.height,    // height
+					_currentSurfaceExtent.width,     // width
+					_currentSurfaceExtent.height,    // height
 					1  // layers
 				)
 			)
@@ -636,7 +643,7 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 			vk::RenderPassBeginInfo(
 				renderPass.get(),       // renderPass
 				framebuffers[i].get(),  // framebuffer
-				vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
+				vk::Rect2D(vk::Offset2D(0,0),_currentSurfaceExtent),  // renderArea
 				2,                      // clearValueCount
 				array<vk::ClearValue,2>{  // pClearValues
 					vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}),
@@ -654,17 +661,27 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 
 
 /// Queue one frame for rendering.
-void VulkanWindow::exposeEvent(QExposeEvent*)
+void VulkanWindow::exposeEvent(QExposeEvent* e)
 {
-	cout<<"Expose"<<endl;
-	if(!isExposed())
+	if(!isExposed()) {
+		cout<<"Unexpose"<<endl;
 		return;
+	}
+	cout<<"Expose (size: "<<width()<<"x"<<height()<<", "<<(e->region().isEmpty()?"empty":"non-empty")<<", region: "
+	    <<e->region().boundingRect().size().width()<<"x"<<e->region().boundingRect().size().height()<<")"<<endl;
+	if(int(_currentSurfaceExtent.width)!=width() || int(_currentSurfaceExtent.height)!=height()) {
+		cout<<"Expose not correct size."<<endl;
+		requestUpdate();
+		return;
+	}
 
 	// acquire next image
 	uint32_t imageIndex;
 	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in acquireNextImageKHR()."<<endl; requestUpdate(); return; }
+		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in acquireNextImageKHR()."<<endl; return; }
+		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
 
@@ -697,7 +714,35 @@ void VulkanWindow::exposeEvent(QExposeEvent*)
 		)
 	);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in acquireNextImageKHR()."<<endl; requestUpdate(); return; }
+		//if(r==vk::Result::eErrorOutOfDateKHR)  { cout<<"eErrorOutOfDateKHR in presentKHR()."<<endl; return; }
+		//if(r==vk::Result::eSuboptimalKHR)  { cout<<"eSuboptimalKHR in presentKHR()."<<endl; return; }
+		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
+}
+
+
+bool VulkanWindow::event(QEvent* ev)
+{
+	// catch all exceptions as Qt5 is not exception friendly
+	try {
+		return inherited::event(ev);
+	} catch(std::exception &e) {
+		_exceptionHandler(&e);
+		return true;
+	} catch(...) {
+		_exceptionHandler(nullptr);
+		return true;
+	}
+}
+
+
+void VulkanWindow::defaultExceptionHandler(const std::exception* e)
+{
+	// print error
+	cout<<"VulkanWindow error: "<<(e?e->what():"unknown error")<<endl;
+
+	// stop event loop
+	QCoreApplication::exit(1);
 }
