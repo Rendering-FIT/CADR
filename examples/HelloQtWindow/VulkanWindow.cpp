@@ -714,7 +714,7 @@ void VulkanWindow::exposeEvent(QExposeEvent* e)
 		)
 	);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in acquireNextImageKHR()."<<endl; requestUpdate(); return; }
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in presentKHR()."<<endl; requestUpdate(); return; }
 		//if(r==vk::Result::eErrorOutOfDateKHR)  { cout<<"eErrorOutOfDateKHR in presentKHR()."<<endl; return; }
 		//if(r==vk::Result::eSuboptimalKHR)  { cout<<"eSuboptimalKHR in presentKHR()."<<endl; return; }
 		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");

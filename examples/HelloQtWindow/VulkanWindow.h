@@ -30,7 +30,7 @@ public:
 protected:
 	typedef QWindow inherited;
 
-	ExceptionHandler* _exceptionHandler=defaultExceptionHandler;
+	ExceptionHandler* _exceptionHandler = defaultExceptionHandler;
 
 #if QT_VERSION<0x050a00 // provide missing methods for Qt 5.9 and earlier
 	QVulkanInstance* _vulkanInstance;  ///< Vulkan instance used by the window. The instance must not be destroyed before the window is destroyed.
