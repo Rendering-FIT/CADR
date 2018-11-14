@@ -291,7 +291,6 @@ void VulkanWindow::showEvent(QShowEvent* e)
 /// Recreate swapchain and pipeline.
 void VulkanWindow::resizeEvent(QResizeEvent* e)
 {
-	cout<<"Resize "<<e->size().width()<<"x"<<e->size().height()<<endl;
 	inherited::resizeEvent(e);
 
 	// Linux (xcb platform) needs something like "touch" the resized window (?). Anyway, it makes the things work.
@@ -661,16 +660,15 @@ void VulkanWindow::resizeEvent(QResizeEvent* e)
 
 
 /// Queue one frame for rendering.
-void VulkanWindow::exposeEvent(QExposeEvent* e)
+void VulkanWindow::exposeEvent(QExposeEvent*)
 {
-	if(!isExposed()) {
-		cout<<"Unexpose"<<endl;
+	// do nothing if we are not visible
+	if(!isExposed())
 		return;
-	}
-	cout<<"Expose (size: "<<width()<<"x"<<height()<<", "<<(e->region().isEmpty()?"empty":"non-empty")<<", region: "
-	    <<e->region().boundingRect().size().width()<<"x"<<e->region().boundingRect().size().height()<<")"<<endl;
+
+	// ignore expose if resize event not yet come
+	// (this happens on Linux, seen on Kubuntu 18.04.1 with Qt 5.9.5, John-2018-11-13)
 	if(int(_currentSurfaceExtent.width)!=width() || int(_currentSurfaceExtent.height)!=height()) {
-		cout<<"Expose not correct size."<<endl;
 		requestUpdate();
 		return;
 	}
@@ -679,9 +677,8 @@ void VulkanWindow::exposeEvent(QExposeEvent* e)
 	uint32_t imageIndex;
 	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in acquireNextImageKHR()."<<endl; requestUpdate(); return; }
-		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in acquireNextImageKHR()."<<endl; return; }
-		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");
+		// eErrorOutOfDateKHR and eSuboptimalKHR happens on Linux (seen on Kubuntu 18.04.1 with Qt 5.9.5, John-2018-11-13)
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { requestUpdate(); return; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
 
@@ -714,11 +711,9 @@ void VulkanWindow::exposeEvent(QExposeEvent* e)
 		)
 	);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { cout<<"Wrong size in presentKHR()."<<endl; requestUpdate(); return; }
-		//if(r==vk::Result::eErrorOutOfDateKHR)  { cout<<"eErrorOutOfDateKHR in presentKHR()."<<endl; return; }
-		//if(r==vk::Result::eSuboptimalKHR)  { cout<<"eSuboptimalKHR in presentKHR()."<<endl; return; }
-		//if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  throw std::runtime_error("VulkanWindow::exposeEvent(): Swapchain was not resized.");
-		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
+		// eErrorOutOfDateKHR and eSuboptimalKHR happens on Linux (seen on Kubuntu 18.04.1 with Qt 5.9.5, John-2018-11-13)
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR)  { requestUpdate(); return; }
+		else vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
 }
 
