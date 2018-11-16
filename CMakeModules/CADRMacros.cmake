@@ -1,15 +1,3 @@
-macro(_cadr_check_file_exists file target)
-   if(NOT EXISTS "${file}")
-      message(FATAL_ERROR "The imported target ${target} references file ${file} which doesn't seem to exist. Reported by ${CMAKE_CURRENT_LIST_FILE}")
-   endif()
-endmacro()
-
-macro(_cadr_check_file_exists_weak file target)
-   if(NOT EXISTS "${file}")
-      message("The imported target ${target} references file ${file} which doesn't seem to exist. Reported by ${CMAKE_CURRENT_LIST_FILE}")
-   endif()
-endmacro()
-
 macro(_cadr_check_and_import target prop path)
    set(status)
    if(${${ARGV3}})
@@ -23,6 +11,7 @@ macro(_cadr_check_and_import target prop path)
       endif()
    endif()
 endmacro()
+
 
 macro(_cadr_populate_imported_target target install_prefix name)
    set_property(TARGET ${target} APPEND PROPERTY IMPORTED_CONFIGURATIONS RELEASE)
@@ -38,88 +27,71 @@ macro(_cadr_populate_imported_target target install_prefix name)
    ENDIF()
 endmacro()
 
-macro(cadr_use_modules target)
-   set(_modules ${ARGN})
-   foreach(_module ${_modules})
-      message("${_module}")
-   endforeach()
+
+# returns target's path
+# (used generally as info to console during configuration process)
+macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
+
+	# try path from the linked library
+	get_target_property(found_where ${TARGET_NAME} INTERFACE_LINK_LIBRARIES)
+
+	# try path from include directory
+	if("${found_where}" STREQUAL "found_where-NOTFOUND")
+		get_target_property(found_where ${TARGET_NAME} INTERFACE_INCLUDE_DIRECTORIES)
+	endif()
+
+	# try config path
+	if("${found_where}" STREQUAL "found_where-NOTFOUND")
+		set(found_where "${${PACKAGE_NAME}_DIR}")
+	endif()
+
+	# use target name
+	if("${found_where}" STREQUAL "found_where-NOTFOUND")
+		set(found_where "${TARGET_NAME}")
+	endif()
+
+	set(${path} ${found_where})
+
 endmacro()
 
-macro(cadr_report_find_status found_where)
-   if(${CMAKE_FIND_PACKAGE_NAME}_FOUND)
-      if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
-         get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED)
-         if(NOT ALREADY_REPORTED)
-            message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: ${found_where}")
-            set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED True)
-         endif()
-      endif()
-   else()
-      if(${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
-         get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED)
-         if(NOT ALREADY_REPORTED)
-            message(SEND_ERROR "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
-            set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED True)
-         endif()
-      else()
-         if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
-            get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_INFO_REPORTED)
-            if(NOT ALREADY_REPORTED)
-               message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
-               set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_INFO_REPORTED True)
-            endif()
-         endif()
-      endif()
-   endif()
-endmacro()
 
+# prints find_package result into the console
+# (used in various Find*.cmake files)
 macro(cadr_report_find_status)
-   if(TARGET ${CMAKE_FIND_PACKAGE_NAME})
-      if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
-         get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED)
-         if(NOT ALREADY_REPORTED)
+	if(TARGET ${CMAKE_FIND_PACKAGE_NAME})
 
-            # try path from the linked library
-            get_target_property(found_where ${CMAKE_FIND_PACKAGE_NAME} INTERFACE_LINK_LIBRARIES)
+		# print message on success
+		if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
+			get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED)
+			if(NOT ALREADY_REPORTED)
+				cadr_get_package_path(found_where ${CMAKE_FIND_PACKAGE_NAME} ${CMAKE_FIND_PACKAGE_NAME})
+				message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: ${found_where}")
+				set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED True)
+			endif()
+		endif()
 
-            # try path from include directory
-            if("${found_where}" STREQUAL "found_where-NOTFOUND")
-               get_target_property(found_where ${CMAKE_FIND_PACKAGE_NAME} INTERFACE_INCLUDE_DIRECTORIES)
-            endif()
+	else()
 
-            # try config path
-            if("${found_where}" STREQUAL "found_where-NOTFOUND")
-               set(found_where "${${CMAKE_FIND_PACKAGE_NAME}_DIR}")
-            endif()
+		# print message on failure (REQUIRED option)
+		if(${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
+			get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED)
+			if(NOT ALREADY_REPORTED)
+				message(SEND_ERROR "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
+				set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED True)
+			endif()
 
-            # use target name
-            if("${found_where}" STREQUAL "found_where-NOTFOUND")
-               set(found_where "${CMAKE_FIND_PACKAGE_NAME}")
-            endif()
+		# print message on failure (QUIET option)
+		else()
+			if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
+				get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_INFO_REPORTED)
+				if(NOT ALREADY_REPORTED)
+					message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
+					set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_INFO_REPORTED True)
+				endif()
+			endif()
+		endif()
 
-            # print message
-            message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: ${found_where}")
-            set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED True)
-
-         endif()
-      endif()
-   else()
-      if(${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
-         get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED)
-         if(NOT ALREADY_REPORTED)
-            message(SEND_ERROR "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
-            set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED True)
-         endif()
-      else()
-         if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
-            get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_INFO_REPORTED)
-            if(NOT ALREADY_REPORTED)
-               message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
-               set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_INFO_REPORTED True)
-            endif()
-         endif()
-      endif()
-   endif()
+	endif()
 endmacro()
 
 
@@ -139,4 +111,47 @@ macro(add_shaders nameList depsList)
 		source_group("Shaders" FILES ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 		list(APPEND ${depsList} ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 	endforeach()
+endmacro()
+
+
+# helper macro for find_package_with_message
+macro(find_package_with_message2 PACKAGE_NAME TARGET_NAME)
+
+	# find package
+	find_package(${PACKAGE_NAME} QUIET)
+
+	# print result (but only once for each package)
+	get_property(ALREADY_REPORTED GLOBAL PROPERTY ${PACKAGE_NAME}_FOUND_INFO_REPORTED)
+	if(NOT ALREADY_REPORTED)
+		set_property(GLOBAL PROPERTY ${PACKAGE_NAME}_FOUND_INFO_REPORTED True)
+		if(TARGET ${TARGET_NAME})
+
+			# print success
+			cadr_get_package_path(FOUND_WHERE ${PACKAGE_NAME} ${TARGET_NAME})
+			message(STATUS "Find package ${PACKAGE_NAME}: ${FOUND_WHERE}")
+
+		else()
+
+			# print failure
+			message(STATUS "Find package ${PACKAGE_NAME}: not found")
+
+		endif()
+	endif()
+
+	# return on find_package() failure
+	# this causes currently processed file (where the macro is used) to stop processing
+	if(NOT TARGET ${TARGET_NAME})
+		return()
+	endif()
+
+endmacro()
+
+
+# performs find_package() and prints outcome to the console
+# (It uses one or two arguments. The first argument is parameter
+# to find_package() and second is target name that is expected to be
+# created by find_package(). If they are the same, the second
+# parameter can be omitted.)
+macro(find_package_with_message PACKAGE_NAME)
+	find_package_with_message2("${PACKAGE_NAME}" "${ARGN}")
 endmacro()

@@ -6,7 +6,7 @@ project(CADR)
 option(CADR_DYNAMIC_LINKAGE "Build CADR as libs for dynamic linkage. Use OFF for static libs." ON)
 
 # build examples
-set(CADR_BUILD_EXAMPLES OFF CACHE BOOL "Build examples (examples directory).")
+set(CADR_BUILD_EXAMPLES ON CACHE BOOL "Build examples (examples directory).")
 
 # file postfixes
 set(CMAKE_DEBUG_POSTFIX "d" CACHE STRING "add a postfix, usually d on windows")

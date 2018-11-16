@@ -1,3 +1,7 @@
+include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)
+find_package_with_message(Qt5Gui Qt5::Gui)
+
+
 set(APP_NAME HelloQtWindow)
 
 project(${APP_NAME})
@@ -21,7 +25,6 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 
 # dependencies
 find_package(Vulkan REQUIRED)
-find_package(Qt5Gui REQUIRED)
 if(UNIX)
 	find_package(Qt5X11Extras REQUIRED)
 	find_package(X11 REQUIRED)
