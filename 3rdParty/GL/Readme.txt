@@ -1,0 +1,1 @@
+Downloaded from https://github.com/KhronosGroup/OpenGL-Registry on 2018-12-28.
