@@ -3,11 +3,18 @@
 #else
 # include <X11/Xlib.h>
 # include <X11/Xutil.h>
+# include <GL/glx.h>
+# include <unistd.h>
 # define VK_USE_PLATFORM_XLIB_KHR
 #endif
 #include <vulkan/vulkan.hpp>
+#include <GL/glext.h>
 #include <array>
 #include <iostream>
+#include <set>
+
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
 
 using namespace std;
 
@@ -19,9 +26,19 @@ static vk::UniqueInstance instance;
 // windowing variables
 #ifdef _WIN32
 static HWND window=nullptr;
+static HWND glWindow=nullptr;
+static HDC hDC=nullptr;
+static HGLRC hRC=nullptr;
 struct Win32Cleaner {
 	~Win32Cleaner() {
 		if(window) {
+			if(hRC) {
+				wglMakeCurrent(NULL,NULL);
+				wglDeleteContext(hRC);
+			}
+			if(hDC)
+				ReleaseDC(hWnd,hDC);
+			DestroyWindow(glWindow);
 			DestroyWindow(window);
 			UnregisterClass("HelloWindow",GetModuleHandle(NULL));
 		}
@@ -30,8 +47,18 @@ struct Win32Cleaner {
 #else
 static Display* display=nullptr;
 static Window window=0;
+static Window glWindow=0;
+static Colormap glWindowColormap=0;
+static GLXContext cx=nullptr;
 struct XlibCleaner {
 	~XlibCleaner() {
+		if(cx) {
+			glXMakeCurrent(display,None,NULL);
+			glXDestroyContext(display,cx);
+		}
+		if(glWindow)  XDestroyWindow(display,glWindow);
+		if(glWindowColormap!=0)
+			XFreeColormap(display,glWindowColormap);
 		if(window)  XDestroyWindow(display,window);
 		if(display)  XCloseDisplay(display);
 	}
@@ -53,29 +80,112 @@ static vk::Queue presentationQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
 static vk::Format depthFormat;
 static vk::UniqueRenderPass renderPass;
-static vk::UniqueShaderModule vsModule;
-static vk::UniqueShaderModule fsModule;
+static vk::UniqueShaderModule vsTwoTrianglesModule;
+static vk::UniqueShaderModule fsTwoTrianglesModule;
+static vk::UniqueShaderModule vsMergeModule;
+static vk::UniqueShaderModule fsMergeModule;
 static vk::UniquePipelineCache pipelineCache;
-static vk::UniquePipelineLayout pipelineLayout;
+static vk::UniqueDescriptorSetLayout mergeDescriptorSetLayout;
+static vk::UniquePipelineLayout twoTrianglesPipelineLayout;
+static vk::UniquePipelineLayout mergePipelineLayout;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
 static vk::UniqueDeviceMemory depthImageMemory;
 static vk::UniqueImageView depthImageView;
-static vk::UniquePipeline pipeline;
+static vk::UniqueSampler sampler;
+static vk::UniquePipeline twoTrianglesPipeline;
+static vk::UniquePipeline mergePipeline;
+static vk::UniqueDescriptorPool mergeDescriptorPool;
+static vk::UniqueDescriptorSet mergeDescriptorSet;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
-static vk::UniqueSemaphore imageAvailableSemaphore;
+static vk::UniqueSemaphore acquireCompleteSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
+static vk::UniqueCommandBuffer transitionCommandBuffer;
+
+// shared resources (Vulkan)
+static vk::UniqueImage sharedImageVk;
+static vk::UniqueDeviceMemory sharedImageMemoryVk;
+static vk::UniqueImageView sharedImageView;
+static vk::UniqueSemaphore glStartSemaphoreVk;
+static vk::UniqueSemaphore glDoneSemaphoreVk;
+
+// Vulkan function pointers
+struct VkFuncs {
+	PFN_vkGetMemoryFdKHR vkGetMemoryFdKHR;
+	PFN_vkGetSemaphoreFdKHR vkGetSemaphoreFdKHR;
+};
+static VkFuncs vkFuncs;
+
+// OpenGL function pointers
+static PFNGLCREATETEXTURESPROC glCreateTextures;
+static PFNGLCREATEMEMORYOBJECTSEXTPROC glCreateMemoryObjectsEXT;
+static PFNGLTEXTURESTORAGEMEM2DEXTPROC glTextureStorageMem2DEXT;
+static PFNGLDELETEMEMORYOBJECTSEXTPROC glDeleteMemoryObjectsEXT;
+static PFNGLGENSEMAPHORESEXTPROC glGenSemaphoresEXT;
+static PFNGLDELETESEMAPHORESEXTPROC glDeleteSemaphoresEXT;
+#ifdef _WIN32
+static PFNGLIMPORTMEMORYWIN32HANDLEEXTPROC glImportMemoryWin32HandleEXT;
+static PFNGLIMPORTSEMAPHOREWIN32HANDLEEXTPROC glImportSemaphoreWin32HandleEXT;
+#else
+static PFNGLIMPORTMEMORYFDEXTPROC glImportMemoryFdEXT;
+static PFNGLIMPORTSEMAPHOREFDEXTPROC glImportSemaphoreFdEXT;
+#endif
+static PFNGLCREATEFRAMEBUFFERSPROC glCreateFramebuffers;
+static PFNGLNAMEDFRAMEBUFFERTEXTUREPROC glNamedFramebufferTexture;
+static PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
+static PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
+static PFNGLWAITSEMAPHOREEXTPROC glWaitSemaphoreEXT;
+static PFNGLSIGNALSEMAPHOREEXTPROC glSignalSemaphoreEXT;
+
+// OpenGL texture and memory
+struct UniqueGlTexture {
+	uint texture = 0;
+	~UniqueGlTexture()  { if(texture!=0) glDeleteTextures(1,&texture); }  // glDeleteTextures() since OpenGL 1.1
+};
+struct UniqueGlMemory {
+	uint memory = 0;
+	~UniqueGlMemory()  { if(memory!=0) glDeleteMemoryObjectsEXT(1,&memory); }
+};
+struct UniqueGlSemaphore {
+	uint semaphore = 0;
+	~UniqueGlSemaphore() { if(semaphore!=0) glDeleteSemaphoresEXT(1,&semaphore); }
+};
+struct UniqueGlFramebuffer {
+	uint framebuffer = 0;
+	~UniqueGlFramebuffer() { if(framebuffer!=0) glDeleteFramebuffers(1,&framebuffer); }
+};
+
+// shared resources (OpenGL)
+static UniqueGlTexture sharedTextureGL;
+static UniqueGlMemory sharedTextureMemoryGL;
+static UniqueGlSemaphore glStartSemaphoreGL;
+static UniqueGlSemaphore glDoneSemaphoreGL;
+static UniqueGlFramebuffer glFramebuffer;
+
 
 // shader code in SPIR-V binary
-static const uint32_t vsSpirv[]={
-#include "shader.vert.spv"
+static const uint32_t vsTwoTrianglesSpirv[]={
+#include "twoTriangles.vert.spv"
 };
-static const uint32_t fsSpirv[]={
-#include "shader.frag.spv"
+static const uint32_t fsTwoTrianglesSpirv[]={
+#include "twoTriangles.frag.spv"
 };
+static const uint32_t vsMergeSpirv[]={
+#include "merge.vert.spv"
+};
+static const uint32_t fsMergeSpirv[]={
+#include "merge.frag.spv"
+};
+
+
+template<typename T>
+T glGetProcAddress(const std::string& funcName)
+{
+	return reinterpret_cast<T>(glXGetProcAddressARB((const GLubyte*)funcName.c_str()));
+}
 
 
 /// Init Vulkan and open the window.
@@ -87,19 +197,24 @@ static void init()
 			vk::InstanceCreateInfo{
 				vk::InstanceCreateFlags(),  // flags
 				&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-					"CADR Vk VulkanDepthBuffer", // application name
+					"CADR OpenGLInteroperability", // application name
 					VK_MAKE_VERSION(0,0,0),  // application version
 					"CADR",                  // engine name
 					VK_MAKE_VERSION(0,0,0),  // engine version
 					VK_API_VERSION_1_0,      // api version
 				},
 				0,nullptr,  // no layers
-				2,          // enabled extension count
+				4,          // enabled extension count
+				array<const char*,4>{
+					"VK_KHR_surface",
 #ifdef _WIN32
-				array<const char*,2>{"VK_KHR_surface","VK_KHR_win32_surface"}.data(),  // enabled extension names
+					"VK_KHR_win32_surface",
 #else
-				array<const char*,2>{"VK_KHR_surface","VK_KHR_xlib_surface"}.data(),  // enabled extension names
+					"VK_KHR_xlib_surface",
 #endif
+					"VK_KHR_external_semaphore_capabilities", // dependency for VK_KHR_external_semaphore (device extension)
+					"VK_KHR_get_physical_device_properties2"  // dependency for VK_KHR_external_semaphore (device extension)
+				}.data(),  // enabled extension names
 			});
 
 
@@ -108,7 +223,7 @@ static void init()
 	// initial window size
 	RECT screenSize;
 	if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
-		throw runtime_error("GetWindowRect() failed.");
+		throw std::runtime_error("GetWindowRect() failed.");
 	windowWidth=(screenSize.right-screenSize.left)/2;
 	windowHeight=(screenSize.bottom-screenSize.top)/2;
 
@@ -148,9 +263,9 @@ static void init()
 	wc.lpszClassName = "HelloWindow";
 	wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
 	if(!RegisterClassEx(&wc))
-		throw runtime_error("Can not register window class.");
+		throw std::runtime_error("Can not register window class.");
 
-	// create window
+	// create Vulkan window
 	window=CreateWindowEx(
 		WS_EX_CLIENTEDGE,
 		"HelloWindow",
@@ -160,8 +275,54 @@ static void init()
 		NULL,NULL,wc.hInstance,NULL);
 	if(window==NULL) {
 		UnregisterClass("HelloWindow",GetModuleHandle(NULL));
-		throw runtime_error("Can not create window.");
+		throw std::runtime_error("Can not create window.");
 	}
+
+	// create OpenGL window
+	window=CreateWindowEx(
+		WS_EX_CLIENTEDGE,
+		"HelloWindow",
+		"Hello window!",
+		WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT,CW_USEDEFAULT,windowWidth,windowHeight,
+		NULL,NULL,wc.hInstance,NULL);
+	if(window==NULL) {
+		UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+		throw std::runtime_error("Can not create window.");
+	}
+
+   PIXELFORMATDESCRIPTOR pfd =
+   {
+      sizeof(PIXELFORMATDESCRIPTOR),  // size of the structure
+      1,                              // version
+      PFD_DRAW_TO_WINDOW |            // format must support window
+         PFD_DOUBLEBUFFER |
+         PFD_SUPPORT_OPENGL,          // format must support OpenGL
+      PFD_TYPE_RGBA,                  // request an RGBA format
+      BYTE(b),                        // color depth
+      0, 0, 0, 0, 0, 0,               // color bits ignored
+      0,                              // no alpha Buffer
+      0,                              // shift bit ignored
+      0,                              // no accumulation buffer
+      0, 0, 0, 0,                     // accumulation bits ignored
+      16,                             // 16-bit z-buffer
+      0,                              // no stencil buffer
+      0,                              // no auxiliary buffer
+      PFD_MAIN_PLANE,                 // main drawing layer
+      0,                              // reserved
+      0, 0, 0                         // layer masks ignored
+   };
+
+   // setup window (DC, pixel format, RC)
+   // note: we will setup standard OpenGL1 style context
+   // even when asked for OpenGL3 context since OpenGL1 context is necessary
+   // for creating OpenGL3 style context
+   if (!(hDC=GetDC(hWnd)) ||
+       !(PixelFormat=ChoosePixelFormat(hDC,&pfd)) ||
+       !SetPixelFormat(hDC,PixelFormat,&pfd) ||
+       !(hRC=wglCreateContext(hDC)) ||
+       !wglMakeCurrent(hDC,hRC))
+      throw std::runtime_error("Can not initialize OpenGL window.");
 
 	// show window
 	ShowWindow(window,SW_SHOWDEFAULT);
@@ -174,7 +335,7 @@ static void init()
 	// open X connection
 	display=XOpenDisplay(nullptr);
 	if(display==nullptr)
-		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
+		throw std::runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 	// create window
 	int blackColor=BlackPixel(display,DefaultScreen(display));
@@ -191,7 +352,112 @@ static void init()
 	// create surface
 	surface=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window));
 
+	// make sure GLX is supported
+	if(!glXQueryExtension(display,nullptr,nullptr))
+		throw std::runtime_error("X server has no OpenGL GLX extension");
+
+   // choose visual for OpenGL
+	struct XVisualInfoDeleter { void operator()(XVisualInfo* ptr) const { XFree(ptr); } };
+   unique_ptr<XVisualInfo,XVisualInfoDeleter> vi(glXChooseVisual(display,DefaultScreen(display),array<int,14>{
+		GLX_RGBA,GLX_RED_SIZE,1,GLX_GREEN_SIZE,1,GLX_BLUE_SIZE,1,GLX_ALPHA_SIZE,1,
+		GLX_DEPTH_SIZE,16,GLX_DOUBLEBUFFER,None,None}.data()
+	));
+	if(vi==nullptr)
+		throw std::runtime_error("glXChooseVisual() failed.");
+
+	// create GL context
+	cx=glXCreateContext(display,vi.get(),0,GL_TRUE);
+	if(cx==nullptr)
+		throw std::runtime_error("glXCreateContext() failed.");
+
+   // fill XSetWindowAttributes structure
+	glWindowColormap=XCreateColormap(display,
+	                                 RootWindow(display, DefaultScreen(display)),
+	                                 vi->visual, AllocNone);
+	XSetWindowAttributes swa;
+	swa.border_pixel=0;
+	swa.event_mask=StructureNotifyMask;
+	swa.override_redirect=False;
+	swa.colormap=glWindowColormap;
+	glWindow=XCreateWindow(display,DefaultRootWindow(display),
+	                       0,0,windowWidth,windowHeight,
+	                       0,vi->depth,InputOutput,vi->visual,
+	                       CWBorderPixel|CWEventMask|CWOverrideRedirect|CWColormap,&swa);
+	vi.reset();
+	XSetStandardProperties(display,glWindow,"Hello window!","Hello window!",None,NULL,0,NULL);
+	XSetWMProtocols(display,glWindow,&wmDeleteMessage,1);
+	XMapWindow(display,glWindow);
+
+	if(!glXMakeCurrent(display,glWindow,cx))
+		throw std::runtime_error("glXMakeCurrent() failed.");
+
 #endif
+
+	// print OpenGL info
+	cout<<"OpenGL renderer: "<<glGetString(GL_RENDERER)<<endl;
+	cout<<"OpenGL version:  "<<glGetString(GL_VERSION)<<endl;
+	cout<<"OpenGL vendor:   "<<glGetString(GL_VENDOR)<<endl;
+
+	// OpenGL version
+	float glVersion=[](){
+		const char *ptr=(const char*)glGetString(GL_VERSION);
+		while(*ptr!=0) {
+			if(*ptr>='0' && *ptr<='9')
+				return float(atof(ptr));
+			++ptr;
+		}
+		return 0.0f;
+	}();
+	if(glVersion<4.5f)
+		std::runtime_error("OpenGL version 4.5 or higher is required.");
+
+	// get supported OpenGL extensions
+	set<string> glExtensions;
+	{
+		PFNGLGETSTRINGIPROC glGetStringi=glGetProcAddress<PFNGLGETSTRINGIPROC>("glGetStringi");
+
+		GLint numExtensions=0;
+		glGetIntegerv(GL_NUM_EXTENSIONS,&numExtensions);
+		for(int i=0; i<numExtensions; i++) {
+			const GLubyte *exName = glGetStringi(GL_EXTENSIONS,i);
+			if(exName)
+				glExtensions.emplace((const char*)exName);
+		}
+	}
+
+	// check presence of required OpenGL extensions
+	if(glExtensions.find("GL_EXT_memory_object")==glExtensions.end())
+		throw std::runtime_error("OpenGL does not support GL_EXT_memory_object extension.");
+	if(glExtensions.find("GL_EXT_semaphore")==glExtensions.end())
+		throw std::runtime_error("OpenGL does not support GL_EXT_semaphore extension.");
+#ifdef _WIN32
+	if(glExtensions.find("GL_EXT_semaphore_win32")==glExtensions.end())
+		throw std::runtime_error("OpenGL does not support GL_EXT_semaphore_win32 extension.");
+#else
+	if(glExtensions.find("GL_EXT_semaphore_fd")==glExtensions.end())
+		throw std::runtime_error("OpenGL does not support GL_EXT_semaphore_fd extension.");
+#endif
+
+	// OpenGL function pointers
+	glCreateTextures=glGetProcAddress<PFNGLCREATETEXTURESPROC>("glCreateTextures");  // since OpenGL 4.5
+	glCreateMemoryObjectsEXT=glGetProcAddress<PFNGLCREATEMEMORYOBJECTSEXTPROC>("glCreateMemoryObjectsEXT");  // GL_EXT_memory_object extension
+	glTextureStorageMem2DEXT=glGetProcAddress<PFNGLTEXTURESTORAGEMEM2DEXTPROC>("glTextureStorageMem2DEXT");  // GL_EXT_memory_object extension
+	glDeleteMemoryObjectsEXT=glGetProcAddress<PFNGLDELETEMEMORYOBJECTSEXTPROC>("glDeleteMemoryObjectsEXT");  // GL_EXT_memory_object extension
+	glGenSemaphoresEXT=glGetProcAddress<PFNGLGENSEMAPHORESEXTPROC>("glGenSemaphoresEXT");  // GL_EXT_semaphore extension
+	glDeleteSemaphoresEXT=glGetProcAddress<PFNGLDELETESEMAPHORESEXTPROC>("glDeleteSemaphoresEXT");  // GL_EXT_semaphore extension
+	glWaitSemaphoreEXT=glGetProcAddress<PFNGLWAITSEMAPHOREEXTPROC>("glWaitSemaphoreEXT");  // GL_EXT_semaphore extension
+	glSignalSemaphoreEXT=glGetProcAddress<PFNGLSIGNALSEMAPHOREEXTPROC>("glSignalSemaphoreEXT");  // GL_EXT_semaphore extension
+#ifdef _WIN32
+	glImportMemoryWin32HandleEXT=glGetProcAddress<PFNGLIMPORTMEMORYWIN32HANDLEEXTPROC>("glImportMemoryWin32HandleEXT");  // GL_EXT_memory_object_win32 extension
+	glImportSemaphoreWin32HandleEXT=glGetProcAddress<PFNGLIMPORTSEMAPHOREWIN32HANDLEEXTPROC>("glImportSemaphoreWin32HandleEXT");  // GL_EXT_semaphore_win32 extension
+#else
+	glImportMemoryFdEXT=glGetProcAddress<PFNGLIMPORTMEMORYFDEXTPROC>("glImportMemoryFdEXT");  // GL_EXT_memory_object_fd extension
+	glImportSemaphoreFdEXT=glGetProcAddress<PFNGLIMPORTSEMAPHOREFDEXTPROC>("glImportSemaphoreFdEXT");  // GL_EXT_semaphore_fd extension
+#endif
+	glCreateFramebuffers=glGetProcAddress<PFNGLCREATEFRAMEBUFFERSPROC>("glCreateFramebuffers");  // since OpenGL 4.5
+	glNamedFramebufferTexture=glGetProcAddress<PFNGLNAMEDFRAMEBUFFERTEXTUREPROC>("glNamedFramebufferTexture");  // since OpenGL 4.5
+	glBindFramebuffer=glGetProcAddress<PFNGLBINDFRAMEBUFFERPROC>("glBindFramebuffer");  // since OpenGL 3.0
+	glDeleteFramebuffers=glGetProcAddress<PFNGLDELETEFRAMEBUFFERSPROC>("glDeleteFramebuffers");  // since OpenGL 3.0
 
 	// find compatible devices
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
@@ -246,7 +512,7 @@ static void init()
 		compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
 		nextDevice:;
 	}
-	cout<<"Compatible devices:"<<endl;
+	cout<<"Vulkan compatible devices:"<<endl;
 	for(auto& t:compatibleDevicesSingleQueue)
 		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 	for(auto& t:compatibleDevicesTwoQueues)
@@ -266,8 +532,8 @@ static void init()
 		presentationQueueFamily=get<2>(t);
 	}
 	else
-		throw runtime_error("No compatible devices.");
-	cout<<"Using device:\n"
+		throw std::runtime_error("No compatible devices.");
+	cout<<"Using Vulkan device:\n"
 		   "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 	// create device
@@ -291,12 +557,27 @@ static void init()
 					}
 				}.data(),
 				0,nullptr,  // no layers
-				1,          // number of enabled extensions
-				array<const char*,1>{"VK_KHR_swapchain"}.data(),  // enabled extension names
+				5,          // number of enabled extensions
+				array<const char*,5>{
+					"VK_KHR_swapchain",
+					"VK_KHR_external_memory",
+					"VK_KHR_external_semaphore",
+#ifdef _WIN32
+					"VK_KHR_external_memory_win32",
+					"VK_KHR_external_semaphore_win32",
+#else
+					"VK_KHR_external_memory_fd",
+					"VK_KHR_external_semaphore_fd",
+#endif
+				}.data(),  // enabled extension names
 				nullptr,    // enabled features
 			}
 		)
 	);
+
+	// get function pointers
+	vkFuncs.vkGetMemoryFdKHR=PFN_vkGetMemoryFdKHR(device->getProcAddr("vkGetMemoryFdKHR"));
+	vkFuncs.vkGetSemaphoreFdKHR=PFN_vkGetSemaphoreFdKHR(device->getProcAddr("vkGetSemaphoreFdKHR"));
 
 	// get queues
 	graphicsQueue=device->getQueue(graphicsQueueFamily,0);
@@ -384,18 +665,32 @@ static void init()
 		);
 
 	// create shader modules
-	vsModule=device->createShaderModuleUnique(
+	vsTwoTrianglesModule=device->createShaderModuleUnique(
 		vk::ShaderModuleCreateInfo(
 			vk::ShaderModuleCreateFlags(),  // flags
-			sizeof(vsSpirv),  // codeSize
-			vsSpirv  // pCode
+			sizeof(vsTwoTrianglesSpirv),  // codeSize
+			vsTwoTrianglesSpirv  // pCode
 		)
 	);
-	fsModule=device->createShaderModuleUnique(
+	fsTwoTrianglesModule=device->createShaderModuleUnique(
 		vk::ShaderModuleCreateInfo(
 			vk::ShaderModuleCreateFlags(),  // flags
-			sizeof(fsSpirv),  // codeSize
-			fsSpirv  // pCode
+			sizeof(fsTwoTrianglesSpirv),  // codeSize
+			fsTwoTrianglesSpirv  // pCode
+		)
+	);
+	vsMergeModule=device->createShaderModuleUnique(
+		vk::ShaderModuleCreateInfo(
+			vk::ShaderModuleCreateFlags(),  // flags
+			sizeof(vsMergeSpirv),  // codeSize
+			vsMergeSpirv  // pCode
+		)
+	);
+	fsMergeModule=device->createShaderModuleUnique(
+		vk::ShaderModuleCreateInfo(
+			vk::ShaderModuleCreateFlags(),  // flags
+			sizeof(fsMergeSpirv),  // codeSize
+			fsMergeSpirv  // pCode
 		)
 	);
 
@@ -409,7 +704,7 @@ static void init()
 	);
 
 	// pipeline layout
-	pipelineLayout=device->createPipelineLayoutUnique(
+	twoTrianglesPipelineLayout=device->createPipelineLayoutUnique(
 		vk::PipelineLayoutCreateInfo{
 			vk::PipelineLayoutCreateFlags(),  // flags
 			0,       // setLayoutCount
@@ -418,6 +713,75 @@ static void init()
 			nullptr  // pPushConstantRanges
 		}
 	);
+	mergeDescriptorSetLayout=device->createDescriptorSetLayoutUnique(
+		vk::DescriptorSetLayoutCreateInfo{
+			vk::DescriptorSetLayoutCreateFlags(),  // flags
+			1,  // bindingCount
+			&(const vk::DescriptorSetLayoutBinding&)vk::DescriptorSetLayoutBinding{  // pBindings
+				0,       // binding
+				vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+				1,       // descriptorCount
+				vk::ShaderStageFlagBits::eFragment,  // stageFlags
+				nullptr  // pImmutableSamplers
+			}
+		}
+	);
+	mergePipelineLayout=device->createPipelineLayoutUnique(
+		vk::PipelineLayoutCreateInfo{
+			vk::PipelineLayoutCreateFlags(),  // flags
+			1,       // setLayoutCount
+			&mergeDescriptorSetLayout.get(), // pSetLayouts
+			0,       // pushConstantRangeCount
+			nullptr  // pPushConstantRanges
+		}
+	);
+
+	// descriptor pool
+	mergeDescriptorPool=
+		device->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo{
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				1,  // poolSizeCount
+				&(const vk::DescriptorPoolSize&)vk::DescriptorPoolSize{  // pPoolSizes
+					vk::DescriptorType::eCombinedImageSampler,  // type
+					1  // descriptorCount
+				}
+			}
+		);
+
+	// merge descriptor set
+	mergeDescriptorSet=std::move(
+		device->allocateDescriptorSetsUnique(
+			vk::DescriptorSetAllocateInfo{
+				mergeDescriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&mergeDescriptorSetLayout.get()  // pSetLayouts
+			}
+		)[0]);
+
+	// texture sampler
+	sampler=
+		device->createSamplerUnique(
+			vk::SamplerCreateInfo{
+				vk::SamplerCreateFlags(),  // flags
+				vk::Filter::eNearest,      // magFilter
+				vk::Filter::eNearest,      // minFilter
+				vk::SamplerMipmapMode::eNearest,  // mipmapMode
+				vk::SamplerAddressMode::eClampToEdge,  // addressModeU
+				vk::SamplerAddressMode::eClampToEdge,  // addressModeV
+				vk::SamplerAddressMode::eClampToEdge,  // addressModeW
+				0.f,       // mipLodBias
+				VK_FALSE,  // anisotropyEnable
+				0.f,       // maxAnisotropy
+				VK_FALSE,  // compareEnable
+				vk::CompareOp::eAlways,  // compareOp
+				0.f,  // minLod
+				0.f,  // maxLod
+				vk::BorderColor::eFloatTransparentBlack,  // borderColor
+				VK_FALSE  // unnormalizedCoordinates
+			}
+		);
 
 	// command pool
 	commandPool=
@@ -429,7 +793,7 @@ static void init()
 		);
 
 	// semaphores
-	imageAvailableSemaphore=
+	acquireCompleteSemaphore=
 		device->createSemaphoreUnique(
 			vk::SemaphoreCreateInfo(
 				vk::SemaphoreCreateFlags()  // flags
@@ -454,7 +818,8 @@ static bool recreateSwapchainAndPipeline()
 	depthImage.reset();
 	depthImageMemory.reset();
 	depthImageView.reset();
-	pipeline.reset();
+	twoTrianglesPipeline.reset();
+	mergePipeline.reset();
 	swapchainImageViews.clear();
 
 	// currentSurfaceExtent
@@ -672,7 +1037,7 @@ recreateSwapchain:
 	graphicsQueue.waitIdle();
 
 	// pipeline
-	pipeline=
+	twoTrianglesPipeline=
 		device->createGraphicsPipelineUnique(
 			pipelineCache.get(),
 			vk::GraphicsPipelineCreateInfo(
@@ -682,14 +1047,14 @@ recreateSwapchain:
 					vk::PipelineShaderStageCreateInfo{
 						vk::PipelineShaderStageCreateFlags(),  // flags
 						vk::ShaderStageFlagBits::eVertex,      // stage
-						vsModule.get(),  // module
+						vsTwoTrianglesModule.get(),  // module
 						"main",  // pName
 						nullptr  // pSpecializationInfo
 					},
 					vk::PipelineShaderStageCreateInfo{
 						vk::PipelineShaderStageCreateFlags(),  // flags
 						vk::ShaderStageFlagBits::eFragment,    // stage
-						fsModule.get(),  // module
+						fsTwoTrianglesModule.get(),  // module
 						"main",  // pName
 						nullptr  // pSpecializationInfo
 					}
@@ -767,7 +1132,109 @@ recreateSwapchain:
 					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
 				},
 				nullptr,  // pDynamicState
-				pipelineLayout.get(),  // layout
+				twoTrianglesPipelineLayout.get(),  // layout
+				renderPass.get(),  // renderPass
+				0,  // subpass
+				vk::Pipeline(nullptr),  // basePipelineHandle
+				-1 // basePipelineIndex
+			)
+		);
+	mergePipeline=
+		device->createGraphicsPipelineUnique(
+			pipelineCache.get(),
+			vk::GraphicsPipelineCreateInfo(
+				vk::PipelineCreateFlags(),  // flags
+				2,  // stageCount
+				array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+					vk::PipelineShaderStageCreateInfo{
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eVertex,      // stage
+						vsMergeModule.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					},
+					vk::PipelineShaderStageCreateInfo{
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eFragment,    // stage
+						fsMergeModule.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					}
+				}.data(),
+				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+					vk::PipelineVertexInputStateCreateFlags(),  // flags
+					0,        // vertexBindingDescriptionCount
+					nullptr,  // pVertexBindingDescriptions
+					0,        // vertexAttributeDescriptionCount
+					nullptr   // pVertexAttributeDescriptions
+				},
+				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+					vk::PrimitiveTopology::eTriangleStrip,  // topology
+					VK_FALSE  // primitiveRestartEnable
+				},
+				nullptr, // pTessellationState
+				&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+					vk::PipelineViewportStateCreateFlags(),  // flags
+					1,  // viewportCount
+					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
+					1,  // scissorCount
+					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
+				},
+				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+					vk::PipelineRasterizationStateCreateFlags(),  // flags
+					VK_FALSE,  // depthClampEnable
+					VK_FALSE,  // rasterizerDiscardEnable
+					vk::PolygonMode::eFill,  // polygonMode
+					vk::CullModeFlagBits::eNone,  // cullMode
+					vk::FrontFace::eCounterClockwise,  // frontFace
+					VK_FALSE,  // depthBiasEnable
+					0.f,  // depthBiasConstantFactor
+					0.f,  // depthBiasClamp
+					0.f,  // depthBiasSlopeFactor
+					1.f   // lineWidth
+				},
+				&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+					vk::PipelineMultisampleStateCreateFlags(),  // flags
+					vk::SampleCountFlagBits::e1,  // rasterizationSamples
+					VK_FALSE,  // sampleShadingEnable
+					0.f,       // minSampleShading
+					nullptr,   // pSampleMask
+					VK_FALSE,  // alphaToCoverageEnable
+					VK_FALSE   // alphaToOneEnable
+				},
+				&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
+					vk::PipelineDepthStencilStateCreateFlags(),  // flags
+					VK_TRUE,  // depthTestEnable
+					VK_TRUE,  // depthWriteEnable
+					vk::CompareOp::eLess,  // depthCompareOp
+					VK_FALSE,  // depthBoundsTestEnable
+					VK_FALSE,  // stencilTestEnable
+					vk::StencilOpState(),  // front
+					vk::StencilOpState(),  // back
+					0.f,  // minDepthBounds
+					0.f   // maxDepthBounds
+				},
+				&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+					vk::PipelineColorBlendStateCreateFlags(),  // flags
+					VK_FALSE,  // logicOpEnable
+					vk::LogicOp::eClear,  // logicOp
+					1,  // attachmentCount
+					&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
+						VK_FALSE,  // blendEnable
+						vk::BlendFactor::eZero,  // srcColorBlendFactor
+						vk::BlendFactor::eZero,  // dstColorBlendFactor
+						vk::BlendOp::eAdd,       // colorBlendOp
+						vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+						vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+						vk::BlendOp::eAdd,       // alphaBlendOp
+						vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+							vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+					},
+					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+				},
+				nullptr,  // pDynamicState
+				mergePipelineLayout.get(),  // layout
 				renderPass.get(),  // renderPass
 				0,  // subpass
 				vk::Pipeline(nullptr),  // basePipelineHandle
@@ -794,6 +1261,219 @@ recreateSwapchain:
 				)
 			)
 		);
+
+	// shared texture
+	sharedImageVk=
+		device->createImageUnique(
+			vk::ImageCreateInfo(
+				vk::ImageCreateFlags(),  // flags
+				vk::ImageType::e2D,      // imageType
+				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::Extent3D(currentSurfaceExtent.width,currentSurfaceExtent.height,1),  // extent
+				1,                       // mipLevels
+				1,                       // arrayLayers
+				vk::SampleCountFlagBits::e1,  // samples
+				vk::ImageTiling::eOptimal,    // tiling
+				vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr,                      // pQueueFamilyIndices
+				vk::ImageLayout::eUndefined   // initialLayout
+			)
+		);
+
+	// sharedImage memory
+	vk::DeviceSize sharedImageMemorySize;
+	sharedImageMemoryVk=[](vk::DeviceSize& sharedImageMemorySize){
+
+		// find suitable memory type
+		vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(sharedImageVk.get());
+		sharedImageMemorySize=memoryRequirements.size;
+		vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+		for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+			if(memoryRequirements.memoryTypeBits&(1<<i))
+				if(memoryProperties.memoryTypes[i].propertyFlags&vk::MemoryPropertyFlagBits::eDeviceLocal) {
+
+					// allocate memory
+					vk::MemoryAllocateInfo info(memoryRequirements.size,i);
+					vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+					info.setPNext(&exportInfo);
+					return device->allocateMemoryUnique(info);
+
+				}
+		throw std::runtime_error("No suitable memory type found for depth buffer.");
+	}(sharedImageMemorySize);
+#ifdef _WIN32
+	struct HandleDeleter { void operator()(HANDLE h) const { CloseHandle(h); } };
+	unique_ptr<HANDLE,HandleDeleter> sharedImageMemoryHandle=device->getMemoryWin32HandleKHR({ texture.memory, vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32 }, dynamicLoader);
+#else
+	struct UniqueFd {
+		int fd;
+		inline UniqueFd() : fd(-1)  {}
+		inline UniqueFd(int f) : fd(f)  {}
+		inline ~UniqueFd()  { if(fd!=-1) close(fd); }
+	};
+	UniqueFd sharedImageMemoryFd(
+		device->getMemoryFdKHR(
+			vk::MemoryGetFdInfoKHR{
+				sharedImageMemoryVk.get(),  // memory
+				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd  // handleType
+			},
+			vkFuncs
+		)
+	);
+#endif
+	device->bindImageMemory(
+		sharedImageVk.get(),  // image
+		sharedImageMemoryVk.get(),  // memory
+		0  // memoryOffset
+	);
+
+	// sharedImageView
+	sharedImageView=
+		device->createImageViewUnique(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),  // flags
+				sharedImageVk.get(),         // image
+				vk::ImageViewType::e2D,      // viewType
+				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::ComponentMapping(),      // components
+				vk::ImageSubresourceRange(   // subresourceRange
+					vk::ImageAspectFlagBits::eDepth,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				)
+			)
+		);
+
+	// create OpenGL texture
+	glCreateTextures(GL_TEXTURE_2D,1,&sharedTextureGL.texture);
+
+	// import sharedImage memory into OpenGL and create texture
+	glCreateMemoryObjectsEXT(1,&sharedTextureMemoryGL.memory);
+#ifdef _WIN32
+	glImportMemoryWin32HandleEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,sharedImageMemoryFd.fd);
+#else
+	glImportMemoryFdEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_FD_EXT,sharedImageMemoryFd.fd);
+#endif
+	sharedImageMemoryFd.fd=-1;
+	glTextureStorageMem2DEXT(sharedTextureGL.texture,1,GL_RGBA8,currentSurfaceExtent.width,currentSurfaceExtent.height,sharedTextureMemoryGL.memory,0);
+
+	// create Vulkan semaphores
+	{
+		vk::SemaphoreCreateInfo semaphoreCreateInfo;
+		vk::ExportSemaphoreCreateInfo exportInfo;
+		semaphoreCreateInfo.pNext=&exportInfo;
+#ifdef _WIN32
+		exportInfo.handleTypes=vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32;
+#else
+		exportInfo.handleTypes=vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd;
+#endif
+		glStartSemaphoreVk=device->createSemaphoreUnique(semaphoreCreateInfo);
+		glDoneSemaphoreVk=device->createSemaphoreUnique(semaphoreCreateInfo);
+	}
+
+	// create OpenGL semaphores
+	glGenSemaphoresEXT(1,&glStartSemaphoreGL.semaphore);
+	glGenSemaphoresEXT(1,&glDoneSemaphoreGL.semaphore);
+
+	// import semaphores to OpenGL
+#ifdef _WIN32
+	unique_ptr<HANDLE,HandleDeleter> h1=device->getSemaphoreWin32HandleKHR({glStartSemaphoreVk,vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32},);
+	unique_ptr<HANDLE,HandleDeleter> h2=device->getSemaphoreWin32HandleKHR({glDoneSemaphoreVk,vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32},);
+	glImportSemaphoreWin32HandleEXT(glStartSemaphoreGL,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,h1);
+	glImportSemaphoreWin32HandleEXT(goDoneSemaphoreGL, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,h2);
+	h1.reset();
+	h2.reset();
+#else
+	glImportSemaphoreFdEXT(
+		glStartSemaphoreGL.semaphore,
+		GL_HANDLE_TYPE_OPAQUE_FD_EXT,
+		device->getSemaphoreFdKHR(
+			vk::SemaphoreGetFdInfoKHR(
+				glStartSemaphoreVk.get(),
+				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd
+			),
+			vkFuncs
+		)
+	);
+	glImportSemaphoreFdEXT(
+		glDoneSemaphoreGL.semaphore,
+		GL_HANDLE_TYPE_OPAQUE_FD_EXT,
+		device->getSemaphoreFdKHR(
+			vk::SemaphoreGetFdInfoKHR(
+				glDoneSemaphoreVk.get(),
+				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd
+			),
+			vkFuncs
+		)
+	);
+#endif
+
+	// create transition command buffer
+	transitionCommandBuffer=std::move(
+		device->allocateCommandBuffersUnique(
+			vk::CommandBufferAllocateInfo(
+				commandPool.get(),  // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1  // commandBufferCount
+			)
+		)[0]);
+	transitionCommandBuffer->begin(vk::CommandBufferBeginInfo{});
+	transitionCommandBuffer->pipelineBarrier(
+		vk::PipelineStageFlagBits::eTopOfPipe,              // srcStageMask
+		vk::PipelineStageFlagBits::eColorAttachmentOutput,  // dstStageMask
+		vk::DependencyFlags(),  // dependencyFlags
+		nullptr,  // memoryBarriers
+		nullptr,  // bufferMemoryBarriers
+		vk::ImageMemoryBarrier{  // imageMemoryBarriers
+			vk::AccessFlags(),                          // srcAccessMask
+			vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
+			vk::ImageLayout::eUndefined,                // oldLayout
+			vk::ImageLayout::eColorAttachmentOptimal,   // newLayout
+			0,                    // srcQueueFamilyIndex
+			0,                    // dstQueueFamilyIndex
+			sharedImageVk.get(),  // image
+			vk::ImageSubresourceRange{  // subresourceRange
+				vk::ImageAspectFlagBits::eColor,  // aspectMask
+				0,  // baseMipLevel
+				1,  // levelCount
+				0,  // baseArrayLayer
+				1  // layerCount
+			}
+		}
+	);
+	transitionCommandBuffer->end();
+
+	// setup OpenGL framebuffer
+	glCreateFramebuffers(1,&glFramebuffer.framebuffer);
+	glNamedFramebufferTexture(glFramebuffer.framebuffer,GL_COLOR_ATTACHMENT0,sharedTextureGL.texture,0);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,glFramebuffer.framebuffer);
+	glViewport(0,0,currentSurfaceExtent.width,currentSurfaceExtent.height);
+
+	// update descriptor set
+	// (mergePipeline uses sampler2D and this one must be updated)
+	device->updateDescriptorSets(
+		1,  // descriptorWriteCount
+		&(const vk::WriteDescriptorSet&)vk::WriteDescriptorSet{  // pDescriptorWrites
+			mergeDescriptorSet.get(),  // dstSet
+			0,  // dstBinding
+			0,  // dstArrayElement
+			1,  // descriptorCount
+			vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+			&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
+				sampler.get(),          // sampler
+				sharedImageView.get(),  // imageView
+				vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
+			},
+			nullptr,  // pBufferInfo
+			nullptr   // pTexelBufferView
+		},
+		0,       // descriptorCopyCount
+		nullptr  // pDescriptorCopies
+	);
 
 	// reallocate command buffers
 	if(commandBuffers.size()!=swapchainImages.size()) {
@@ -829,8 +1509,11 @@ recreateSwapchain:
 			),
 			vk::SubpassContents::eInline
 		);
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,twoTrianglesPipeline.get());
 		cb.draw(6,1,0,0);  // draw two triangles
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,mergePipeline.get());
+		cb.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,mergePipelineLayout.get(),0,mergeDescriptorSet.get(),nullptr);
+		cb.draw(4,1,0,0);  // draw full-screen quad
 		cb.endRenderPass();
 		cb.end();
 	}
@@ -844,36 +1527,64 @@ static bool queueFrame()
 {
 	// acquire next image
 	uint32_t imageIndex;
-	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
+	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),acquireCompleteSemaphore.get(),vk::Fence(nullptr),&imageIndex);
 	if(r!=vk::Result::eSuccess) {
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
 
-	// submit work
+	// submit transition
+	graphicsQueue.submit(
+		vk::SubmitInfo(
+			1,                                 // waitSemaphoreCount
+			&acquireCompleteSemaphore.get(),   // pWaitSemaphores
+			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eBottomOfPipe),  // pWaitDstStageMask
+			1,&transitionCommandBuffer.get(),  // commandBufferCount+pCommandBuffers
+			1,&glStartSemaphoreVk.get()        // signalSemaphoreCount+pSignalSemaphores
+		),
+		nullptr  // fence
+	);
+
+	// submit OpenGL work
+	glWaitSemaphoreEXT(glStartSemaphoreGL.semaphore,  // semaphore
+	                   0,nullptr,                     // numBufferBarriers+buffers
+	                   1,&sharedTextureGL.texture,    // numTextureBarriers+textures
+	                   &(const GLenum&)GL_LAYOUT_COLOR_ATTACHMENT_EXT);  // srcLayouts
+	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+	glBegin(GL_TRIANGLES);
+	glColor3f(0.f,0.f,1.f);
+	glVertex3f(-0.5f,-0.7f,-0.4f);
+	glColor3f(1.f,0.f,0.f);
+	glVertex3f( 0.0f, 0.3f, 0.f);
+	glColor3f(0.f,1.f,0.f);
+	glVertex3f( 0.5f,-0.7f,-0.4f);
+	glEnd();
+	glSignalSemaphoreEXT(glDoneSemaphoreGL.semaphore,  // semaphore
+	                     0,nullptr,                    // numBufferBarriers+buffers
+	                     1,&sharedTextureGL.texture,   // numTextureBarriers+textures
+	                     &(const GLenum&)GL_LAYOUT_SHADER_READ_ONLY_EXT);  // dstLayouts
+	glFlush();  // it is important to flush OpenGL
+
+	// submit Vulkan work
 	graphicsQueue.submit(
 		vk::ArrayProxy<const vk::SubmitInfo>(
 			1,
 			&(const vk::SubmitInfo&)vk::SubmitInfo(
-				1,                               // waitSemaphoreCount
-				&imageAvailableSemaphore.get(),  // pWaitSemaphores
+				1,                                  // waitSemaphoreCount
+				&glDoneSemaphoreVk.get(),           // pWaitSemaphores
 				&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-				1,                               // commandBufferCount
-				&commandBuffers[imageIndex].get(),  // pCommandBuffers
-				1,                               // signalSemaphoreCount
-				&renderFinishedSemaphore.get()   // pSignalSemaphores
+				1,&commandBuffers[imageIndex].get(),  // commandBufferCount+pCommandBuffers
+				1,&renderFinishedSemaphore.get()      // signalSemaphoreCount+pSignalSemaphores
 			)
 		),
-		vk::Fence(nullptr)
+		nullptr  // fence
 	);
 
 	// submit image for presentation
 	r=presentationQueue.presentKHR(
 		&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(
-			1,                 // waitSemaphoreCount
-			&renderFinishedSemaphore.get(),  // pWaitSemaphores
-			1,                 // swapchainCount
-			&swapchain.get(),  // pSwapchains
+			1,&renderFinishedSemaphore.get(),  // waitSemaphoreCount+pWaitSemaphores
+			1,&swapchain.get(),                // swapchainCount+pSwapchains
 			&imageIndex,       // pImageIndices
 			nullptr            // pResults
 		)
@@ -940,6 +1651,7 @@ int main(int,char**)
 		}
 	ExitMainLoop:
 		device->waitIdle();
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER,0);
 
 	// catch exceptions
 	} catch(vk::Error &e) {
