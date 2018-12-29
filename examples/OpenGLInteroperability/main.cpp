@@ -14,9 +14,6 @@
 #include <iostream>
 #include <set>
 
-#include <X11/Xatom.h>
-#include <X11/Xutil.h>
-
 using namespace std;
 
 

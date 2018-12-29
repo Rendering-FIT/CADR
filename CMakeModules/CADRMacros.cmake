@@ -34,6 +34,21 @@ macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
 
 	# try path from the linked library
 	get_target_property(found_where ${TARGET_NAME} INTERFACE_LINK_LIBRARIES)
+	if(NOT EXISTS ${found_where})
+		set(found_where "")
+	endif()
+
+	# try LOCATION
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
+		get_target_property(found_where ${TARGET_NAME} LOCATION)
+	endif()
+
+	# try IMPORTED_LOCATION
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
+		get_target_property(found_where ${TARGET_NAME} IMPORTED_LOCATION)
+	endif()
 
 	# try IMPORTED_LIBNAME
 	if("${found_where}" STREQUAL "" OR
