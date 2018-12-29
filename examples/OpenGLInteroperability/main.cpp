@@ -8,6 +8,7 @@
 # define VK_USE_PLATFORM_XLIB_KHR
 #endif
 #include <vulkan/vulkan.hpp>
+#include <GL/gl.h>
 #include <GL/glext.h>
 #include <array>
 #include <iostream>

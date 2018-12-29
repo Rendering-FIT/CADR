@@ -1,6 +1,16 @@
+# find OpenGL
 include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)
-if(UNIX)
+if(WIN32)
+	find_package(OpenGL)
+	set(OPENGL_TARGET OpenGL::GL)
+else()
 	find_package_with_message(OpenGL OpenGL::GLX)
+	set(OPENGL_TARGET OpenGL::GLX)
+endif()
+
+# ignore this project when no OpenGL
+if(NOT TARGET ${OPENGL_TARGET})
+	return()
 endif()
 
 
@@ -31,7 +41,7 @@ if(UNIX)
 	find_package(X11 REQUIRED)
 	set(deps Vulkan OpenGL::GLX X11)
 elseif(WIN32)
-	set(deps Vulkan)
+	set(deps Vulkan OpenGL::GL)
 endif()
 
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})

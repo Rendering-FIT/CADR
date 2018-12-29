@@ -35,18 +35,27 @@ macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
 	# try path from the linked library
 	get_target_property(found_where ${TARGET_NAME} INTERFACE_LINK_LIBRARIES)
 
+	# try IMPORTED_LIBNAME
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
+		get_target_property(found_where ${TARGET_NAME} IMPORTED_LIBNAME)
+	endif()
+
 	# try path from include directory
-	if("${found_where}" STREQUAL "found_where-NOTFOUND")
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
 		get_target_property(found_where ${TARGET_NAME} INTERFACE_INCLUDE_DIRECTORIES)
 	endif()
 
 	# try config path
-	if("${found_where}" STREQUAL "found_where-NOTFOUND")
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
 		set(found_where "${${PACKAGE_NAME}_DIR}")
 	endif()
 
 	# use target name
-	if("${found_where}" STREQUAL "found_where-NOTFOUND")
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
 		set(found_where "${TARGET_NAME}")
 	endif()
 
@@ -58,13 +67,23 @@ endmacro()
 # prints find_package result into the console
 # (used in various Find*.cmake files)
 macro(cadr_report_find_status)
-	if(TARGET ${CMAKE_FIND_PACKAGE_NAME})
+
+	# handle extra arguments
+	# target name might be passed as extra argument
+	# otherwise use ${CMAKE_FIND_PACKAGE_NAME}
+	set(target_name ${ARGN})
+	list(LENGTH target_name num_args)
+	if(${num_args} EQUAL 0)
+		set(target_name ${CMAKE_FIND_PACKAGE_NAME})
+	endif()
+
+	if(TARGET ${target_name})
 
 		# print message on success
 		if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY)
 			get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED)
 			if(NOT ALREADY_REPORTED)
-				cadr_get_package_path(found_where ${CMAKE_FIND_PACKAGE_NAME} ${CMAKE_FIND_PACKAGE_NAME})
+				cadr_get_package_path(found_where ${CMAKE_FIND_PACKAGE_NAME} ${target_name})
 				message(STATUS "Find package ${CMAKE_FIND_PACKAGE_NAME}: ${found_where}")
 				set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_FOUND_REPORTED True)
 			endif()
@@ -76,7 +95,7 @@ macro(cadr_report_find_status)
 		if(${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
 			get_property(ALREADY_REPORTED GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED)
 			if(NOT ALREADY_REPORTED)
-				message(SEND_ERROR "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")
+				message(FATAL_ERROR "Find package ${CMAKE_FIND_PACKAGE_NAME}: not found")  # FATAL_ERROR will stop CMake processing
 				set_property(GLOBAL PROPERTY ${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_ERROR_REPORTED True)
 			endif()
 
