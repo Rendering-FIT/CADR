@@ -38,6 +38,12 @@ macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
 		set(found_where "")
 	endif()
 
+	# try IMPORTED_LIBNAME
+	if("${found_where}" STREQUAL "" OR
+	   "${found_where}" STREQUAL "found_where-NOTFOUND")
+		get_target_property(found_where ${TARGET_NAME} IMPORTED_LIBNAME)
+	endif()
+
 	# try LOCATION
 	if("${found_where}" STREQUAL "" OR
 	   "${found_where}" STREQUAL "found_where-NOTFOUND")
@@ -48,12 +54,6 @@ macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
 	if("${found_where}" STREQUAL "" OR
 	   "${found_where}" STREQUAL "found_where-NOTFOUND")
 		get_target_property(found_where ${TARGET_NAME} IMPORTED_LOCATION)
-	endif()
-
-	# try IMPORTED_LIBNAME
-	if("${found_where}" STREQUAL "" OR
-	   "${found_where}" STREQUAL "found_where-NOTFOUND")
-		get_target_property(found_where ${TARGET_NAME} IMPORTED_LIBNAME)
 	endif()
 
 	# try path from include directory
