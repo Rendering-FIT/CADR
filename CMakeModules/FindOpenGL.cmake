@@ -37,11 +37,17 @@ set(CMAKE_MODULE_PATH "")
 find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} ${flags})
 set(CMAKE_MODULE_PATH ${SAVED_CMAKE_MODULE_PATH})
 
-# append GL/glext.h to target include directories
+# append GL/glext.h to include directories of targets
 if(TARGET OpenGL::GL)
 	get_target_property(dirs OpenGL::GL INTERFACE_INCLUDE_DIRECTORIES)
 	set(dirs "${dirs};${OPENGL_GLEXT_INCLUDE_DIR}")
 	set_target_properties(OpenGL::GL PROPERTIES
+	                      INTERFACE_INCLUDE_DIRECTORIES "${dirs}")
+endif()
+if(TARGET OpenGL::GLX)
+	get_target_property(dirs OpenGL::GLX INTERFACE_INCLUDE_DIRECTORIES)
+	set(dirs "${dirs};${OPENGL_GLEXT_INCLUDE_DIR}")
+	set_target_properties(OpenGL::GLX PROPERTIES
 	                      INTERFACE_INCLUDE_DIRECTORIES "${dirs}")
 endif()
 
