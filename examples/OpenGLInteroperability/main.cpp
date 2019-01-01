@@ -29,14 +29,16 @@ static HDC hDC=nullptr;
 static HGLRC hRC=nullptr;
 struct Win32Cleaner {
 	~Win32Cleaner() {
-		if(window) {
+		if(glWindow) {
 			if(hRC) {
 				wglMakeCurrent(NULL,NULL);
 				wglDeleteContext(hRC);
 			}
 			if(hDC)
-				ReleaseDC(hWnd,hDC);
+				ReleaseDC(glWindow,hDC);
 			DestroyWindow(glWindow);
+		}
+		if(window) {
 			DestroyWindow(window);
 			UnregisterClass("HelloWindow",GetModuleHandle(NULL));
 		}
@@ -112,8 +114,13 @@ static vk::UniqueSemaphore glDoneSemaphoreVk;
 
 // Vulkan function pointers
 struct VkFuncs {
+#ifdef _WIN32
+	PFN_vkGetMemoryWin32HandleKHR vkGetMemoryWin32HandleKHR;
+	PFN_vkGetSemaphoreWin32HandleKHR vkGetSemaphoreWin32HandleKHR;
+#else
 	PFN_vkGetMemoryFdKHR vkGetMemoryFdKHR;
 	PFN_vkGetSemaphoreFdKHR vkGetSemaphoreFdKHR;
+#endif
 };
 static VkFuncs vkFuncs;
 
@@ -140,19 +147,19 @@ static PFNGLSIGNALSEMAPHOREEXTPROC glSignalSemaphoreEXT;
 
 // OpenGL texture and memory
 struct UniqueGlTexture {
-	uint texture = 0;
+	GLuint texture = 0;
 	~UniqueGlTexture()  { if(texture!=0) glDeleteTextures(1,&texture); }  // glDeleteTextures() since OpenGL 1.1
 };
 struct UniqueGlMemory {
-	uint memory = 0;
+	GLuint memory = 0;
 	~UniqueGlMemory()  { if(memory!=0) glDeleteMemoryObjectsEXT(1,&memory); }
 };
 struct UniqueGlSemaphore {
-	uint semaphore = 0;
+	GLuint semaphore = 0;
 	~UniqueGlSemaphore() { if(semaphore!=0) glDeleteSemaphoresEXT(1,&semaphore); }
 };
 struct UniqueGlFramebuffer {
-	uint framebuffer = 0;
+	GLuint framebuffer = 0;
 	~UniqueGlFramebuffer() { if(framebuffer!=0) glDeleteFramebuffers(1,&framebuffer); }
 };
 
@@ -182,7 +189,11 @@ static const uint32_t fsMergeSpirv[]={
 template<typename T>
 T glGetProcAddress(const std::string& funcName)
 {
+#ifdef _WIN32
+	return reinterpret_cast<T>(wglGetProcAddress(funcName.c_str()));
+#else
 	return reinterpret_cast<T>(glXGetProcAddressARB((const GLubyte*)funcName.c_str()));
+#endif
 }
 
 
@@ -277,50 +288,51 @@ static void init()
 	}
 
 	// create OpenGL window
-	window=CreateWindowEx(
+	glWindow=CreateWindowEx(
 		WS_EX_CLIENTEDGE,
 		"HelloWindow",
 		"Hello window!",
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,CW_USEDEFAULT,windowWidth,windowHeight,
 		NULL,NULL,wc.hInstance,NULL);
-	if(window==NULL) {
+	if(glWindow==NULL) {
 		UnregisterClass("HelloWindow",GetModuleHandle(NULL));
 		throw std::runtime_error("Can not create window.");
 	}
 
-   PIXELFORMATDESCRIPTOR pfd =
-   {
-      sizeof(PIXELFORMATDESCRIPTOR),  // size of the structure
-      1,                              // version
-      PFD_DRAW_TO_WINDOW |            // format must support window
-         PFD_DOUBLEBUFFER |
-         PFD_SUPPORT_OPENGL,          // format must support OpenGL
-      PFD_TYPE_RGBA,                  // request an RGBA format
-      BYTE(b),                        // color depth
-      0, 0, 0, 0, 0, 0,               // color bits ignored
-      0,                              // no alpha Buffer
-      0,                              // shift bit ignored
-      0,                              // no accumulation buffer
-      0, 0, 0, 0,                     // accumulation bits ignored
-      16,                             // 16-bit z-buffer
-      0,                              // no stencil buffer
-      0,                              // no auxiliary buffer
-      PFD_MAIN_PLANE,                 // main drawing layer
-      0,                              // reserved
-      0, 0, 0                         // layer masks ignored
-   };
+	PIXELFORMATDESCRIPTOR pfd =
+	{
+		sizeof(PIXELFORMATDESCRIPTOR),  // size of the structure
+		1,                              // version
+		PFD_DRAW_TO_WINDOW |            // format must support window
+			PFD_DOUBLEBUFFER |
+			PFD_SUPPORT_OPENGL,          // format must support OpenGL
+		PFD_TYPE_RGBA,                  // request an RGBA format
+		BYTE(32),                        // color depth
+		0, 0, 0, 0, 0, 0,               // color bits ignored
+		0,                              // no alpha Buffer
+		0,                              // shift bit ignored
+		0,                              // no accumulation buffer
+		0, 0, 0, 0,                     // accumulation bits ignored
+		16,                             // 16-bit z-buffer
+		0,                              // no stencil buffer
+		0,                              // no auxiliary buffer
+		PFD_MAIN_PLANE,                 // main drawing layer
+		0,                              // reserved
+		0, 0, 0                         // layer masks ignored
+	};
 
-   // setup window (DC, pixel format, RC)
-   // note: we will setup standard OpenGL1 style context
-   // even when asked for OpenGL3 context since OpenGL1 context is necessary
-   // for creating OpenGL3 style context
-   if (!(hDC=GetDC(hWnd)) ||
-       !(PixelFormat=ChoosePixelFormat(hDC,&pfd)) ||
-       !SetPixelFormat(hDC,PixelFormat,&pfd) ||
-       !(hRC=wglCreateContext(hDC)) ||
-       !wglMakeCurrent(hDC,hRC))
-      throw std::runtime_error("Can not initialize OpenGL window.");
+	// setup window (DC, pixel format, RC)
+	// note: we will setup standard OpenGL1 style context
+	// even when asked for OpenGL3 context since OpenGL1 context is necessary
+	// for creating OpenGL3 style context
+	GLuint pixelFormat;
+	if(!(hDC=GetDC(glWindow)) ||
+	   !(pixelFormat=ChoosePixelFormat(hDC,&pfd)) ||
+	   !SetPixelFormat(hDC,pixelFormat,&pfd) ||
+	   !(hRC=wglCreateContext(hDC)) ||
+	   !wglMakeCurrent(hDC,hRC))
+		throw std::runtime_error("Can not initialize OpenGL window.");
 
 	// show window
 	ShowWindow(window,SW_SHOWDEFAULT);
@@ -354,9 +366,9 @@ static void init()
 	if(!glXQueryExtension(display,nullptr,nullptr))
 		throw std::runtime_error("X server has no OpenGL GLX extension");
 
-   // choose visual for OpenGL
+	// choose visual for OpenGL
 	struct XVisualInfoDeleter { void operator()(XVisualInfo* ptr) const { XFree(ptr); } };
-   unique_ptr<XVisualInfo,XVisualInfoDeleter> vi(glXChooseVisual(display,DefaultScreen(display),array<int,14>{
+	unique_ptr<XVisualInfo,XVisualInfoDeleter> vi(glXChooseVisual(display,DefaultScreen(display),array<int,14>{
 		GLX_RGBA,GLX_RED_SIZE,1,GLX_GREEN_SIZE,1,GLX_BLUE_SIZE,1,GLX_ALPHA_SIZE,1,
 		GLX_DEPTH_SIZE,16,GLX_DOUBLEBUFFER,None,None}.data()
 	));
@@ -368,7 +380,7 @@ static void init()
 	if(cx==nullptr)
 		throw std::runtime_error("glXCreateContext() failed.");
 
-   // fill XSetWindowAttributes structure
+	// fill XSetWindowAttributes structure
 	glWindowColormap=XCreateColormap(display,
 	                                 RootWindow(display, DefaultScreen(display)),
 	                                 vi->visual, AllocNone);
@@ -574,8 +586,13 @@ static void init()
 	);
 
 	// get function pointers
+#ifdef _WIN32
+	vkFuncs.vkGetMemoryWin32HandleKHR=PFN_vkGetMemoryWin32HandleKHR(device->getProcAddr("vkGetMemoryWin32HandleKHR"));
+	vkFuncs.vkGetSemaphoreWin32HandleKHR=PFN_vkGetSemaphoreWin32HandleKHR(device->getProcAddr("vkGetSemaphoreWin32HandleKHR"));
+#else
 	vkFuncs.vkGetMemoryFdKHR=PFN_vkGetMemoryFdKHR(device->getProcAddr("vkGetMemoryFdKHR"));
 	vkFuncs.vkGetSemaphoreFdKHR=PFN_vkGetSemaphoreFdKHR(device->getProcAddr("vkGetSemaphoreFdKHR"));
+#endif
 
 	// get queues
 	graphicsQueue=device->getQueue(graphicsQueueFamily,0);
@@ -1294,7 +1311,11 @@ recreateSwapchain:
 
 					// allocate memory
 					vk::MemoryAllocateInfo info(memoryRequirements.size,i);
+#ifdef _WIN32
 					vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+#else
+					vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd);
+#endif
 					info.setPNext(&exportInfo);
 					return device->allocateMemoryUnique(info);
 
@@ -1302,8 +1323,21 @@ recreateSwapchain:
 		throw std::runtime_error("No suitable memory type found for depth buffer.");
 	}(sharedImageMemorySize);
 #ifdef _WIN32
-	struct HandleDeleter { void operator()(HANDLE h) const { CloseHandle(h); } };
-	unique_ptr<HANDLE,HandleDeleter> sharedImageMemoryHandle=device->getMemoryWin32HandleKHR({ texture.memory, vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32 }, dynamicLoader);
+	struct UniqueHandle {
+		HANDLE handle;
+		inline UniqueHandle() : handle(INVALID_HANDLE_VALUE)  {}
+		inline UniqueHandle(HANDLE h) : handle(h)  {}
+		inline ~UniqueHandle()  { if(handle!=INVALID_HANDLE_VALUE) CloseHandle(handle); }
+	};
+	UniqueHandle sharedImageMemoryWin32Handle(
+		device->getMemoryWin32HandleKHR(
+			vk::MemoryGetWin32HandleInfoKHR{
+				sharedImageMemoryVk.get(),  // memory
+				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32  // handleType
+			},
+			vkFuncs
+		)
+	);
 #else
 	struct UniqueFd {
 		int fd;
@@ -1352,11 +1386,17 @@ recreateSwapchain:
 	// import sharedImage memory into OpenGL and create texture
 	glCreateMemoryObjectsEXT(1,&sharedTextureMemoryGL.memory);
 #ifdef _WIN32
-	glImportMemoryWin32HandleEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,sharedImageMemoryFd.fd);
+	// import handle
+	// (it does not transfers ownership of the handle,
+	// the handle must be closed when not needed)
+	glImportMemoryWin32HandleEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,sharedImageMemoryWin32Handle.handle);
 #else
+	// import fd
+	// (it transfers ownership of the file descriptor,
+	// the file descriptor must not be manipulated or closed after the import)
 	glImportMemoryFdEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_FD_EXT,sharedImageMemoryFd.fd);
-#endif
 	sharedImageMemoryFd.fd=-1;
+#endif
 	glTextureStorageMem2DEXT(sharedTextureGL.texture,1,GL_RGBA8,currentSurfaceExtent.width,currentSurfaceExtent.height,sharedTextureMemoryGL.memory,0);
 
 	// create Vulkan semaphores
@@ -1379,13 +1419,41 @@ recreateSwapchain:
 
 	// import semaphores to OpenGL
 #ifdef _WIN32
-	unique_ptr<HANDLE,HandleDeleter> h1=device->getSemaphoreWin32HandleKHR({glStartSemaphoreVk,vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32},);
-	unique_ptr<HANDLE,HandleDeleter> h2=device->getSemaphoreWin32HandleKHR({glDoneSemaphoreVk,vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32},);
-	glImportSemaphoreWin32HandleEXT(glStartSemaphoreGL,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,h1);
-	glImportSemaphoreWin32HandleEXT(goDoneSemaphoreGL, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,h2);
-	h1.reset();
-	h2.reset();
+	// import semaphores
+	// (it does not transfers ownership of the handle,
+	// the handle must be closed when not needed)
+	UniqueHandle h1(
+		device->getSemaphoreWin32HandleKHR(  // handle
+			vk::SemaphoreGetWin32HandleInfoKHR(  // getWin32HandleInfo
+				glStartSemaphoreVk.get(),  // semaphore
+				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32  // handleType
+			),
+			vkFuncs
+		)
+	);
+	glImportSemaphoreWin32HandleEXT(
+		glStartSemaphoreGL.semaphore,  // semaphore
+		GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,  // handleType
+		h1.handle  // handle
+	);
+	UniqueHandle h2(
+		device->getSemaphoreWin32HandleKHR(  // handle
+			vk::SemaphoreGetWin32HandleInfoKHR(  // getWin32HandleInfo
+				glDoneSemaphoreVk.get(),  // semaphore
+				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32  // handleType
+			),
+			vkFuncs
+		)
+	);
+	glImportSemaphoreWin32HandleEXT(
+		glDoneSemaphoreGL.semaphore,  // semaphore
+		GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,  // handleType
+		h2.handle  // handle
+	);
 #else
+	// import semaphores
+	// (it transfers ownership of the file descriptor,
+	// the file descriptor must not be manipulated or closed after the import)
 	glImportSemaphoreFdEXT(
 		glStartSemaphoreGL.semaphore,
 		GL_HANDLE_TYPE_OPAQUE_FD_EXT,
