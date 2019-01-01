@@ -213,16 +213,17 @@ static void init()
 					VK_API_VERSION_1_0,      // api version
 				},
 				0,nullptr,  // no layers
-				4,          // enabled extension count
-				array<const char*,4>{
+				5,          // enabled extension count
+				array<const char*,5>{
 					"VK_KHR_surface",
 #ifdef _WIN32
 					"VK_KHR_win32_surface",
 #else
 					"VK_KHR_xlib_surface",
 #endif
+					"VK_KHR_external_memory_capabilities",    // dependency of VK_KHR_external_memory (device extension)
 					"VK_KHR_external_semaphore_capabilities", // dependency for VK_KHR_external_semaphore (device extension)
-					"VK_KHR_get_physical_device_properties2"  // dependency for VK_KHR_external_semaphore (device extension)
+					"VK_KHR_get_physical_device_properties2"  // dependency of VK_KHR_external_memory_capabilities and VK_KHR_external_semaphore_capabilities
 				}.data(),  // enabled extension names
 			});
 
