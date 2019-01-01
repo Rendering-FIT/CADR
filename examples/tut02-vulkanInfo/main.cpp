@@ -15,6 +15,7 @@ int main(int,char**)
 		// On Vulkan 1.0, vkEnumerateInstanceVersion is nullptr.)
 		struct VulkanDispatchDynamic {
 			PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion=PFN_vkEnumerateInstanceVersion(vk::Instance().getProcAddr("vkEnumerateInstanceVersion"));
+			PFN_vkGetPhysicalDeviceDisplayPropertiesKHR vkGetPhysicalDeviceDisplayPropertiesKHR=PFN_vkGetPhysicalDeviceDisplayPropertiesKHR(vk::Instance().getProcAddr("vkGetPhysicalDeviceDisplayPropertiesKHR"));
 		} d;
 		uint32_t version=(d.vkEnumerateInstanceVersion==nullptr)?VK_MAKE_VERSION(1,0,0):vk::enumerateInstanceVersion(d);
 		cout<<"Vulkan info:"<<endl;
@@ -82,7 +83,7 @@ int main(int,char**)
 			// print device displays
 			cout<<"      Displays:"<<endl;
 			if(hasKhrDisplay) {
-				vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR();
+				vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR(d);
 				for(vk::DisplayPropertiesKHR& dp:dpList)
 					cout<<"         "<<(dp.displayName?dp.displayName:"< no name >")<<", "
 						 <<dp.physicalResolution.width<<"x"<<dp.physicalResolution.height<<endl;
