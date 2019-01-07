@@ -1329,6 +1329,40 @@ recreateSwapchain:
 			)
 		);
 
+#if 0
+	vk::PhysicalDeviceImageFormatInfo2 imageFormatInfo{
+		vk::Format::eR8G8B8A8Unorm,  // format
+		vk::ImageType::e2D,  // imageType
+		vk::ImageTiling::eOptimal,  // tiling
+		vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
+		vk::ImageCreateFlags()  // flags
+	};
+	//VkPhysicalDeviceExternalImageFormatInfo
+	//imageFormatInfo.setPNext();
+	/*auto vkGetPhysicalDeviceImageFormatProperties2=PFN_vkGetPhysicalDeviceImageFormatProperties2(device->getProcAddr("vkGetPhysicalDeviceImageFormatProperties2"));
+	vk::ImageFormatProperties2 imageFormatProperties;
+	vk::PhysicalDeviceExternalImageFormatInfo extra2(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+	imageFormatProperties.pNext=&extra2;
+	vk::ExternalImageFormatProperties extra;
+	imageFormatProperties.pNext=&extra;
+	vkGetPhysicalDeviceImageFormatProperties2(physicalDevice,
+	                                          &(VkPhysicalDeviceImageFormatInfo2&)(imageFormatInfo),
+	                                          &(VkImageFormatProperties2&)imageFormatProperties);*/
+	/*vk::ImageFormatProperties2 imageFormatProperties=physicalDevice.getImageFormatProperties2KHR(
+		vk::PhysicalDeviceImageFormatInfo2{
+			vk::Format::eR8G8B8A8Unorm,  // format
+			vk::ImageType::e2D,  // imageType
+			vk::ImageTiling::eOptimal,  // tiling
+			vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
+			vk::ImageCreateFlags()  // flags
+		}
+	);
+	VkImageFormatProperties2
+	vkGetPhysicalDeviceImageFormatProperties2
+	VkExternalImageFormatProperties 
+		VkExternalMemoryProperties*/
+#endif
+
 	// shared color and depth image memory
 	auto allocateMemory=
 		[](vk::Image sharedImage){
@@ -1343,7 +1377,7 @@ recreateSwapchain:
 						// allocate memory
 						vk::MemoryAllocateInfo info(memoryRequirements.size,i);
 					#ifdef _WIN32
-						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32Kmt);
 					#else
 						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd);
 					#endif
@@ -1364,11 +1398,20 @@ recreateSwapchain:
 		inline UniqueHandle(HANDLE h) : handle(h)  {}
 		inline ~UniqueHandle()  { if(handle!=INVALID_HANDLE_VALUE) CloseHandle(handle); }
 	};
-	UniqueHandle sharedImageMemoryWin32Handle(
+	HANDLE sharedColorImageMemoryWin32KmtHandle(
 		device->getMemoryWin32HandleKHR(
 			vk::MemoryGetWin32HandleInfoKHR{
-				sharedImageMemoryVk.get(),  // memory
-				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32  // handleType
+				sharedColorImageMemoryVk.get(),  // memory
+				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32Kmt  // handleType
+			},
+			vkFuncs
+		)
+	);
+	HANDLE sharedDepthImageMemoryWin32KmtHandle(
+		device->getMemoryWin32HandleKHR(
+			vk::MemoryGetWin32HandleInfoKHR{
+				sharedDepthImageMemoryVk.get(),  // memory
+				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32Kmt  // handleType
 			},
 			vkFuncs
 		)
@@ -1437,10 +1480,11 @@ recreateSwapchain:
 	glCreateMemoryObjectsEXT(1,&sharedColorTextureMemoryGL.memory);
 	glCreateMemoryObjectsEXT(1,&sharedDepthTextureMemoryGL.memory);
 #ifdef _WIN32
-	// import handle
+	// import Vulkan win32 kmt handle
 	// (it does not transfers ownership of the handle,
 	// the handle must be closed when not needed)
-	glImportMemoryWin32HandleEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,sharedImageMemoryWin32Handle.handle);
+	glImportMemoryWin32HandleEXT(sharedColorTextureMemoryGL.memory,sharedColorImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT,sharedColorImageMemoryWin32KmtHandle);
+	glImportMemoryWin32HandleEXT(sharedDepthTextureMemoryGL.memory,sharedDepthImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT,sharedDepthImageMemoryWin32KmtHandle);
 #else
 	// import Vulkan fd memory handle
 	// (it transfers ownership of the file descriptor,
@@ -1459,7 +1503,7 @@ recreateSwapchain:
 		vk::ExportSemaphoreCreateInfo exportInfo;
 		semaphoreCreateInfo.pNext=&exportInfo;
 #ifdef _WIN32
-		exportInfo.handleTypes=vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32;
+		exportInfo.handleTypes=vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32Kmt;
 #else
 		exportInfo.handleTypes=vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueFd;
 #endif
@@ -1476,33 +1520,33 @@ recreateSwapchain:
 	// import semaphores
 	// (it does not transfers ownership of the handle,
 	// the handle must be closed when not needed)
-	UniqueHandle h1(
+	HANDLE h1(
 		device->getSemaphoreWin32HandleKHR(  // handle
 			vk::SemaphoreGetWin32HandleInfoKHR(  // getWin32HandleInfo
 				glStartSemaphoreVk.get(),  // semaphore
-				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32  // handleType
+				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32Kmt  // handleType
 			),
 			vkFuncs
 		)
 	);
 	glImportSemaphoreWin32HandleEXT(
 		glStartSemaphoreGL.semaphore,  // semaphore
-		GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,  // handleType
-		h1.handle  // handle
+		GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT,  // handleType
+		h1  // handle
 	);
-	UniqueHandle h2(
+	HANDLE h2(
 		device->getSemaphoreWin32HandleKHR(  // handle
 			vk::SemaphoreGetWin32HandleInfoKHR(  // getWin32HandleInfo
 				glDoneSemaphoreVk.get(),  // semaphore
-				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32  // handleType
+				vk::ExternalSemaphoreHandleTypeFlagBits::eOpaqueWin32Kmt  // handleType
 			),
 			vkFuncs
 		)
 	);
 	glImportSemaphoreWin32HandleEXT(
 		glDoneSemaphoreGL.semaphore,  // semaphore
-		GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,  // handleType
-		h2.handle  // handle
+		GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT,  // handleType
+		h2  // handle
 	);
 #else
 	// import semaphores
