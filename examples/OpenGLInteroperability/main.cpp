@@ -78,7 +78,8 @@ static vk::UniqueDevice device;
 static vk::Queue graphicsQueue;
 static vk::Queue presentationQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
-static vk::Format depthFormat;
+static vk::Format depthFormatVk;
+static GLenum depthFormatGL;
 static vk::UniqueRenderPass renderPass;
 static vk::UniqueShaderModule vsTwoTrianglesModule;
 static vk::UniqueShaderModule fsTwoTrianglesModule;
@@ -106,9 +107,11 @@ static vk::UniqueSemaphore renderFinishedSemaphore;
 static vk::UniqueCommandBuffer transitionCommandBuffer;
 
 // shared resources (Vulkan)
-static vk::UniqueImage sharedImageVk;
-static vk::UniqueDeviceMemory sharedImageMemoryVk;
-static vk::UniqueImageView sharedImageView;
+static vk::UniqueImage sharedColorImageVk;
+static vk::UniqueImage sharedDepthImageVk;
+static vk::UniqueDeviceMemory sharedColorImageMemoryVk;
+static vk::UniqueDeviceMemory sharedDepthImageMemoryVk;
+static vk::UniqueImageView sharedColorImageView;
 static vk::UniqueSemaphore glStartSemaphoreVk;
 static vk::UniqueSemaphore glDoneSemaphoreVk;
 
@@ -140,6 +143,7 @@ static PFNGLIMPORTSEMAPHOREFDEXTPROC glImportSemaphoreFdEXT;
 #endif
 static PFNGLCREATEFRAMEBUFFERSPROC glCreateFramebuffers;
 static PFNGLNAMEDFRAMEBUFFERTEXTUREPROC glNamedFramebufferTexture;
+static PFNGLCHECKNAMEDFRAMEBUFFERSTATUSPROC glCheckNamedFramebufferStatus;
 static PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
 static PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
 static PFNGLWAITSEMAPHOREEXTPROC glWaitSemaphoreEXT;
@@ -164,8 +168,10 @@ struct UniqueGlFramebuffer {
 };
 
 // shared resources (OpenGL)
-static UniqueGlTexture sharedTextureGL;
-static UniqueGlMemory sharedTextureMemoryGL;
+static UniqueGlTexture sharedColorTextureGL;
+static UniqueGlTexture sharedDepthTextureGL;
+static UniqueGlMemory sharedColorTextureMemoryGL;
+static UniqueGlMemory sharedDepthTextureMemoryGL;
 static UniqueGlSemaphore glStartSemaphoreGL;
 static UniqueGlSemaphore glDoneSemaphoreGL;
 static UniqueGlFramebuffer glFramebuffer;
@@ -467,6 +473,7 @@ static void init()
 #endif
 	glCreateFramebuffers=glGetProcAddress<PFNGLCREATEFRAMEBUFFERSPROC>("glCreateFramebuffers");  // since OpenGL 4.5
 	glNamedFramebufferTexture=glGetProcAddress<PFNGLNAMEDFRAMEBUFFERTEXTUREPROC>("glNamedFramebufferTexture");  // since OpenGL 4.5
+	glCheckNamedFramebufferStatus=glGetProcAddress<PFNGLCHECKNAMEDFRAMEBUFFERSTATUSPROC>("glCheckNamedFramebufferStatus");  // since OpenGL 4.5
 	glBindFramebuffer=glGetProcAddress<PFNGLBINDFRAMEBUFFERPROC>("glBindFramebuffer");  // since OpenGL 3.0
 	glDeleteFramebuffers=glGetProcAddress<PFNGLDELETEFRAMEBUFFERSPROC>("glDeleteFramebuffers");  // since OpenGL 3.0
 
@@ -609,14 +616,20 @@ static void init()
 			           wantedSurfaceFormat)!=surfaceFormats.end()
 				?wantedSurfaceFormat
 				:surfaceFormats[0];
-	depthFormat=[](){
-		for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
-			vk::FormatProperties p=physicalDevice.getFormatProperties(f);
-			if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment)
-				return f;
-		}
-		throw std::runtime_error("No suitable depth buffer format.");
-	}();
+	std::tie(depthFormatVk,depthFormatGL)=
+		[](){
+			constexpr array<std::tuple<vk::Format,GLenum>,3> formatList{
+				std::make_tuple(vk::Format::eD32Sfloat,GL_DEPTH_COMPONENT32F),
+				std::make_tuple(vk::Format::eD32SfloatS8Uint,GL_DEPTH32F_STENCIL8),
+				std::make_tuple(vk::Format::eD24UnormS8Uint,GL_DEPTH24_STENCIL8)
+			};
+			for(auto f:formatList) {
+				vk::FormatProperties p=physicalDevice.getFormatProperties(std::get<0>(f));
+				if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment)
+					return f;
+			}
+			throw std::runtime_error("No suitable depth buffer format.");
+		}();
 
 	// render pass
 	renderPass=
@@ -638,7 +651,7 @@ static void init()
 					},
 					vk::AttachmentDescription{  // depth attachment
 						vk::AttachmentDescriptionFlags(),  // flags
-						depthFormat,                       // format
+						depthFormatVk,                     // format
 						vk::SampleCountFlagBits::e1,       // samples
 						vk::AttachmentLoadOp::eClear,      // loadOp
 						vk::AttachmentStoreOp::eDontCare,  // storeOp
@@ -942,7 +955,7 @@ recreateSwapchain:
 			vk::ImageCreateInfo(
 				vk::ImageCreateFlags(),  // flags
 				vk::ImageType::e2D,      // imageType
-				depthFormat,             // format
+				depthFormatVk,           // format
 				vk::Extent3D(currentSurfaceExtent.width,currentSurfaceExtent.height,1),  // extent
 				1,                       // mipLevels
 				1,                       // arrayLayers
@@ -985,7 +998,7 @@ recreateSwapchain:
 				vk::ImageViewCreateFlags(),  // flags
 				depthImage.get(),            // image
 				vk::ImageViewType::e2D,      // viewType
-				depthFormat,                 // format
+				depthFormatVk,               // format
 				vk::ComponentMapping(),      // components
 				vk::ImageSubresourceRange(   // subresourceRange
 					vk::ImageAspectFlagBits::eDepth,  // aspectMask
@@ -1028,7 +1041,7 @@ recreateSwapchain:
 			VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
 			depthImage.get(),  // image
 			vk::ImageSubresourceRange(  // subresourceRange
-				(depthFormat==vk::Format::eD32Sfloat)  // aspectMask
+				(depthFormatVk==vk::Format::eD32Sfloat)  // aspectMask
 					?vk::ImageAspectFlagBits::eDepth
 					:vk::ImageAspectFlagBits::eDepth|vk::ImageAspectFlagBits::eStencil,
 				0,  // baseMipLevel
@@ -1278,8 +1291,8 @@ recreateSwapchain:
 			)
 		);
 
-	// shared texture
-	sharedImageVk=
+	// shared color and depth image
+	sharedColorImageVk=
 		device->createImageUnique(
 			vk::ImageCreateInfo(
 				vk::ImageCreateFlags(),  // flags
@@ -1297,32 +1310,53 @@ recreateSwapchain:
 				vk::ImageLayout::eUndefined   // initialLayout
 			)
 		);
+	sharedDepthImageVk=
+		device->createImageUnique(
+			vk::ImageCreateInfo(
+				vk::ImageCreateFlags(),  // flags
+				vk::ImageType::e2D,      // imageType
+				depthFormatVk,           // format
+				vk::Extent3D(currentSurfaceExtent.width,currentSurfaceExtent.height,1),  // extent
+				1,                       // mipLevels
+				1,                       // arrayLayers
+				vk::SampleCountFlagBits::e1,  // samples
+				vk::ImageTiling::eOptimal,    // tiling
+				vk::ImageUsageFlagBits::eDepthStencilAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr,                      // pQueueFamilyIndices
+				vk::ImageLayout::eUndefined   // initialLayout
+			)
+		);
 
-	// sharedImage memory
-	vk::DeviceSize sharedImageMemorySize;
-	sharedImageMemoryVk=[](vk::DeviceSize& sharedImageMemorySize){
+	// shared color and depth image memory
+	auto allocateMemory=
+		[](vk::Image sharedImage){
 
-		// find suitable memory type
-		vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(sharedImageVk.get());
-		sharedImageMemorySize=memoryRequirements.size;
-		vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
-		for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-			if(memoryRequirements.memoryTypeBits&(1<<i))
-				if(memoryProperties.memoryTypes[i].propertyFlags&vk::MemoryPropertyFlagBits::eDeviceLocal) {
+			// find suitable memory type
+			vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(sharedImage);
+			vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+				if(memoryRequirements.memoryTypeBits&(1<<i))
+					if(memoryProperties.memoryTypes[i].propertyFlags&vk::MemoryPropertyFlagBits::eDeviceLocal) {
 
-					// allocate memory
-					vk::MemoryAllocateInfo info(memoryRequirements.size,i);
-#ifdef _WIN32
-					vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
-#else
-					vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd);
-#endif
-					info.setPNext(&exportInfo);
-					return device->allocateMemoryUnique(info);
+						// allocate memory
+						vk::MemoryAllocateInfo info(memoryRequirements.size,i);
+					#ifdef _WIN32
+						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+					#else
+						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd);
+					#endif
+						info.setPNext(&exportInfo);
+						return make_tuple(device->allocateMemoryUnique(info),memoryRequirements.size);
 
-				}
-		throw std::runtime_error("No suitable memory type found for depth buffer.");
-	}(sharedImageMemorySize);
+					}
+			throw std::runtime_error("No suitable memory type found.");
+		};
+	vk::DeviceSize sharedColorImageMemorySize;
+	vk::DeviceSize sharedDepthImageMemorySize;
+	std::tie(sharedColorImageMemoryVk,sharedColorImageMemorySize)=allocateMemory(sharedColorImageVk.get());
+	std::tie(sharedDepthImageMemoryVk,sharedDepthImageMemorySize)=allocateMemory(sharedDepthImageVk.get());
 #ifdef _WIN32
 	struct UniqueHandle {
 		HANDLE handle;
@@ -1346,10 +1380,19 @@ recreateSwapchain:
 		inline UniqueFd(int f) : fd(f)  {}
 		inline ~UniqueFd()  { if(fd!=-1) close(fd); }
 	};
-	UniqueFd sharedImageMemoryFd(
+	UniqueFd sharedColorImageMemoryFd(
 		device->getMemoryFdKHR(
 			vk::MemoryGetFdInfoKHR{
-				sharedImageMemoryVk.get(),  // memory
+				sharedColorImageMemoryVk.get(),  // memory
+				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd  // handleType
+			},
+			vkFuncs
+		)
+	);
+	UniqueFd sharedDepthImageMemoryFd(
+		device->getMemoryFdKHR(
+			vk::MemoryGetFdInfoKHR{
+				sharedDepthImageMemoryVk.get(),  // memory
 				vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd  // handleType
 			},
 			vkFuncs
@@ -1357,17 +1400,22 @@ recreateSwapchain:
 	);
 #endif
 	device->bindImageMemory(
-		sharedImageVk.get(),  // image
-		sharedImageMemoryVk.get(),  // memory
+		sharedColorImageVk.get(),        // image
+		sharedColorImageMemoryVk.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindImageMemory(
+		sharedDepthImageVk.get(),        // image
+		sharedDepthImageMemoryVk.get(),  // memory
 		0  // memoryOffset
 	);
 
 	// sharedImageView
-	sharedImageView=
+	sharedColorImageView=
 		device->createImageViewUnique(
 			vk::ImageViewCreateInfo(
 				vk::ImageViewCreateFlags(),  // flags
-				sharedImageVk.get(),         // image
+				sharedColorImageVk.get(),    // image
 				vk::ImageViewType::e2D,      // viewType
 				vk::Format::eR8G8B8A8Unorm,  // format
 				vk::ComponentMapping(),      // components
@@ -1381,24 +1429,29 @@ recreateSwapchain:
 			)
 		);
 
-	// create OpenGL texture
-	glCreateTextures(GL_TEXTURE_2D,1,&sharedTextureGL.texture);
+	// create color and depth OpenGL textures
+	glCreateTextures(GL_TEXTURE_2D,1,&sharedColorTextureGL.texture);
+	glCreateTextures(GL_TEXTURE_2D,1,&sharedDepthTextureGL.texture);
 
-	// import sharedImage memory into OpenGL and create texture
-	glCreateMemoryObjectsEXT(1,&sharedTextureMemoryGL.memory);
+	// create color and depth OpenGL memory objects
+	glCreateMemoryObjectsEXT(1,&sharedColorTextureMemoryGL.memory);
+	glCreateMemoryObjectsEXT(1,&sharedDepthTextureMemoryGL.memory);
 #ifdef _WIN32
 	// import handle
 	// (it does not transfers ownership of the handle,
 	// the handle must be closed when not needed)
 	glImportMemoryWin32HandleEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_WIN32_EXT,sharedImageMemoryWin32Handle.handle);
 #else
-	// import fd
+	// import Vulkan fd memory handle
 	// (it transfers ownership of the file descriptor,
 	// the file descriptor must not be manipulated or closed after the import)
-	glImportMemoryFdEXT(sharedTextureMemoryGL.memory,sharedImageMemorySize,GL_HANDLE_TYPE_OPAQUE_FD_EXT,sharedImageMemoryFd.fd);
-	sharedImageMemoryFd.fd=-1;
+	glImportMemoryFdEXT(sharedColorTextureMemoryGL.memory,sharedColorImageMemorySize,GL_HANDLE_TYPE_OPAQUE_FD_EXT,sharedColorImageMemoryFd.fd);
+	glImportMemoryFdEXT(sharedDepthTextureMemoryGL.memory,sharedDepthImageMemorySize,GL_HANDLE_TYPE_OPAQUE_FD_EXT,sharedDepthImageMemoryFd.fd);
+	sharedColorImageMemoryFd.fd=-1;
+	sharedDepthImageMemoryFd.fd=-1;
 #endif
-	glTextureStorageMem2DEXT(sharedTextureGL.texture,1,GL_RGBA8,currentSurfaceExtent.width,currentSurfaceExtent.height,sharedTextureMemoryGL.memory,0);
+	glTextureStorageMem2DEXT(sharedColorTextureGL.texture,1,GL_RGBA8,currentSurfaceExtent.width,currentSurfaceExtent.height,sharedColorTextureMemoryGL.memory,0);
+	glTextureStorageMem2DEXT(sharedDepthTextureGL.texture,1,depthFormatGL,currentSurfaceExtent.width,currentSurfaceExtent.height,sharedDepthTextureMemoryGL.memory,0);
 
 	// create Vulkan semaphores
 	{
@@ -1490,25 +1543,45 @@ recreateSwapchain:
 		)[0]);
 	transitionCommandBuffer->begin(vk::CommandBufferBeginInfo{});
 	transitionCommandBuffer->pipelineBarrier(
-		vk::PipelineStageFlagBits::eTopOfPipe,              // srcStageMask
-		vk::PipelineStageFlagBits::eColorAttachmentOutput,  // dstStageMask
+		vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+		vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eEarlyFragmentTests|  // dstStageMask
+			vk::PipelineStageFlagBits::eLateFragmentTests,
 		vk::DependencyFlags(),  // dependencyFlags
 		nullptr,  // memoryBarriers
 		nullptr,  // bufferMemoryBarriers
-		vk::ImageMemoryBarrier{  // imageMemoryBarriers
-			vk::AccessFlags(),                          // srcAccessMask
-			vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
-			vk::ImageLayout::eUndefined,                // oldLayout
-			vk::ImageLayout::eColorAttachmentOptimal,   // newLayout
-			0,                    // srcQueueFamilyIndex
-			0,                    // dstQueueFamilyIndex
-			sharedImageVk.get(),  // image
-			vk::ImageSubresourceRange{  // subresourceRange
-				vk::ImageAspectFlagBits::eColor,  // aspectMask
-				0,  // baseMipLevel
-				1,  // levelCount
-				0,  // baseArrayLayer
-				1  // layerCount
+		vk::ArrayProxy<const vk::ImageMemoryBarrier>{
+			vk::ImageMemoryBarrier{  // imageMemoryBarriers
+				vk::AccessFlags(),                          // srcAccessMask
+				vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
+				vk::ImageLayout::eUndefined,                // oldLayout
+				vk::ImageLayout::eColorAttachmentOptimal,   // newLayout
+				0,                          // srcQueueFamilyIndex
+				0,                          // dstQueueFamilyIndex
+				sharedColorImageVk.get(),   // image
+				vk::ImageSubresourceRange{  // subresourceRange
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				}
+			},
+			vk::ImageMemoryBarrier{  // imageMemoryBarriers
+				vk::AccessFlags(),                                // srcAccessMask
+				vk::AccessFlagBits::eDepthStencilAttachmentRead|  // dstAccessMask
+					vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+				vk::ImageLayout::eUndefined,                      // oldLayout
+				vk::ImageLayout::eDepthStencilAttachmentOptimal,  // newLayout
+				0,                          // srcQueueFamilyIndex
+				0,                          // dstQueueFamilyIndex
+				sharedDepthImageVk.get(),   // image
+				vk::ImageSubresourceRange{  // subresourceRange
+					vk::ImageAspectFlagBits::eDepth,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				}
 			}
 		}
 	);
@@ -1516,9 +1589,14 @@ recreateSwapchain:
 
 	// setup OpenGL framebuffer
 	glCreateFramebuffers(1,&glFramebuffer.framebuffer);
-	glNamedFramebufferTexture(glFramebuffer.framebuffer,GL_COLOR_ATTACHMENT0,sharedTextureGL.texture,0);
+	glNamedFramebufferTexture(glFramebuffer.framebuffer,GL_COLOR_ATTACHMENT0,sharedColorTextureGL.texture,0);
+	glNamedFramebufferTexture(glFramebuffer.framebuffer,GL_DEPTH_ATTACHMENT,sharedDepthTextureGL.texture,0);
+	if(glCheckNamedFramebufferStatus(glFramebuffer.framebuffer,GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+		throw std::runtime_error("Framebuffer incomplete error.");
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,glFramebuffer.framebuffer);
 	glViewport(0,0,currentSurfaceExtent.width,currentSurfaceExtent.height);
+	if(glGetError()!=GL_NO_ERROR)
+		throw std::runtime_error("OpenGL error during initialization.");
 
 	// update descriptor set
 	// (mergePipeline uses sampler2D and this one must be updated)
@@ -1532,7 +1610,7 @@ recreateSwapchain:
 			vk::DescriptorType::eCombinedImageSampler,  // descriptorType
 			&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
 				sampler.get(),          // sampler
-				sharedImageView.get(),  // imageView
+				sharedColorImageView.get(),  // imageView
 				vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
 			},
 			nullptr,  // pBufferInfo
@@ -1614,9 +1692,15 @@ static bool queueFrame()
 
 	// submit OpenGL work
 	glWaitSemaphoreEXT(glStartSemaphoreGL.semaphore,  // semaphore
-	                   0,nullptr,                     // numBufferBarriers+buffers
-	                   1,&sharedTextureGL.texture,    // numTextureBarriers+textures
-	                   &(const GLenum&)GL_LAYOUT_COLOR_ATTACHMENT_EXT);  // srcLayouts
+	                   0,nullptr,                     // numBufferBarriers,buffers
+	                   2,std::array<GLuint,2>{        // numTextureBarriers,textures
+		                   sharedColorTextureGL.texture,
+		                   sharedDepthTextureGL.texture
+	                   }.data(),
+	                   std::array<GLenum,2>{          // srcLayouts
+		                   GL_LAYOUT_COLOR_ATTACHMENT_EXT,
+		                   GL_LAYOUT_DEPTH_STENCIL_ATTACHMENT_EXT
+	                   }.data());
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 	glBegin(GL_TRIANGLES);
 	glColor3f(0.f,0.f,1.f);
@@ -1628,8 +1712,14 @@ static bool queueFrame()
 	glEnd();
 	glSignalSemaphoreEXT(glDoneSemaphoreGL.semaphore,  // semaphore
 	                     0,nullptr,                    // numBufferBarriers+buffers
-	                     1,&sharedTextureGL.texture,   // numTextureBarriers+textures
-	                     &(const GLenum&)GL_LAYOUT_SHADER_READ_ONLY_EXT);  // dstLayouts
+	                     2,std::array<GLuint,2>{       // numTextureBarriers,textures
+		                     sharedColorTextureGL.texture,
+		                     sharedDepthTextureGL.texture
+	                     }.data(),
+	                     std::array<GLenum,2>{         // dstLayouts
+		                     GL_LAYOUT_SHADER_READ_ONLY_EXT,
+		                     GL_LAYOUT_SHADER_READ_ONLY_EXT
+	                     }.data());
 	glFlush();  // it is important to flush OpenGL
 
 	// submit Vulkan work
