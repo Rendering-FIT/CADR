@@ -196,9 +196,13 @@ static void init()
 
 		// skip devices without surface formats and presentation modes
 		uint32_t formatCount;
-		vk::createResultValue(pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
+		vk::createResultValue(
+			pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr,vk::DispatchLoaderStatic()),
+			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
 		uint32_t presentationModeCount;
-		vk::createResultValue(pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
+		vk::createResultValue(
+			pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr,vk::DispatchLoaderStatic()),
+			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
 		if(formatCount==0||presentationModeCount==0)
 			continue;
 

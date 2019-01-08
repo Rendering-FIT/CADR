@@ -89,7 +89,7 @@ int main(int,char**)
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
 			uint32_t c;
-			pd.getQueueFamilyProperties(&c,nullptr);
+			pd.getQueueFamilyProperties(&c,nullptr,vk::DispatchLoaderStatic());
 			for(uint32_t i=0; i<c; i++)
 				if(pd.getWin32PresentationSupportKHR(i)) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
