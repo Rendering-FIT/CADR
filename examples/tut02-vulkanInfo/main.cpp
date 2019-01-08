@@ -11,13 +11,15 @@ int main(int,char**)
 	try {
 
 		// vulkan version
-		// (VulkanDispatchDynamic must be used as vkEnumerateInstanceVersion() is available since Vulkan 1.1 only.
-		// On Vulkan 1.0, vkEnumerateInstanceVersion is nullptr.)
-		struct VulkanDispatchDynamic {
+		// (dynamic loading of vkEnumerateInstanceVersion() and some other functions must be used
+		// as they might not be available on Vulkan 1.0. Some of them are available by extensions,
+		// some are introduced by Vulkan 1.1.
+		// vkEnumerateInstanceVersion() is available on Vulkan 1.1+ only. On Vulkan 1.0, it is nullptr.)
+		struct VkFunc {
 			PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion=PFN_vkEnumerateInstanceVersion(vk::Instance().getProcAddr("vkEnumerateInstanceVersion"));
-			PFN_vkGetPhysicalDeviceDisplayPropertiesKHR vkGetPhysicalDeviceDisplayPropertiesKHR=PFN_vkGetPhysicalDeviceDisplayPropertiesKHR(vk::Instance().getProcAddr("vkGetPhysicalDeviceDisplayPropertiesKHR"));
-		} d;
-		uint32_t version=(d.vkEnumerateInstanceVersion==nullptr)?VK_MAKE_VERSION(1,0,0):vk::enumerateInstanceVersion(d);
+			PFN_vkGetPhysicalDeviceDisplayPropertiesKHR vkGetPhysicalDeviceDisplayPropertiesKHR;
+		} vkFunc;
+		uint32_t version=(vkFunc.vkEnumerateInstanceVersion==nullptr)?VK_MAKE_VERSION(1,0,0):vk::enumerateInstanceVersion(vkFunc);
 		cout<<"Vulkan info:"<<endl;
 		cout<<"   Version: "<<VK_VERSION_MAJOR(version)<<"."<<VK_VERSION_MINOR(version)<<"."<<VK_VERSION_PATCH(version)
 		    <<" (header version: "<<VK_HEADER_VERSION<<")"<<endl;
@@ -38,7 +40,10 @@ int main(int,char**)
 		vector<const char*> enabledExtensions;
 		bool hasKhrDisplay=find_if(availableExtensions.begin(),availableExtensions.end(),
 				[](vk::ExtensionProperties& ep){return strcmp(ep.extensionName,"VK_KHR_display")==0;})!=availableExtensions.end();
-		if(hasKhrDisplay)  enabledExtensions.emplace_back("VK_KHR_display");
+		if(hasKhrDisplay) {
+			enabledExtensions.emplace_back("VK_KHR_display");
+			enabledExtensions.emplace_back("VK_KHR_surface");  // dependency of VK_KHR_display
+		}
 
 		// Vulkan instance
 		vk::UniqueInstance instance(
@@ -83,7 +88,8 @@ int main(int,char**)
 			// print device displays
 			cout<<"      Displays:"<<endl;
 			if(hasKhrDisplay) {
-				vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR(d);
+				vkFunc.vkGetPhysicalDeviceDisplayPropertiesKHR=PFN_vkGetPhysicalDeviceDisplayPropertiesKHR(instance->getProcAddr("vkGetPhysicalDeviceDisplayPropertiesKHR"));
+				vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR(vkFunc);
 				for(vk::DisplayPropertiesKHR& dp:dpList)
 					cout<<"         "<<(dp.displayName?dp.displayName:"< no name >")<<", "
 						 <<dp.physicalResolution.width<<"x"<<dp.physicalResolution.height<<endl;
