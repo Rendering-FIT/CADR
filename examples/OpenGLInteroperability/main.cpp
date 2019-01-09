@@ -117,6 +117,9 @@ static vk::UniqueSemaphore glDoneSemaphoreVk;
 
 // Vulkan function pointers
 struct VkFuncs {
+#if 0
+	PFN_vkGetPhysicalDeviceImageFormatProperties2KHR vkGetPhysicalDeviceImageFormatProperties2KHR;
+#endif
 #ifdef _WIN32
 	PFN_vkGetMemoryWin32HandleKHR vkGetMemoryWin32HandleKHR;
 	PFN_vkGetSemaphoreWin32HandleKHR vkGetSemaphoreWin32HandleKHR;
@@ -426,7 +429,7 @@ static void init()
 		return 0.0f;
 	}();
 	if(glVersion<4.5f)
-		std::runtime_error("OpenGL version 4.5 or higher is required.");
+		throw std::runtime_error("OpenGL version 4.5 or higher is required.");
 
 	// get supported OpenGL extensions
 	set<string> glExtensions;
@@ -496,9 +499,13 @@ static void init()
 
 		// skip devices without surface formats and presentation modes
 		uint32_t formatCount;
-		vk::createResultValue(pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
+		vk::createResultValue(
+			pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr,vk::DispatchLoaderStatic()),
+			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
 		uint32_t presentationModeCount;
-		vk::createResultValue(pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr),VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
+		vk::createResultValue(
+			pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr,vk::DispatchLoaderStatic()),
+			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
 		if(formatCount==0||presentationModeCount==0)
 			continue;
 
@@ -594,6 +601,9 @@ static void init()
 	);
 
 	// get function pointers
+#if 0
+	vkFuncs.vkGetPhysicalDeviceImageFormatProperties2KHR=PFN_vkGetPhysicalDeviceImageFormatProperties2KHR(instance->getProcAddr("vkGetPhysicalDeviceImageFormatProperties2KHR"));
+#endif
 #ifdef _WIN32
 	vkFuncs.vkGetMemoryWin32HandleKHR=PFN_vkGetMemoryWin32HandleKHR(device->getProcAddr("vkGetMemoryWin32HandleKHR"));
 	vkFuncs.vkGetSemaphoreWin32HandleKHR=PFN_vkGetSemaphoreWin32HandleKHR(device->getProcAddr("vkGetSemaphoreWin32HandleKHR"));
@@ -1330,37 +1340,70 @@ recreateSwapchain:
 		);
 
 #if 0
-	vk::PhysicalDeviceImageFormatInfo2 imageFormatInfo{
+	{
+		array<vk::PhysicalDeviceImageFormatInfo2,2> formats{
+			vk::PhysicalDeviceImageFormatInfo2{
+				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::ImageType::e2D,  // imageType
+				vk::ImageTiling::eOptimal,  // tiling
+				vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::ImageCreateFlags()  // flags
+			},
+			vk::PhysicalDeviceImageFormatInfo2{
+				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::ImageType::e2D,  // imageType
+				vk::ImageTiling::eOptimal,  // tiling
+				vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::ImageCreateFlags()  // flags
+			}
+		};
+		vk::PhysicalDeviceExternalImageFormatInfo extraInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+		formats[0].pNext=&extraInfo;
+		formats[1].pNext=&extraInfo;
+		vk::ImageFormatProperties2 imageFormatProperties2;
+		vk::ExternalImageFormatProperties extraProperties;
+		imageFormatProperties2.pNext=&extraProperties;
+
+		for(size_t i=0; i<1; i++) {
+			vk::Result r=physicalDevice.getImageFormatProperties2KHR(&formats[i],&imageFormatProperties2,vkFuncs);
+			if(r==vk::Result::eErrorFormatNotSupported||
+			   extraProperties.)
+
+			cout<<"externalMemoryFeatures:        "<<(int&)extraProperties.externalMemoryProperties.externalMemoryFeatures<<endl;
+			cout<<"exportFromImportedHandleTypes: "<<(int&)extraProperties.externalMemoryProperties.exportFromImportedHandleTypes<<endl;
+			cout<<"compatibleHandleTypes:         "<<(int&)extraProperties.externalMemoryProperties.compatibleHandleTypes<<endl;
+		}
+	}
+#endif
+
+#if 0
+	auto vkGetPhysicalDeviceImageFormatProperties2=PFN_vkGetPhysicalDeviceImageFormatProperties2(instance->getProcAddr("vkGetPhysicalDeviceImageFormatProperties2"));
+	assert(vkGetPhysicalDeviceImageFormatProperties2);
+	vk::PhysicalDeviceImageFormatInfo2 imageFormatInfo2{
 		vk::Format::eR8G8B8A8Unorm,  // format
 		vk::ImageType::e2D,  // imageType
 		vk::ImageTiling::eOptimal,  // tiling
 		vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
 		vk::ImageCreateFlags()  // flags
 	};
-	//VkPhysicalDeviceExternalImageFormatInfo
-	//imageFormatInfo.setPNext();
-	/*auto vkGetPhysicalDeviceImageFormatProperties2=PFN_vkGetPhysicalDeviceImageFormatProperties2(device->getProcAddr("vkGetPhysicalDeviceImageFormatProperties2"));
-	vk::ImageFormatProperties2 imageFormatProperties;
-	vk::PhysicalDeviceExternalImageFormatInfo extra2(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
-	imageFormatProperties.pNext=&extra2;
-	vk::ExternalImageFormatProperties extra;
-	imageFormatProperties.pNext=&extra;
+	vk::PhysicalDeviceExternalImageFormatInfo extraInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32);
+	imageFormatInfo2.pNext=&extraInfo;
+	vk::ImageFormatProperties2 imageFormatProperties2;
+	vk::ExternalImageFormatProperties extraProperties;
+	imageFormatProperties2.pNext=&extraProperties;
 	vkGetPhysicalDeviceImageFormatProperties2(physicalDevice,
-	                                          &(VkPhysicalDeviceImageFormatInfo2&)(imageFormatInfo),
-	                                          &(VkImageFormatProperties2&)imageFormatProperties);*/
-	/*vk::ImageFormatProperties2 imageFormatProperties=physicalDevice.getImageFormatProperties2KHR(
-		vk::PhysicalDeviceImageFormatInfo2{
-			vk::Format::eR8G8B8A8Unorm,  // format
-			vk::ImageType::e2D,  // imageType
-			vk::ImageTiling::eOptimal,  // tiling
-			vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eSampled,  // usage
-			vk::ImageCreateFlags()  // flags
-		}
-	);
-	VkImageFormatProperties2
-	vkGetPhysicalDeviceImageFormatProperties2
-	VkExternalImageFormatProperties 
-		VkExternalMemoryProperties*/
+	                                          &(VkPhysicalDeviceImageFormatInfo2&)(imageFormatInfo2),
+	                                          &(VkImageFormatProperties2&)imageFormatProperties2);
+	cout<<"Win32 NT handle support: "<<(int&)extraProperties.externalMemoryProperties.externalMemoryFeatures<<endl;
+	cout<<"Win32 NT handle support: "<<(int&)extraProperties.externalMemoryProperties.exportFromImportedHandleTypes<<endl;
+	cout<<"Win32 NT handle support: "<<(int&)extraProperties.externalMemoryProperties.compatibleHandleTypes<<endl;
+	extraInfo.handleType=vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32Kmt;
+	vkGetPhysicalDeviceImageFormatProperties2(physicalDevice,
+	                                          &(VkPhysicalDeviceImageFormatInfo2&)(imageFormatInfo2),
+	                                          &(VkImageFormatProperties2&)imageFormatProperties2);
+	cout<<"Win32 KMT handle support: "<<(int&)extraProperties.externalMemoryProperties.externalMemoryFeatures<<endl;
+	cout<<"Win32 KMT handle support: "<<(int&)extraProperties.externalMemoryProperties.exportFromImportedHandleTypes<<endl;
+	cout<<"Win32 KMT handle support: "<<(int&)extraProperties.externalMemoryProperties.compatibleHandleTypes<<endl;
 #endif
 
 	// shared color and depth image memory
@@ -1377,7 +1420,7 @@ recreateSwapchain:
 						// allocate memory
 						vk::MemoryAllocateInfo info(memoryRequirements.size,i);
 					#ifdef _WIN32
-						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32Kmt);
+						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueWin32Kmt);  // Kernel-Mode Thunk handle
 					#else
 						vk::ExportMemoryAllocateInfo exportInfo(vk::ExternalMemoryHandleTypeFlagBits::eOpaqueFd);
 					#endif
@@ -1416,6 +1459,8 @@ recreateSwapchain:
 			vkFuncs
 		)
 	);
+	if(sharedColorImageMemoryWin32KmtHandle==nullptr||sharedDepthImageMemoryWin32KmtHandle==nullptr)
+		throw std::runtime_error("Can not allocate OpenGL-Vulkan shared handle.");
 #else
 	struct UniqueFd {
 		int fd;
@@ -1725,11 +1770,10 @@ static bool queueFrame()
 	// submit transition
 	graphicsQueue.submit(
 		vk::SubmitInfo(
-			1,                                 // waitSemaphoreCount
-			&acquireCompleteSemaphore.get(),   // pWaitSemaphores
+			1,&acquireCompleteSemaphore.get(),  // waitSemaphoreCount,pWaitSemaphores
 			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eBottomOfPipe),  // pWaitDstStageMask
-			1,&transitionCommandBuffer.get(),  // commandBufferCount+pCommandBuffers
-			1,&glStartSemaphoreVk.get()        // signalSemaphoreCount+pSignalSemaphores
+			1,&transitionCommandBuffer.get(),  // commandBufferCount,pCommandBuffers
+			1,&glStartSemaphoreVk.get()        // signalSemaphoreCount,pSignalSemaphores
 		),
 		nullptr  // fence
 	);
