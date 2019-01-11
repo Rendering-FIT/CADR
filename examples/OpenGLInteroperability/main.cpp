@@ -1833,15 +1833,20 @@ static bool queueFrame()
 		                   GL_LAYOUT_COLOR_ATTACHMENT_EXT,
 		                   GL_LAYOUT_DEPTH_STENCIL_ATTACHMENT_EXT
 	                   }.data());
+
+	// render a triangle
+	// coordinates are given in OpenGL NDC (Normalized Device Coordinates; x,y,z are in range -1,+1;
+	// x points right, y points up, z points forward) 
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 	glBegin(GL_TRIANGLES);
 	glColor3f(0.f,0.f,1.f);
-	glVertex3f(-0.5f,-0.7f,-0.4f);
+	glVertex3f(-0.5f,-0.8f, 1.0f);
 	glColor3f(1.f,0.f,0.f);
-	glVertex3f( 0.0f, 0.3f, 0.f);
+	glVertex3f( 0.0f, 0.2f,-1.0f);
 	glColor3f(0.f,1.f,0.f);
-	glVertex3f( 0.5f,-0.7f,-0.4f);
+	glVertex3f( 0.5f,-0.8f, 1.0f);
 	glEnd();
+
 	glSignalSemaphoreEXT(glDoneSemaphoreGL.semaphore,  // semaphore
 	                     0,nullptr,                    // numBufferBarriers+buffers
 	                     2,array<GLuint,2>{       // numTextureBarriers,textures

@@ -8,6 +8,7 @@ layout(location=0) out vec4 outColor;
 
 
 void main() {
-	outColor=texelFetch(colorTexture,ivec2(gl_FragCoord.xy),0);
-	gl_FragDepth=texelFetch(depthTexture,ivec2(gl_FragCoord.xy),0).r-0.3;
+	ivec2 uv=ivec2(gl_FragCoord.x,textureSize(colorTexture,0).y-gl_FragCoord.y);
+	outColor=texelFetch(colorTexture,uv,0);
+	gl_FragDepth=texelFetch(depthTexture,uv,0).r;
 }

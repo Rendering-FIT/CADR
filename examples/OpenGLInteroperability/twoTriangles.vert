@@ -8,13 +8,16 @@ out gl_PerVertex {
 layout(location = 0) out vec3 fragColor;
 
 
+// triangle coordinates
+// given in Vulkan NDC (Normalized Device Coordinates; x,y ranging from -1 to +1, z ranging from 0 to +1;
+// x points right, y points down, z points forward)
 vec3 positions[6] = vec3[](
-	vec3(-0.7, 0.3, 0.4),
-	vec3(-0.2,-0.7, 0.2),
+	vec3(-0.7, 0.3, 1.0),
+	vec3(-0.2,-0.7, 0.5),
 	vec3( 0.3, 0.3, 0.0),
 	vec3(-0.3, 0.3, 0.0),
-	vec3( 0.2,-0.7, 0.2),
-	vec3( 0.7, 0.3, 0.4)
+	vec3( 0.2,-0.7, 0.5),
+	vec3( 0.7, 0.3, 1.0)
 );
 
 vec3 colors[6] = vec3[](
