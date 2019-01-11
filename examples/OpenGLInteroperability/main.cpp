@@ -112,6 +112,7 @@ static vk::UniqueImage sharedDepthImageVk;
 static vk::UniqueDeviceMemory sharedColorImageMemoryVk;
 static vk::UniqueDeviceMemory sharedDepthImageMemoryVk;
 static vk::UniqueImageView sharedColorImageView;
+static vk::UniqueImageView sharedDepthImageView;
 static vk::UniqueSemaphore glStartSemaphoreVk;
 static vk::UniqueSemaphore glDoneSemaphoreVk;
 
@@ -755,14 +756,23 @@ static void init()
 	mergeDescriptorSetLayout=device->createDescriptorSetLayoutUnique(
 		vk::DescriptorSetLayoutCreateInfo{
 			vk::DescriptorSetLayoutCreateFlags(),  // flags
-			1,  // bindingCount
-			&(const vk::DescriptorSetLayoutBinding&)vk::DescriptorSetLayoutBinding{  // pBindings
-				0,       // binding
-				vk::DescriptorType::eCombinedImageSampler,  // descriptorType
-				1,       // descriptorCount
-				vk::ShaderStageFlagBits::eFragment,  // stageFlags
-				nullptr  // pImmutableSamplers
-			}
+			2,  // bindingCount
+			array<const vk::DescriptorSetLayoutBinding,2>{  // pBindings
+				vk::DescriptorSetLayoutBinding{
+					0,       // binding
+					vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+					1,       // descriptorCount
+					vk::ShaderStageFlagBits::eFragment,  // stageFlags
+					nullptr  // pImmutableSamplers
+				},
+				vk::DescriptorSetLayoutBinding{
+					1,       // binding
+					vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+					1,       // descriptorCount
+					vk::ShaderStageFlagBits::eFragment,  // stageFlags
+					nullptr  // pImmutableSamplers
+				}
+			}.data()
 		}
 	);
 	mergePipelineLayout=device->createPipelineLayoutUnique(
@@ -784,7 +794,7 @@ static void init()
 				1,  // poolSizeCount
 				&(const vk::DescriptorPoolSize&)vk::DescriptorPoolSize{  // pPoolSizes
 					vk::DescriptorType::eCombinedImageSampler,  // type
-					1  // descriptorCount
+					2  // descriptorCount
 				}
 			}
 		);
@@ -1498,7 +1508,7 @@ recreateSwapchain:
 		0  // memoryOffset
 	);
 
-	// sharedImageView
+	// sharedColorImageView, sharedDepthImageView
 	sharedColorImageView=
 		device->createImageViewUnique(
 			vk::ImageViewCreateInfo(
@@ -1506,6 +1516,23 @@ recreateSwapchain:
 				sharedColorImageVk.get(),    // image
 				vk::ImageViewType::e2D,      // viewType
 				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::ComponentMapping(),      // components
+				vk::ImageSubresourceRange(   // subresourceRange
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				)
+			)
+		);
+	sharedDepthImageView=
+		device->createImageViewUnique(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),  // flags
+				sharedDepthImageVk.get(),    // image
+				vk::ImageViewType::e2D,      // viewType
+				depthFormatVk,               // format
 				vk::ComponentMapping(),      // components
 				vk::ImageSubresourceRange(   // subresourceRange
 					vk::ImageAspectFlagBits::eDepth,  // aspectMask
@@ -1684,27 +1711,44 @@ recreateSwapchain:
 		throw std::runtime_error("Framebuffer incomplete error.");
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,glFramebuffer.framebuffer);
 	glViewport(0,0,currentSurfaceExtent.width,currentSurfaceExtent.height);
+	glEnable(GL_DEPTH_TEST);
 	if(glGetError()!=GL_NO_ERROR)
 		throw std::runtime_error("OpenGL error during initialization.");
 
 	// update descriptor set
 	// (mergePipeline uses sampler2D and this one must be updated)
 	device->updateDescriptorSets(
-		1,  // descriptorWriteCount
-		&(const vk::WriteDescriptorSet&)vk::WriteDescriptorSet{  // pDescriptorWrites
-			mergeDescriptorSet.get(),  // dstSet
-			0,  // dstBinding
-			0,  // dstArrayElement
-			1,  // descriptorCount
-			vk::DescriptorType::eCombinedImageSampler,  // descriptorType
-			&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
-				sampler.get(),          // sampler
-				sharedColorImageView.get(),  // imageView
-				vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
+		2,  // descriptorWriteCount
+		array<const vk::WriteDescriptorSet,2>{  // pDescriptorWrites
+			vk::WriteDescriptorSet{
+				mergeDescriptorSet.get(),  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+				&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
+					sampler.get(),          // sampler
+					sharedColorImageView.get(),  // imageView
+					vk::ImageLayout::eColorAttachmentOptimal  // imageLayout
+				},
+				nullptr,  // pBufferInfo
+				nullptr   // pTexelBufferView
 			},
-			nullptr,  // pBufferInfo
-			nullptr   // pTexelBufferView
-		},
+			vk::WriteDescriptorSet{
+				mergeDescriptorSet.get(),  // dstSet
+				1,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+				&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
+					sampler.get(),          // sampler
+					sharedDepthImageView.get(),  // imageView
+					vk::ImageLayout::eDepthStencilAttachmentOptimal  // imageLayout
+				},
+				nullptr,  // pBufferInfo
+				nullptr   // pTexelBufferView
+			}
+		}.data(),
 		0,       // descriptorCopyCount
 		nullptr  // pDescriptorCopies
 	);
@@ -1781,11 +1825,11 @@ static bool queueFrame()
 	// submit OpenGL work
 	glWaitSemaphoreEXT(glStartSemaphoreGL.semaphore,  // semaphore
 	                   0,nullptr,                     // numBufferBarriers,buffers
-	                   2,std::array<GLuint,2>{        // numTextureBarriers,textures
+	                   2,array<GLuint,2>{        // numTextureBarriers,textures
 		                   sharedColorTextureGL.texture,
 		                   sharedDepthTextureGL.texture
 	                   }.data(),
-	                   std::array<GLenum,2>{          // srcLayouts
+	                   array<GLenum,2>{          // srcLayouts
 		                   GL_LAYOUT_COLOR_ATTACHMENT_EXT,
 		                   GL_LAYOUT_DEPTH_STENCIL_ATTACHMENT_EXT
 	                   }.data());
@@ -1800,11 +1844,11 @@ static bool queueFrame()
 	glEnd();
 	glSignalSemaphoreEXT(glDoneSemaphoreGL.semaphore,  // semaphore
 	                     0,nullptr,                    // numBufferBarriers+buffers
-	                     2,std::array<GLuint,2>{       // numTextureBarriers,textures
+	                     2,array<GLuint,2>{       // numTextureBarriers,textures
 		                     sharedColorTextureGL.texture,
 		                     sharedDepthTextureGL.texture
 	                     }.data(),
-	                     std::array<GLenum,2>{         // dstLayouts
+	                     array<GLenum,2>{         // dstLayouts
 		                     GL_LAYOUT_SHADER_READ_ONLY_EXT,
 		                     GL_LAYOUT_SHADER_READ_ONLY_EXT
 	                     }.data());
