@@ -118,6 +118,7 @@ static vk::UniqueSemaphore glDoneSemaphoreVk;
 
 // Vulkan function pointers
 struct VkFuncs {
+	PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR;
 #if 0
 	PFN_vkGetPhysicalDeviceImageFormatProperties2KHR vkGetPhysicalDeviceImageFormatProperties2KHR;
 #endif
@@ -138,6 +139,7 @@ static PFNGLTEXTURESTORAGEMEM2DEXTPROC glTextureStorageMem2DEXT;
 static PFNGLDELETEMEMORYOBJECTSEXTPROC glDeleteMemoryObjectsEXT;
 static PFNGLGENSEMAPHORESEXTPROC glGenSemaphoresEXT;
 static PFNGLDELETESEMAPHORESEXTPROC glDeleteSemaphoresEXT;
+static PFNGLGETUNSIGNEDBYTEI_VEXTPROC glGetUnsignedBytei_vEXT;
 #ifdef _WIN32
 static PFNGLIMPORTMEMORYWIN32HANDLEEXTPROC glImportMemoryWin32HandleEXT;
 static PFNGLIMPORTSEMAPHOREWIN32HANDLEEXTPROC glImportSemaphoreWin32HandleEXT;
@@ -236,6 +238,9 @@ static void init()
 					"VK_KHR_get_physical_device_properties2"  // dependency of VK_KHR_external_memory_capabilities and VK_KHR_external_semaphore_capabilities
 				}.data(),  // enabled extension names
 			});
+
+	// get instance function pointers
+	vkFuncs.vkGetPhysicalDeviceProperties2KHR=PFN_vkGetPhysicalDeviceProperties2KHR(instance->getProcAddr("vkGetPhysicalDeviceProperties2KHR"));
 
 
 #ifdef _WIN32
@@ -468,6 +473,7 @@ static void init()
 	glDeleteSemaphoresEXT=glGetProcAddress<PFNGLDELETESEMAPHORESEXTPROC>("glDeleteSemaphoresEXT");  // GL_EXT_semaphore extension
 	glWaitSemaphoreEXT=glGetProcAddress<PFNGLWAITSEMAPHOREEXTPROC>("glWaitSemaphoreEXT");  // GL_EXT_semaphore extension
 	glSignalSemaphoreEXT=glGetProcAddress<PFNGLSIGNALSEMAPHOREEXTPROC>("glSignalSemaphoreEXT");  // GL_EXT_semaphore extension
+	glGetUnsignedBytei_vEXT=glGetProcAddress<PFNGLGETUNSIGNEDBYTEI_VEXTPROC>("glGetUnsignedBytei_vEXT");  // GL_EXT_memory_object or GL_EXT_semaphore
 #ifdef _WIN32
 	glImportMemoryWin32HandleEXT=glGetProcAddress<PFNGLIMPORTMEMORYWIN32HANDLEEXTPROC>("glImportMemoryWin32HandleEXT");  // GL_EXT_memory_object_win32 extension
 	glImportSemaphoreWin32HandleEXT=glGetProcAddress<PFNGLIMPORTSEMAPHOREWIN32HANDLEEXTPROC>("glImportSemaphoreWin32HandleEXT");  // GL_EXT_semaphore_win32 extension
@@ -481,11 +487,76 @@ static void init()
 	glBindFramebuffer=glGetProcAddress<PFNGLBINDFRAMEBUFFERPROC>("glBindFramebuffer");  // since OpenGL 3.0
 	glDeleteFramebuffers=glGetProcAddress<PFNGLDELETEFRAMEBUFFERSPROC>("glDeleteFramebuffers");  // since OpenGL 3.0
 
+	// get OpenGL UUIDs
+	vector<array<GLubyte,GL_UUID_SIZE_EXT>> deviceUUIDsGL;
+	array<GLubyte,GL_UUID_SIZE_EXT> driverUUIDgl;
+	{
+		GLuint numDeviceUUIDs=0;
+		glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT,reinterpret_cast<GLint*>(&numDeviceUUIDs));
+		deviceUUIDsGL.resize(numDeviceUUIDs);
+		for(GLuint i=0; i<numDeviceUUIDs; i++)
+			glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT,i,deviceUUIDsGL[i].data());
+		glGetUnsignedBytei_vEXT(GL_DRIVER_UUID_EXT,0,driverUUIDgl.data());
+	}
+	cout<<"OpenGL device UUID: ";
+	cout<<hex;
+	for(auto it1=deviceUUIDsGL.begin(),e1=deviceUUIDsGL.end(); ; ) {
+		for(auto it2=it1->begin(),e2=it1->end(); it2!=e2; it2++) {
+			GLubyte b=*it2;
+			cout<<unsigned(b>>4)<<unsigned(b&0xf);
+		}
+		it1++;
+		if(it1==e1)
+			break;
+		cout<<", ";
+	}
+	cout<<dec<<endl;
+	cout<<"OpenGL driver UUID: ";
+	cout<<hex;
+	for(auto it=driverUUIDgl.begin(),e=driverUUIDgl.end(); it!=e; it++) {
+		GLubyte b=*it;
+		cout<<unsigned(b>>4)<<unsigned(b&0xf);
+	}
+	cout<<dec<<endl;
+
+	// enumerate all physical devices
+	cout<<"Vulkan devices:"<<endl;
+	vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
+	for(vk::PhysicalDevice pd:deviceList) {
+
+		// print device name
+		auto p=pd.getProperties2KHR<vk::PhysicalDeviceProperties2KHR,vk::PhysicalDeviceIDPropertiesKHR>(vkFuncs);
+		cout<<"   "<<p.template get<vk::PhysicalDeviceProperties2KHR>().properties.deviceName<<endl;
+
+		// print Vulkan device UUID
+		auto& deviceUUIDvk=p.template get<vk::PhysicalDeviceIDPropertiesKHR>().deviceUUID;
+		cout<<"      Device UUID: ";
+		cout<<hex;
+		for(unsigned i=0; i<VK_UUID_SIZE; i++)
+			cout<<unsigned(deviceUUIDvk[i]>>4)<<unsigned(deviceUUIDvk[i]&0xf);
+		cout<<dec<<endl;
+
+		// print Vulkan driver UUID
+		auto& driverUUIDvk=p.template get<vk::PhysicalDeviceIDPropertiesKHR>().driverUUID;
+		cout<<"      Driver UUID: ";
+		cout<<hex;
+		for(unsigned i=0; i<VK_UUID_SIZE; i++)
+			cout<<unsigned(driverUUIDvk[i]>>4)<<unsigned(driverUUIDvk[i]&0xf);
+		cout<<dec<<endl;
+
+#if 0
+		if(deviceUUIDsGL.size()==1 &&
+			deviceUUIDsGL[0]==deviceUUIDvk &&
+			driverUUIDgl==driverUUIDvk)
+			cout<<"Is the same."<<endl;
+#endif
+
+	}
+
 	// find compatible devices
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 	// renders the window).
-	vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 	vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
 	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
 	for(vk::PhysicalDevice pd:deviceList) {
