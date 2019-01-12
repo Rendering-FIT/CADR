@@ -8,6 +8,7 @@ set(PACKAGES
 	tut05-resizableWindow
 	VulkanHelloTriangle
 	VulkanDepthBuffer
+	OpenGLInteroperability
 	HelloQtWindow
 	)
 if(UNIX)
