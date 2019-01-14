@@ -198,6 +198,32 @@ static const uint32_t fsMergeSpirv[]={
 };
 
 
+struct UUID {
+
+	uint8_t data[VK_UUID_SIZE];
+
+	inline UUID() = default;
+	inline UUID(const uint8_t (&rhs)[VK_UUID_SIZE])  { memcpy(data,rhs,sizeof(data)); }
+
+	inline bool operator==(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))==0; }
+	inline bool operator!=(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))!=0; }
+
+	std::string to_string() const {
+		std::string s;
+		s.reserve(VK_UUID_SIZE*2);
+		for(unsigned i=0; i<VK_UUID_SIZE; i++) {
+			uint8_t b=data[i];
+			uint8_t c=b>>4;
+			s.push_back((c<=9)?'0'+c:'a'+c-10);
+			c=b&0xf;
+			s.push_back((c<=9)?'0'+c:'a'+c-10);
+		}
+		assert(s.capacity()==VK_UUID_SIZE*2);
+		return s;
+	}
+};
+
+
 template<typename T>
 T glGetProcAddress(const std::string& funcName)
 {
@@ -488,36 +514,23 @@ static void init()
 	glDeleteFramebuffers=glGetProcAddress<PFNGLDELETEFRAMEBUFFERSPROC>("glDeleteFramebuffers");  // since OpenGL 3.0
 
 	// get OpenGL UUIDs
-	vector<array<GLubyte,GL_UUID_SIZE_EXT>> deviceUUIDsGL;
-	array<GLubyte,GL_UUID_SIZE_EXT> driverUUIDgl;
+	vector<UUID> deviceUUIDsGL;
+	UUID driverUUIDgl;
 	{
 		GLuint numDeviceUUIDs=0;
 		glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT,reinterpret_cast<GLint*>(&numDeviceUUIDs));
 		deviceUUIDsGL.resize(numDeviceUUIDs);
 		for(GLuint i=0; i<numDeviceUUIDs; i++)
-			glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT,i,deviceUUIDsGL[i].data());
-		glGetUnsignedBytei_vEXT(GL_DRIVER_UUID_EXT,0,driverUUIDgl.data());
+			glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT,i,deviceUUIDsGL[i].data);
+		glGetUnsignedBytei_vEXT(GL_DRIVER_UUID_EXT,0,driverUUIDgl.data);
 	}
 	cout<<"OpenGL device UUID: ";
-	cout<<hex;
-	for(auto it1=deviceUUIDsGL.begin(),e1=deviceUUIDsGL.end(); ; ) {
-		for(auto it2=it1->begin(),e2=it1->end(); it2!=e2; it2++) {
-			GLubyte b=*it2;
-			cout<<unsigned(b>>4)<<unsigned(b&0xf);
-		}
-		it1++;
-		if(it1==e1)
-			break;
-		cout<<", ";
+	for(size_t i=0,c=deviceUUIDsGL.size(); i<c; i++) {
+		if(i!=0)  cout<<", ";
+		cout<<deviceUUIDsGL[i].to_string();
 	}
-	cout<<dec<<endl;
-	cout<<"OpenGL driver UUID: ";
-	cout<<hex;
-	for(auto it=driverUUIDgl.begin(),e=driverUUIDgl.end(); it!=e; it++) {
-		GLubyte b=*it;
-		cout<<unsigned(b>>4)<<unsigned(b&0xf);
-	}
-	cout<<dec<<endl;
+	cout<<endl;
+	cout<<"OpenGL driver UUID: "<<driverUUIDgl.to_string()<<endl;
 
 	// enumerate all physical devices
 	cout<<"Vulkan devices:"<<endl;
@@ -529,107 +542,51 @@ static void init()
 		cout<<"   "<<p.template get<vk::PhysicalDeviceProperties2KHR>().properties.deviceName<<endl;
 
 		// print Vulkan device UUID
-		auto& deviceUUIDvk=p.template get<vk::PhysicalDeviceIDPropertiesKHR>().deviceUUID;
-		cout<<"      Device UUID: ";
-		cout<<hex;
-		for(unsigned i=0; i<VK_UUID_SIZE; i++)
-			cout<<unsigned(deviceUUIDvk[i]>>4)<<unsigned(deviceUUIDvk[i]&0xf);
-		cout<<dec<<endl;
+		UUID deviceUUIDvk=p.template get<vk::PhysicalDeviceIDPropertiesKHR>().deviceUUID;
+		cout<<"       Device UUID: "<<deviceUUIDvk.to_string()<<endl;
 
 		// print Vulkan driver UUID
-		auto& driverUUIDvk=p.template get<vk::PhysicalDeviceIDPropertiesKHR>().driverUUID;
-		cout<<"      Driver UUID: ";
-		cout<<hex;
-		for(unsigned i=0; i<VK_UUID_SIZE; i++)
-			cout<<unsigned(driverUUIDvk[i]>>4)<<unsigned(driverUUIDvk[i]&0xf);
-		cout<<dec<<endl;
+		UUID driverUUIDvk=p.template get<vk::PhysicalDeviceIDPropertiesKHR>().driverUUID;
+		cout<<"       Driver UUID: "<<driverUUIDvk.to_string()<<endl;
 
-#if 0
+		// use physical device that matches UUIDs
 		if(deviceUUIDsGL.size()==1 &&
 			deviceUUIDsGL[0]==deviceUUIDvk &&
 			driverUUIDgl==driverUUIDvk)
-			cout<<"Is the same."<<endl;
-#endif
-
-	}
-
-	// find compatible devices
-	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-	// renders the window).
-	vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
-	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
-	for(vk::PhysicalDevice pd:deviceList) {
-
-		// skip devices without VK_KHR_swapchain
-		auto extensionList=pd.enumerateDeviceExtensionProperties();
-		for(vk::ExtensionProperties& e:extensionList)
-			if(strcmp(e.extensionName,"VK_KHR_swapchain")==0)
-				goto swapchainSupported;
-		continue;
-		swapchainSupported:
-
-		// skip devices without surface formats and presentation modes
-		uint32_t formatCount;
-		vk::createResultValue(
-			pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr,vk::DispatchLoaderStatic()),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
-		uint32_t presentationModeCount;
-		vk::createResultValue(
-			pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr,vk::DispatchLoaderStatic()),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
-		if(formatCount==0||presentationModeCount==0)
-			continue;
-
-		// select queues (for graphics rendering and for presentation)
-		uint32_t graphicsQueueFamily=UINT32_MAX;
-		uint32_t presentationQueueFamily=UINT32_MAX;
-		vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-		vector<bool> presentationSupport;
-		presentationSupport.reserve(queueFamilyList.size());
-		uint32_t i=0;
-		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
-			bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
-			if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
-				if(p) {
-					compatibleDevicesSingleQueue.emplace_back(pd,i);
-					goto nextDevice;
-				}
-				presentationSupport.push_back(p);
-				if(graphicsQueueFamily==UINT32_MAX)
-					graphicsQueueFamily=i;
-			}
-			else {
-				presentationSupport.push_back(p);
-				if(p)
-					if(presentationQueueFamily==UINT32_MAX)
-						presentationQueueFamily=i;
-			}
+		{
+			physicalDevice=pd;
 		}
-		compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
-		nextDevice:;
 	}
-	cout<<"Vulkan compatible devices:"<<endl;
-	for(auto& t:compatibleDevicesSingleQueue)
-		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
-	for(auto& t:compatibleDevicesTwoQueues)
-		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
+	if(!physicalDevice)
+		throw std::runtime_error("No Vulkan device found that is compatible with OpenGL context.");
 
-	// choose device
-	if(compatibleDevicesSingleQueue.size()>0) {
-		auto t=compatibleDevicesSingleQueue.front();
-		physicalDevice=get<0>(t);
-		graphicsQueueFamily=get<1>(t);
-		presentationQueueFamily=graphicsQueueFamily;
-	}
-	else if(compatibleDevicesTwoQueues.size()>0) {
-		auto t=compatibleDevicesTwoQueues.front();
-		physicalDevice=get<0>(t);
-		graphicsQueueFamily=get<1>(t);
-		presentationQueueFamily=get<2>(t);
-	}
-	else
-		throw std::runtime_error("No compatible devices.");
+	// get queue families
+	std::tie(graphicsQueueFamily,presentationQueueFamily)=
+		[](){
+			uint32_t graphicsQueueFamily=UINT32_MAX;
+			uint32_t presentationQueueFamily=UINT32_MAX;
+			vector<vk::QueueFamilyProperties> queueFamilyList=physicalDevice.getQueueFamilyProperties();
+			uint32_t i=0;
+			for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
+				bool p=physicalDevice.getSurfaceSupportKHR(i,surface.get())!=0;
+				if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
+					if(p)
+						return tuple<uint32_t,uint32_t>(i,i);
+					if(graphicsQueueFamily==UINT32_MAX)
+						graphicsQueueFamily=i;
+				}
+				else {
+					if(p)
+						if(presentationQueueFamily==UINT32_MAX)
+							presentationQueueFamily=i;
+				}
+			}
+			if(graphicsQueueFamily==UINT32_MAX||presentationQueueFamily==UINT32_MAX)
+				throw std::runtime_error("No compatible devices.");
+			return tuple<uint32_t,uint32_t>(graphicsQueueFamily,presentationQueueFamily);
+		}();
+
+	// report used device
 	cout<<"Using Vulkan device:\n"
 		   "   "<<physicalDevice.getProperties().deviceName<<endl;
 
@@ -638,7 +595,7 @@ static void init()
 		physicalDevice.createDevice(
 			vk::DeviceCreateInfo{
 				vk::DeviceCreateFlags(),  // flags
-				compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
+				(graphicsQueueFamily==presentationQueueFamily)?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
 				array<const vk::DeviceQueueCreateInfo,2>{  // pQueueCreateInfos
 					vk::DeviceQueueCreateInfo{
 						vk::DeviceQueueCreateFlags(),
