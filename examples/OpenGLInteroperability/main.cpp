@@ -154,6 +154,7 @@ static PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
 static PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
 static PFNGLWAITSEMAPHOREEXTPROC glWaitSemaphoreEXT;
 static PFNGLSIGNALSEMAPHOREEXTPROC glSignalSemaphoreEXT;
+static PFNGLCLIPCONTROLPROC glClipControl;
 
 // OpenGL texture and memory
 struct UniqueGlTexture {
@@ -512,6 +513,7 @@ static void init()
 	glCheckNamedFramebufferStatus=glGetProcAddress<PFNGLCHECKNAMEDFRAMEBUFFERSTATUSPROC>("glCheckNamedFramebufferStatus");  // since OpenGL 4.5
 	glBindFramebuffer=glGetProcAddress<PFNGLBINDFRAMEBUFFERPROC>("glBindFramebuffer");  // since OpenGL 3.0
 	glDeleteFramebuffers=glGetProcAddress<PFNGLDELETEFRAMEBUFFERSPROC>("glDeleteFramebuffers");  // since OpenGL 3.0
+	glClipControl=glGetProcAddress<PFNGLCLIPCONTROLPROC>("glClipControl");  // since OpenGL 4.5
 
 	// get OpenGL UUIDs
 	vector<UUID> deviceUUIDsGL;
@@ -1738,8 +1740,12 @@ recreateSwapchain:
 	if(glCheckNamedFramebufferStatus(glFramebuffer.framebuffer,GL_DRAW_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
 		throw std::runtime_error("Framebuffer incomplete error.");
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER,glFramebuffer.framebuffer);
-	glViewport(0,0,currentSurfaceExtent.width,currentSurfaceExtent.height);
 	glEnable(GL_DEPTH_TEST);
+	glViewport(0,0,currentSurfaceExtent.width,currentSurfaceExtent.height);
+	glClipControl(
+		GL_UPPER_LEFT,  // invert final image's y axis to avoid doing it in fragment shader
+		GL_ZERO_TO_ONE  // make NDC (Normalized Device Coordinates) z-axis from 0 to +1 instead of from -1 to +1 to match Vulkan coordinates and improve z-precision
+	);
 	if(glGetError()!=GL_NO_ERROR)
 		throw std::runtime_error("OpenGL error during initialization.");
 
@@ -1870,7 +1876,7 @@ static bool queueFrame()
 	glColor3f(0.f,0.f,1.f);
 	glVertex3f(-0.5f,-0.8f, 1.0f);
 	glColor3f(1.f,0.f,0.f);
-	glVertex3f( 0.0f, 0.2f,-1.0f);
+	glVertex3f( 0.0f, 0.2f, 0.0f);
 	glColor3f(0.f,1.f,0.f);
 	glVertex3f( 0.5f,-0.8f, 1.0f);
 	glEnd();
