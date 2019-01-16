@@ -207,11 +207,14 @@ struct UUID {
 	inline UUID() = default;
 	inline UUID(const uint8_t (&rhs)[VK_UUID_SIZE])  { memcpy(data,rhs,sizeof(data)); }
 
+	inline void init()  { memset(data,0,sizeof(data)); }
+
 	inline bool operator==(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))==0; }
 	inline bool operator!=(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))!=0; }
 
 	std::string to_string() const {
-		std::string s(VK_UUID_SIZE*2,'\0');
+		std::string s(VK_UUID_SIZE*2+4,'\0');
+		unsigned minusPos=0x09070503; // each byte holds one position of '-'
 		for(unsigned i=0,j=0; i<VK_UUID_SIZE; i++) {
 			uint8_t b=data[i];
 			uint8_t c=b>>4;
@@ -220,6 +223,11 @@ struct UUID {
 			j++;
 			s[j]=(c<=9)?'0'+c:'a'+c-10;
 			j++;
+			if(i==(minusPos&0xff)) {
+				s[j]='-';
+				j++;
+				minusPos>>=8;
+			}
 		}
 		return s;
 	}
@@ -523,10 +531,15 @@ static void init()
 		GLuint numDeviceUUIDs=0;
 		glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT,reinterpret_cast<GLint*>(&numDeviceUUIDs));
 		deviceUUIDsGL.resize(numDeviceUUIDs);
-		for(GLuint i=0; i<numDeviceUUIDs; i++)
+		for(GLuint i=0; i<numDeviceUUIDs; i++) {
+			deviceUUIDsGL[i].init();  // zero-initialize
 			glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT,i,deviceUUIDsGL[i].data);
+		}
+		driverUUIDgl.init();  // zero-initialize
 		glGetUnsignedBytei_vEXT(GL_DRIVER_UUID_EXT,0,driverUUIDgl.data);
 	}
+	if(glGetError()!=GL_NO_ERROR)
+		throw std::runtime_error("OpenGL error during initialization.");
 	cout<<"OpenGL device UUID: ";
 	for(size_t i=0,c=deviceUUIDsGL.size(); i<c; i++) {
 		if(i!=0)  cout<<", ";
