@@ -1,5 +1,6 @@
 #ifdef _WIN32
 # define VK_USE_PLATFORM_WIN32_KHR
+# define WIN32_LEAN_AND_MEAN  // this reduces win32 headers default namespace pollution
 #else
 # include <X11/Xlib.h>
 # include <X11/Xutil.h>
@@ -210,16 +211,16 @@ struct UUID {
 	inline bool operator!=(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))!=0; }
 
 	std::string to_string() const {
-		std::string s;
-		s.reserve(VK_UUID_SIZE*2);
-		for(unsigned i=0; i<VK_UUID_SIZE; i++) {
+		std::string s(VK_UUID_SIZE*2,'\0');
+		for(unsigned i=0,j=0; i<VK_UUID_SIZE; i++) {
 			uint8_t b=data[i];
 			uint8_t c=b>>4;
-			s.push_back((c<=9)?'0'+c:'a'+c-10);
+			s[j]=(c<=9)?'0'+c:'a'+c-10;
 			c=b&0xf;
-			s.push_back((c<=9)?'0'+c:'a'+c-10);
+			j++;
+			s[j]=(c<=9)?'0'+c:'a'+c-10;
+			j++;
 		}
-		assert(s.capacity()==VK_UUID_SIZE*2);
 		return s;
 	}
 };
