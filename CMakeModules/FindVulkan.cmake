@@ -12,7 +12,7 @@ find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSIO
 if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
 	# find Vulkan include path
-	find_path(VULKAN_INCLUDE_DIR vulkan/vulkan.h
+	find_path(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR vulkan/vulkan.h
 		/usr/include
 		/usr/local/include
 		/opt/local/include
@@ -20,7 +20,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 	)
 
 	# find Vulkan library
-	find_library(VULKAN_LIBRARY vulkan
+	find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY vulkan
 		/usr/lib64
 		/usr/local/lib64
 		/usr/lib
@@ -29,7 +29,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 	)
 
 	# set *_FOUND flag
-	if(VULKAN_INCLUDE_DIR AND VULKAN_LIBRARY)
+	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 	endif()
 
@@ -38,18 +38,18 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		if(NOT TARGET ${CMAKE_FIND_PACKAGE_NAME})
 			add_library(${CMAKE_FIND_PACKAGE_NAME} INTERFACE IMPORTED)
 			set_target_properties(${CMAKE_FIND_PACKAGE_NAME} PROPERTIES
-				INTERFACE_INCLUDE_DIRECTORIES "${VULKAN_INCLUDE_DIR}"
-				INTERFACE_LINK_LIBRARIES "${VULKAN_LIBRARY}"
+				INTERFACE_INCLUDE_DIRECTORIES "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}"
+				INTERFACE_LINK_LIBRARIES "${${CMAKE_FIND_PACKAGE_NAME}_LIBRARY}"
 			)
 		endif()
 	endif()
 
 	# VulkanHeaders target
-	if(VULKAN_INCLUDE_DIR)
+	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR)
 		if(NOT TARGET VulkanHeaders)
 			add_library(VulkanHeaders INTERFACE IMPORTED)
 			set_target_properties(VulkanHeaders PROPERTIES
-				INTERFACE_INCLUDE_DIRECTORIES "${VULKAN_INCLUDE_DIR}"
+				INTERFACE_INCLUDE_DIRECTORIES "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}"
 			)
 		endif()
 	endif()

@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.5.0) # arguments for discussion about particular cmake version: Ubuntu 16.04 LTS uses version 3.5, version 3.7 supports LESS_EQUAL, Ubuntu 18.04 LTS uses version 3.10
+cmake_minimum_required(VERSION 3.8.0) # arguments for discussion about particular cmake version: Ubuntu 16.04 LTS uses version 3.5, version 3.7 supports LESS_EQUAL,
+                                      # version 3.8 properly detects OpenGL targets, Ubuntu 18.04 LTS uses version 3.10
 
 project(CADR)
 
