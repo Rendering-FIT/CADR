@@ -446,9 +446,6 @@ static void init()
 	                       0,vi->depth,InputOutput,vi->visual,
 	                       CWBorderPixel|CWEventMask|CWOverrideRedirect|CWColormap,&swa);
 	vi.reset();
-	XSetStandardProperties(display,glWindow,"Hello window!","Hello window!",None,NULL,0,NULL);
-	XSetWMProtocols(display,glWindow,&wmDeleteMessage,1);
-	XMapWindow(display,glWindow);
 
 	if(!glXMakeCurrent(display,glWindow,cx))
 		throw std::runtime_error("glXMakeCurrent() failed.");
