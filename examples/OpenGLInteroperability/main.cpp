@@ -207,7 +207,7 @@ struct UUID {
 	inline UUID() = default;
 	inline UUID(const uint8_t (&rhs)[VK_UUID_SIZE])  { memcpy(data,rhs,sizeof(data)); }
 
-	inline void init()  { memset(data,0,sizeof(data)); }
+	inline void fillByZeros()  { memset(data,0,sizeof(data)); }
 
 	inline bool operator==(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))==0; }
 	inline bool operator!=(const UUID& rhs) const  { return memcmp(data,rhs.data,sizeof(data))!=0; }
@@ -532,10 +532,10 @@ static void init()
 		glGetIntegerv(GL_NUM_DEVICE_UUIDS_EXT,reinterpret_cast<GLint*>(&numDeviceUUIDs));
 		deviceUUIDsGL.resize(numDeviceUUIDs);
 		for(GLuint i=0; i<numDeviceUUIDs; i++) {
-			deviceUUIDsGL[i].init();  // zero-initialize
+			deviceUUIDsGL[i].fillByZeros();
 			glGetUnsignedBytei_vEXT(GL_DEVICE_UUID_EXT,i,deviceUUIDsGL[i].data);
 		}
-		driverUUIDgl.init();  // zero-initialize
+		driverUUIDgl.fillByZeros();
 		glGetUnsignedBytei_vEXT(GL_DRIVER_UUID_EXT,0,driverUUIDgl.data);
 	}
 	if(glGetError()!=GL_NO_ERROR)
