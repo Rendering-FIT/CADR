@@ -22,7 +22,7 @@ int main(int,char**)
 			throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 		// Vulkan instance
-		vk::UniqueHandle<vk::Instance> instance(
+		vk::UniqueInstance instance(
 			vk::createInstance(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
@@ -49,7 +49,7 @@ int main(int,char**)
 		XMapWindow(d,w);
 
 		// create surface
-		vk::UniqueHandle<vk::SurfaceKHR> s=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),d,w));
+		vk::UniqueSurfaceKHR s=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),d,w));
 
 		// get VisualID
 		XWindowAttributes a;
@@ -64,7 +64,7 @@ int main(int,char**)
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
 			uint32_t c;
-			pd.getQueueFamilyProperties(&c,nullptr);
+			pd.getQueueFamilyProperties(&c,nullptr,vk::DispatchLoaderStatic());
 			for(uint32_t i=0; i<c; i++)
 				if(pd.getXlibPresentationSupportKHR(i,d,v)) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
