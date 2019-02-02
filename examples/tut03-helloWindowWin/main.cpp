@@ -11,7 +11,7 @@ static HWND window=nullptr;
 int main(int,char**)
 {
 	// catch exceptions
-	// (vulkan.hpp fuctions throws if they fail)
+	// (vulkan.hpp functions throws if they fail)
 	try {
 
 		// Vulkan instance
@@ -102,7 +102,6 @@ int main(int,char**)
 
 		// show window
 		ShowWindow(window,SW_SHOWDEFAULT);
-		UpdateWindow(window);
 
 		// run event loop
 		MSG msg;

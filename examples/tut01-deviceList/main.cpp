@@ -7,7 +7,7 @@ using namespace std;
 int main(int,char**)
 {
 	// catch exceptions
-	// (vulkan.hpp fuctions throws if they fail)
+	// (vulkan.hpp functions throws if they fail)
 	try {
 
 		// Vulkan instance

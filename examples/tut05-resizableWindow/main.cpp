@@ -589,7 +589,7 @@ static bool queueFrame()
 int main(int,char**)
 {
 	// catch exceptions
-	// (vulkan.hpp fuctions throws if they fail)
+	// (vulkan.hpp functions throws if they fail)
 	try {
 
 		// init Vulkan and open window
@@ -638,7 +638,10 @@ int main(int,char**)
 			// wait for rendering to complete
 			presentationQueue.waitIdle();
 		}
+
 	ExitMainLoop:
+		// wait for device idle
+		// after main loop exit
 		device->waitIdle();
 
 	// catch exceptions
