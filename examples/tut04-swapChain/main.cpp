@@ -177,8 +177,6 @@ int main(int,char**)
 			uint32_t graphicsQueueFamily=UINT32_MAX;
 			uint32_t presentationQueueFamily=UINT32_MAX;
 			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-			vector<bool> presentationSupport;
-			presentationSupport.reserve(queueFamilyList.size());
 			uint32_t i=0;
 			for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
 				bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
@@ -187,12 +185,10 @@ int main(int,char**)
 						compatibleDevicesSingleQueue.emplace_back(pd,i);
 						goto nextDevice;
 					}
-					presentationSupport.push_back(p);
 					if(graphicsQueueFamily==UINT32_MAX)
 						graphicsQueueFamily=i;
 				}
 				else {
-					presentationSupport.push_back(p);
 					if(p)
 						if(presentationQueueFamily==UINT32_MAX)
 							presentationQueueFamily=i;
@@ -484,7 +480,13 @@ int main(int,char**)
 #endif
 
 			// render frame
-			uint32_t imageIndex=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr)).value;
+			uint32_t imageIndex=
+				device->acquireNextImageKHR(
+					swapchain.get(),                  // swapchain
+					numeric_limits<uint64_t>::max(),  // timeout
+					imageAvailableSemaphore.get(),    // semaphore to signal
+					vk::Fence(nullptr)                // fence to signal
+				).value;
 			graphicsQueue.submit(
 				vk::ArrayProxy<const vk::SubmitInfo>(
 					1,
@@ -512,6 +514,9 @@ int main(int,char**)
 			);
 			presentationQueue.waitIdle();
 		}
+
+		// wait for device idle
+		// after main loop exit
 	ExitMainLoop:
 		device->waitIdle();
 
