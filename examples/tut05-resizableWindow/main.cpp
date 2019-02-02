@@ -147,11 +147,11 @@ static void init()
 		throw runtime_error("Can not create window.");
 	}
 
-	// show window
-	ShowWindow(window,SW_SHOWDEFAULT);
-
 	// create surface
-	surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
+	surface=
+		instance->createWin32SurfaceKHRUnique(
+			vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window)
+		);
 
 #else
 
@@ -173,7 +173,10 @@ static void init()
 	XMapWindow(display,window);
 
 	// create surface
-	surface=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window));
+	surface=
+		instance->createXlibSurfaceKHRUnique(
+			vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window)
+		);
 
 #endif
 
@@ -210,8 +213,6 @@ static void init()
 		uint32_t graphicsQueueFamily=UINT32_MAX;
 		uint32_t presentationQueueFamily=UINT32_MAX;
 		vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-		vector<bool> presentationSupport;
-		presentationSupport.reserve(queueFamilyList.size());
 		uint32_t i=0;
 		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
 			bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
@@ -220,12 +221,10 @@ static void init()
 					compatibleDevicesSingleQueue.emplace_back(pd,i);
 					goto nextDevice;
 				}
-				presentationSupport.push_back(p);
 				if(graphicsQueueFamily==UINT32_MAX)
 					graphicsQueueFamily=i;
 			}
 			else {
-				presentationSupport.push_back(p);
 				if(p)
 					if(presentationQueueFamily==UINT32_MAX)
 						presentationQueueFamily=i;
@@ -259,7 +258,9 @@ static void init()
 		   "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 	// create device
-	device.reset(  // move assignment and physicalDevice.createDeviceUnique() does not work here because of bug in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git). Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp.
+	device.reset(  // Move assignment and physicalDevice.createDeviceUnique() does not work here because of bug
+	               // in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git).
+	               // Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp of VK_HEADER_VERSION 70.
 		physicalDevice.createDevice(
 			vk::DeviceCreateInfo{
 				vk::DeviceCreateFlags(),  // flags
@@ -600,17 +601,20 @@ int main(int,char**)
 
 #ifdef _WIN32
 
+		// show window
+		ShowWindow(window,SW_SHOWDEFAULT);
+
 		// run Win32 event loop
 		MSG msg;
 		while(true){
 
 			// process messages
-			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
-				if(msg.message==WM_QUIT)
-					goto ExitMainLoop;
+			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)) {
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);
 			}
+			if(msg.message==WM_QUIT)
+				goto ExitMainLoop;
 
 #else
 

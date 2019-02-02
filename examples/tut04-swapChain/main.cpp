@@ -14,8 +14,8 @@ using namespace std;
 #ifdef _WIN32
 static HWND window=nullptr;
 #else
-Display* display=nullptr;
-Window window=0;
+static Display* display=nullptr;
+static Window window=0;
 #endif
 
 
@@ -26,7 +26,7 @@ int main(int,char**)
 	try {
 
 		// Vulkan instance
-		vk::UniqueInstance instance=
+		vk::UniqueInstance instance(
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
@@ -44,7 +44,7 @@ int main(int,char**)
 #else
 					array<const char*,2>{"VK_KHR_surface","VK_KHR_xlib_surface"}.data(),  // enabled extension names
 #endif
-				});
+				}));
 
 
 #ifdef _WIN32
@@ -109,7 +109,10 @@ int main(int,char**)
 			throw runtime_error("Can not create window.");
 
 		// create surface
-		vk::UniqueSurfaceKHR surface=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
+		vk::UniqueSurfaceKHR surface=
+			instance->createWin32SurfaceKHRUnique(
+				vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window)
+			);
 
 #else
 
@@ -140,7 +143,10 @@ int main(int,char**)
 		XMapWindow(display,window);
 
 		// create surface
-		vk::UniqueSurfaceKHR surface=instance->createXlibSurfaceKHRUnique(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window));
+		vk::UniqueSurfaceKHR surface=
+			instance->createXlibSurfaceKHRUnique(
+				vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window)
+			);
 
 #endif
 
@@ -218,10 +224,8 @@ int main(int,char**)
 			graphicsQueueFamily=get<1>(t);
 			presentationQueueFamily=get<2>(t);
 		}
-		else {
-			cout<<"No compatible devices. Exiting..."<<endl;
-			return 1;
-		}
+		else
+			throw runtime_error("No compatible devices.");
 		cout<<"Using device:\n"
 		      "   "<<pd.getProperties().deviceName<<endl;
 
@@ -287,7 +291,7 @@ int main(int,char**)
 					currentSurfaceExtent,  // imageExtent
 					1,  // imageArrayLayers
 					vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
-					compatibleDevicesSingleQueue.size()>0?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
+					compatibleDevicesSingleQueue.size()>0?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent,  // imageSharingMode
 					compatibleDevicesSingleQueue.size()>0?uint32_t(0):uint32_t(2),  // queueFamilyIndexCount
 					compatibleDevicesSingleQueue.size()>0?nullptr:array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
 					surfaceCapabilities.currentTransform,    // preTransform
@@ -457,7 +461,7 @@ int main(int,char**)
 		while(true){
 
 			// process messages
-			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
+			while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)) {
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);
 			}

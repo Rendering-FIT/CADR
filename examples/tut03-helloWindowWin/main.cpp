@@ -5,7 +5,7 @@
 
 using namespace std;
 
-static HWND w=nullptr;
+static HWND window=nullptr;
 
 
 int main(int,char**)
@@ -16,7 +16,7 @@ int main(int,char**)
 
 		// Vulkan instance
 		vk::UniqueInstance instance(
-			vk::createInstance(
+			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
@@ -26,9 +26,9 @@ int main(int,char**)
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
-					0, nullptr,  // no debug layers
-					2,           // enabled extension count
-					array<const char*,2>{{"VK_KHR_surface","VK_KHR_win32_surface"}}.data(),  // enabled extension names
+					0,nullptr,  // no layers
+					2,          // enabled extension count
+					array<const char*,2>{"VK_KHR_surface","VK_KHR_win32_surface"}.data(),  // enabled extension names
 				}));
 
 		// window's message handling procedure
@@ -37,15 +37,14 @@ int main(int,char**)
 			{
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
-					w=nullptr;
-				break;
+					window=nullptr;
+					return 0;
 				case WM_DESTROY:
 					PostQuitMessage(0);
-				break;
+					return 0;
 				default:
 					return DefWindowProc(hwnd,msg,wParam,lParam);
 			}
-			return 0;
 		};
 
 		// register window class
@@ -56,30 +55,31 @@ int main(int,char**)
 		wc.cbClsExtra    = 0;
 		wc.cbWndExtra    = 0;
 		wc.hInstance     = GetModuleHandle(NULL);
-		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
-		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-		wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+		wc.hIcon         = LoadIcon(NULL,IDI_APPLICATION);
+		wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
+		wc.hbrBackground = NULL;
 		wc.lpszMenuName  = NULL;
 		wc.lpszClassName = "HelloWindow";
-		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
+		wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
 		if(!RegisterClassEx(&wc))
 			throw runtime_error("Can not register window class.");
 
 		// create window
-		w=CreateWindowEx(
+		window=CreateWindowEx(
 			WS_EX_CLIENTEDGE,
 			"HelloWindow",
 			"Hello window!",
 			WS_OVERLAPPEDWINDOW,
 			CW_USEDEFAULT,CW_USEDEFAULT,400,300,
 			NULL,NULL,wc.hInstance,NULL);
-		if(w==NULL)
+		if(window==NULL)
 			throw runtime_error("Can not create window.");
-		ShowWindow(w,SW_SHOWDEFAULT);
-		UpdateWindow(w);
 
 		// create surface
-		vk::UniqueSurfaceKHR s=instance->createWin32SurfaceKHRUnique(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,w));
+		vk::UniqueSurfaceKHR surface=
+			instance->createWin32SurfaceKHRUnique(
+				vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window)
+			);
 
 		// find compatible devices
 		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
@@ -100,6 +100,10 @@ int main(int,char**)
 		for(string& name:compatibleDevices)
 			cout<<"   "<<name<<endl;
 
+		// show window
+		ShowWindow(window,SW_SHOWDEFAULT);
+		UpdateWindow(window);
+
 		// run event loop
 		MSG msg;
 		while(GetMessage(&msg,NULL,0,0)>0) {
@@ -117,8 +121,8 @@ int main(int,char**)
 	}
 
 	// clean up
-	if(w)
-		DestroyWindow(w);
+	if(window)
+		DestroyWindow(window);
 
 	return 0;
 }
