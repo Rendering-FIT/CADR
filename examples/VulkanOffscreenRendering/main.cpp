@@ -7,12 +7,13 @@
 #endif
 #include <vulkan/vulkan.hpp>
 #include <array>
+#include <fstream>
 #include <iostream>
 
 using namespace std;
 
 // constants
-const vk::Extent2D imageExtent(100,100);
+const vk::Extent2D imageExtent(127,128);
 
 
 // Vulkan instance
@@ -30,9 +31,11 @@ static vk::UniqueShaderModule vsModule;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout pipelineLayout;
-static vk::UniqueImage image;
-static vk::UniqueDeviceMemory imageMemory;
-static vk::UniqueImageView imageView;
+static vk::UniqueImage framebufferImage;
+static vk::UniqueImage hostVisibleImage;
+static vk::UniqueDeviceMemory framebufferImageMemory;
+static vk::UniqueDeviceMemory hostVisibleImageMemory;
+static vk::UniqueImageView frameImageView;
 static vk::UniquePipeline pipeline;
 static vk::UniqueFramebuffer framebuffer;
 static vk::UniqueCommandPool commandPool;
@@ -104,7 +107,9 @@ int main(int,char**)
 				"   "<<physicalDevice.getProperties().deviceName<<endl;
 
 		// create device
-		device.reset(  // move assignment and physicalDevice.createDeviceUnique() does not work here because of bug in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git). Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp.
+		device.reset(  // Move assignment and physicalDevice.createDeviceUnique() does not work here because of bug
+		               // in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git).
+		               // Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp of VK_HEADER_VERSION 70.
 			physicalDevice.createDevice(
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
@@ -140,7 +145,7 @@ int main(int,char**)
 						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
 						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 						vk::ImageLayout::eUndefined,       // initialLayout
-						vk::ImageLayout::ePresentSrcKHR    // finalLayout
+						vk::ImageLayout::eGeneral          // finalLayout
 					),
 					1,  // subpassCount
 					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
@@ -225,8 +230,8 @@ int main(int,char**)
 			);
 
 
-		// rendered image
-		image=
+		// images
+		framebufferImage=
 			device->createImageUnique(
 				vk::ImageCreateInfo(
 					vk::ImageCreateFlags(),       // flags
@@ -237,7 +242,25 @@ int main(int,char**)
 					1,                            // arrayLayers
 					vk::SampleCountFlagBits::e1,  // samples
 					vk::ImageTiling::eOptimal,    // tiling
-					vk::ImageUsageFlagBits::eColorAttachment,  // usage
+					vk::ImageUsageFlagBits::eColorAttachment|vk::ImageUsageFlagBits::eTransferSrc,  // usage
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr,                      // pQueueFamilyIndices
+					vk::ImageLayout::eUndefined   // initialLayout
+				)
+			);
+		hostVisibleImage=
+			device->createImageUnique(
+				vk::ImageCreateInfo(
+					vk::ImageCreateFlags(),       // flags
+					vk::ImageType::e2D,           // imageType
+					vk::Format::eR8G8B8A8Unorm,   // format
+					vk::Extent3D(imageExtent.width,imageExtent.height,1),  // extent
+					1,                            // mipLevels
+					1,                            // arrayLayers
+					vk::SampleCountFlagBits::e1,  // samples
+					vk::ImageTiling::eLinear,    // tiling
+					vk::ImageUsageFlagBits::eTransferDst,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount
 					nullptr,                      // pQueueFamilyIndices
@@ -245,34 +268,42 @@ int main(int,char**)
 				)
 			);
 
-		// rendered image memory
-		imageMemory=
-			device->allocateMemoryUnique(
-				[](vk::Image image)->vk::MemoryAllocateInfo{
-					vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(image);
-					vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
-					for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-						if(memoryRequirements.memoryTypeBits&(1<<i))
-							if(memoryProperties.memoryTypes[i].propertyFlags&vk::MemoryPropertyFlagBits::eDeviceLocal)
-								return vk::MemoryAllocateInfo(
+		// memory for images
+		auto allocateMemory=
+			[](vk::Image image,vk::MemoryPropertyFlags requiredFlags)->vk::UniqueDeviceMemory{
+				vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(image);
+				vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+				for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+					if(memoryRequirements.memoryTypeBits&(1<<i))
+						if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
+							return
+								device->allocateMemoryUnique(
+									vk::MemoryAllocateInfo(
 										memoryRequirements.size,  // allocationSize
 										i                         // memoryTypeIndex
-									);
-					throw std::runtime_error("No suitable memory type found for image.");
-				}(image.get())
-			);
+									)
+								);
+				throw std::runtime_error("No suitable memory type found for image.");
+			};
+		framebufferImageMemory=allocateMemory(framebufferImage.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		hostVisibleImageMemory=allocateMemory(hostVisibleImage.get(),vk::MemoryPropertyFlagBits::eHostVisible);
 		device->bindImageMemory(
-			image.get(),  // image
-			imageMemory.get(),  // memory
-			0  // memoryOffset
+			framebufferImage.get(),        // image
+			framebufferImageMemory.get(),  // memory
+			0                              // memoryOffset
+		);
+		device->bindImageMemory(
+			hostVisibleImage.get(),        // image
+			hostVisibleImageMemory.get(),  // memory
+			0                              // memoryOffset
 		);
 
 		// image view
-		imageView=
+		frameImageView=
 			device->createImageViewUnique(
 				vk::ImageViewCreateInfo(
 					vk::ImageViewCreateFlags(),  // flags
-					image.get(),                 // image
+					framebufferImage.get(),      // image
 					vk::ImageViewType::e2D,      // viewType
 					vk::Format::eR8G8B8A8Unorm,  // format
 					vk::ComponentMapping(),      // components
@@ -384,7 +415,7 @@ int main(int,char**)
 				vk::FramebufferCreateInfo(
 					vk::FramebufferCreateFlags(),  // flags
 					renderPass.get(),              // renderPass
-					1,&imageView.get(),            // attachmentCount, pAttachments
+					1,&frameImageView.get(),       // attachmentCount, pAttachments
 					imageExtent.width,             // width
 					imageExtent.height,            // height
 					1  // layers
@@ -401,13 +432,42 @@ int main(int,char**)
 				)
 			)[0]);
 
-		// record command buffer
+		// begin record command buffer
 		commandBuffer->begin(
 			vk::CommandBufferBeginInfo(
-				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+				vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 				nullptr  // pInheritanceInfo
 			)
 		);
+
+		// put image transitions into command buffer
+		commandBuffer->pipelineBarrier(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags
+			nullptr,  // memoryBarriers
+			nullptr,  // bufferMemoryBarriers
+			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),                          // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
+					vk::ImageLayout::eUndefined,                // oldLayout
+					vk::ImageLayout::eColorAttachmentOptimal,   // newLayout
+					0,                          // srcQueueFamilyIndex
+					0,                          // dstQueueFamilyIndex
+					framebufferImage.get(),     // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					}
+				},
+			}
+		);
+
+		// begin render pass
 		commandBuffer->beginRenderPass(
 			vk::RenderPassBeginInfo(
 				renderPass.get(),       // renderPass
@@ -418,9 +478,108 @@ int main(int,char**)
 			),
 			vk::SubpassContents::eInline
 		);
+
+		// rendering commands
 		commandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
 		commandBuffer->draw(3,1,0,0);  // draw single triangle
+
+		// end render pass
 		commandBuffer->endRenderPass();
+
+		// barrier for rendering completion
+		commandBuffer->pipelineBarrier(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStageMask
+			vk::PipelineStageFlagBits::eTransfer,  // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags
+			nullptr,  // memoryBarriers
+			nullptr,  // bufferMemoryBarriers
+			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
+					vk::AccessFlagBits::eTransferRead,          // dstAccessMask
+					vk::ImageLayout::eColorAttachmentOptimal,   // oldLayout
+					vk::ImageLayout::eTransferSrcOptimal,       // newLayout
+					0,                          // srcQueueFamilyIndex
+					0,                          // dstQueueFamilyIndex
+					framebufferImage.get(),     // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					}
+				},
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),                   // srcAccessMask
+					vk::AccessFlagBits::eTransferWrite,  // dstAccessMask
+					vk::ImageLayout::eUndefined,         // oldLayout
+					vk::ImageLayout::eGeneral,           // newLayout
+					0,                          // srcQueueFamilyIndex
+					0,                          // dstQueueFamilyIndex
+					hostVisibleImage.get(),     // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					}
+				}
+			}
+		);
+
+		// copy framebufferImage to hostVisibleImage
+		commandBuffer->copyImage(
+			framebufferImage.get(),vk::ImageLayout::eTransferSrcOptimal,
+			hostVisibleImage.get(),vk::ImageLayout::eGeneral,
+			vk::ImageCopy(
+				vk::ImageSubresourceLayers(  // srcSubresource
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // mipLevel
+					0,  // baseArrayLayer
+					1   // layerCount
+				),
+				vk::Offset3D(0,0,0),         // srcOffset
+				vk::ImageSubresourceLayers(  // dstSubresource
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // mipLevel
+					0,  // baseArrayLayer
+					1   // layerCount
+				),
+				vk::Offset3D(0,0,0),         // dstOffset
+				vk::Extent3D(imageExtent.width,imageExtent.height,1)  // extent
+			)
+		);
+
+		// barrier for copy completion
+		/*commandBuffer->pipelineBarrier(
+			vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
+			vk::PipelineStageFlagBits::eHost,      // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags
+			nullptr,  // memoryBarriers
+			nullptr,  // bufferMemoryBarriers
+			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlagBits::eTransferWrite,         // srcAccessMask
+					vk::AccessFlagBits::eHostRead,              // dstAccessMask
+					vk::ImageLayout::eTransferDstOptimal,       // oldLayout
+					vk::ImageLayout::eGeneral,                  // newLayout
+					0,                          // srcQueueFamilyIndex
+					0,                          // dstQueueFamilyIndex
+					hostVisibleImage.get(),     // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					}
+				}
+			}
+		);*/
+
+		// end command buffer
 		commandBuffer->end();
 
 
@@ -439,12 +598,82 @@ int main(int,char**)
 		);
 
 		vk::Result r=device->waitForFences(
-			1,&renderingFinishedFence.get(),  // fenceCount, pFences
+			renderingFinishedFence.get(),  // fences (vk::ArrayProxy)
 			VK_TRUE,  // waitAll
 			3e9       // timeout (3s)
 		);
 		if(r==vk::Result::eTimeout)
 			throw std::runtime_error("GPU timeout. Task is probably hanging.");
+
+		// map memory
+		cout<<"Going to do mapping..."<<endl;
+		struct MappedMemoryDeleter { void operator()(void*) { device->unmapMemory(hostVisibleImageMemory.get()); } } mappedMemoryDeleter;
+		unique_ptr<void,MappedMemoryDeleter> m(
+			device->mapMemory(hostVisibleImageMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
+			mappedMemoryDeleter  // deleter
+		);
+
+		fstream s("image.bmp",fstream::out|fstream::binary);
+
+		struct BitmapFileHeader {
+			uint16_t type = 0x4d42;
+			uint16_t sizeLo;
+			uint16_t sizeHi;
+			uint16_t reserved1 = 0;
+			uint16_t reserved2 = 0;
+			uint16_t offsetLo;
+			uint16_t offsetHi;
+		};
+		static_assert(sizeof(BitmapFileHeader)==14,"Wrong alignment of BitmapFileHeader members.");
+
+		uint32_t imageDataSize=imageExtent.width*imageExtent.height*4;
+		uint32_t fileSize=imageDataSize+14+40+2;
+		BitmapFileHeader bitmapFileHeader = {
+			0x4d42,
+			uint16_t(fileSize&0xffff),
+			uint16_t(fileSize>>16),
+			0,0,
+		   14+40+2,  // equal to sum of sizeof(BitmapFileHeader), sizeof(BitmapInfoHeader) and 2 (as alignment)
+		   0
+		};
+		s.write(reinterpret_cast<char*>(&bitmapFileHeader),sizeof(BitmapFileHeader));
+
+		struct BitmapInfoHeader {
+			uint32_t size = 40;
+			int32_t  width;
+			int32_t  height;
+			uint16_t numPlanes = 1;
+			uint16_t bpp = 32;
+			uint32_t compression = 0;  // 0 - no compression
+			uint32_t imageDataSize;
+			int32_t  xPixelsPerMeter;
+			int32_t  yPixelsPerMeter;
+			uint32_t numColorsInPalette = 0;  // no colors in color palette
+			uint32_t numImportantColors = 0;  // all colors are important
+		};
+		static_assert(sizeof(BitmapInfoHeader)==40,"Wrong size of BitmapInfoHeader.");
+
+		BitmapInfoHeader bitmapInfoHeader = {
+			40,
+			int32_t(imageExtent.width),
+			int32_t(-imageExtent.height),
+			1,32,0,
+			imageDataSize,
+			2835,2835,  // roughly 72 DPI
+			0,0
+		};
+		s.write(reinterpret_cast<char*>(&bitmapInfoHeader),sizeof(BitmapInfoHeader));
+		s.write(array<char,2>{'\0','\0'}.data(),2);
+
+		const char* src=reinterpret_cast<char*>(m.get());
+		char b[4];
+		for(size_t i=0; i<(imageDataSize+(imageExtent.height*4)); i+=4) {
+			b[0]=src[i+2];
+			b[1]=src[i+1];
+			b[2]=src[i+0];
+			b[3]=src[i+3];
+			s.write(b,4);
+		}
 
 	// catch exceptions
 	} catch(vk::Error &e) {
