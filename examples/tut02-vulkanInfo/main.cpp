@@ -88,7 +88,7 @@ int main(int,char**)
 			vector<vk::ExtensionProperties> availableDeviceExtensions=pd.enumerateDeviceExtensionProperties();
 			vk::PhysicalDeviceProperties2KHR p2;
 #if VK_HEADER_VERSION<92
-#pragma message("Old Vulkan header file detected. Some functionality will be disabled. Please, install new Vulkan SDK or use one from CADR/3rdParty folder.")
+# pragma message("Old Vulkan header file detected. Some functionality will be disabled. Please, install new Vulkan SDK or use one from CADR/3rdParty folder.")
 #endif
 #if VK_HEADER_VERSION>=92
 			vk::PhysicalDeviceDriverPropertiesKHR driverInfo;
@@ -119,9 +119,11 @@ int main(int,char**)
 				    <<"."<<driverInfo.conformanceVersion.subminor<<"."<<driverInfo.conformanceVersion.patch<<endl;
 			}
 			else
-				cout<<"      Driver info:  not available"<<endl;
+				cout<<"      Driver info:"<<endl
+				    <<"         not available"<<endl;
 #else
-			cout<<"      Driver info:  not available (support disabled during build time)"<<endl;
+			cout<<"      Driver info:"<<endl
+			    <<"         not available (support disabled during build time)"<<endl;
 #endif
 #if VK_HEADER_VERSION>=92
 			if(hasPciInfo){
@@ -132,9 +134,11 @@ int main(int,char**)
 				cout<<"         function:  "<<pciInfo.pciFunction<<endl;
 			}
 			else
-				cout<<"      PCI info:  not available"<<endl;
+				cout<<"      PCI info:"<<endl
+				    <<"         not available"<<endl;
 #else
-			cout<<"      PCI info:  not available (support disabled during build time)"<<endl;
+			cout<<"      PCI info:"<<endl
+			    <<"         not available (support disabled during build time)"<<endl;
 #endif
 
 			// queues
