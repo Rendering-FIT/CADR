@@ -10,7 +10,7 @@ int main(int,char**)
 	// (vulkan.hpp functions throws if they fail)
 	try {
 
-		// vulkan version
+		// Vulkan version
 		// (dynamic loading of vkEnumerateInstanceVersion() and some other functions must be used
 		// as they might not be available on Vulkan 1.0. Some of them are available by extensions,
 		// some are introduced by Vulkan 1.1.
@@ -87,8 +87,8 @@ int main(int,char**)
 			// get device properties
 			vector<vk::ExtensionProperties> availableDeviceExtensions=pd.enumerateDeviceExtensionProperties();
 			vk::PhysicalDeviceProperties2KHR p2;
-#if VK_HEADER_VERSION<192
-#pragma message "Old Vulkan header file detected. Some functionality will be disabled. Please, install new Vulkan SDK or use one from CADR/3rdParty folder."
+#if VK_HEADER_VERSION<92
+#pragma message("Old Vulkan header file detected. Some functionality will be disabled. Please, install new Vulkan SDK or use one from CADR/3rdParty folder.")
 #endif
 #if VK_HEADER_VERSION>=92
 			vk::PhysicalDeviceDriverPropertiesKHR driverInfo;
@@ -111,16 +111,17 @@ int main(int,char**)
 			// print driver info
 #if VK_HEADER_VERSION>=92
 			if(hasDriverInfo){
-				cout<<"      Driver ID:    "<<vk::to_string(driverInfo.driverID)<<endl;
-				cout<<"      Driver name:  "<<driverInfo.driverName<<endl;
-				cout<<"      Driver info:  "<<driverInfo.driverInfo<<endl;
-				cout<<"      Driver conformance version:  "<<driverInfo.conformanceVersion.major<<"."<<driverInfo.conformanceVersion.minor
+				cout<<"      Driver info:"<<endl;
+				cout<<"         ID:    "<<vk::to_string(driverInfo.driverID)<<endl;
+				cout<<"         name:  "<<driverInfo.driverName<<endl;
+				cout<<"         info:  "<<driverInfo.driverInfo<<endl;
+				cout<<"         conformance version:  "<<driverInfo.conformanceVersion.major<<"."<<driverInfo.conformanceVersion.minor
 				    <<"."<<driverInfo.conformanceVersion.subminor<<"."<<driverInfo.conformanceVersion.patch<<endl;
 			}
 			else
-				cout<<"      Driver information:  not available"<<endl;
+				cout<<"      Driver info:  not available"<<endl;
 #else
-			cout<<"      Driver information:  not available (support disabled during build time)"<<endl;
+			cout<<"      Driver info:  not available (support disabled during build time)"<<endl;
 #endif
 #if VK_HEADER_VERSION>=92
 			if(hasPciInfo){
