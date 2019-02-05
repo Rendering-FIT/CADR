@@ -10,6 +10,7 @@ set(PACKAGES
 	VulkanDepthBuffer
 	OpenGLInteroperability
 	HelloQtWindow
+	VulkanOffscreenRendering
 	)
 if(UNIX)
 	list(INSERT PACKAGES 2 tut03-helloWindowX11)

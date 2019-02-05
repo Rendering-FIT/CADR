@@ -13,7 +13,7 @@
 using namespace std;
 
 // constants
-const vk::Extent2D imageExtent(127,128);
+const vk::Extent2D imageExtent(128,128);
 
 
 // Vulkan instance
@@ -259,7 +259,7 @@ int main(int,char**)
 					1,                            // mipLevels
 					1,                            // arrayLayers
 					vk::SampleCountFlagBits::e1,  // samples
-					vk::ImageTiling::eLinear,    // tiling
+					vk::ImageTiling::eLinear,     // tiling
 					vk::ImageUsageFlagBits::eTransferDst,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount
@@ -498,7 +498,7 @@ int main(int,char**)
 					vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
 					vk::AccessFlagBits::eTransferRead,          // dstAccessMask
 					vk::ImageLayout::eColorAttachmentOptimal,   // oldLayout
-					vk::ImageLayout::eTransferSrcOptimal,       // newLayout
+					vk::ImageLayout::eGeneral,                  // newLayout
 					0,                          // srcQueueFamilyIndex
 					0,                          // dstQueueFamilyIndex
 					framebufferImage.get(),     // image
@@ -531,7 +531,7 @@ int main(int,char**)
 
 		// copy framebufferImage to hostVisibleImage
 		commandBuffer->copyImage(
-			framebufferImage.get(),vk::ImageLayout::eTransferSrcOptimal,
+			framebufferImage.get(),vk::ImageLayout::eGeneral,
 			hostVisibleImage.get(),vk::ImageLayout::eGeneral,
 			vk::ImageCopy(
 				vk::ImageSubresourceLayers(  // srcSubresource
@@ -552,33 +552,6 @@ int main(int,char**)
 			)
 		);
 
-		// barrier for copy completion
-		/*commandBuffer->pipelineBarrier(
-			vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
-			vk::PipelineStageFlagBits::eHost,      // dstStageMask
-			vk::DependencyFlags(),  // dependencyFlags
-			nullptr,  // memoryBarriers
-			nullptr,  // bufferMemoryBarriers
-			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
-				vk::ImageMemoryBarrier{
-					vk::AccessFlagBits::eTransferWrite,         // srcAccessMask
-					vk::AccessFlagBits::eHostRead,              // dstAccessMask
-					vk::ImageLayout::eTransferDstOptimal,       // oldLayout
-					vk::ImageLayout::eGeneral,                  // newLayout
-					0,                          // srcQueueFamilyIndex
-					0,                          // dstQueueFamilyIndex
-					hostVisibleImage.get(),     // image
-					vk::ImageSubresourceRange{  // subresourceRange
-						vk::ImageAspectFlagBits::eColor,  // aspectMask
-						0,  // baseMipLevel
-						1,  // levelCount
-						0,  // baseArrayLayer
-						1   // layerCount
-					}
-				}
-			}
-		);*/
-
 		// end command buffer
 		commandBuffer->end();
 
@@ -597,6 +570,7 @@ int main(int,char**)
 			renderingFinishedFence.get()  // fence
 		);
 
+		// wait for the work
 		vk::Result r=device->waitForFences(
 			renderingFinishedFence.get(),  // fences (vk::ArrayProxy)
 			VK_TRUE,  // waitAll
@@ -606,15 +580,28 @@ int main(int,char**)
 			throw std::runtime_error("GPU timeout. Task is probably hanging.");
 
 		// map memory
-		cout<<"Going to do mapping..."<<endl;
 		struct MappedMemoryDeleter { void operator()(void*) { device->unmapMemory(hostVisibleImageMemory.get()); } } mappedMemoryDeleter;
 		unique_ptr<void,MappedMemoryDeleter> m(
 			device->mapMemory(hostVisibleImageMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
 			mappedMemoryDeleter  // deleter
 		);
 
+		// get image memory layout
+		vk::SubresourceLayout hostImageLayout=
+			device->getImageSubresourceLayout(
+				hostVisibleImage.get(),  // image
+				vk::ImageSubresource{    // subresource
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // mipLevel
+					0   // arrayLayer
+				}
+			);
+
+		// open the output file
+		cout<<"Writing \"image.bmp\"..."<<endl;
 		fstream s("image.bmp",fstream::out|fstream::binary);
 
+		// write BitmapFileHeader
 		struct BitmapFileHeader {
 			uint16_t type = 0x4d42;
 			uint16_t sizeLo;
@@ -638,6 +625,7 @@ int main(int,char**)
 		};
 		s.write(reinterpret_cast<char*>(&bitmapFileHeader),sizeof(BitmapFileHeader));
 
+		// write BitmapInfoHeader
 		struct BitmapInfoHeader {
 			uint32_t size = 40;
 			int32_t  width;
@@ -665,15 +653,21 @@ int main(int,char**)
 		s.write(reinterpret_cast<char*>(&bitmapInfoHeader),sizeof(BitmapInfoHeader));
 		s.write(array<char,2>{'\0','\0'}.data(),2);
 
-		const char* src=reinterpret_cast<char*>(m.get());
+		// write image data,
+		// line by line
+		const char* linePtr=reinterpret_cast<char*>(m.get());
 		char b[4];
-		for(size_t i=0; i<(imageDataSize+(imageExtent.height*4)); i+=4) {
-			b[0]=src[i+2];
-			b[1]=src[i+1];
-			b[2]=src[i+0];
-			b[3]=src[i+3];
-			s.write(b,4);
+		for(auto y=imageExtent.height; y>0; y--) {
+			for(size_t i=0,e=imageExtent.width*4; i<e; i+=4) {
+				b[0]=linePtr[i+2];
+				b[1]=linePtr[i+1];
+				b[2]=linePtr[i+0];
+				b[3]=linePtr[i+3];
+				s.write(b,4);
+			}
+			linePtr+=hostImageLayout.rowPitch;
 		}
+		cout<<"Done."<<endl;
 
 	// catch exceptions
 	} catch(vk::Error &e) {
