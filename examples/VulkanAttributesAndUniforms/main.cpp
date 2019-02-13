@@ -68,6 +68,8 @@ static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
+static vk::UniqueBuffer coordinateBuffer;
+static vk::UniqueDeviceMemory coordinateBufferMemory;
 
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[]={
@@ -87,7 +89,7 @@ static void init()
 			vk::InstanceCreateInfo{
 				vk::InstanceCreateFlags(),  // flags
 				&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-					"CADR Vk VulkanDepthBuffer",  // application name
+					"CADR Vk VulkanAttributesAndUniforms",  // application name
 					VK_MAKE_VERSION(0,0,0),  // application version
 					"CADR",                  // engine name
 					VK_MAKE_VERSION(0,0,0),  // engine version
@@ -445,6 +447,145 @@ static void init()
 				vk::SemaphoreCreateFlags()  // flags
 			)
 		);
+
+	// vertex coordinate buffer
+	coordinateBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				6*4*sizeof(float),            // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+
+	// memory for buffers
+	auto allocateMemory=
+		[](vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)->vk::UniqueDeviceMemory{
+			vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
+			vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+				if(memoryRequirements.memoryTypeBits&(1<<i))
+					if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
+						return
+							device->allocateMemoryUnique(
+								vk::MemoryAllocateInfo(
+									memoryRequirements.size,  // allocationSize
+									i                         // memoryTypeIndex
+								)
+							);
+			throw std::runtime_error("No suitable memory type found for the buffer.");
+		};
+
+	// vertex coordinate buffer memory
+	coordinateBufferMemory=allocateMemory(coordinateBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	device->bindBufferMemory(
+		coordinateBuffer.get(),  // image
+		coordinateBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+
+	// staging buffer
+	vk::UniqueBuffer coordinateStagingBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				6*4*sizeof(float),            // size
+				vk::BufferUsageFlagBits::eTransferSrc,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+
+	// coordinate staging buffer memory
+	vk::UniqueDeviceMemory coordinateStagingBufferMemory=
+		allocateMemory(coordinateStagingBuffer.get(),
+	                  vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+	device->bindBufferMemory(
+		coordinateStagingBuffer.get(),  // image
+		coordinateStagingBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+
+	// map coordinate staging buffer
+	struct MappedMemoryDeleter {
+		vk::DeviceMemory memory;
+		void operator()(void*) { device->unmapMemory(memory); }
+	};
+	MappedMemoryDeleter mappedMemoryDeleter{coordinateStagingBufferMemory.get()};
+	unique_ptr<void,MappedMemoryDeleter> mappedMemory(
+		device->mapMemory(coordinateStagingBufferMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
+		mappedMemoryDeleter  // deleter
+	);
+
+	// fill coordinate staging buffer
+	constexpr float coordData[]={
+		-0.7f, 0.5f, 0.4f, 1.0f,
+		-0.2f,-0.5f, 0.2f, 1.0f,
+		 0.3f, 0.5f, 0.0f, 1.0f,
+		-0.3f, 0.5f, 0.0f, 1.0f,
+		 0.2f,-0.5f, 0.2f, 1.0f,
+		 0.7f, 0.5f, 0.4f, 1.0f
+	};
+	memcpy(mappedMemory.get(),coordData,sizeof(coordData));
+	mappedMemory.reset();
+
+	// transient command pool
+	vk::UniqueCommandPool commandPoolTransient=
+		device->createCommandPoolUnique(
+			vk::CommandPoolCreateInfo(
+				vk::CommandPoolCreateFlagBits::eTransient,  // flags
+				graphicsQueueFamily  // queueFamilyIndex
+			)
+		);
+
+	// allocate command buffer
+	vk::UniqueCommandBuffer commandBuffer=std::move(
+		device->allocateCommandBuffersUnique(
+			vk::CommandBufferAllocateInfo(
+				commandPoolTransient.get(),        // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1                                  // commandBufferCount
+			)
+		)[0]);
+
+	// record command buffer
+	commandBuffer->begin(
+		vk::CommandBufferBeginInfo(
+			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+			nullptr  // pInheritanceInfo
+		)
+	);
+	commandBuffer->copyBuffer(
+		coordinateStagingBuffer.get(),  // srcBuffer
+		coordinateBuffer.get(),         // dstBuffer
+		1,                              // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(coordData))  // pRegions
+	);
+	commandBuffer->end();
+
+	// submit command buffer
+	vk::UniqueFence fence(device->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()}));
+	graphicsQueue.submit(
+		vk::SubmitInfo(  // submits (vk::ArrayProxy)
+			0,nullptr,nullptr,       // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
+			1,&commandBuffer.get(),  // commandBufferCount,pCommandBuffers
+			0,nullptr                // signalSemaphoreCount,pSignalSemaphores
+		),
+		fence.get()  // fence
+	);
+
+	// wait for work to complete
+	vk::Result r=device->waitForFences(
+		fence.get(),  // fences (vk::ArrayProxy)
+		VK_TRUE,      // waitAll
+		3e9           // timeout (3s)
+	);
+	if(r==vk::Result::eTimeout)
+		throw std::runtime_error("GPU timeout. Task is probably hanging.");
 }
 
 
@@ -700,10 +841,19 @@ recreateSwapchain:
 				}.data(),
 				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
 					vk::PipelineVertexInputStateCreateFlags(),  // flags
-					0,        // vertexBindingDescriptionCount
-					nullptr,  // pVertexBindingDescriptions
-					0,        // vertexAttributeDescriptionCount
-					nullptr   // pVertexAttributeDescriptions
+					1,        // vertexBindingDescriptionCount
+					&(const vk::VertexInputBindingDescription&)vk::VertexInputBindingDescription(  // pVertexBindingDescriptions
+						0,  // binding
+						4*sizeof(float),  // stride
+						vk::VertexInputRate::eVertex  // inputRate
+					),
+					1,        // vertexAttributeDescriptionCount
+					&(const vk::VertexInputAttributeDescription&)vk::VertexInputAttributeDescription(  // pVertexAttributeDescriptions
+						0,  // location
+						0,  // binding
+						vk::Format::eR32G32B32A32Sfloat,  // format
+						0   // offset
+					)
 				},
 				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
@@ -834,6 +984,7 @@ recreateSwapchain:
 			vk::SubpassContents::eInline
 		);
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
+		cb.bindVertexBuffers(0,1,&coordinateBuffer.get(),&(const vk::DeviceSize&)vk::DeviceSize(0));
 		cb.draw(6,1,0,0);  // draw two triangles
 		cb.endRenderPass();
 		cb.end();
