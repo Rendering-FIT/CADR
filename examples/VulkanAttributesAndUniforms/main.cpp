@@ -68,8 +68,10 @@ static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
-static vk::UniqueBuffer coordinateBuffer;
-static vk::UniqueDeviceMemory coordinateBufferMemory;
+static vk::UniqueBuffer coordinateAttribute;
+static vk::UniqueDeviceMemory coordinateAttributeMemory;
+static vk::UniqueBuffer colorAttribute;
+static vk::UniqueDeviceMemory colorAttributeMemory;
 
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[]={
@@ -448,12 +450,23 @@ static void init()
 			)
 		);
 
-	// vertex coordinate buffer
-	coordinateBuffer=
+	// vertex attribute buffers
+	coordinateAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				6*4*sizeof(float),            // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	colorAttribute=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				6*4,                          // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -479,15 +492,21 @@ static void init()
 			throw std::runtime_error("No suitable memory type found for the buffer.");
 		};
 
-	// vertex coordinate buffer memory
-	coordinateBufferMemory=allocateMemory(coordinateBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	// vertex attribute memories
+	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	colorAttributeMemory=allocateMemory(colorAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
-		coordinateBuffer.get(),  // image
-		coordinateBufferMemory.get(),  // memory
+		coordinateAttribute.get(),  // image
+		coordinateAttributeMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		colorAttribute.get(),  // image
+		colorAttributeMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
-	// staging buffer
+	// staging buffers
 	vk::UniqueBuffer coordinateStagingBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -499,14 +518,33 @@ static void init()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	vk::UniqueBuffer colorStagingBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				6*4,                          // size
+				vk::BufferUsageFlagBits::eTransferSrc,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 
-	// coordinate staging buffer memory
+	// staging buffer memories
 	vk::UniqueDeviceMemory coordinateStagingBufferMemory=
 		allocateMemory(coordinateStagingBuffer.get(),
+	                  vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+	vk::UniqueDeviceMemory colorStagingBufferMemory=
+		allocateMemory(colorStagingBuffer.get(),
 	                  vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
 	device->bindBufferMemory(
 		coordinateStagingBuffer.get(),  // image
 		coordinateStagingBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		colorStagingBuffer.get(),  // image
+		colorStagingBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
@@ -531,6 +569,26 @@ static void init()
 		 0.7f, 0.5f, 0.4f, 1.0f
 	};
 	memcpy(mappedMemory.get(),coordData,sizeof(coordData));
+	mappedMemory.reset();
+
+	// map color staging buffer
+	mappedMemoryDeleter.memory=colorStagingBufferMemory.get();
+	mappedMemory=
+		unique_ptr<void,MappedMemoryDeleter>(
+			device->mapMemory(colorStagingBufferMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
+			mappedMemoryDeleter  // deleter
+		);
+
+	// fill color staging buffer
+	constexpr uint8_t colorData[]={
+		0,0,255,255,
+		255,0,0,255,
+		0,255,0,255,
+		0,0,255,255,
+		255,0,0,255,
+		0,255,0,255,
+	};
+	memcpy(mappedMemory.get(),colorData,sizeof(colorData));
 	mappedMemory.reset();
 
 	// transient command pool
@@ -561,9 +619,15 @@ static void init()
 	);
 	commandBuffer->copyBuffer(
 		coordinateStagingBuffer.get(),  // srcBuffer
-		coordinateBuffer.get(),         // dstBuffer
+		coordinateAttribute.get(),      // dstBuffer
 		1,                              // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(coordData))  // pRegions
+	);
+	commandBuffer->copyBuffer(
+		colorStagingBuffer.get(),  // srcBuffer
+		colorAttribute.get(),      // dstBuffer
+		1,                         // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(colorData))  // pRegions
 	);
 	commandBuffer->end();
 
@@ -841,19 +905,34 @@ recreateSwapchain:
 				}.data(),
 				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
 					vk::PipelineVertexInputStateCreateFlags(),  // flags
-					1,        // vertexBindingDescriptionCount
-					&(const vk::VertexInputBindingDescription&)vk::VertexInputBindingDescription(  // pVertexBindingDescriptions
-						0,  // binding
-						4*sizeof(float),  // stride
-						vk::VertexInputRate::eVertex  // inputRate
-					),
-					1,        // vertexAttributeDescriptionCount
-					&(const vk::VertexInputAttributeDescription&)vk::VertexInputAttributeDescription(  // pVertexAttributeDescriptions
-						0,  // location
-						0,  // binding
-						vk::Format::eR32G32B32A32Sfloat,  // format
-						0   // offset
-					)
+					2,        // vertexBindingDescriptionCount
+					array<const vk::VertexInputBindingDescription,2>{  // pVertexBindingDescriptions
+						vk::VertexInputBindingDescription(
+							0,  // binding
+							4*sizeof(float),  // stride
+							vk::VertexInputRate::eVertex  // inputRate
+						),
+						vk::VertexInputBindingDescription(
+							1,  // binding
+							4,  // stride
+							vk::VertexInputRate::eVertex  // inputRate
+						)
+					}.data(),
+					2,        // vertexAttributeDescriptionCount
+					array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+						vk::VertexInputAttributeDescription(
+							0,  // location
+							0,  // binding
+							vk::Format::eR32G32B32A32Sfloat,  // format
+							0   // offset
+						),
+						vk::VertexInputAttributeDescription(
+							1,  // location
+							1,  // binding
+							vk::Format::eR8G8B8A8Unorm,  // format
+							0   // offset
+						)
+					}.data()
 				},
 				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
@@ -984,7 +1063,15 @@ recreateSwapchain:
 			vk::SubpassContents::eInline
 		);
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
-		cb.bindVertexBuffers(0,1,&coordinateBuffer.get(),&(const vk::DeviceSize&)vk::DeviceSize(0));
+		cb.bindVertexBuffers(
+			0,  // firstBinding
+			2,  // bindingCount
+			array<const vk::Buffer,2>{  // pBuffers
+				coordinateAttribute.get(),
+				colorAttribute.get()
+			}.data(),
+			array<const vk::DeviceSize,2>{0,0}.data()  // pOffsets
+		);
 		cb.draw(6,1,0,0);  // draw two triangles
 		cb.endRenderPass();
 		cb.end();
