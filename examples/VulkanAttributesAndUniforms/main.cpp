@@ -530,7 +530,7 @@ static void init()
 			)
 		);
 
-	// staging buffer memories
+	// memory for staging buffers
 	vk::UniqueDeviceMemory coordinateStagingBufferMemory=
 		allocateMemory(coordinateStagingBuffer.get(),
 	                  vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);

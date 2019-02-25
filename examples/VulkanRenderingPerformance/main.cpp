@@ -73,6 +73,7 @@ static vk::UniqueDeviceMemory coordinateAttributeMemory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod=0;
+static const size_t numTriangles=110000;
 
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[]={
@@ -898,7 +899,7 @@ recreateSwapchain:
 		);
 
 	// vertex attribute buffers
-	size_t bufferSize=getBufferSize(40000,true);
+	size_t bufferSize=getBufferSize(numTriangles,true);
 	coordinateAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -972,7 +973,7 @@ recreateSwapchain:
 	);
 
 	// fill coordinate staging buffer
-	generate(reinterpret_cast<float*>(mappedMemory.get()),40000,1,1000,1000,true,
+	generate(reinterpret_cast<float*>(mappedMemory.get()),numTriangles,1,1000,1000,true,
 	                                  2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	mappedMemory.reset();
 
@@ -1108,7 +1109,7 @@ recreateSwapchain:
 			timestampPool.get(),  // queryPool
 			0  // query
 		);
-		cb.draw(3*40000,1,0,0);  // draw two triangles
+		cb.draw(3*numTriangles,1,0,0);  // draw two triangles
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1166,19 +1167,6 @@ static bool queueFrame()
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
 
-	// read timestamps
-	array<uint64_t,2> timestamps;
-	device->getQueryPoolResults(
-		timestampPool.get(),  // queryPool
-		0,                    // firstQuery
-		2,                    // queryCount
-		2*sizeof(uint64_t),   // dataSize
-		timestamps.data(),    // pData
-		sizeof(uint64_t),     // stride
-		vk::QueryResultFlagBits::e64  // flags
-	);
-	cout<<"Rendering time: "<<(timestamps[1]-timestamps[0])*timestampPeriod/1e3<<"us"<<endl;
-
 	// return success
 	return true;
 }
@@ -1233,6 +1221,22 @@ int main(int,char**)
 
 			// wait for rendering to complete
 			presentationQueue.waitIdle();
+			graphicsQueue.waitIdle();
+
+			// read timestamps
+			array<uint64_t,2> timestamps;
+			device->getQueryPoolResults(
+				timestampPool.get(),  // queryPool
+				0,                    // firstQuery
+				2,                    // queryCount
+				2*sizeof(uint64_t),   // dataSize
+				timestamps.data(),    // pData
+				sizeof(uint64_t),     // stride
+				vk::QueryResultFlagBits::e64  // flags
+			);
+			cout<<"Rendering time:      "<<(timestamps[1]-timestamps[0])*timestampPeriod/1e3<<"us"<<endl;
+			cout<<"Triangle throughput: "<<float(numTriangles)/(float(timestamps[1]-timestamps[0])*timestampPeriod)*1e3<<" millions per second"<<endl;
+
 		}
 	ExitMainLoop:
 		device->waitIdle();
