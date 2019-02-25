@@ -70,6 +70,9 @@ static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
 static vk::UniqueBuffer coordinateAttribute;
 static vk::UniqueDeviceMemory coordinateAttributeMemory;
+static vk::UniqueQueryPool timestampPool;
+static uint32_t timestampValidBits=0;
+static float timestampPeriod=0;
 
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[]={
@@ -973,6 +976,27 @@ recreateSwapchain:
 	                                  2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	mappedMemory.reset();
 
+	// timestamp properties
+	timestampValidBits=
+		physicalDevice.getQueueFamilyProperties()[graphicsQueueFamily].timestampValidBits;
+	timestampPeriod=
+		physicalDevice.getProperties().limits.timestampPeriod;
+	cout<<"Timestamp number of bits: "<<timestampValidBits<<endl;
+	cout<<"Timestamp period: "<<timestampPeriod<<"ns"<<endl;
+	if(timestampValidBits==0)
+		throw runtime_error("Timestamps are not supported.");
+
+	// timestamp pool
+	timestampPool=
+		device->createQueryPoolUnique(
+			vk::QueryPoolCreateInfo(
+				vk::QueryPoolCreateFlags(),  // flags
+				vk::QueryType::eTimestamp,   // queryType
+				2,                           // queryCount
+				vk::QueryPipelineStatisticFlags()  // pipelineStatistics
+			)
+		);
+
 	// transient command pool
 	vk::UniqueCommandPool commandPoolTransient=
 		device->createCommandPoolUnique(
@@ -1070,7 +1094,26 @@ recreateSwapchain:
 			}.data(),
 			array<const vk::DeviceSize,1>{0}.data()  // pOffsets
 		);
+		cb.resetQueryPool(timestampPool.get(),0,2);
+		cb.pipelineBarrier(
+			vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+			vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags
+			0,nullptr,  // memoryBarrierCount+pMemoryBarriers
+			0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
+			0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
+		);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			0  // query
+		);
 		cb.draw(3*40000,1,0,0);  // draw two triangles
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			1  // query
+		);
 		cb.endRenderPass();
 		cb.end();
 	}
@@ -1122,6 +1165,19 @@ static bool queueFrame()
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
+
+	// read timestamps
+	array<uint64_t,2> timestamps;
+	device->getQueryPoolResults(
+		timestampPool.get(),  // queryPool
+		0,                    // firstQuery
+		2,                    // queryCount
+		2*sizeof(uint64_t),   // dataSize
+		timestamps.data(),    // pData
+		sizeof(uint64_t),     // stride
+		vk::QueryResultFlagBits::e64  // flags
+	);
+	cout<<"Rendering time: "<<(timestamps[1]-timestamps[0])*timestampPeriod/1e3<<"us"<<endl;
 
 	// return success
 	return true;
