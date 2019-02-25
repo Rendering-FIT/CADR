@@ -74,6 +74,7 @@ static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod=0;
 static const size_t numTriangles=110000;
+static const unsigned triangleSize=2;
 
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[]={
@@ -94,7 +95,7 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
                      unsigned regionWidth,unsigned regionHeight,bool useVec4,
                      double scaleX=1.,double scaleY=1.,double offsetX=0.,double offsetY=0.)
 {
-	unsigned stride=triangleSize+3;
+	unsigned stride=triangleSize+2;
 	unsigned numTrianglesPerLine=regionWidth/stride*2;
 	unsigned numLinesPerScreen=regionHeight/stride;
 	size_t idx=0;
@@ -120,7 +121,7 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 				vertices[idx++]=1.f;
 
 			// triangle 1, vertex 2
-			vertices[idx++]=(x+0.5+triangleSize+0.2)*scaleX+offsetX;
+			vertices[idx++]=(x+0.5+triangleSize-0.8)*scaleX+offsetX;
 			vertices[idx++]=(y+0.5-0.1)*scaleY+offsetY;
 			vertices[idx++]=z;
 			if(useVec4)
@@ -128,7 +129,7 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 
 			// triangle 1, vertex 3
 			vertices[idx++]=(x+0.5-0.1)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+triangleSize+0.2)*scaleY+offsetY;
+			vertices[idx++]=(y+0.5+triangleSize-0.8)*scaleY+offsetY;
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
@@ -137,22 +138,22 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 				return;
 
 			// triangle 2, vertex 1
-			vertices[idx++]=(x+0.5+triangleSize+1.5+0.1)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+1.5-0.2)*scaleY+offsetY;
+			vertices[idx++]=(x+0.5+triangleSize+0.6)*scaleX+offsetX;
+			vertices[idx++]=(y+0.5+1.3)*scaleY+offsetY;
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
 
 			// triangle 2, vertex 2
-			vertices[idx++]=(x+0.5+1.5-0.2)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+triangleSize+1.5+0.1)*scaleY+offsetY;
+			vertices[idx++]=(x+0.5+1.3)*scaleX+offsetX;
+			vertices[idx++]=(y+0.5+triangleSize+0.6)*scaleY+offsetY;
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
 
 			// triangle 2, vertex 3
-			vertices[idx++]=(x+0.5+triangleSize+1.5+0.1)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+triangleSize+1.5+0.1)*scaleY+offsetY;
+			vertices[idx++]=(x+0.5+triangleSize+0.6)*scaleX+offsetX;
+			vertices[idx++]=(y+0.5+triangleSize+0.6)*scaleY+offsetY;
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
@@ -973,7 +974,7 @@ recreateSwapchain:
 	);
 
 	// fill coordinate staging buffer
-	generate(reinterpret_cast<float*>(mappedMemory.get()),numTriangles,1,1000,1000,true,
+	generate(reinterpret_cast<float*>(mappedMemory.get()),numTriangles,triangleSize,1000,1000,true,
 	                                  2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	mappedMemory.reset();
 
