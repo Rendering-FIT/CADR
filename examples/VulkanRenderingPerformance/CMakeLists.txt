@@ -10,7 +10,8 @@ set(APP_INCLUDES
 	)
 
 set(APP_SHADERS
-	shader.vert
+	passThrough.vert
+	singleUniformMatrix.vert
 	shader.frag
 	)
 

@@ -53,16 +53,26 @@ static vk::Queue presentationQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
 static vk::Format depthFormat;
 static vk::UniqueRenderPass renderPass;
-static vk::UniqueShaderModule vsModule;
+static vk::UniqueShaderModule passThroughVS;
+static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout pipelineLayout;
+static vk::UniquePipelineLayout singleUniformPipelineLayout;
+static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
+static vk::UniqueBuffer singleUniformCoherentBuffer;
+static vk::UniqueBuffer singleUniformDeviceLocalBuffer;
+static vk::UniqueDeviceMemory singleUniformCoherentMemory;
+static vk::UniqueDeviceMemory singleUniformDeviceLocalMemory;
+static vk::UniqueDescriptorPool descriptorPool;
+static vk::UniqueDescriptorSet singleUniformDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
 static vk::UniqueDeviceMemory depthImageMemory;
 static vk::UniqueImageView depthImageView;
-static vk::UniquePipeline pipeline;
+static vk::UniquePipeline passThroughPipeline;
+static vk::UniquePipeline singleUniformMatrixPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -77,8 +87,11 @@ static const size_t numTriangles=110000;
 static const unsigned triangleSize=2;
 
 // shader code in SPIR-V binary
-static const uint32_t vsSpirv[]={
-#include "shader.vert.spv"
+static const uint32_t passThroughVS_spirv[]={
+#include "passThrough.vert.spv"
+};
+static const uint32_t singleUniformMatrixVS_spirv[]={
+#include "singleUniformMatrix.vert.spv"
 };
 static const uint32_t fsSpirv[]={
 #include "shader.frag.spv"
@@ -475,11 +488,18 @@ static void init()
 		);
 
 	// create shader modules
-	vsModule=device->createShaderModuleUnique(
+	passThroughVS=device->createShaderModuleUnique(
 		vk::ShaderModuleCreateInfo(
 			vk::ShaderModuleCreateFlags(),  // flags
-			sizeof(vsSpirv),  // codeSize
-			vsSpirv  // pCode
+			sizeof(passThroughVS_spirv),  // codeSize
+			passThroughVS_spirv  // pCode
+		)
+	);
+	singleUniformMatrixVS=device->createShaderModuleUnique(
+		vk::ShaderModuleCreateInfo(
+			vk::ShaderModuleCreateFlags(),  // flags
+			sizeof(singleUniformMatrixVS_spirv),  // codeSize
+			singleUniformMatrixVS_spirv  // pCode
 		)
 	);
 	fsModule=device->createShaderModuleUnique(
@@ -509,6 +529,32 @@ static void init()
 			nullptr  // pPushConstantRanges
 		}
 	);
+	singleUniformDescriptorSetLayout=
+		device->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),  // flags
+				1,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,1>{  // pBindings
+					vk::DescriptorSetLayoutBinding(
+						0,  // binding
+						vk::DescriptorType::eUniformBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eVertex,  // stageFlags
+						nullptr  // pImmutableSamplers
+					)
+				}.data()
+			)
+		);
+	singleUniformPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				1,       // setLayoutCount
+				&singleUniformDescriptorSetLayout.get(), // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
 
 	// command pool
 	commandPool=
@@ -545,7 +591,8 @@ static bool recreateSwapchainAndPipeline()
 	depthImage.reset();
 	depthImageMemory.reset();
 	depthImageView.reset();
-	pipeline.reset();
+	passThroughPipeline.reset();
+	singleUniformMatrixPipeline.reset();
 	swapchainImageViews.clear();
 
 	// currentSurfaceExtent
@@ -763,121 +810,129 @@ recreateSwapchain:
 	graphicsQueue.waitIdle();
 
 	// pipeline
-	pipeline=
-		device->createGraphicsPipelineUnique(
-			pipelineCache.get(),
-			vk::GraphicsPipelineCreateInfo(
-				vk::PipelineCreateFlags(),  // flags
-				2,  // stageCount
-				array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
-					vk::PipelineShaderStageCreateInfo{
-						vk::PipelineShaderStageCreateFlags(),  // flags
-						vk::ShaderStageFlagBits::eVertex,      // stage
-						vsModule.get(),  // module
-						"main",  // pName
-						nullptr  // pSpecializationInfo
-					},
-					vk::PipelineShaderStageCreateInfo{
-						vk::PipelineShaderStageCreateFlags(),  // flags
-						vk::ShaderStageFlagBits::eFragment,    // stage
-						fsModule.get(),  // module
-						"main",  // pName
-						nullptr  // pSpecializationInfo
-					}
-				}.data(),
-				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
-					vk::PipelineVertexInputStateCreateFlags(),  // flags
-					1,        // vertexBindingDescriptionCount
-					array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
-						vk::VertexInputBindingDescription(
-							0,  // binding
-							4*sizeof(float),  // stride
-							vk::VertexInputRate::eVertex  // inputRate
-						),
+	auto createPipeline=
+		[](vk::ShaderModule vsModule,vk::ShaderModule fsModule,vk::PipelineLayout pipelineLayout,
+		   const vk::Extent2D currentSurfaceExtent)->vk::UniquePipeline
+		{
+			return device->createGraphicsPipelineUnique(
+				pipelineCache.get(),
+				vk::GraphicsPipelineCreateInfo(
+					vk::PipelineCreateFlags(),  // flags
+					2,  // stageCount
+					array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+						vk::PipelineShaderStageCreateInfo{
+							vk::PipelineShaderStageCreateFlags(),  // flags
+							vk::ShaderStageFlagBits::eVertex,      // stage
+							vsModule,  // module
+							"main",    // pName
+							nullptr    // pSpecializationInfo
+						},
+						vk::PipelineShaderStageCreateInfo{
+							vk::PipelineShaderStageCreateFlags(),  // flags
+							vk::ShaderStageFlagBits::eFragment,    // stage
+							fsModule,  // module
+							"main",    // pName
+							nullptr    // pSpecializationInfo
+						}
 					}.data(),
-					1,        // vertexAttributeDescriptionCount
-					array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
-						vk::VertexInputAttributeDescription(
-							0,  // location
-							0,  // binding
-							vk::Format::eR32G32B32A32Sfloat,  // format
-							0   // offset
-						),
-					}.data()
-				},
-				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
-					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-					vk::PrimitiveTopology::eTriangleList,  // topology
-					VK_FALSE  // primitiveRestartEnable
-				},
-				nullptr, // pTessellationState
-				&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
-					vk::PipelineViewportStateCreateFlags(),  // flags
-					1,  // viewportCount
-					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
-					1,  // scissorCount
-					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
-				},
-				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
-					vk::PipelineRasterizationStateCreateFlags(),  // flags
-					VK_FALSE,  // depthClampEnable
-					VK_FALSE,  // rasterizerDiscardEnable
-					vk::PolygonMode::eFill,  // polygonMode
-					vk::CullModeFlagBits::eNone,  // cullMode
-					vk::FrontFace::eCounterClockwise,  // frontFace
-					VK_FALSE,  // depthBiasEnable
-					0.f,  // depthBiasConstantFactor
-					0.f,  // depthBiasClamp
-					0.f,  // depthBiasSlopeFactor
-					1.f   // lineWidth
-				},
-				&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
-					vk::PipelineMultisampleStateCreateFlags(),  // flags
-					vk::SampleCountFlagBits::e1,  // rasterizationSamples
-					VK_FALSE,  // sampleShadingEnable
-					0.f,       // minSampleShading
-					nullptr,   // pSampleMask
-					VK_FALSE,  // alphaToCoverageEnable
-					VK_FALSE   // alphaToOneEnable
-				},
-				&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
-					vk::PipelineDepthStencilStateCreateFlags(),  // flags
-					VK_TRUE,  // depthTestEnable
-					VK_TRUE,  // depthWriteEnable
-					vk::CompareOp::eLess,  // depthCompareOp
-					VK_FALSE,  // depthBoundsTestEnable
-					VK_FALSE,  // stencilTestEnable
-					vk::StencilOpState(),  // front
-					vk::StencilOpState(),  // back
-					0.f,  // minDepthBounds
-					0.f   // maxDepthBounds
-				},
-				&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
-					vk::PipelineColorBlendStateCreateFlags(),  // flags
-					VK_FALSE,  // logicOpEnable
-					vk::LogicOp::eClear,  // logicOp
-					1,  // attachmentCount
-					&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
-						VK_FALSE,  // blendEnable
-						vk::BlendFactor::eZero,  // srcColorBlendFactor
-						vk::BlendFactor::eZero,  // dstColorBlendFactor
-						vk::BlendOp::eAdd,       // colorBlendOp
-						vk::BlendFactor::eZero,  // srcAlphaBlendFactor
-						vk::BlendFactor::eZero,  // dstAlphaBlendFactor
-						vk::BlendOp::eAdd,       // alphaBlendOp
-						vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
-							vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+					&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+						vk::PipelineVertexInputStateCreateFlags(),  // flags
+						1,        // vertexBindingDescriptionCount
+						array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
+							vk::VertexInputBindingDescription(
+								0,  // binding
+								4*sizeof(float),  // stride
+								vk::VertexInputRate::eVertex  // inputRate
+							),
+						}.data(),
+						1,        // vertexAttributeDescriptionCount
+						array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
+							vk::VertexInputAttributeDescription(
+								0,  // location
+								0,  // binding
+								vk::Format::eR32G32B32A32Sfloat,  // format
+								0   // offset
+							),
+						}.data()
 					},
-					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-				},
-				nullptr,  // pDynamicState
-				pipelineLayout.get(),  // layout
-				renderPass.get(),  // renderPass
-				0,  // subpass
-				vk::Pipeline(nullptr),  // basePipelineHandle
-				-1 // basePipelineIndex
-			)
-		);
+					&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+						vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+						vk::PrimitiveTopology::eTriangleList,  // topology
+						VK_FALSE  // primitiveRestartEnable
+					},
+					nullptr, // pTessellationState
+					&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+						vk::PipelineViewportStateCreateFlags(),  // flags
+						1,  // viewportCount
+						&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
+						1,  // scissorCount
+						&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
+					},
+					&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+						vk::PipelineRasterizationStateCreateFlags(),  // flags
+						VK_FALSE,  // depthClampEnable
+						VK_FALSE,  // rasterizerDiscardEnable
+						vk::PolygonMode::eFill,  // polygonMode
+						vk::CullModeFlagBits::eNone,  // cullMode
+						vk::FrontFace::eCounterClockwise,  // frontFace
+						VK_FALSE,  // depthBiasEnable
+						0.f,  // depthBiasConstantFactor
+						0.f,  // depthBiasClamp
+						0.f,  // depthBiasSlopeFactor
+						1.f   // lineWidth
+					},
+					&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+						vk::PipelineMultisampleStateCreateFlags(),  // flags
+						vk::SampleCountFlagBits::e1,  // rasterizationSamples
+						VK_FALSE,  // sampleShadingEnable
+						0.f,       // minSampleShading
+						nullptr,   // pSampleMask
+						VK_FALSE,  // alphaToCoverageEnable
+						VK_FALSE   // alphaToOneEnable
+					},
+					&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
+						vk::PipelineDepthStencilStateCreateFlags(),  // flags
+						VK_TRUE,  // depthTestEnable
+						VK_TRUE,  // depthWriteEnable
+						vk::CompareOp::eLess,  // depthCompareOp
+						VK_FALSE,  // depthBoundsTestEnable
+						VK_FALSE,  // stencilTestEnable
+						vk::StencilOpState(),  // front
+						vk::StencilOpState(),  // back
+						0.f,  // minDepthBounds
+						0.f   // maxDepthBounds
+					},
+					&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+						vk::PipelineColorBlendStateCreateFlags(),  // flags
+						VK_FALSE,  // logicOpEnable
+						vk::LogicOp::eClear,  // logicOp
+						1,  // attachmentCount
+						&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
+							VK_FALSE,  // blendEnable
+							vk::BlendFactor::eZero,  // srcColorBlendFactor
+							vk::BlendFactor::eZero,  // dstColorBlendFactor
+							vk::BlendOp::eAdd,       // colorBlendOp
+							vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+							vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+							vk::BlendOp::eAdd,       // alphaBlendOp
+							vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+								vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+						},
+						array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+					},
+					nullptr,  // pDynamicState
+					pipelineLayout,  // layout
+					renderPass.get(),  // renderPass
+					0,  // subpass
+					vk::Pipeline(nullptr),  // basePipelineHandle
+					-1 // basePipelineIndex
+				)
+			);
+		};
+	passThroughPipeline=
+		createPipeline(passThroughVS.get(),fsModule.get(),pipelineLayout.get(),currentSurfaceExtent);
+	singleUniformMatrixPipeline=
+		createPipeline(singleUniformMatrixVS.get(),fsModule.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
@@ -977,6 +1032,105 @@ recreateSwapchain:
 	generate(reinterpret_cast<float*>(mappedMemory.get()),numTriangles,triangleSize,1000,1000,true,
 	                                  2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	mappedMemory.reset();
+
+	// uniform buffers and memory
+	singleUniformCoherentBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				16*sizeof(float),             // size
+				vk::BufferUsageFlagBits::eUniformBuffer,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	singleUniformDeviceLocalBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				16*sizeof(float),             // size
+				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	singleUniformCoherentMemory=
+		allocateMemory(singleUniformCoherentBuffer.get(),
+		               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+	singleUniformDeviceLocalMemory=
+		allocateMemory(singleUniformDeviceLocalBuffer.get(),
+		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+	device->bindBufferMemory(
+		singleUniformCoherentBuffer.get(),  // image
+		singleUniformCoherentMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		singleUniformDeviceLocalBuffer.get(),  // image
+		singleUniformDeviceLocalMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	mappedMemoryDeleter.memory=singleUniformCoherentMemory.get();
+	mappedMemory=
+		unique_ptr<void,MappedMemoryDeleter>(
+			device->mapMemory(singleUniformCoherentMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
+			mappedMemoryDeleter  // deleter
+		);
+
+	// fill uniform with data
+	constexpr float identityMatrix[]{
+		1.f,0.f,0.f,0.f,
+		0.f,1.f,0.f,0.f,
+		0.f,0.f,1.f,0.f,
+		0.f,0.f,0.f,1.f
+	};
+	memcpy(mappedMemory.get(),identityMatrix,sizeof(identityMatrix));
+	mappedMemory.reset();
+
+	// descriptor sets
+	descriptorPool=
+		device->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				1,  // poolSizeCount
+				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					vk::DescriptorPoolSize(
+						vk::DescriptorType::eUniformBuffer,  // type
+						1  // descriptorCount
+					)
+				}.data()
+			)
+		);
+	singleUniformDescriptorSet=std::move(
+		device->allocateDescriptorSetsUnique(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&singleUniformDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0]);
+	device->updateDescriptorSets(
+		vk::WriteDescriptorSet(  // descriptorWrites
+			singleUniformDescriptorSet.get(),  // dstSet
+			0,  // dstBinding
+			0,  // dstArrayElement
+			1,  // descriptorCount
+			vk::DescriptorType::eUniformBuffer,  // descriptorType
+			nullptr,  // pImageInfo
+			array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+				vk::DescriptorBufferInfo(
+					singleUniformCoherentBuffer.get(),  // buffer
+					0,  // offset
+					16*sizeof(float)  // range
+				),
+			}.data(),
+			nullptr  // pTexelBufferView
+		),
+		nullptr  // descriptorCopies
+	);
 
 	// timestamp properties
 	timestampValidBits=
@@ -1087,7 +1241,18 @@ recreateSwapchain:
 			),
 			vk::SubpassContents::eInline
 		);
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
+#if 0
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,passThroughPipeline.get());  // bind pipeline
+#else
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,singleUniformMatrixPipeline.get());  // bind pipeline
+		cb.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+			singleUniformPipelineLayout.get(),  // layout
+			0,  // firstSet
+			singleUniformDescriptorSet.get(),  // descriptorSets
+			nullptr  // dynamicOffsets
+		);
+#endif
 		cb.bindVertexBuffers(
 			0,  // firstBinding
 			1,  // bindingCount
