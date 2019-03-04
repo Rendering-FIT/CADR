@@ -127,22 +127,22 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 			float z=0.f;
 
 			// triangle 1, vertex 1
-			vertices[idx++]=(x+0.5-0.1)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5-0.1)*scaleY+offsetY;
+			vertices[idx++]=float((x+0.5-0.1)*scaleX+offsetX);
+			vertices[idx++]=float((y+0.5-0.1)*scaleY+offsetY);
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
 
 			// triangle 1, vertex 2
-			vertices[idx++]=(x+0.5+triangleSize-0.8)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5-0.1)*scaleY+offsetY;
+			vertices[idx++]=float((x+0.5+triangleSize-0.8)*scaleX+offsetX);
+			vertices[idx++]=float((y+0.5-0.1)*scaleY+offsetY);
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
 
 			// triangle 1, vertex 3
-			vertices[idx++]=(x+0.5-0.1)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+triangleSize-0.8)*scaleY+offsetY;
+			vertices[idx++]=float((x+0.5-0.1)*scaleX+offsetX);
+			vertices[idx++]=float((y+0.5+triangleSize-0.8)*scaleY+offsetY);
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
@@ -151,22 +151,22 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 				return;
 
 			// triangle 2, vertex 1
-			vertices[idx++]=(x+0.5+triangleSize+0.6)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+1.3)*scaleY+offsetY;
+			vertices[idx++]=float((x+0.5+triangleSize+0.6)*scaleX+offsetX);
+			vertices[idx++]=float((y+0.5+1.3)*scaleY+offsetY);
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
 
 			// triangle 2, vertex 2
-			vertices[idx++]=(x+0.5+1.3)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+triangleSize+0.6)*scaleY+offsetY;
+			vertices[idx++]=float((x+0.5+1.3)*scaleX+offsetX);
+			vertices[idx++]=float((y+0.5+triangleSize+0.6)*scaleY+offsetY);
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
 
 			// triangle 2, vertex 3
-			vertices[idx++]=(x+0.5+triangleSize+0.6)*scaleX+offsetX;
-			vertices[idx++]=(y+0.5+triangleSize+0.6)*scaleY+offsetY;
+			vertices[idx++]=float((x+0.5+triangleSize+0.6)*scaleX+offsetX);
+			vertices[idx++]=float((y+0.5+triangleSize+0.6)*scaleY+offsetY);
 			vertices[idx++]=z;
 			if(useVec4)
 				vertices[idx++]=1.f;
@@ -1200,9 +1200,9 @@ recreateSwapchain:
 
 	// wait for work to complete
 	vk::Result r=device->waitForFences(
-		fence.get(),  // fences (vk::ArrayProxy)
-		VK_TRUE,      // waitAll
-		3e9           // timeout (3s)
+		fence.get(),   // fences (vk::ArrayProxy)
+		VK_TRUE,       // waitAll
+		uint64_t(3e9)  // timeout (3s)
 	);
 	if(r==vk::Result::eTimeout)
 		throw std::runtime_error("GPU timeout. Task is probably hanging.");

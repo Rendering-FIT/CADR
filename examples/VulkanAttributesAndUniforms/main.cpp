@@ -644,9 +644,9 @@ static void init()
 
 	// wait for work to complete
 	vk::Result r=device->waitForFences(
-		fence.get(),  // fences (vk::ArrayProxy)
-		VK_TRUE,      // waitAll
-		3e9           // timeout (3s)
+		fence.get(),   // fences (vk::ArrayProxy)
+		VK_TRUE,       // waitAll
+		uint64_t(3e9)  // timeout (3s)
 	);
 	if(r==vk::Result::eTimeout)
 		throw std::runtime_error("GPU timeout. Task is probably hanging.");

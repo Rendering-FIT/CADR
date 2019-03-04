@@ -84,7 +84,7 @@ int main(int,char**)
 
 			// select queue for graphics rendering
 			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-			for(size_t i=0,c=queueFamilyList.size(); i<c; i++) {
+			for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
 				if(queueFamilyList[i].queueFlags&vk::QueueFlagBits::eGraphics) {
 					compatibleDevices.emplace_back(pd,i);
 					break;
@@ -573,8 +573,8 @@ int main(int,char**)
 		// wait for the work
 		vk::Result r=device->waitForFences(
 			renderingFinishedFence.get(),  // fences (vk::ArrayProxy)
-			VK_TRUE,  // waitAll
-			3e9       // timeout (3s)
+			VK_TRUE,       // waitAll
+			uint64_t(3e9)  // timeout (3s)
 		);
 		if(r==vk::Result::eTimeout)
 			throw std::runtime_error("GPU timeout. Task is probably hanging.");
@@ -644,7 +644,7 @@ int main(int,char**)
 		BitmapInfoHeader bitmapInfoHeader = {
 			40,
 			int32_t(imageExtent.width),
-			int32_t(-imageExtent.height),
+			-int32_t(imageExtent.height),
 			1,32,0,
 			imageDataSize,
 			2835,2835,  // roughly 72 DPI
