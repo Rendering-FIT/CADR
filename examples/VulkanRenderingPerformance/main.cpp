@@ -476,12 +476,12 @@ static void init()
 				),
 				1,  // dependencyCount
 				&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
-					VK_SUBPASS_EXTERNAL,   // srcSubpass
+					0,                     // srcSubpass
 					0,                     // dstSubpass
-					vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
-					vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
+					vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+					vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
 					vk::AccessFlags(),     // srcAccessMask
-					vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
+					vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
 					vk::DependencyFlags()  // dependencyFlags
 				)
 			)
@@ -1228,6 +1228,7 @@ recreateSwapchain:
 				nullptr  // pInheritanceInfo
 			)
 		);
+		cb.resetQueryPool(timestampPool.get(),0,2);
 		cb.beginRenderPass(
 			vk::RenderPassBeginInfo(
 				renderPass.get(),       // renderPass
@@ -1261,7 +1262,6 @@ recreateSwapchain:
 			}.data(),
 			array<const vk::DeviceSize,1>{0}.data()  // pOffsets
 		);
-		cb.resetQueryPool(timestampPool.get(),0,2);
 		cb.pipelineBarrier(
 			vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
 			vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
