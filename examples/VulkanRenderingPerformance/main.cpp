@@ -594,6 +594,15 @@ static bool recreateSwapchainAndPipeline()
 	passThroughPipeline.reset();
 	singleUniformMatrixPipeline.reset();
 	swapchainImageViews.clear();
+	coordinateAttribute.reset();
+	coordinateAttributeMemory.reset();
+	singleUniformCoherentBuffer.reset();
+	singleUniformDeviceLocalBuffer.reset();
+	singleUniformCoherentMemory.reset();
+	singleUniformDeviceLocalMemory.reset();
+	singleUniformDescriptorSet.reset();
+	descriptorPool.reset();
+	timestampPool.reset();
 
 	// currentSurfaceExtent
 recreateSwapchain:
