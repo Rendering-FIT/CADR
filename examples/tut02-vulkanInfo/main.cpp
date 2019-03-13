@@ -113,9 +113,9 @@ int main(int,char**)
 			if(hasDriverInfo){
 				cout<<"      Driver info:"<<endl;
 				cout<<"         ID:    "<<vk::to_string(driverInfo.driverID)<<endl;
-				cout<<"         name:  "<<driverInfo.driverName<<endl;
-				cout<<"         info:  "<<driverInfo.driverInfo<<endl;
-				cout<<"         conformance version:  "<<driverInfo.conformanceVersion.major<<"."<<driverInfo.conformanceVersion.minor
+				cout<<"         Name:  "<<driverInfo.driverName<<endl;
+				cout<<"         Info:  "<<driverInfo.driverInfo<<endl;
+				cout<<"         Conformance version:  "<<driverInfo.conformanceVersion.major<<"."<<driverInfo.conformanceVersion.minor
 				    <<"."<<driverInfo.conformanceVersion.subminor<<"."<<driverInfo.conformanceVersion.patch<<endl;
 			}
 			else
