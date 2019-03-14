@@ -647,6 +647,7 @@ static bool queueFrame()
 			&imageIndex                       // pImageIndex
 		);
 	if(r!=vk::Result::eSuccess) {
+		cout<<"Acquire failed."<<endl;
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { needResize=true; return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
@@ -671,6 +672,7 @@ static bool queueFrame()
 		)
 	);
 	if(r!=vk::Result::eSuccess) {
+		cout<<"Present failed."<<endl;
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { needResize=true; return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
@@ -735,20 +737,10 @@ int main(int,char**)
 				vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
 				if(surfaceCapabilities.currentExtent!=currentSurfaceExtent) {
 
-					// avoid 0,0 surface extent
-					// by waiting for valid window size
-					// (0,0 is returned on some platforms (for instance Windows) when window is minimized.
-					// The creation of swapchain then raises an exception, for instance vk::Result::eErrorOutOfDeviceMemory on Windows)
-					if(surfaceCapabilities.currentExtent.width==0 || surfaceCapabilities.currentExtent.height==0) {
-				#ifdef _WIN32
-						// stop app processing until there are messages to process
-						if(GetMessage(&msg,NULL,0,0)<=0)
-							goto ExitMainLoop;
-						TranslateMessage(&msg);
-						DispatchMessage(&msg);
-				#endif
+					// avoid 0,0 surface extent as creation of swapchain would fail
+					// (0,0 is returned on some platforms (particularly Windows) when window is minimized)
+					if(surfaceCapabilities.currentExtent.width==0 || surfaceCapabilities.currentExtent.height==0)
 						continue;
-					}
 
 					// new currentSurfaceExtent
 					currentSurfaceExtent=
