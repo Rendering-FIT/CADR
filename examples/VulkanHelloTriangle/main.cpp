@@ -647,7 +647,6 @@ static bool queueFrame()
 			&imageIndex                       // pImageIndex
 		);
 	if(r!=vk::Result::eSuccess) {
-		cout<<"Acquire failed."<<endl;
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { needResize=true; return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
@@ -672,7 +671,6 @@ static bool queueFrame()
 		)
 	);
 	if(r!=vk::Result::eSuccess) {
-		cout<<"Present failed."<<endl;
 		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { needResize=true; return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
@@ -718,7 +716,6 @@ int main(int,char**)
 				if(e.type==ConfigureNotify && e.xconfigure.window==window) {
 					vk::Extent2D newSize(e.xconfigure.width,e.xconfigure.height);
 					if(newSize!=windowSize) {
-						cout<<"needResize (newSize: "<<newSize.width<<"x"<<newSize.height<<", currentSize: "<<windowSize.width<<"x"<<windowSize.height<<")"<<endl;
 						needResize=true;
 						windowSize=newSize;
 					}
