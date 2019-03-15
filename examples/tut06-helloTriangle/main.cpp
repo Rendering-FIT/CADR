@@ -23,7 +23,7 @@ struct Win32Cleaner {
 	~Win32Cleaner() {
 		if(window) {
 			DestroyWindow(window);
-			UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+			UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 		}
 	}
 } win32Cleaner;
@@ -120,7 +120,7 @@ static void init()
 				return DefWindowProc(hwnd,msg,wParam,lParam);
 			case WM_CLOSE:
 				DestroyWindow(hwnd);
-				UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+				UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 				window=nullptr;
 				return 0;
 			case WM_DESTROY:
@@ -143,7 +143,7 @@ static void init()
 	wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	wc.lpszMenuName  = NULL;
-	wc.lpszClassName = "HelloWindow";
+	wc.lpszClassName = "RenderingWindow";
 	wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
 	if(!RegisterClassEx(&wc))
 		throw runtime_error("Can not register window class.");
@@ -151,13 +151,13 @@ static void init()
 	// create window
 	window=CreateWindowEx(
 		WS_EX_CLIENTEDGE,
-		"HelloWindow",
-		"Hello window!",
+		"RenderingWindow",
+		"Hello triangle",
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,CW_USEDEFAULT,windowSize.width,windowSize.height,
 		NULL,NULL,wc.hInstance,NULL);
 	if(window==NULL) {
-		UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 		throw runtime_error("Can not create window.");
 	}
 
@@ -181,7 +181,7 @@ static void init()
 	windowSize.setHeight(XHeightOfScreen(screen)/2);
 	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowSize.width,
 	                           windowSize.height,0,blackColor,blackColor);
-	XSetStandardProperties(display,window,"Hello window!","Hello window!",None,NULL,0,NULL);
+	XSetStandardProperties(display,window,"Hello triangle",NULL,None,NULL,0,NULL);
 	XSelectInput(display,window,StructureNotifyMask);
 	wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
 	XSetWMProtocols(display,window,&wmDeleteMessage,1);

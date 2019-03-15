@@ -1,4 +1,4 @@
-set(APP_NAME VulkanHelloTriangle)
+set(APP_NAME tut06-helloTriangle)
 
 project(${APP_NAME})
 

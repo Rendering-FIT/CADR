@@ -6,7 +6,7 @@ set(PACKAGES
 	tut02-vulkanInfo
 	tut04-swapChain
 	tut05-resizableWindow
-	VulkanHelloTriangle
+	tut06-helloTriangle
 	VulkanDepthBuffer
 	OpenGLInteroperability
 	HelloQtWindow
