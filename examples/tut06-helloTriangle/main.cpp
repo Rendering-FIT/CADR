@@ -308,9 +308,9 @@ static void init()
 		surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
 			?wantedSurfaceFormat
 			:std::find(surfaceFormats.begin(),surfaceFormats.end(),
-				         wantedSurfaceFormat)!=surfaceFormats.end()
-				?wantedSurfaceFormat
-				:surfaceFormats[0];
+			           wantedSurfaceFormat)!=surfaceFormats.end()
+				           ?wantedSurfaceFormat
+				           :surfaceFormats[0];
 
 	// render pass
 	renderPass=

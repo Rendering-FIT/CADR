@@ -23,7 +23,7 @@ struct Win32Cleaner {
 	~Win32Cleaner() {
 		if(window) {
 			DestroyWindow(window);
-			UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+			UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 		}
 	}
 } win32Cleaner;
@@ -38,8 +38,9 @@ struct XlibCleaner {
 } xlibCleaner;
 Atom wmDeleteMessage;
 #endif
-static uint32_t windowWidth;
-static uint32_t windowHeight;
+static vk::Extent2D currentSurfaceExtent(0,0);
+static vk::Extent2D windowSize;
+static bool needResize=true;
 
 // Vulkan handles and objects
 // (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
@@ -209,20 +210,21 @@ static void init()
 	RECT screenSize;
 	if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
 		throw runtime_error("GetWindowRect() failed.");
-	windowWidth=(screenSize.right-screenSize.left)/2;
-	windowHeight=(screenSize.bottom-screenSize.top)/2;
+	windowSize.setWidth((screenSize.right-screenSize.left)/2);
+	windowSize.setHeight((screenSize.bottom-screenSize.top)/2);
 
 	// window's message handling procedure
 	auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
 		switch(msg)
 		{
 			case WM_SIZE:
-				windowWidth=LOWORD(lParam);
-				windowHeight=HIWORD(lParam);
+				needResize=true;
+				windowSize.setWidth(LOWORD(lParam));
+				windowSize.setHeight(HIWORD(lParam));
 				return DefWindowProc(hwnd,msg,wParam,lParam);
 			case WM_CLOSE:
 				DestroyWindow(hwnd);
-				UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+				UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 				window=nullptr;
 				return 0;
 			case WM_DESTROY:
@@ -245,7 +247,7 @@ static void init()
 	wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
 	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
 	wc.lpszMenuName  = NULL;
-	wc.lpszClassName = "HelloWindow";
+	wc.lpszClassName = "RenderingWindow";
 	wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
 	if(!RegisterClassEx(&wc))
 		throw runtime_error("Can not register window class.");
@@ -253,13 +255,13 @@ static void init()
 	// create window
 	window=CreateWindowEx(
 		WS_EX_CLIENTEDGE,
-		"HelloWindow",
-		"Hello window!",
+		"RenderingWindow",
+		"Rendering performance",
 		WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT,CW_USEDEFAULT,windowWidth,windowHeight,
+		CW_USEDEFAULT,CW_USEDEFAULT,windowSize.width,windowSize.height,
 		NULL,NULL,wc.hInstance,NULL);
 	if(window==NULL) {
-		UnregisterClass("HelloWindow",GetModuleHandle(NULL));
+		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 		throw runtime_error("Can not create window.");
 	}
 
@@ -279,11 +281,12 @@ static void init()
 	// create window
 	int blackColor=BlackPixel(display,DefaultScreen(display));
 	Screen* screen=XDefaultScreenOfDisplay(display);
-	uint32_t windowWidth=XWidthOfScreen(screen)/2;
-	uint32_t windowHeight=XHeightOfScreen(screen)/2;
-	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowWidth,
-		                        windowHeight,0,blackColor,blackColor);
-	XSetStandardProperties(display,window,"Hello window!","Hello window!",None,NULL,0,NULL);
+	windowSize.setWidth(XWidthOfScreen(screen)/2);
+	windowSize.setHeight(XHeightOfScreen(screen)/2);
+	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowSize.width,
+	                           windowSize.height,0,blackColor,blackColor);
+	XSetStandardProperties(display,window,"Rendering performance",NULL,None,NULL,0,NULL);
+	XSelectInput(display,window,StructureNotifyMask);
 	wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
 	XSetWMProtocols(display,window,&wmDeleteMessage,1);
 	XMapWindow(display,window);
@@ -326,8 +329,6 @@ static void init()
 		uint32_t graphicsQueueFamily=UINT32_MAX;
 		uint32_t presentationQueueFamily=UINT32_MAX;
 		vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-		vector<bool> presentationSupport;
-		presentationSupport.reserve(queueFamilyList.size());
 		uint32_t i=0;
 		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
 			bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
@@ -336,12 +337,10 @@ static void init()
 					compatibleDevicesSingleQueue.emplace_back(pd,i);
 					goto nextDevice;
 				}
-				presentationSupport.push_back(p);
 				if(graphicsQueueFamily==UINT32_MAX)
 					graphicsQueueFamily=i;
 			}
 			else {
-				presentationSupport.push_back(p);
 				if(p)
 					if(presentationQueueFamily==UINT32_MAX)
 						presentationQueueFamily=i;
@@ -414,8 +413,8 @@ static void init()
 			?wantedSurfaceFormat
 			:std::find(surfaceFormats.begin(),surfaceFormats.end(),
 			           wantedSurfaceFormat)!=surfaceFormats.end()
-				?wantedSurfaceFormat
-				:surfaceFormats[0];
+				           ?wantedSurfaceFormat
+				           :surfaceFormats[0];
 	depthFormat=[](){
 		for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
 			vk::FormatProperties p=physicalDevice.getFormatProperties(f);
@@ -582,8 +581,11 @@ static void init()
 
 
 /// Recreate swapchain and pipeline. The function is usually used on each window resize event and on application start.
-static bool recreateSwapchainAndPipeline()
+static void recreateSwapchainAndPipeline()
 {
+	// print new size
+	cout<<"New window size: "<<currentSurfaceExtent.width<<"x"<<currentSurfaceExtent.height<<endl;
+
 	// stop device and clear resources
 	device->waitIdle();
 	commandBuffers.clear();
@@ -604,53 +606,8 @@ static bool recreateSwapchainAndPipeline()
 	descriptorPool.reset();
 	timestampPool.reset();
 
-	// currentSurfaceExtent
-recreateSwapchain:
-	vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
-	vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
-			?surfaceCapabilities.currentExtent
-			:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
-			              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
-
-	// avoid 0,0 surface extent
-	// by waiting for valid window size
-	// (0,0 is returned on some platforms (for instance Windows) when window is minimized.
-	// The creation of swapchain then raises an exception, for instance vk::Result::eErrorOutOfDeviceMemory on Windows)
-#ifdef _WIN32
-	// run Win32 event loop
-	if(currentSurfaceExtent.width==0||currentSurfaceExtent.height==0) {
-		// wait for and process a message
-		MSG msg;
-		if(GetMessage(&msg,NULL,0,0)<=0)
-			return false;
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-		// process remaining messages
-		while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
-			if(msg.message==WM_QUIT)
-				return false;
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-		// try to recreate swapchain again
-		goto recreateSwapchain;
-	}
-#else
-	// run Xlib event loop
-	if(currentSurfaceExtent.width==0||currentSurfaceExtent.height==0) {
-		// process messages
-		XEvent e;
-		while(XPending(display)>0) {
-			XNextEvent(display,&e);
-			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
-				return false;
-		}
-		// try to recreate swapchain again
-		goto recreateSwapchain;
-	}
-#endif
-
 	// create swapchain
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
 	swapchain=
 		device->createSwapchainKHRUnique(
 			vk::SwapchainCreateInfoKHR(
@@ -1240,10 +1197,10 @@ recreateSwapchain:
 		cb.resetQueryPool(timestampPool.get(),0,2);
 		cb.beginRenderPass(
 			vk::RenderPassBeginInfo(
-				renderPass.get(),       // renderPass
-				framebuffers[i].get(),  // framebuffer
+				renderPass.get(),         // renderPass
+				framebuffers[i].get(),    // framebuffer
 				vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
-				2,                      // clearValueCount
+				2,                        // clearValueCount
 				array<vk::ClearValue,2>{  // pClearValues
 					vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}),
 					vk::ClearDepthStencilValue(1.f,0)
@@ -1256,10 +1213,10 @@ recreateSwapchain:
 #else
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,singleUniformMatrixPipeline.get());  // bind pipeline
 		cb.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+			vk::PipelineBindPoint::eGraphics,   // pipelineBindPoint
 			singleUniformPipelineLayout.get(),  // layout
 			0,  // firstSet
-			singleUniformDescriptorSet.get(),  // descriptorSets
+			singleUniformDescriptorSet.get(),   // descriptorSets
 			nullptr  // dynamicOffsets
 		);
 #endif
@@ -1293,8 +1250,6 @@ recreateSwapchain:
 		cb.endRenderPass();
 		cb.end();
 	}
-
-	return true;
 }
 
 
@@ -1303,25 +1258,26 @@ static bool queueFrame()
 {
 	// acquire next image
 	uint32_t imageIndex;
-	vk::Result r=device->acquireNextImageKHR(swapchain.get(),numeric_limits<uint64_t>::max(),imageAvailableSemaphore.get(),vk::Fence(nullptr),&imageIndex);
+	vk::Result r=
+		device->acquireNextImageKHR(
+			swapchain.get(),                  // swapchain
+			numeric_limits<uint64_t>::max(),  // timeout
+			imageAvailableSemaphore.get(),    // semaphore to signal
+			vk::Fence(nullptr),               // fence to signal
+			&imageIndex                       // pImageIndex
+		);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { needResize=true; return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
 
 	// submit work
 	graphicsQueue.submit(
-		vk::ArrayProxy<const vk::SubmitInfo>(
-			1,
-			&(const vk::SubmitInfo&)vk::SubmitInfo(
-				1,                               // waitSemaphoreCount
-				&imageAvailableSemaphore.get(),  // pWaitSemaphores
-				&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-				1,                               // commandBufferCount
-				&commandBuffers[imageIndex].get(),  // pCommandBuffers
-				1,                               // signalSemaphoreCount
-				&renderFinishedSemaphore.get()   // pSignalSemaphores
-			)
+		vk::SubmitInfo(
+			1,&imageAvailableSemaphore.get(),     // waitSemaphoreCount+pWaitSemaphores
+			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+			1,&commandBuffers[imageIndex].get(),  // commandBufferCount+pCommandBuffers
+			1,&renderFinishedSemaphore.get()      // signalSemaphoreCount+pSignalSemaphores
 		),
 		vk::Fence(nullptr)
 	);
@@ -1329,16 +1285,13 @@ static bool queueFrame()
 	// submit image for presentation
 	r=presentationQueue.presentKHR(
 		&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(
-			1,                 // waitSemaphoreCount
-			&renderFinishedSemaphore.get(),  // pWaitSemaphores
-			1,                 // swapchainCount
-			&swapchain.get(),  // pSwapchains
-			&imageIndex,       // pImageIndices
-			nullptr            // pResults
+			1,&renderFinishedSemaphore.get(),  // waitSemaphoreCount+pWaitSemaphores
+			1,&swapchain.get(),&imageIndex,    // swapchainCount+pSwapchains+pImageIndices
+			nullptr                            // pResults
 		)
 	);
 	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { if(!recreateSwapchainAndPipeline()) return false; }
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { needResize=true; return false; }
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
 	}
 
@@ -1356,10 +1309,6 @@ int main(int,char**)
 
 		// init Vulkan and open window
 		init();
-
-		// create swapchain and pipeline
-		if(!recreateSwapchainAndPipeline())
-			goto ExitMainLoop;
 
 #ifdef _WIN32
 
@@ -1384,15 +1333,49 @@ int main(int,char**)
 			// process messages
 			while(XPending(display)>0) {
 				XNextEvent(display,&e);
-				if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
+				if(e.type==ConfigureNotify && e.xconfigure.window==window) {
+					vk::Extent2D newSize(e.xconfigure.width,e.xconfigure.height);
+					if(newSize!=windowSize) {
+						needResize=true;
+						windowSize=newSize;
+					}
+					continue;
+				}
+				if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==wmDeleteMessage)
 					goto ExitMainLoop;
 			}
 
 #endif
 
+			// recreate swapchain if necessary
+			if(needResize) {
+
+				// recreate only upon surface extent change
+				vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
+				if(surfaceCapabilities.currentExtent!=currentSurfaceExtent) {
+
+					// avoid 0,0 surface extent as creation of swapchain would fail
+					// (0,0 is returned on some platforms (particularly Windows) when window is minimized)
+					if(surfaceCapabilities.currentExtent.width==0 || surfaceCapabilities.currentExtent.height==0)
+						continue;
+
+					// new currentSurfaceExtent
+					currentSurfaceExtent=
+						(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
+							?surfaceCapabilities.currentExtent
+							:vk::Extent2D{max(min(windowSize.width,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
+										  max(min(windowSize.height,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
+
+					// recreate swapchain
+					recreateSwapchainAndPipeline();
+				}
+
+				needResize=false;
+			}
+
 			// queue frame
 			if(!queueFrame())
-				goto ExitMainLoop;
+				continue;
 
 			// wait for rendering to complete
 			presentationQueue.waitIdle();
