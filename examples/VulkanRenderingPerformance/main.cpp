@@ -7,6 +7,7 @@
 #endif
 #include <vulkan/vulkan.hpp>
 #include <array>
+#include <chrono>
 #include <iostream>
 
 using namespace std;
@@ -98,6 +99,16 @@ static const uint32_t fsSpirv[]={
 #include "shader.frag.spv"
 };
 
+struct Test {
+	vector<uint64_t> renderingTimes;
+	string resultString;
+	Test(const char* resultString_) : resultString(resultString_)  {}
+};
+static vector<Test> tests={
+	Test("One draw call, no transformations"),
+	Test("One draw call, one transformation"),
+};
+
 
 static size_t getBufferSize(size_t numTriangles,bool useVec4)
 {
@@ -113,7 +124,7 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 	unsigned numTrianglesPerLine=regionWidth/stride*2;
 	unsigned numLinesPerScreen=regionHeight/stride;
 	size_t idx=0;
-	size_t idxEnd=numTriangles*3*(useVec4?4:3);
+	size_t idxEnd=numTriangles*(useVec4?4:3)*3;
 
 	// Each iteration generates two triangles.
 	// triangleSize is dimension of square that is cut into the two triangles.
@@ -1114,7 +1125,7 @@ static void recreateSwapchainAndPipeline()
 			vk::QueryPoolCreateInfo(
 				vk::QueryPoolCreateFlags(),  // flags
 				vk::QueryType::eTimestamp,   // queryType
-				2,                           // queryCount
+				tests.size()*2,              // queryCount
 				vk::QueryPipelineStatisticFlags()  // pipelineStatistics
 			)
 		);
@@ -1187,6 +1198,8 @@ static void recreateSwapchainAndPipeline()
 
 	// record command buffers
 	for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
+
+		// begin command buffer
 		vk::CommandBuffer& cb=commandBuffers[i].get();
 		cb.begin(
 			vk::CommandBufferBeginInfo(
@@ -1194,7 +1207,10 @@ static void recreateSwapchainAndPipeline()
 				nullptr  // pInheritanceInfo
 			)
 		);
-		cb.resetQueryPool(timestampPool.get(),0,2);
+		cb.resetQueryPool(timestampPool.get(),0,tests.size()*2);
+		uint32_t timestampIndex=0;
+
+		// renderPass for passThrough
 		cb.beginRenderPass(
 			vk::RenderPassBeginInfo(
 				renderPass.get(),         // renderPass
@@ -1208,18 +1224,7 @@ static void recreateSwapchainAndPipeline()
 			),
 			vk::SubpassContents::eInline
 		);
-#if 0
 		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,passThroughPipeline.get());  // bind pipeline
-#else
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,singleUniformMatrixPipeline.get());  // bind pipeline
-		cb.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,   // pipelineBindPoint
-			singleUniformPipelineLayout.get(),  // layout
-			0,  // firstSet
-			singleUniformDescriptorSet.get(),   // descriptorSets
-			nullptr  // dynamicOffsets
-		);
-#endif
 		cb.bindVertexBuffers(
 			0,  // firstBinding
 			1,  // bindingCount
@@ -1236,19 +1241,76 @@ static void recreateSwapchainAndPipeline()
 			0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
 			0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
 		);
+
+		// perform passThrough test
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
-			0  // query
+			timestampIndex++      // query
 		);
 		cb.draw(3*numTriangles,1,0,0);  // draw two triangles
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
-			1  // query
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// renderPass for singleUniformMatrix
+		cb.beginRenderPass(
+			vk::RenderPassBeginInfo(
+				renderPass.get(),         // renderPass
+				framebuffers[i].get(),    // framebuffer
+				vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
+				2,                        // clearValueCount
+				array<vk::ClearValue,2>{  // pClearValues
+					vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}),
+					vk::ClearDepthStencilValue(1.f,0)
+				}.data()
+			),
+			vk::SubpassContents::eInline
+		);
+		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,singleUniformMatrixPipeline.get());  // bind pipeline
+		cb.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,   // pipelineBindPoint
+			singleUniformPipelineLayout.get(),  // layout
+			0,  // firstSet
+			singleUniformDescriptorSet.get(),   // descriptorSets
+			nullptr  // dynamicOffsets
+		);
+		cb.bindVertexBuffers(
+			0,  // firstBinding
+			1,  // bindingCount
+			array<const vk::Buffer,1>{  // pBuffers
+				coordinateAttribute.get()
+			}.data(),
+			array<const vk::DeviceSize,1>{0}.data()  // pOffsets
+		);
+		cb.pipelineBarrier(
+			vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+			vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags
+			0,nullptr,  // memoryBarrierCount+pMemoryBarriers
+			0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
+			0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
+		);
+
+		// perform singleUniformMatrix test
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // draw two triangles
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
 		);
 		cb.endRenderPass();
 		cb.end();
+
+		assert(timestampIndex==tests.size()*2 && "Number of timestamps and number of tests mismatch.");
 	}
 }
 
@@ -1309,6 +1371,8 @@ int main(int,char**)
 
 		// init Vulkan and open window
 		init();
+
+		auto startTime=chrono::steady_clock::now();
 
 #ifdef _WIN32
 
@@ -1382,18 +1446,37 @@ int main(int,char**)
 			graphicsQueue.waitIdle();
 
 			// read timestamps
-			array<uint64_t,2> timestamps;
+			vector<uint64_t> timestamps(tests.size()*2);
 			device->getQueryPoolResults(
 				timestampPool.get(),  // queryPool
 				0,                    // firstQuery
-				2,                    // queryCount
-				2*sizeof(uint64_t),   // dataSize
+				tests.size()*2,       // queryCount
+				tests.size()*2*sizeof(uint64_t),  // dataSize
 				timestamps.data(),    // pData
 				sizeof(uint64_t),     // stride
 				vk::QueryResultFlagBits::e64  // flags
 			);
-			cout<<"Rendering time:      "<<(timestamps[1]-timestamps[0])*timestampPeriod/1e3<<"us"<<endl;
-			cout<<"Triangle throughput: "<<float(numTriangles)/(float(timestamps[1]-timestamps[0])*timestampPeriod)*1e3<<" millions per second"<<endl;
+			size_t i=0;
+			for(Test& t : tests) {
+				t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
+				i+=2;
+			}
+
+			// print the result at the end
+			if(chrono::duration<double>(chrono::steady_clock::now()-startTime).count()>2.) {
+				cout<<"Triangle throughput:"<<endl;
+				for(Test& t : tests) {
+					sort(t.renderingTimes.begin(),t.renderingTimes.end());
+					double time=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod;
+					cout<<"  "<<t.resultString<<": "<<double(numTriangles)/time*1e3<<" millions per second"<<endl;
+				}
+				cout<<"Rendering time:"<<endl;
+				for(Test& t : tests) {
+					double time=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod;
+					cout<<"  "<<t.resultString<<": "<<time/1e3<<"us"<<endl;
+				}
+				break;
+			}
 
 		}
 	ExitMainLoop:
