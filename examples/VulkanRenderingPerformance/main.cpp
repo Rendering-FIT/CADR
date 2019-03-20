@@ -59,7 +59,7 @@ static vk::UniqueShaderModule passThroughVS;
 static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineCache pipelineCache;
-static vk::UniquePipelineLayout pipelineLayout;
+static vk::UniquePipelineLayout passThroughPipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
 static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
 static vk::UniqueBuffer singleUniformCoherentBuffer;
@@ -86,7 +86,7 @@ static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod=0;
 static const size_t numTriangles=110000;
-static const unsigned triangleSize=2;
+static const unsigned triangleSize=0;
 
 // shader code in SPIR-V binary
 static const uint32_t passThroughVS_spirv[]={
@@ -292,8 +292,8 @@ static void init()
 	// create window
 	int blackColor=BlackPixel(display,DefaultScreen(display));
 	Screen* screen=XDefaultScreenOfDisplay(display);
-	windowSize.setWidth(XWidthOfScreen(screen)/2);
-	windowSize.setHeight(XHeightOfScreen(screen)/2);
+	windowSize.setWidth(XWidthOfScreen(screen));
+	windowSize.setHeight(XHeightOfScreen(screen));
 	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowSize.width,
 	                           windowSize.height,0,blackColor,blackColor);
 	XSetStandardProperties(display,window,"Rendering performance",NULL,None,NULL,0,NULL);
@@ -426,14 +426,15 @@ static void init()
 			           wantedSurfaceFormat)!=surfaceFormats.end()
 				           ?wantedSurfaceFormat
 				           :surfaceFormats[0];
-	depthFormat=[](){
-		for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
-			vk::FormatProperties p=physicalDevice.getFormatProperties(f);
-			if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment)
-				return f;
-		}
-		throw std::runtime_error("No suitable depth buffer format.");
-	}();
+	depthFormat=
+		[](){
+			for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
+				vk::FormatProperties p=physicalDevice.getFormatProperties(f);
+				if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment)
+					return f;
+			}
+			throw std::runtime_error("No suitable depth buffer format.");
+		}();
 
 	// render pass
 	renderPass=
@@ -498,47 +499,52 @@ static void init()
 		);
 
 	// create shader modules
-	passThroughVS=device->createShaderModuleUnique(
-		vk::ShaderModuleCreateInfo(
-			vk::ShaderModuleCreateFlags(),  // flags
-			sizeof(passThroughVS_spirv),  // codeSize
-			passThroughVS_spirv  // pCode
-		)
-	);
-	singleUniformMatrixVS=device->createShaderModuleUnique(
-		vk::ShaderModuleCreateInfo(
-			vk::ShaderModuleCreateFlags(),  // flags
-			sizeof(singleUniformMatrixVS_spirv),  // codeSize
-			singleUniformMatrixVS_spirv  // pCode
-		)
-	);
-	fsModule=device->createShaderModuleUnique(
-		vk::ShaderModuleCreateInfo(
-			vk::ShaderModuleCreateFlags(),  // flags
-			sizeof(fsSpirv),  // codeSize
-			fsSpirv  // pCode
-		)
-	);
+	passThroughVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(passThroughVS_spirv),  // codeSize
+				passThroughVS_spirv  // pCode
+			)
+		);
+	singleUniformMatrixVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(singleUniformMatrixVS_spirv),  // codeSize
+				singleUniformMatrixVS_spirv  // pCode
+			)
+		);
+	fsModule=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(fsSpirv),  // codeSize
+				fsSpirv  // pCode
+			)
+		);
 
 	// pipeline cache
-	pipelineCache=device->createPipelineCacheUnique(
-		vk::PipelineCacheCreateInfo(
-			vk::PipelineCacheCreateFlags(),  // flags
-			0,       // initialDataSize
-			nullptr  // pInitialData
-		)
-	);
+	pipelineCache=
+		device->createPipelineCacheUnique(
+			vk::PipelineCacheCreateInfo(
+				vk::PipelineCacheCreateFlags(),  // flags
+				0,       // initialDataSize
+				nullptr  // pInitialData
+			)
+		);
 
 	// pipeline layout
-	pipelineLayout=device->createPipelineLayoutUnique(
-		vk::PipelineLayoutCreateInfo{
-			vk::PipelineLayoutCreateFlags(),  // flags
-			0,       // setLayoutCount
-			nullptr, // pSetLayouts
-			0,       // pushConstantRangeCount
-			nullptr  // pPushConstantRanges
-		}
-	);
+	passThroughPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				0,       // setLayoutCount
+				nullptr, // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
 	singleUniformDescriptorSetLayout=
 		device->createDescriptorSetLayoutUnique(
 			vk::DescriptorSetLayoutCreateInfo(
@@ -907,7 +913,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		};
 	passThroughPipeline=
-		createPipeline(passThroughVS.get(),fsModule.get(),pipelineLayout.get(),currentSurfaceExtent);
+		createPipeline(passThroughVS.get(),fsModule.get(),passThroughPipelineLayout.get(),currentSurfaceExtent);
 	singleUniformMatrixPipeline=
 		createPipeline(singleUniformMatrixVS.get(),fsModule.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
 
@@ -1200,7 +1206,7 @@ static void recreateSwapchainAndPipeline()
 	for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
 
 		// begin command buffer
-		vk::CommandBuffer& cb=commandBuffers[i].get();
+		vk::CommandBuffer cb=commandBuffers[i].get();
 		cb.begin(
 			vk::CommandBufferBeginInfo(
 				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
@@ -1210,45 +1216,69 @@ static void recreateSwapchainAndPipeline()
 		cb.resetQueryPool(timestampPool.get(),0,tests.size()*2);
 		uint32_t timestampIndex=0;
 
-		// renderPass for passThrough
-		cb.beginRenderPass(
-			vk::RenderPassBeginInfo(
-				renderPass.get(),         // renderPass
-				framebuffers[i].get(),    // framebuffer
-				vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
-				2,                        // clearValueCount
-				array<vk::ClearValue,2>{  // pClearValues
-					vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}),
-					vk::ClearDepthStencilValue(1.f,0)
-				}.data()
-			),
-			vk::SubpassContents::eInline
-		);
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,passThroughPipeline.get());  // bind pipeline
-		cb.bindVertexBuffers(
-			0,  // firstBinding
-			1,  // bindingCount
-			array<const vk::Buffer,1>{  // pBuffers
-				coordinateAttribute.get()
-			}.data(),
-			array<const vk::DeviceSize,1>{0}.data()  // pOffsets
-		);
-		cb.pipelineBarrier(
-			vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
-			vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
-			vk::DependencyFlags(),  // dependencyFlags
-			0,nullptr,  // memoryBarrierCount+pMemoryBarriers
-			0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
-			0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
-		);
+		// begin test lambda
+		auto beginTest=
+			[](vk::CommandBuffer cb,vk::Framebuffer framebuffer,vk::Extent2D currentSurfaceExtent,
+			   vk::Pipeline pipeline,vk::PipelineLayout pipelineLayout,
+			   const vector<vk::Buffer>& attributes,const vector<vk::DescriptorSet>& descriptorSets)
+			{
+				cb.beginRenderPass(
+					vk::RenderPassBeginInfo(
+						renderPass.get(),         // renderPass
+						framebuffer,              // framebuffer
+						vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
+						2,                        // clearValueCount
+						array<vk::ClearValue,2>{  // pClearValues
+							vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}),
+							vk::ClearDepthStencilValue(1.f,0)
+						}.data()
+					),
+					vk::SubpassContents::eInline
+				);
+				cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline);  // bind pipeline
+				cb.bindDescriptorSets(
+					vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+					pipelineLayout,  // layout
+					0,  // firstSet
+					descriptorSets,  // descriptorSets
+					nullptr  // dynamicOffsets
+				);
+				cb.bindVertexBuffers(
+					0,  // firstBinding
+					attributes.size(),  // bindingCount
+					attributes.data(),  // pBuffers
+					array<const vk::DeviceSize,1>{0}.data()  // pOffsets
+				);
+				cb.pipelineBarrier(
+					vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+					vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
+					vk::DependencyFlags(),  // dependencyFlags
+					0,nullptr,  // memoryBarrierCount+pMemoryBarriers
+					0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
+					0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
+				);
+			};
 
-		// perform passThrough test
+		// render something to put GPU out of power saving states
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
+		cb.draw(3*numTriangles,1,0,0);
+		cb.draw(3*numTriangles,1,0,0);
+		cb.endRenderPass();
+
+		// passThrough setup
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
+
+		// passThrough test
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);  // draw two triangles
+		cb.draw(3*numTriangles,1,0,0);
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1256,44 +1286,11 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// renderPass for singleUniformMatrix
-		cb.beginRenderPass(
-			vk::RenderPassBeginInfo(
-				renderPass.get(),         // renderPass
-				framebuffers[i].get(),    // framebuffer
-				vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent),  // renderArea
-				2,                        // clearValueCount
-				array<vk::ClearValue,2>{  // pClearValues
-					vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}),
-					vk::ClearDepthStencilValue(1.f,0)
-				}.data()
-			),
-			vk::SubpassContents::eInline
-		);
-		cb.bindPipeline(vk::PipelineBindPoint::eGraphics,singleUniformMatrixPipeline.get());  // bind pipeline
-		cb.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,   // pipelineBindPoint
-			singleUniformPipelineLayout.get(),  // layout
-			0,  // firstSet
-			singleUniformDescriptorSet.get(),   // descriptorSets
-			nullptr  // dynamicOffsets
-		);
-		cb.bindVertexBuffers(
-			0,  // firstBinding
-			1,  // bindingCount
-			array<const vk::Buffer,1>{  // pBuffers
-				coordinateAttribute.get()
-			}.data(),
-			array<const vk::DeviceSize,1>{0}.data()  // pOffsets
-		);
-		cb.pipelineBarrier(
-			vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
-			vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
-			vk::DependencyFlags(),  // dependencyFlags
-			0,nullptr,  // memoryBarrierCount+pMemoryBarriers
-			0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
-			0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
-		);
+		// singleUniformMatrix setup
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          singleUniformMatrixPipeline.get(),singleUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>{ singleUniformDescriptorSet.get() });
 
 		// perform singleUniformMatrix test
 		cb.writeTimestamp(
@@ -1301,7 +1298,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);  // draw two triangles
+		cb.draw(3*numTriangles,1,0,0);
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
