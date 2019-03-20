@@ -107,6 +107,7 @@ struct Test {
 static vector<Test> tests={
 	Test("One draw call, no transformations"),
 	Test("One draw call, one transformation"),
+	Test("Per-triangle draw call, no transformations"),
 };
 
 
@@ -1267,12 +1268,10 @@ static void recreateSwapchainAndPipeline()
 		cb.draw(3*numTriangles,1,0,0);
 		cb.endRenderPass();
 
-		// passThrough setup
+		// passThrough test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
-
-		// passThrough test
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1286,13 +1285,11 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// singleUniformMatrix setup
+		// singleUniformMatrix test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          singleUniformMatrixPipeline.get(),singleUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
 		          vector<vk::DescriptorSet>{ singleUniformDescriptorSet.get() });
-
-		// perform singleUniformMatrix test
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1305,8 +1302,27 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.endRenderPass();
-		cb.end();
 
+		// per-triangle draw call test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		for(size_t i=0; i<numTriangles; i++)
+			cb.draw(3,1,uint32_t(i*3),0);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// end command buffer
+		cb.end();
 		assert(timestampIndex==tests.size()*2 && "Number of timestamps and number of tests mismatch.");
 	}
 }
