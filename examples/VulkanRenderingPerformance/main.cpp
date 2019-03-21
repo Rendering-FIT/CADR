@@ -222,8 +222,8 @@ static void init()
 	RECT screenSize;
 	if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
 		throw runtime_error("GetWindowRect() failed.");
-	windowSize.setWidth((screenSize.right-screenSize.left)/2);
-	windowSize.setHeight((screenSize.bottom-screenSize.top)/2);
+	windowSize.setWidth(screenSize.right-screenSize.left);
+	windowSize.setHeight(screenSize.bottom-screenSize.top);
 
 	// window's message handling procedure
 	auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
@@ -1132,7 +1132,7 @@ static void recreateSwapchainAndPipeline()
 			vk::QueryPoolCreateInfo(
 				vk::QueryPoolCreateFlags(),  // flags
 				vk::QueryType::eTimestamp,   // queryType
-				tests.size()*2,              // queryCount
+				uint32_t(tests.size())*2,    // queryCount
 				vk::QueryPipelineStatisticFlags()  // pipelineStatistics
 			)
 		);
@@ -1214,7 +1214,7 @@ static void recreateSwapchainAndPipeline()
 				nullptr  // pInheritanceInfo
 			)
 		);
-		cb.resetQueryPool(timestampPool.get(),0,tests.size()*2);
+		cb.resetQueryPool(timestampPool.get(),0,uint32_t(tests.size())*2);
 		uint32_t timestampIndex=0;
 
 		// begin test lambda
@@ -1246,7 +1246,7 @@ static void recreateSwapchainAndPipeline()
 				);
 				cb.bindVertexBuffers(
 					0,  // firstBinding
-					attributes.size(),  // bindingCount
+					uint32_t(attributes.size()),  // bindingCount
 					attributes.data(),  // pBuffers
 					array<const vk::DeviceSize,1>{0}.data()  // pOffsets
 				);
@@ -1463,7 +1463,7 @@ int main(int,char**)
 			device->getQueryPoolResults(
 				timestampPool.get(),  // queryPool
 				0,                    // firstQuery
-				tests.size()*2,       // queryCount
+				uint32_t(tests.size())*2,  // queryCount
 				tests.size()*2*sizeof(uint64_t),  // dataSize
 				timestamps.data(),    // pData
 				sizeof(uint64_t),     // stride
