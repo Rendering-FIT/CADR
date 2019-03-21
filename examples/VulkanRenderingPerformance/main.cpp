@@ -188,11 +188,14 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 				return;
 		}
 	}
+
+	// throw if we did not managed to put all the triangles in designed area
+	throw std::runtime_error("Triangles do not fit onto the rendered area.");
 }
 
 
 /// Init Vulkan and open the window.
-static void init(int deviceIndex)
+static void init(size_t deviceIndex)
 {
 	// Vulkan instance
 	instance=
@@ -1068,7 +1071,7 @@ static void recreateSwapchainAndPipeline()
 		1.f,0.f,0.f,0.f,
 		0.f,1.f,0.f,0.f,
 		0.f,0.f,1.f,0.f,
-		0.f,0.f,0.f,1.f
+		0.125f,0.f,0.f,1.f
 	};
 	memcpy(mappedMemory.get(),identityMatrix,sizeof(identityMatrix));
 	mappedMemory.reset();
@@ -1384,7 +1387,7 @@ int main(int argc,char** argv)
 
 		// init Vulkan and open window,
 		// give physical device index as parameter
-		init(argc>=2?atoi(argv[1]):0);
+		init(argc>=2?size_t(max(atoi(argv[1]),0)):0);
 
 		auto startTime=chrono::steady_clock::now();
 
