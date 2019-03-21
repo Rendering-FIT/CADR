@@ -192,7 +192,7 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 
 
 /// Init Vulkan and open the window.
-static void init()
+static void init(int deviceIndex)
 {
 	// Vulkan instance
 	instance=
@@ -368,14 +368,14 @@ static void init()
 		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 
 	// choose device
-	if(compatibleDevicesSingleQueue.size()>0) {
-		auto t=compatibleDevicesSingleQueue.front();
+	if(deviceIndex<compatibleDevicesSingleQueue.size()) {
+		auto t=compatibleDevicesSingleQueue[deviceIndex];
 		physicalDevice=get<0>(t);
 		graphicsQueueFamily=get<1>(t);
 		presentationQueueFamily=graphicsQueueFamily;
 	}
-	else if(compatibleDevicesTwoQueues.size()>0) {
-		auto t=compatibleDevicesTwoQueues.front();
+	else if((deviceIndex-compatibleDevicesSingleQueue.size())<compatibleDevicesTwoQueues.size()) {
+		auto t=compatibleDevicesTwoQueues[deviceIndex-compatibleDevicesSingleQueue.size()];
 		physicalDevice=get<0>(t);
 		graphicsQueueFamily=get<1>(t);
 		presentationQueueFamily=get<2>(t);
@@ -1376,14 +1376,15 @@ static bool queueFrame()
 
 
 /// main function of the application
-int main(int,char**)
+int main(int argc,char** argv)
 {
 	// catch exceptions
 	// (vulkan.hpp fuctions throws if they fail)
 	try {
 
-		// init Vulkan and open window
-		init();
+		// init Vulkan and open window,
+		// give physical device index as parameter
+		init(argc>=2?atoi(argv[1]):0);
 
 		auto startTime=chrono::steady_clock::now();
 
