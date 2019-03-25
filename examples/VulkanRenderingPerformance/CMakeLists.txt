@@ -12,6 +12,7 @@ set(APP_INCLUDES
 set(APP_SHADERS
 	passThrough.vert
 	singleUniformMatrix.vert
+	matrixBuffer.vert
 	shader.frag
 	)
 

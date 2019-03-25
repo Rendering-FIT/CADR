@@ -57,17 +57,22 @@ static vk::Format depthFormat;
 static vk::UniqueRenderPass renderPass;
 static vk::UniqueShaderModule passThroughVS;
 static vk::UniqueShaderModule singleUniformMatrixVS;
+static vk::UniqueShaderModule matrixBufferVS;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout passThroughPipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
+static vk::UniquePipelineLayout matrixBufferPipelineLayout;
 static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
-static vk::UniqueBuffer singleUniformCoherentBuffer;
-static vk::UniqueBuffer singleUniformDeviceLocalBuffer;
-static vk::UniqueDeviceMemory singleUniformCoherentMemory;
-static vk::UniqueDeviceMemory singleUniformDeviceLocalMemory;
-static vk::UniqueDescriptorPool descriptorPool;
+static vk::UniqueDescriptorSetLayout matrixBufferDescriptorSetLayout;
+static vk::UniqueBuffer singleUniformBuffer;
+static vk::UniqueBuffer matrixBuffer;
+static vk::UniqueDeviceMemory singleUniformMemory;
+static vk::UniqueDeviceMemory matrixBufferMemory;
+static vk::UniqueDescriptorPool singleUniformDescriptorPool;
+static vk::UniqueDescriptorPool matrixBufferDescriptorPool;
 static vk::UniqueDescriptorSet singleUniformDescriptorSet;
+static vk::UniqueDescriptorSet matrixBufferDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
@@ -75,6 +80,7 @@ static vk::UniqueDeviceMemory depthImageMemory;
 static vk::UniqueImageView depthImageView;
 static vk::UniquePipeline passThroughPipeline;
 static vk::UniquePipeline singleUniformMatrixPipeline;
+static vk::UniquePipeline matrixBufferPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -84,7 +90,7 @@ static vk::UniqueBuffer coordinateAttribute;
 static vk::UniqueDeviceMemory coordinateAttributeMemory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
-static float timestampPeriod=0;
+static float timestampPeriod_ns=0;
 static const size_t numTriangles=110000;
 static const unsigned triangleSize=0;
 
@@ -94,6 +100,9 @@ static const uint32_t passThroughVS_spirv[]={
 };
 static const uint32_t singleUniformMatrixVS_spirv[]={
 #include "singleUniformMatrix.vert.spv"
+};
+static const uint32_t matrixBufferVS_spirv[]={
+#include "matrixBuffer.vert.spv"
 };
 static const uint32_t fsSpirv[]={
 #include "shader.frag.spv"
@@ -107,6 +116,7 @@ struct Test {
 static vector<Test> tests={
 	Test("One draw call, no transformations"),
 	Test("One draw call, one transformation"),
+	Test("One draw call, per-triangle transformation in buffer"),
 	Test("Per-triangle draw call, no transformations"),
 };
 
@@ -507,24 +517,32 @@ static void init(size_t deviceIndex)
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(passThroughVS_spirv),  // codeSize
-				passThroughVS_spirv  // pCode
+				sizeof(passThroughVS_spirv),    // codeSize
+				passThroughVS_spirv             // pCode
 			)
 		);
 	singleUniformMatrixVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),  // flags
+				vk::ShaderModuleCreateFlags(),        // flags
 				sizeof(singleUniformMatrixVS_spirv),  // codeSize
-				singleUniformMatrixVS_spirv  // pCode
+				singleUniformMatrixVS_spirv           // pCode
+			)
+		);
+	matrixBufferVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(matrixBufferVS_spirv),   // codeSize
+				matrixBufferVS_spirv            // pCode
 			)
 		);
 	fsModule=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(fsSpirv),  // codeSize
-				fsSpirv  // pCode
+				sizeof(fsSpirv),                // codeSize
+				fsSpirv                         // pCode
 			)
 		);
 
@@ -538,17 +556,7 @@ static void init(size_t deviceIndex)
 			)
 		);
 
-	// pipeline layout
-	passThroughPipelineLayout=
-		device->createPipelineLayoutUnique(
-			vk::PipelineLayoutCreateInfo{
-				vk::PipelineLayoutCreateFlags(),  // flags
-				0,       // setLayoutCount
-				nullptr, // pSetLayouts
-				0,       // pushConstantRangeCount
-				nullptr  // pPushConstantRanges
-			}
-		);
+	// descriptor set layouts
 	singleUniformDescriptorSetLayout=
 		device->createDescriptorSetLayoutUnique(
 			vk::DescriptorSetLayoutCreateInfo(
@@ -565,12 +573,50 @@ static void init(size_t deviceIndex)
 				}.data()
 			)
 		);
+	matrixBufferDescriptorSetLayout=
+		device->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),  // flags
+				1,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,1>{  // pBindings
+					vk::DescriptorSetLayoutBinding(
+						0,  // binding
+						vk::DescriptorType::eStorageBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eVertex,  // stageFlags
+						nullptr  // pImmutableSamplers
+					)
+				}.data()
+			)
+		);
+
+	// pipeline layouts
+	passThroughPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				0,       // setLayoutCount
+				nullptr, // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
 	singleUniformPipelineLayout=
 		device->createPipelineLayoutUnique(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				1,       // setLayoutCount
-				&singleUniformDescriptorSetLayout.get(), // pSetLayouts
+				&singleUniformDescriptorSetLayout.get(),  // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
+	matrixBufferPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				1,       // setLayoutCount
+				&matrixBufferDescriptorSetLayout.get(),  // pSetLayouts
 				0,       // pushConstantRangeCount
 				nullptr  // pPushConstantRanges
 			}
@@ -616,16 +662,43 @@ static void recreateSwapchainAndPipeline()
 	depthImageView.reset();
 	passThroughPipeline.reset();
 	singleUniformMatrixPipeline.reset();
+	matrixBufferPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
-	singleUniformCoherentBuffer.reset();
-	singleUniformDeviceLocalBuffer.reset();
-	singleUniformCoherentMemory.reset();
-	singleUniformDeviceLocalMemory.reset();
+	singleUniformBuffer.reset();
+	singleUniformMemory.reset();
+	matrixBuffer.reset();
+	matrixBufferMemory.reset();
 	singleUniformDescriptorSet.reset();
-	descriptorPool.reset();
+	matrixBufferDescriptorSet.reset();
+	singleUniformDescriptorPool.reset();
+	matrixBufferDescriptorPool.reset();
 	timestampPool.reset();
+
+	// submitNowCommandBuffer
+	// that will be submitted at the end of this function
+	vk::UniqueCommandPool commandPoolTransient=
+		device->createCommandPoolUnique(
+			vk::CommandPoolCreateInfo(
+				vk::CommandPoolCreateFlagBits::eTransient,  // flags
+				graphicsQueueFamily  // queueFamilyIndex
+			)
+		);
+	vk::UniqueCommandBuffer submitNowCommandBuffer=std::move(
+		device->allocateCommandBuffersUnique(
+			vk::CommandBufferAllocateInfo(
+				commandPoolTransient.get(),        // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1                                  // commandBufferCount
+			)
+		)[0]);
+	submitNowCommandBuffer->begin(
+		vk::CommandBufferBeginInfo(
+			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+			nullptr  // pInheritanceInfo
+		)
+	);
 
 	// create swapchain
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
@@ -742,21 +815,7 @@ static void recreateSwapchainAndPipeline()
 		);
 
 	// depth image layout
-	vk::UniqueCommandBuffer cb=std::move(
-		device->allocateCommandBuffersUnique(
-			vk::CommandBufferAllocateInfo(
-				commandPool.get(),  // commandPool
-				vk::CommandBufferLevel::ePrimary,  // level
-				1  // commandBufferCount
-			)
-		)[0]);
-	cb->begin(
-		vk::CommandBufferBeginInfo(
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-			nullptr  // pInheritanceInfo
-		)
-	);
-	cb->pipelineBarrier(
+	submitNowCommandBuffer->pipelineBarrier(
 		vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
 		vk::PipelineStageFlagBits::eEarlyFragmentTests,  // dstStageMask
 		vk::DependencyFlags(),  // dependencyFlags
@@ -782,19 +841,6 @@ static void recreateSwapchainAndPipeline()
 			)
 		)
 	);
-	cb->end();
-	graphicsQueue.submit(
-		vk::ArrayProxy<const vk::SubmitInfo>(
-			1,
-			&(const vk::SubmitInfo&)vk::SubmitInfo(
-				0,nullptr,nullptr,  // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
-				1,&cb.get(),        // commandBufferCount,pCommandBuffers
-				0,nullptr           // signalSemaphoreCount,pSignalSemaphores
-			)
-		),
-		vk::Fence(nullptr)
-	);
-	graphicsQueue.waitIdle();
 
 	// pipeline
 	auto createPipeline=
@@ -920,6 +966,8 @@ static void recreateSwapchainAndPipeline()
 		createPipeline(passThroughVS.get(),fsModule.get(),passThroughPipelineLayout.get(),currentSurfaceExtent);
 	singleUniformMatrixPipeline=
 		createPipeline(singleUniformMatrixVS.get(),fsModule.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
+	matrixBufferPipeline=
+		createPipeline(matrixBufferVS.get(),fsModule.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent);
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
@@ -941,6 +989,25 @@ static void recreateSwapchainAndPipeline()
 			)
 		);
 
+	// memory for buffers
+	auto allocateMemory=
+		[](vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)->vk::UniqueDeviceMemory
+		{
+			vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
+			vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+				if(memoryRequirements.memoryTypeBits&(1<<i))
+					if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
+						return
+							device->allocateMemoryUnique(
+								vk::MemoryAllocateInfo(
+									memoryRequirements.size,  // allocationSize
+									i                         // memoryTypeIndex
+								)
+							);
+			throw std::runtime_error("No suitable memory type found for the buffer.");
+		}
+
 	// vertex attribute buffers
 	size_t bufferSize=getBufferSize(numTriangles,true);
 	coordinateAttribute=
@@ -955,25 +1022,7 @@ static void recreateSwapchainAndPipeline()
 			)
 		);
 
-	// memory for buffers
-	auto allocateMemory=
-		[](vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)->vk::UniqueDeviceMemory{
-			vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
-			vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
-			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-				if(memoryRequirements.memoryTypeBits&(1<<i))
-					if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
-						return
-							device->allocateMemoryUnique(
-								vk::MemoryAllocateInfo(
-									memoryRequirements.size,  // allocationSize
-									i                         // memoryTypeIndex
-								)
-							);
-			throw std::runtime_error("No suitable memory type found for the buffer.");
-		};
-
-	// vertex attribute memories
+	// vertex attribute memory
 	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		coordinateAttribute.get(),  // image
@@ -981,58 +1030,57 @@ static void recreateSwapchainAndPipeline()
 		0  // memoryOffset
 	);
 
-	// staging buffer
-	vk::UniqueBuffer coordinateStagingBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				bufferSize,                   // size
-				vk::BufferUsageFlagBits::eTransferSrc,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
 
-	// memory for staging buffer
-	vk::UniqueDeviceMemory coordinateStagingBufferMemory=
-		allocateMemory(coordinateStagingBuffer.get(),
-	                  vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
-	device->bindBufferMemory(
-		coordinateStagingBuffer.get(),  // image
-		coordinateStagingBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-
-	// map coordinate staging buffer
-	struct MappedMemoryDeleter {
-		vk::DeviceMemory memory;
-		void operator()(void*) { device->unmapMemory(memory); }
+	// staging buffer struct
+	struct StagingBuffer {
+		vk::UniqueBuffer buffer;
+		vk::UniqueDeviceMemory memory;
+		void* ptr = nullptr;
+		void* map()  { if(!ptr) ptr=device->mapMemory(memory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()); return ptr; }
+		void unmap()  { if(ptr){ device->unmapMemory(memory.get()); ptr=nullptr; } }
+		~StagingBuffer() { unmap(); }
+		StagingBuffer() = default;
+		StagingBuffer(StagingBuffer&& s) = default;
+		StagingBuffer(size_t bufferSize)
+		{
+			buffer=
+				device->createBufferUnique(
+					vk::BufferCreateInfo(
+						vk::BufferCreateFlags(),      // flags
+						bufferSize,                   // size
+						vk::BufferUsageFlagBits::eTransferSrc,  // usage
+						vk::SharingMode::eExclusive,  // sharingMode
+						0,                            // queueFamilyIndexCount
+						nullptr                       // pQueueFamilyIndices
+					)
+				);
+			memory=
+				allocateMemory(buffer.get(),
+									vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+			device->bindBufferMemory(
+				buffer.get(),  // image
+				memory.get(),  // memory
+				0  // memoryOffset
+			);
+		}
 	};
-	MappedMemoryDeleter mappedMemoryDeleter{coordinateStagingBufferMemory.get()};
-	unique_ptr<void,MappedMemoryDeleter> mappedMemory(
-		device->mapMemory(coordinateStagingBufferMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
-		mappedMemoryDeleter  // deleter
-	);
 
-	// fill coordinate staging buffer
-	generate(reinterpret_cast<float*>(mappedMemory.get()),numTriangles,triangleSize,1000,1000,true,
+	// coordinate staging buffer
+	StagingBuffer coordinateStagingBuffer(bufferSize);
+	generate(reinterpret_cast<float*>(coordinateStagingBuffer.map()),numTriangles,triangleSize,1000,1000,true,
 	                                  2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
-	mappedMemory.reset();
+	coordinateStagingBuffer.unmap();
+
+	// copy data from staging to attribute buffer
+	submitNowCommandBuffer->copyBuffer(
+		coordinateStagingBuffer.buffer.get(),  // srcBuffer
+		coordinateAttribute.get(),             // dstBuffer
+		1,                                     // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,bufferSize)  // pRegions
+	);
 
 	// uniform buffers and memory
-	singleUniformCoherentBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				16*sizeof(float),             // size
-				vk::BufferUsageFlagBits::eUniformBuffer,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	singleUniformDeviceLocalBuffer=
+	singleUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
@@ -1043,143 +1091,83 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-	singleUniformCoherentMemory=
-		allocateMemory(singleUniformCoherentBuffer.get(),
-		               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
-	singleUniformDeviceLocalMemory=
-		allocateMemory(singleUniformDeviceLocalBuffer.get(),
+	singleUniformMemory=
+		allocateMemory(singleUniformBuffer.get(),
 		               vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
-		singleUniformCoherentBuffer.get(),  // image
-		singleUniformCoherentMemory.get(),  // memory
+		singleUniformBuffer.get(),  // image
+		singleUniformMemory.get(),  // memory
 		0  // memoryOffset
 	);
-	device->bindBufferMemory(
-		singleUniformDeviceLocalBuffer.get(),  // image
-		singleUniformDeviceLocalMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	mappedMemoryDeleter.memory=singleUniformCoherentMemory.get();
-	mappedMemory=
-		unique_ptr<void,MappedMemoryDeleter>(
-			device->mapMemory(singleUniformCoherentMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
-			mappedMemoryDeleter  // deleter
-		);
 
-	// fill uniform with data
-	constexpr float identityMatrix[]{
+	// single uniform staging buffer
+	constexpr float singleUniformMatrix[]{
 		1.f,0.f,0.f,0.f,
 		0.f,1.f,0.f,0.f,
 		0.f,0.f,1.f,0.f,
 		0.125f,0.f,0.f,1.f
 	};
-	memcpy(mappedMemory.get(),identityMatrix,sizeof(identityMatrix));
-	mappedMemory.reset();
+	StagingBuffer singleUniformStagingBuffer(sizeof(singleUniformMatrix));
+	memcpy(singleUniformStagingBuffer.map(),singleUniformMatrix,sizeof(singleUniformMatrix));
+	singleUniformStagingBuffer.unmap();
 
-	// descriptor sets
-	descriptorPool=
-		device->createDescriptorPoolUnique(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlags(),  // flags
-				1,  // maxSets
-				1,  // poolSizeCount
-				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
-					vk::DescriptorPoolSize(
-						vk::DescriptorType::eUniformBuffer,  // type
-						1  // descriptorCount
-					)
-				}.data()
-			)
-		);
-	singleUniformDescriptorSet=std::move(
-		device->allocateDescriptorSetsUnique(
-			vk::DescriptorSetAllocateInfo(
-				descriptorPool.get(),  // descriptorPool
-				1,  // descriptorSetCount
-				&singleUniformDescriptorSetLayout.get()  // pSetLayouts
-			)
-		)[0]);
-	device->updateDescriptorSets(
-		vk::WriteDescriptorSet(  // descriptorWrites
-			singleUniformDescriptorSet.get(),  // dstSet
-			0,  // dstBinding
-			0,  // dstArrayElement
-			1,  // descriptorCount
-			vk::DescriptorType::eUniformBuffer,  // descriptorType
-			nullptr,  // pImageInfo
-			array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
-				vk::DescriptorBufferInfo(
-					singleUniformCoherentBuffer.get(),  // buffer
-					0,  // offset
-					16*sizeof(float)  // range
-				),
-			}.data(),
-			nullptr  // pTexelBufferView
-		),
-		nullptr  // descriptorCopies
+	// copy data from staging to uniform buffer
+	submitNowCommandBuffer->copyBuffer(
+		singleUniformStagingBuffer.buffer.get(),  // srcBuffer
+		singleUniformBuffer.get(),                // dstBuffer
+		1,                                        // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(singleUniformMatrix))  // pRegions
 	);
 
-	// timestamp properties
-	timestampValidBits=
-		physicalDevice.getQueueFamilyProperties()[graphicsQueueFamily].timestampValidBits;
-	timestampPeriod=
-		physicalDevice.getProperties().limits.timestampPeriod;
-	cout<<"Timestamp number of bits: "<<timestampValidBits<<endl;
-	cout<<"Timestamp period: "<<timestampPeriod<<"ns"<<endl;
-	if(timestampValidBits==0)
-		throw runtime_error("Timestamps are not supported.");
-
-	// timestamp pool
-	timestampPool=
-		device->createQueryPoolUnique(
-			vk::QueryPoolCreateInfo(
-				vk::QueryPoolCreateFlags(),  // flags
-				vk::QueryType::eTimestamp,   // queryType
-				uint32_t(tests.size())*2,    // queryCount
-				vk::QueryPipelineStatisticFlags()  // pipelineStatistics
+	// matrix buffer
+	matrixBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				numTriangles*16*sizeof(float),  // size
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// transient command pool
-	vk::UniqueCommandPool commandPoolTransient=
-		device->createCommandPoolUnique(
-			vk::CommandPoolCreateInfo(
-				vk::CommandPoolCreateFlagBits::eTransient,  // flags
-				graphicsQueueFamily  // queueFamilyIndex
-			)
-		);
-
-	// allocate command buffer
-	vk::UniqueCommandBuffer commandBuffer=std::move(
-		device->allocateCommandBuffersUnique(
-			vk::CommandBufferAllocateInfo(
-				commandPoolTransient.get(),        // commandPool
-				vk::CommandBufferLevel::ePrimary,  // level
-				1                                  // commandBufferCount
-			)
-		)[0]);
-
-	// record command buffer
-	commandBuffer->begin(
-		vk::CommandBufferBeginInfo(
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-			nullptr  // pInheritanceInfo
-		)
+	matrixBufferMemory=
+		allocateMemory(matrixBuffer.get(),
+		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+	device->bindBufferMemory(
+		matrixBuffer.get(),  // image
+		matrixBufferMemory.get(),  // memory
+		0  // memoryOffset
 	);
-	commandBuffer->copyBuffer(
-		coordinateStagingBuffer.get(),  // srcBuffer
-		coordinateAttribute.get(),      // dstBuffer
-		1,                              // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,bufferSize)  // pRegions
+
+	// matrix staging buffer
+	constexpr float matrixData[]{
+		1.f,0.f,0.f,0.f,
+		0.f,1.f,0.f,0.f,
+		0.f,0.f,1.f,0.f,
+		0.f,0.0625f,0.f,1.f
+	};
+	StagingBuffer matrixStagingBuffer(numTriangles*sizeof(matrixData));
+	matrixStagingBuffer.map();
+	for(size_t i=0; i<numTriangles; i++)
+		memcpy(reinterpret_cast<char*>(matrixStagingBuffer.ptr)+(i*sizeof(matrixData)),matrixData,sizeof(matrixData));
+	singleUniformStagingBuffer.unmap();
+
+	// copy data from staging to uniform buffer
+	submitNowCommandBuffer->copyBuffer(
+		matrixStagingBuffer.buffer.get(),  // srcBuffer
+		matrixBuffer.get(),                // dstBuffer
+		1,                                 // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*sizeof(matrixData))  // pRegions
 	);
-	commandBuffer->end();
 
 	// submit command buffer
+	submitNowCommandBuffer->end();
 	vk::UniqueFence fence(device->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()}));
 	graphicsQueue.submit(
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
 			0,nullptr,nullptr,       // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
-			1,&commandBuffer.get(),  // commandBufferCount,pCommandBuffers
+			1,&submitNowCommandBuffer.get(),  // commandBufferCount,pCommandBuffers
 			0,nullptr                // signalSemaphoreCount,pSignalSemaphores
 		),
 		fence.get()  // fence
@@ -1193,6 +1181,113 @@ static void recreateSwapchainAndPipeline()
 	);
 	if(r==vk::Result::eTimeout)
 		throw std::runtime_error("GPU timeout. Task is probably hanging.");
+
+
+	// descriptor sets
+	singleUniformDescriptorPool=
+		device->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				1,  // poolSizeCount
+				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					vk::DescriptorPoolSize(
+						vk::DescriptorType::eUniformBuffer,  // type
+						1  // descriptorCount
+					)
+				}.data()
+			)
+		);
+	matrixBufferDescriptorPool=
+		device->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				1,  // poolSizeCount
+				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					vk::DescriptorPoolSize(
+						vk::DescriptorType::eStorageBuffer,  // type
+						1  // descriptorCount
+					)
+				}.data()
+			)
+		);
+	singleUniformDescriptorSet=std::move(
+		device->allocateDescriptorSetsUnique(
+			vk::DescriptorSetAllocateInfo(
+				singleUniformDescriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&singleUniformDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0]);
+	matrixBufferDescriptorSet=std::move(
+		device->allocateDescriptorSetsUnique(
+			vk::DescriptorSetAllocateInfo(
+				matrixBufferDescriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&matrixBufferDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0]);
+	device->updateDescriptorSets(
+		vk::WriteDescriptorSet(  // descriptorWrites
+			singleUniformDescriptorSet.get(),  // dstSet
+			0,  // dstBinding
+			0,  // dstArrayElement
+			1,  // descriptorCount
+			vk::DescriptorType::eUniformBuffer,  // descriptorType
+			nullptr,  // pImageInfo
+			array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+				vk::DescriptorBufferInfo(
+					singleUniformBuffer.get(),  // buffer
+					0,  // offset
+					16*sizeof(float)  // range
+				),
+			}.data(),
+			nullptr  // pTexelBufferView
+		),
+		nullptr  // descriptorCopies
+	);
+	device->updateDescriptorSets(
+		vk::WriteDescriptorSet(  // descriptorWrites
+			matrixBufferDescriptorSet.get(),  // dstSet
+			0,  // dstBinding
+			0,  // dstArrayElement
+			1,  // descriptorCount
+			vk::DescriptorType::eStorageBuffer,  // descriptorType
+			nullptr,  // pImageInfo
+			array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+				vk::DescriptorBufferInfo(
+					matrixBuffer.get(),  // buffer
+					0,  // offset
+					numTriangles*16*sizeof(float)  // range
+				),
+			}.data(),
+			nullptr  // pTexelBufferView
+		),
+		nullptr  // descriptorCopies
+	);
+
+
+	// timestamp properties
+	timestampValidBits=
+		physicalDevice.getQueueFamilyProperties()[graphicsQueueFamily].timestampValidBits;
+	timestampPeriod_ns=
+		physicalDevice.getProperties().limits.timestampPeriod;
+	cout<<"Timestamp number of bits: "<<timestampValidBits<<endl;
+	cout<<"Timestamp period: "<<timestampPeriod_ns<<"ns"<<endl;
+	if(timestampValidBits==0)
+		throw runtime_error("Timestamps are not supported.");
+
+	// timestamp pool
+	timestampPool=
+		device->createQueryPoolUnique(
+			vk::QueryPoolCreateInfo(
+				vk::QueryPoolCreateFlags(),  // flags
+				vk::QueryType::eTimestamp,   // queryType
+				uint32_t(tests.size())*2,    // queryCount
+				vk::QueryPipelineStatisticFlags()  // pipelineStatistics
+			)
+		);
 
 	// reallocate command buffers
 	if(commandBuffers.size()!=swapchainImages.size()) {
@@ -1293,6 +1388,24 @@ static void recreateSwapchainAndPipeline()
 		          singleUniformMatrixPipeline.get(),singleUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
 		          vector<vk::DescriptorSet>{ singleUniformDescriptorSet.get() });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// matrixBuffer test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          matrixBufferPipeline.get(),matrixBufferPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>{ matrixBufferDescriptorSet.get() });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1484,13 +1597,18 @@ int main(int argc,char** argv)
 				cout<<"Triangle throughput:"<<endl;
 				for(Test& t : tests) {
 					sort(t.renderingTimes.begin(),t.renderingTimes.end());
-					double time=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod;
-					cout<<"  "<<t.resultString<<": "<<double(numTriangles)/time*1e3<<" millions per second"<<endl;
+					double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+					cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
 				}
-				cout<<"Rendering time:"<<endl;
+				cout<<"Time of a triangle:"<<endl;
 				for(Test& t : tests) {
-					double time=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod;
-					cout<<"  "<<t.resultString<<": "<<time/1e3<<"us"<<endl;
+					double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+					cout<<"   "<<t.resultString<<": "<<time_ns/numTriangles<<"ns"<<endl;
+				}
+				cout<<"Total rendering time:"<<endl;
+				for(Test& t : tests) {
+					double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+					cout<<"   "<<t.resultString<<": "<<time_ns/1e3<<"us"<<endl;
 				}
 				break;
 			}
