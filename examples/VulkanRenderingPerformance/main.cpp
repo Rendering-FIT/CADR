@@ -204,6 +204,25 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 }
 
 
+// allocate memory for buffers
+static vk::UniqueDeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)
+{
+	vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
+	vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+	for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+		if(memoryRequirements.memoryTypeBits&(1<<i))
+			if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
+				return
+					device->allocateMemoryUnique(
+						vk::MemoryAllocateInfo(
+							memoryRequirements.size,  // allocationSize
+							i                         // memoryTypeIndex
+						)
+					);
+	throw std::runtime_error("No suitable memory type found for the buffer.");
+}
+
+
 /// Init Vulkan and open the window.
 static void init(size_t deviceIndex)
 {
@@ -988,25 +1007,6 @@ static void recreateSwapchainAndPipeline()
 				)
 			)
 		);
-
-	// memory for buffers
-	auto allocateMemory=
-		[](vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)->vk::UniqueDeviceMemory
-		{
-			vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
-			vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
-			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-				if(memoryRequirements.memoryTypeBits&(1<<i))
-					if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
-						return
-							device->allocateMemoryUnique(
-								vk::MemoryAllocateInfo(
-									memoryRequirements.size,  // allocationSize
-									i                         // memoryTypeIndex
-								)
-							);
-			throw std::runtime_error("No suitable memory type found for the buffer.");
-		}
 
 	// vertex attribute buffers
 	size_t bufferSize=getBufferSize(numTriangles,true);
