@@ -91,7 +91,7 @@ static vk::UniqueDeviceMemory coordinateAttributeMemory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
-static const size_t numTriangles=110000;
+static const size_t numTriangles=1*1e6;
 static const unsigned triangleSize=0;
 
 // shader code in SPIR-V binary
@@ -142,60 +142,61 @@ static void generate(float* vertices,size_t numTriangles,unsigned triangleSize,
 	// When triangleSize is set to 1:
 	//    Both triangles together produce 4 pixels: the first triangle 3 pixels and
 	//    the second triangle a single pixel. For more detail, see OpenGL rasterization rules.
-	for(unsigned j=0; j<numLinesPerScreen; j++) {
-		for(unsigned i=0; i<numTrianglesPerLine; i+=2) {
+	for(float z=0.9f; z>0.01f; z-=0.01f) {
+		for(unsigned j=0; j<numLinesPerScreen; j++) {
+			for(unsigned i=0; i<numTrianglesPerLine; i+=2) {
 
-			double x=i/2*stride;
-			double y=j*stride;
-			float z=0.f;
+				double x=i/2*stride;
+				double y=j*stride;
 
-			// triangle 1, vertex 1
-			vertices[idx++]=float((x+0.5-0.1)*scaleX+offsetX);
-			vertices[idx++]=float((y+0.5-0.1)*scaleY+offsetY);
-			vertices[idx++]=z;
-			if(useVec4)
-				vertices[idx++]=1.f;
+				// triangle 1, vertex 1
+				vertices[idx++]=float((x+0.5-0.1)*scaleX+offsetX);
+				vertices[idx++]=float((y+0.5-0.1)*scaleY+offsetY);
+				vertices[idx++]=z;
+				if(useVec4)
+					vertices[idx++]=1.f;
 
-			// triangle 1, vertex 2
-			vertices[idx++]=float((x+0.5+triangleSize-0.8)*scaleX+offsetX);
-			vertices[idx++]=float((y+0.5-0.1)*scaleY+offsetY);
-			vertices[idx++]=z;
-			if(useVec4)
-				vertices[idx++]=1.f;
+				// triangle 1, vertex 2
+				vertices[idx++]=float((x+0.5+triangleSize-0.8)*scaleX+offsetX);
+				vertices[idx++]=float((y+0.5-0.1)*scaleY+offsetY);
+				vertices[idx++]=z;
+				if(useVec4)
+					vertices[idx++]=1.f;
 
-			// triangle 1, vertex 3
-			vertices[idx++]=float((x+0.5-0.1)*scaleX+offsetX);
-			vertices[idx++]=float((y+0.5+triangleSize-0.8)*scaleY+offsetY);
-			vertices[idx++]=z;
-			if(useVec4)
-				vertices[idx++]=1.f;
+				// triangle 1, vertex 3
+				vertices[idx++]=float((x+0.5-0.1)*scaleX+offsetX);
+				vertices[idx++]=float((y+0.5+triangleSize-0.8)*scaleY+offsetY);
+				vertices[idx++]=z;
+				if(useVec4)
+					vertices[idx++]=1.f;
 
-			if(idx==idxEnd)
-				return;
+				if(idx==idxEnd)
+					return;
 
-			// triangle 2, vertex 1
-			vertices[idx++]=float((x+0.5+triangleSize+0.6)*scaleX+offsetX);
-			vertices[idx++]=float((y+0.5+1.3)*scaleY+offsetY);
-			vertices[idx++]=z;
-			if(useVec4)
-				vertices[idx++]=1.f;
+				// triangle 2, vertex 1
+				vertices[idx++]=float((x+0.5+triangleSize+0.6)*scaleX+offsetX);
+				vertices[idx++]=float((y+0.5+1.3)*scaleY+offsetY);
+				vertices[idx++]=z;
+				if(useVec4)
+					vertices[idx++]=1.f;
 
-			// triangle 2, vertex 2
-			vertices[idx++]=float((x+0.5+1.3)*scaleX+offsetX);
-			vertices[idx++]=float((y+0.5+triangleSize+0.6)*scaleY+offsetY);
-			vertices[idx++]=z;
-			if(useVec4)
-				vertices[idx++]=1.f;
+				// triangle 2, vertex 2
+				vertices[idx++]=float((x+0.5+1.3)*scaleX+offsetX);
+				vertices[idx++]=float((y+0.5+triangleSize+0.6)*scaleY+offsetY);
+				vertices[idx++]=z;
+				if(useVec4)
+					vertices[idx++]=1.f;
 
-			// triangle 2, vertex 3
-			vertices[idx++]=float((x+0.5+triangleSize+0.6)*scaleX+offsetX);
-			vertices[idx++]=float((y+0.5+triangleSize+0.6)*scaleY+offsetY);
-			vertices[idx++]=z;
-			if(useVec4)
-				vertices[idx++]=1.f;
+				// triangle 2, vertex 3
+				vertices[idx++]=float((x+0.5+triangleSize+0.6)*scaleX+offsetX);
+				vertices[idx++]=float((y+0.5+triangleSize+0.6)*scaleY+offsetY);
+				vertices[idx++]=z;
+				if(useVec4)
+					vertices[idx++]=1.f;
 
-			if(idx==idxEnd)
-				return;
+				if(idx==idxEnd)
+					return;
+			}
 		}
 	}
 
