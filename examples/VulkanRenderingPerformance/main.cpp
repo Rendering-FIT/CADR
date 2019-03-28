@@ -67,8 +67,10 @@ static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout matrixBufferDescriptorSetLayout;
 static vk::UniqueBuffer singleUniformBuffer;
 static vk::UniqueBuffer matrixBuffer;
+static vk::UniqueBuffer indirectBuffer;
 static vk::UniqueDeviceMemory singleUniformMemory;
 static vk::UniqueDeviceMemory matrixBufferMemory;
+static vk::UniqueDeviceMemory indirectBufferMemory;
 static vk::UniqueDescriptorPool singleUniformDescriptorPool;
 static vk::UniqueDescriptorPool matrixBufferDescriptorPool;
 static vk::UniqueDescriptorSet singleUniformDescriptorSet;
@@ -91,7 +93,7 @@ static vk::UniqueDeviceMemory coordinateAttributeMemory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
-static const size_t numTriangles=1*1e6;
+static const size_t numTriangles=size_t(1*1e6);
 static const unsigned triangleSize=0;
 
 // shader code in SPIR-V binary
@@ -118,6 +120,7 @@ static vector<Test> tests={
 	Test("One draw call, one transformation"),
 	Test("One draw call, per-triangle transformation in buffer"),
 	Test("Per-triangle draw call, no transformations"),
+	Test("Per-triangle record in indirect buffer"),
 };
 
 
@@ -1152,7 +1155,7 @@ static void recreateSwapchainAndPipeline()
 	matrixStagingBuffer.map();
 	for(size_t i=0; i<numTriangles; i++)
 		memcpy(reinterpret_cast<char*>(matrixStagingBuffer.ptr)+(i*sizeof(matrixData)),matrixData,sizeof(matrixData));
-	singleUniformStagingBuffer.unmap();
+	matrixStagingBuffer.unmap();
 
 	// copy data from staging to uniform buffer
 	submitNowCommandBuffer->copyBuffer(
@@ -1160,6 +1163,50 @@ static void recreateSwapchainAndPipeline()
 		matrixBuffer.get(),                // dstBuffer
 		1,                                 // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*sizeof(matrixData))  // pRegions
+	);
+
+	// indirect buffer
+	indirectBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				(numTriangles+1)*sizeof(vk::DrawIndirectCommand),  // size
+				vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	indirectBufferMemory=
+		allocateMemory(indirectBuffer.get(),
+		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+	device->bindBufferMemory(
+		indirectBuffer.get(),  // image
+		indirectBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+
+	// indirect staging buffer
+	StagingBuffer indirectStagingBuffer((numTriangles+1)*sizeof(vk::DrawIndirectCommand));
+	auto indirectBufferPtr=reinterpret_cast<vk::DrawIndirectCommand*>(indirectStagingBuffer.map());
+	for(size_t i=0; i<numTriangles; i++) {
+		indirectBufferPtr[i].vertexCount=3;
+		indirectBufferPtr[i].instanceCount=1;
+		indirectBufferPtr[i].firstVertex=i*3;
+		indirectBufferPtr[i].firstInstance=0;
+	}
+	indirectBufferPtr[numTriangles].vertexCount=3;
+	indirectBufferPtr[numTriangles].instanceCount=numTriangles;
+	indirectBufferPtr[numTriangles].firstVertex=0;
+	indirectBufferPtr[numTriangles].firstInstance=0;
+	indirectStagingBuffer.unmap();
+
+	// copy data from staging to uniform buffer
+	submitNowCommandBuffer->copyBuffer(
+		indirectStagingBuffer.buffer.get(),  // srcBuffer
+		indirectBuffer.get(),                // dstBuffer
+		1,                                   // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,(numTriangles+1)*sizeof(vk::DrawIndirectCommand))  // pRegions
 	);
 
 	// submit command buffer
@@ -1370,7 +1417,8 @@ static void recreateSwapchainAndPipeline()
 		// passThrough test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1431,6 +1479,24 @@ static void recreateSwapchainAndPipeline()
 		);
 		for(size_t i=0; i<numTriangles; i++)
 			cb.draw(3,1,uint32_t(i*3),0);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// per-triangle record in indirect buffer
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndirect(indirectBuffer.get(),0,numTriangles,sizeof(vk::DrawIndirectCommand));
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
