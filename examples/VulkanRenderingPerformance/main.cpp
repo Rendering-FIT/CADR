@@ -55,12 +55,14 @@ static vk::Queue presentationQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
 static vk::Format depthFormat;
 static vk::UniqueRenderPass renderPass;
+static vk::UniqueShaderModule attributelessConstantOutputVS;
+static vk::UniqueShaderModule attributelessInputIndicesVS;
 static vk::UniqueShaderModule passThroughVS;
 static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule matrixBufferVS;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineCache pipelineCache;
-static vk::UniquePipelineLayout passThroughPipelineLayout;
+static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
 static vk::UniquePipelineLayout matrixBufferPipelineLayout;
 static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
@@ -80,6 +82,8 @@ static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
 static vk::UniqueDeviceMemory depthImageMemory;
 static vk::UniqueImageView depthImageView;
+static vk::UniquePipeline attributelessConstantOutputPipeline;
+static vk::UniquePipeline attributelessInputIndicesPipeline;
 static vk::UniquePipeline passThroughPipeline;
 static vk::UniquePipeline singleUniformMatrixPipeline;
 static vk::UniquePipeline matrixBufferPipeline;
@@ -97,6 +101,12 @@ static const size_t numTriangles=size_t(1*1e6);
 static const unsigned triangleSize=0;
 
 // shader code in SPIR-V binary
+static const uint32_t attributelessConstantOutputVS_spirv[]={
+#include "attributelessConstantOutput.vert.spv"
+};
+static const uint32_t attributelessInputIndicesVS_spirv[]={
+#include "attributelessInputIndices.vert.spv"
+};
 static const uint32_t passThroughVS_spirv[]={
 #include "passThrough.vert.spv"
 };
@@ -116,6 +126,8 @@ struct Test {
 	Test(const char* resultString_) : resultString(resultString_)  {}
 };
 static vector<Test> tests={
+	Test("One draw call, attributeless, constant output"),
+	Test("One draw call, attributeless, input indices"),
 	Test("One draw call, no transformations"),
 	Test("One draw call, one transformation"),
 	Test("One draw call, per-triangle transformation in buffer"),
@@ -536,6 +548,22 @@ static void init(size_t deviceIndex)
 		);
 
 	// create shader modules
+	attributelessConstantOutputVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(attributelessConstantOutputVS_spirv),  // codeSize
+				attributelessConstantOutputVS_spirv           // pCode
+			)
+		);
+	attributelessInputIndicesVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(attributelessInputIndicesVS_spirv),  // codeSize
+				attributelessInputIndicesVS_spirv           // pCode
+			)
+		);
 	passThroughVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -614,7 +642,7 @@ static void init(size_t deviceIndex)
 		);
 
 	// pipeline layouts
-	passThroughPipelineLayout=
+	simplePipelineLayout=
 		device->createPipelineLayoutUnique(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
@@ -686,6 +714,8 @@ static void recreateSwapchainAndPipeline()
 	passThroughPipeline.reset();
 	singleUniformMatrixPipeline.reset();
 	matrixBufferPipeline.reset();
+	attributelessConstantOutputPipeline.reset();
+	attributelessInputIndicesPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
@@ -868,7 +898,8 @@ static void recreateSwapchainAndPipeline()
 	// pipeline
 	auto createPipeline=
 		[](vk::ShaderModule vsModule,vk::ShaderModule fsModule,vk::PipelineLayout pipelineLayout,
-		   const vk::Extent2D currentSurfaceExtent)->vk::UniquePipeline
+		   const vk::Extent2D currentSurfaceExtent,
+		   const vk::PipelineVertexInputStateCreateInfo* vertexInputState=nullptr)->vk::UniquePipeline
 		{
 			return device->createGraphicsPipelineUnique(
 				pipelineCache.get(),
@@ -891,26 +922,28 @@ static void recreateSwapchainAndPipeline()
 							nullptr    // pSpecializationInfo
 						}
 					}.data(),
-					&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
-						vk::PipelineVertexInputStateCreateFlags(),  // flags
-						1,        // vertexBindingDescriptionCount
-						array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
-							vk::VertexInputBindingDescription(
-								0,  // binding
-								4*sizeof(float),  // stride
-								vk::VertexInputRate::eVertex  // inputRate
-							),
-						}.data(),
-						1,        // vertexAttributeDescriptionCount
-						array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
-							vk::VertexInputAttributeDescription(
-								0,  // location
-								0,  // binding
-								vk::Format::eR32G32B32A32Sfloat,  // format
-								0   // offset
-							),
-						}.data()
-					},
+					vertexInputState!=nullptr  // pVertexInputState
+						?vertexInputState
+						:&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+							vk::PipelineVertexInputStateCreateFlags(),  // flags
+							1,        // vertexBindingDescriptionCount
+							array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
+								vk::VertexInputBindingDescription(
+									0,  // binding
+									4*sizeof(float),  // stride
+									vk::VertexInputRate::eVertex  // inputRate
+								),
+							}.data(),
+							1,        // vertexAttributeDescriptionCount
+							array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
+								vk::VertexInputAttributeDescription(
+									0,  // location
+									0,  // binding
+									vk::Format::eR32G32B32A32Sfloat,  // format
+									0   // offset
+								),
+							}.data()
+						},
 					&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 						vk::PipelineInputAssemblyStateCreateFlags(),  // flags
 						vk::PrimitiveTopology::eTriangleList,  // topology
@@ -985,8 +1018,22 @@ static void recreateSwapchainAndPipeline()
 				)
 			);
 		};
+	attributelessConstantOutputPipeline=
+		createPipeline(attributelessConstantOutputVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	attributelessInputIndicesPipeline=
+		createPipeline(attributelessInputIndicesVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
 	passThroughPipeline=
-		createPipeline(passThroughVS.get(),fsModule.get(),passThroughPipelineLayout.get(),currentSurfaceExtent);
+		createPipeline(passThroughVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent);
 	singleUniformMatrixPipeline=
 		createPipeline(singleUniformMatrixVS.get(),fsModule.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
 	matrixBufferPipeline=
@@ -1408,15 +1455,52 @@ static void recreateSwapchainAndPipeline()
 
 		// render something to put GPU out of power saving states
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
+		          passThroughPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
 		cb.draw(3*numTriangles,1,0,0);
 		cb.draw(3*numTriangles,1,0,0);
 		cb.endRenderPass();
 
+		// attributeless constant output test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// attributeless input indices test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessInputIndicesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
 		// passThrough test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
+		          passThroughPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
@@ -1470,8 +1554,9 @@ static void recreateSwapchainAndPipeline()
 
 		// per-triangle draw call test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },vector<vk::DescriptorSet>());
+		          passThroughPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1486,9 +1571,32 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
+#if 0 // does not work yet
+		// indirect buffer instancing
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          instancingPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndirect(indirectBuffer.get(),  // buffer
+		                numTriangles*sizeof(vk::DrawIndirectCommand),  // offset
+		                1,  // drawCount
+		                sizeof(vk::DrawIndirectCommand));  // stride
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+#endif
+
 		// per-triangle record in indirect buffer
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          passThroughPipeline.get(),passThroughPipelineLayout.get(),
+		          passThroughPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
