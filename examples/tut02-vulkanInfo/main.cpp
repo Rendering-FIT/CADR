@@ -154,13 +154,17 @@ int main(int,char**)
 			// print device displays
 			cout<<"      Displays:"<<endl;
 			if(hasKhrDisplay) {
-				vkFunc.vkGetPhysicalDeviceDisplayPropertiesKHR=PFN_vkGetPhysicalDeviceDisplayPropertiesKHR(instance->getProcAddr("vkGetPhysicalDeviceDisplayPropertiesKHR"));
-				vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR(vkFunc);
-				for(vk::DisplayPropertiesKHR& dp:dpList)
-					cout<<"         "<<(dp.displayName?dp.displayName:"< no name >")<<", "
-						 <<dp.physicalResolution.width<<"x"<<dp.physicalResolution.height<<endl;
-				if(dpList.empty())
-					cout<<"         < none >"<<endl;
+				try {
+					vkFunc.vkGetPhysicalDeviceDisplayPropertiesKHR=PFN_vkGetPhysicalDeviceDisplayPropertiesKHR(instance->getProcAddr("vkGetPhysicalDeviceDisplayPropertiesKHR"));
+					vector<vk::DisplayPropertiesKHR> dpList=pd.getDisplayPropertiesKHR(vkFunc);
+					for(vk::DisplayPropertiesKHR& dp:dpList)
+						cout<<"         "<<(dp.displayName?dp.displayName:"< no name >")<<", "
+						    <<dp.physicalResolution.width<<"x"<<dp.physicalResolution.height<<endl;
+					if(dpList.empty())
+						cout<<"         < none >"<<endl;
+				} catch(vk::Error& e) {
+					cout<<"         VK_KHR_display extension raised exception: "<<e.what()<<endl;
+				}
 			} else
 				cout<<"         < VK_KHR_display not supported >"<<endl;
 
