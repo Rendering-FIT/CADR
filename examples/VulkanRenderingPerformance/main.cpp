@@ -131,6 +131,7 @@ static vector<Test> tests={
 	Test("One draw call, no transformations"),
 	Test("One draw call, one transformation"),
 	Test("One draw call, per-triangle transformation in buffer"),
+	Test("One draw call, attributeless instancing"),
 	Test("Per-triangle draw call, no transformations"),
 	Test("Indirect buffer instancing, attributeless"),
 	Test("Indirect buffer per-triangle record, attributeless"),
@@ -1241,7 +1242,7 @@ static void recreateSwapchainAndPipeline()
 	for(size_t i=0; i<numTriangles; i++) {
 		indirectBufferPtr[i].vertexCount=3;
 		indirectBufferPtr[i].instanceCount=1;
-		indirectBufferPtr[i].firstVertex=i*3;
+		indirectBufferPtr[i].firstVertex=uint32_t(i)*3;
 		indirectBufferPtr[i].firstInstance=0;
 	}
 	indirectBufferPtr[numTriangles].vertexCount=3;
@@ -1474,7 +1475,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1492,7 +1493,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1510,7 +1511,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1528,7 +1529,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1546,7 +1547,25 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3*numTriangles,1,0,0);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// attributeless instancing test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3,numTriangles,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1565,7 +1584,7 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		for(size_t i=0; i<numTriangles; i++)
-			cb.draw(3,1,uint32_t(i*3),0);
+			cb.draw(3,1,uint32_t(i*3),0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1604,7 +1623,10 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.drawIndirect(indirectBuffer.get(),0,numTriangles,sizeof(vk::DrawIndirectCommand));
+		cb.drawIndirect(indirectBuffer.get(),  // buffer
+		                0,  // offset
+		                numTriangles,  // drawCount
+		                sizeof(vk::DrawIndirectCommand));  // stride
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1622,7 +1644,10 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.drawIndirect(indirectBuffer.get(),0,numTriangles,sizeof(vk::DrawIndirectCommand));
+		cb.drawIndirect(indirectBuffer.get(),  // buffer
+		                0,  // offset
+		                numTriangles,  // drawCount
+		                sizeof(vk::DrawIndirectCommand));  // stride
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
