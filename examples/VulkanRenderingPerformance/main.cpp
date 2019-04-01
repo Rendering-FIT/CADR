@@ -132,7 +132,9 @@ static vector<Test> tests={
 	Test("One draw call, one transformation"),
 	Test("One draw call, per-triangle transformation in buffer"),
 	Test("Per-triangle draw call, no transformations"),
-	Test("Per-triangle record in indirect buffer"),
+	Test("Indirect buffer instancing, attributeless"),
+	Test("Indirect buffer per-triangle record, attributeless"),
+	Test("Indirect buffer per-triangle record"),
 };
 
 
@@ -1571,11 +1573,10 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-#if 0 // does not work yet
-		// indirect buffer instancing
+		// attributeless indirect buffer instancing
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          instancingPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
@@ -1592,9 +1593,26 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.endRenderPass();
-#endif
 
-		// per-triangle record in indirect buffer
+		// attributeless indirect buffer per-triangle record
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndirect(indirectBuffer.get(),0,numTriangles,sizeof(vk::DrawIndirectCommand));
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// indirect buffer per-triangle record
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          passThroughPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
