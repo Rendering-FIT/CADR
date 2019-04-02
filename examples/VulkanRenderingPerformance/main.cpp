@@ -1919,7 +1919,8 @@ int main(int argc,char** argv)
 			}
 
 			// print the result at the end
-			if(chrono::duration<double>(chrono::steady_clock::now()-startTime).count()>2.) {
+			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
+			if(totalMeasurementTime>2.) {
 				cout<<"Triangle throughput:"<<endl;
 				for(Test& t : tests) {
 					sort(t.renderingTimes.begin(),t.renderingTimes.end());
@@ -1936,6 +1937,8 @@ int main(int argc,char** argv)
 					double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
 					cout<<"   "<<t.resultString<<": "<<time_ns/1e3<<"us"<<endl;
 				}
+				cout<<"Number of measurements of each test: "<<tests.front().renderingTimes.size()<<endl;
+				cout<<"Total time of all measurements: "<<totalMeasurementTime<<" seconds"<<endl;
 				break;
 			}
 
