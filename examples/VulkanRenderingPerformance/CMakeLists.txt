@@ -13,6 +13,7 @@ set(APP_SHADERS
 	attributelessConstantOutput.vert
 	attributelessInputIndices.vert
 	passThrough.vert
+	bufferAttribute.vert
 	singleUniformMatrix.vert
 	matrixBuffer.vert
 	shader.frag
