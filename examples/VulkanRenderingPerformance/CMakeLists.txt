@@ -15,6 +15,7 @@ set(APP_SHADERS
 	passThrough.vert
 	bufferAttribute.vert
 	singleUniformMatrix.vert
+	matrixAttribute.vert
 	matrixBuffer.vert
 	shader.frag
 	)
