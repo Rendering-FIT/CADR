@@ -81,7 +81,8 @@ static vk::UniqueDeviceMemory transformationMatrixMemory;
 static vk::UniqueDeviceMemory indirectBufferMemory;
 static vk::UniqueDescriptorPool singleUniformDescriptorPool;
 static vk::UniqueDescriptorPool coordinateBufferDescriptorPool;
-static vk::UniqueDescriptorPool matrixBufferDescriptorPool;
+static vk::UniqueDescriptorPool sameMatrixBufferDescriptorPool;
+static vk::UniqueDescriptorPool transformationMatrixBufferDescriptorPool;
 static vk::UniqueDescriptorSet singleUniformDescriptorSet;
 static vk::UniqueDescriptorSet coordinateBufferDescriptorSet;
 static vk::UniqueDescriptorSet sameMatrixBufferDescriptorSet;
@@ -840,7 +841,8 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixBufferDescriptorSet.reset();
 	singleUniformDescriptorPool.reset();
 	coordinateBufferDescriptorPool.reset();
-	matrixBufferDescriptorPool.reset();
+	sameMatrixBufferDescriptorPool.reset();
+	transformationMatrixBufferDescriptorPool.reset();
 	timestampPool.reset();
 
 	// submitNowCommandBuffer
@@ -1149,7 +1151,12 @@ static void recreateSwapchainAndPipeline()
 	coordinateAttributePipeline=
 		createPipeline(coordinateAttributeVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent);
 	coordinateBufferPipeline=
-		createPipeline(coordinateBufferVS.get(),fsModule.get(),coordinateBufferPipelineLayout.get(),currentSurfaceExtent);
+		createPipeline(coordinateBufferVS.get(),fsModule.get(),coordinateBufferPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
 	singleUniformMatrixPipeline=
 		createPipeline(singleUniformMatrixVS.get(),fsModule.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
 	matrixAttributePipeline=
@@ -1511,11 +1518,25 @@ static void recreateSwapchainAndPipeline()
 				}.data()
 			)
 		);
-	matrixBufferDescriptorPool=
+	sameMatrixBufferDescriptorPool=
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				2,  // maxSets
+				1,  // maxSets
+				1,  // poolSizeCount
+				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					vk::DescriptorPoolSize(
+						vk::DescriptorType::eStorageBuffer,  // type
+						1  // descriptorCount
+					)
+				}.data()
+			)
+		);
+	transformationMatrixBufferDescriptorPool=
+		device->createDescriptorPoolUnique(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
 				1,  // poolSizeCount
 				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
 					vk::DescriptorPoolSize(
@@ -1544,7 +1565,7 @@ static void recreateSwapchainAndPipeline()
 	sameMatrixBufferDescriptorSet=std::move(
 		device->allocateDescriptorSetsUnique(
 			vk::DescriptorSetAllocateInfo(
-				matrixBufferDescriptorPool.get(),  // descriptorPool
+				sameMatrixBufferDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&matrixBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -1552,7 +1573,7 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixBufferDescriptorSet=std::move(
 		device->allocateDescriptorSetsUnique(
 			vk::DescriptorSetAllocateInfo(
-				matrixBufferDescriptorPool.get(),  // descriptorPool
+				transformationMatrixBufferDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&matrixBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2114,6 +2135,10 @@ int main(int argc,char** argv)
 				t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
 				i+=2;
 			}
+			if(timestamps.begin()!=timestamps.end())
+				for(auto it=timestamps.begin()+1; it!=timestamps.end(); it++)
+					if(*(it-1)>*it)
+						throw std::runtime_error("Tests ran in parallel.");
 
 			// print the result at the end
 			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
