@@ -12,8 +12,8 @@ set(APP_INCLUDES
 set(APP_SHADERS
 	attributelessConstantOutput.vert
 	attributelessInputIndices.vert
-	passThrough.vert
-	bufferAttribute.vert
+	coordinateAttribute.vert
+	coordinateBuffer.vert
 	singleUniformMatrix.vert
 	matrixAttribute.vert
 	matrixBuffer.vert

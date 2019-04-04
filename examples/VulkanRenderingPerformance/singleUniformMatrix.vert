@@ -9,9 +9,9 @@ out gl_PerVertex {
 
 layout(binding=0) uniform UniformBufferObject {
 	mat4 modelView;
-} ubo;
+};
 
 
 void main() {
-	gl_Position=ubo.modelView*inPosition;
+	gl_Position=modelView*inPosition;
 }
