@@ -144,6 +144,7 @@ static const uint32_t fsSpirv[]={
 struct Test {
 	vector<uint64_t> renderingTimes;
 	string resultString;
+	bool enabled = true;
 	Test(const char* resultString_) : resultString(resultString_)  {}
 };
 static vector<Test> tests={
@@ -1989,10 +1990,13 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.drawIndirect(indirectBuffer.get(),  // buffer
-		                0,  // offset
-		                numTriangles,  // drawCount
-		                sizeof(vk::DrawIndirectCommand));  // stride
+		if(features.multiDrawIndirect)
+			cb.drawIndirect(indirectBuffer.get(),  // buffer
+			                0,  // offset
+			                numTriangles,  // drawCount
+			                sizeof(vk::DrawIndirectCommand));  // stride
+		else
+			tests[timestampIndex/2].enabled=false;
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -2010,10 +2014,13 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.drawIndirect(indirectBuffer.get(),  // buffer
-		                0,  // offset
-		                numTriangles,  // drawCount
-		                sizeof(vk::DrawIndirectCommand));  // stride
+		if(features.multiDrawIndirect)
+			cb.drawIndirect(indirectBuffer.get(),  // buffer
+			                0,  // offset
+			                numTriangles,  // drawCount
+			                sizeof(vk::DrawIndirectCommand));  // stride
+		else
+			tests[timestampIndex/2].enabled=false;
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -2182,16 +2189,22 @@ int main(int argc,char** argv)
 			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
 			if(totalMeasurementTime>2.) {
 				cout<<"Triangle throughput:"<<endl;
-				for(Test& t : tests) {
-					sort(t.renderingTimes.begin(),t.renderingTimes.end());
-					double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
-					cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
-				}
+				for(Test& t : tests)
+					if(t.enabled) {
+						sort(t.renderingTimes.begin(),t.renderingTimes.end());
+						double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+						cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
+					}
+					else
+						cout<<"   "<<t.resultString<<": not supported"<<endl;
 				cout<<"Time of a triangle:"<<endl;
-				for(Test& t : tests) {
-					double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
-					cout<<"   "<<t.resultString<<": "<<time_ns/numTriangles<<"ns"<<endl;
-				}
+				for(Test& t : tests)
+					if(t.enabled) {
+						double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+						cout<<"   "<<t.resultString<<": "<<time_ns/numTriangles<<"ns"<<endl;
+					}
+					else
+						cout<<"   "<<t.resultString<<": not supported"<<endl;
 				cout<<"Number of measurements of each test: "<<tests.front().renderingTimes.size()<<endl;
 				cout<<"Total time of all measurements: "<<totalMeasurementTime<<" seconds"<<endl;
 				break;
