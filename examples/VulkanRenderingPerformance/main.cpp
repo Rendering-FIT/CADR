@@ -79,7 +79,8 @@ static vk::UniqueBuffer transformationMatrixBuffer;
 static vk::UniqueBuffer indirectBuffer;
 static vk::UniqueDeviceMemory singleUniformMemory;
 static vk::UniqueDeviceMemory sameMatrixMemory;
-static vk::UniqueDeviceMemory transformationMatrixMemory;
+static vk::UniqueDeviceMemory transformationMatrixAttributeMemory;
+static vk::UniqueDeviceMemory transformationMatrixBufferMemory;
 static vk::UniqueDeviceMemory indirectBufferMemory;
 static vk::UniqueDescriptorPool singleUniformDescriptorPool;
 static vk::UniqueDescriptorPool coordinateBufferDescriptorPool;
@@ -108,7 +109,8 @@ static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
 static vk::UniqueBuffer coordinateAttribute;
 static vk::UniqueBuffer coordinateBuffer;
-static vk::UniqueDeviceMemory coordinateMemory;
+static vk::UniqueDeviceMemory coordinateAttributeMemory;
+static vk::UniqueDeviceMemory coordinateBufferMemory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
@@ -838,14 +840,16 @@ static void recreateSwapchainAndPipeline()
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateBuffer.reset();
-	coordinateMemory.reset();
+	coordinateAttributeMemory.reset();
+	coordinateBufferMemory.reset();
 	singleUniformBuffer.reset();
 	singleUniformMemory.reset();
 	sameMatrixBuffer.reset();
 	sameMatrixMemory.reset();
 	transformationMatrixAttribute.reset();
 	transformationMatrixBuffer.reset();
-	transformationMatrixMemory.reset();
+	transformationMatrixAttributeMemory.reset();
+	transformationMatrixBufferMemory.reset();
 	singleUniformDescriptorPool.reset();
 	coordinateBufferDescriptorPool.reset();
 	sameMatrixBufferDescriptorPool.reset();
@@ -1266,15 +1270,16 @@ static void recreateSwapchainAndPipeline()
 		);
 
 	// vertex memory
-	coordinateMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	coordinateBufferMemory=allocateMemory(coordinateBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		coordinateAttribute.get(),  // image
-		coordinateMemory.get(),  // memory
+		coordinateAttributeMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
 		coordinateBuffer.get(),  // image
-		coordinateMemory.get(),  // memory
+		coordinateBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
@@ -1320,10 +1325,16 @@ static void recreateSwapchainAndPipeline()
 		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	coordinateStagingBuffer.unmap();
 
-	// copy data from staging to attribute buffer
+	// copy data from staging to attribute and storage buffer
 	submitNowCommandBuffer->copyBuffer(
 		coordinateStagingBuffer.buffer.get(),  // srcBuffer
 		coordinateAttribute.get(),             // dstBuffer
+		1,                                     // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,coordinateBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		coordinateStagingBuffer.buffer.get(),  // srcBuffer
+		coordinateBuffer.get(),                // dstBuffer
 		1,                                     // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,coordinateBufferSize)  // pRegions
 	);
@@ -1433,28 +1444,35 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-	transformationMatrixMemory=
-		allocateMemory(transformationMatrixBuffer.get(),
-		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+	transformationMatrixAttributeMemory=
+		allocateMemory(transformationMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	transformationMatrixBufferMemory=
+		allocateMemory(transformationMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		transformationMatrixAttribute.get(),  // image
-		transformationMatrixMemory.get(),  // memory
+		transformationMatrixAttributeMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
 		transformationMatrixBuffer.get(),  // image
-		transformationMatrixMemory.get(),  // memory
+		transformationMatrixBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
-	// same matrix staging buffer
+	// transformation matrix staging buffer
 	StagingBuffer transformationMatrixStagingBuffer(numTriangles*16*sizeof(float));
 	generateMatrices(
 		reinterpret_cast<float*>(transformationMatrixStagingBuffer.map()),numTriangles,triangleSize,
 		1000,1000,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,0.,0.);
 	transformationMatrixStagingBuffer.unmap();
 
-	// copy data from staging to uniform buffer
+	// copy data from staging to attribute and storage buffer
+	submitNowCommandBuffer->copyBuffer(
+		transformationMatrixStagingBuffer.buffer.get(),  // srcBuffer
+		transformationMatrixAttribute.get(),                // dstBuffer
+		1,                                               // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*16*sizeof(float))  // pRegions
+	);
 	submitNowCommandBuffer->copyBuffer(
 		transformationMatrixStagingBuffer.buffer.get(),  // srcBuffer
 		transformationMatrixBuffer.get(),                // dstBuffer
