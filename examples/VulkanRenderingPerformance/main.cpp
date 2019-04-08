@@ -74,6 +74,7 @@ static vk::UniqueDescriptorSetLayout coordinateBufferDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout matrixBufferDescriptorSetLayout;
 static vk::UniqueBuffer singleUniformBuffer;
 static vk::UniqueBuffer sameMatrixBuffer;
+static vk::UniqueBuffer transformationMatrixAttribute;
 static vk::UniqueBuffer transformationMatrixBuffer;
 static vk::UniqueBuffer indirectBuffer;
 static vk::UniqueDeviceMemory singleUniformMemory;
@@ -84,10 +85,10 @@ static vk::UniqueDescriptorPool singleUniformDescriptorPool;
 static vk::UniqueDescriptorPool coordinateBufferDescriptorPool;
 static vk::UniqueDescriptorPool sameMatrixBufferDescriptorPool;
 static vk::UniqueDescriptorPool transformationMatrixBufferDescriptorPool;
-static vk::UniqueDescriptorSet singleUniformDescriptorSet;
-static vk::UniqueDescriptorSet coordinateBufferDescriptorSet;
-static vk::UniqueDescriptorSet sameMatrixBufferDescriptorSet;
-static vk::UniqueDescriptorSet transformationMatrixBufferDescriptorSet;
+static vk::DescriptorSet singleUniformDescriptorSet;
+static vk::DescriptorSet coordinateBufferDescriptorSet;
+static vk::DescriptorSet sameMatrixBufferDescriptorSet;
+static vk::DescriptorSet transformationMatrixBufferDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
@@ -841,12 +842,9 @@ static void recreateSwapchainAndPipeline()
 	singleUniformMemory.reset();
 	sameMatrixBuffer.reset();
 	sameMatrixMemory.reset();
+	transformationMatrixAttribute.reset();
 	transformationMatrixBuffer.reset();
 	transformationMatrixMemory.reset();
-	singleUniformDescriptorSet.reset();
-	coordinateBufferDescriptorSet.reset();
-	sameMatrixBufferDescriptorSet.reset();
-	transformationMatrixBufferDescriptorSet.reset();
 	singleUniformDescriptorPool.reset();
 	coordinateBufferDescriptorPool.reset();
 	sameMatrixBufferDescriptorPool.reset();
@@ -1411,7 +1409,18 @@ static void recreateSwapchainAndPipeline()
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*sizeof(matrixData))  // pRegions
 	);
 
-	// transformation matrix buffer
+	// transformation matrix attribute and storage buffer
+	transformationMatrixAttribute=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				numTriangles*16*sizeof(float),  // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 	transformationMatrixBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -1426,6 +1435,11 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixMemory=
 		allocateMemory(transformationMatrixBuffer.get(),
 		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+	device->bindBufferMemory(
+		transformationMatrixAttribute.get(),  // image
+		transformationMatrixMemory.get(),  // memory
+		0  // memoryOffset
+	);
 	device->bindBufferMemory(
 		transformationMatrixBuffer.get(),  // image
 		transformationMatrixMemory.get(),  // memory
@@ -1570,41 +1584,41 @@ static void recreateSwapchainAndPipeline()
 				}.data()
 			)
 		);
-	singleUniformDescriptorSet=std::move(
-		device->allocateDescriptorSetsUnique(
+	singleUniformDescriptorSet=
+		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				singleUniformDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&singleUniformDescriptorSetLayout.get()  // pSetLayouts
 			)
-		)[0]);
-	coordinateBufferDescriptorSet=std::move(
-		device->allocateDescriptorSetsUnique(
+		)[0];
+	coordinateBufferDescriptorSet=
+		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				coordinateBufferDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&coordinateBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
-		)[0]);
-	sameMatrixBufferDescriptorSet=std::move(
-		device->allocateDescriptorSetsUnique(
+		)[0];
+	sameMatrixBufferDescriptorSet=
+		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				sameMatrixBufferDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&matrixBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
-		)[0]);
-	transformationMatrixBufferDescriptorSet=std::move(
-		device->allocateDescriptorSetsUnique(
+		)[0];
+	transformationMatrixBufferDescriptorSet=
+		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				transformationMatrixBufferDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&matrixBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
-		)[0]);
+		)[0];
 	device->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
-			singleUniformDescriptorSet.get(),  // dstSet
+			singleUniformDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			1,  // descriptorCount
@@ -1623,7 +1637,7 @@ static void recreateSwapchainAndPipeline()
 	);
 	device->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
-			coordinateBufferDescriptorSet.get(),  // dstSet
+			coordinateBufferDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			1,  // descriptorCount
@@ -1642,7 +1656,7 @@ static void recreateSwapchainAndPipeline()
 	);
 	device->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
-			sameMatrixBufferDescriptorSet.get(),  // dstSet
+			sameMatrixBufferDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			1,  // descriptorCount
@@ -1661,7 +1675,7 @@ static void recreateSwapchainAndPipeline()
 	);
 	device->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
-			transformationMatrixBufferDescriptorSet.get(),  // dstSet
+			transformationMatrixBufferDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			1,  // descriptorCount
@@ -1857,7 +1871,7 @@ static void recreateSwapchainAndPipeline()
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          coordinateBufferPipeline.get(),coordinateBufferPipelineLayout.get(),
 		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ coordinateBufferDescriptorSet.get() });
+		          vector<vk::DescriptorSet>{ coordinateBufferDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1875,7 +1889,7 @@ static void recreateSwapchainAndPipeline()
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          singleUniformMatrixPipeline.get(),singleUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
-		          vector<vk::DescriptorSet>{ singleUniformDescriptorSet.get() });
+		          vector<vk::DescriptorSet>{ singleUniformDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -1892,7 +1906,7 @@ static void recreateSwapchainAndPipeline()
 		// matrixAttribute test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          matrixAttributePipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get(), transformationMatrixBuffer.get() },
+		          vector<vk::Buffer>{ coordinateAttribute.get(), transformationMatrixAttribute.get() },
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
@@ -1911,7 +1925,7 @@ static void recreateSwapchainAndPipeline()
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          matrixBufferPipeline.get(),matrixBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
-		          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet.get() });
+		          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -2161,10 +2175,8 @@ int main(int argc,char** argv)
 				t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
 				i+=2;
 			}
-			if(timestamps.begin()!=timestamps.end())
-				for(auto it=timestamps.begin()+1; it!=timestamps.end(); it++)
-					if(*(it-1)>*it)
-						throw std::runtime_error("Tests ran in parallel.");
+			if(!is_sorted(timestamps.begin(),timestamps.end()))
+				throw std::runtime_error("Tests ran in parallel.");
 
 			// print the result at the end
 			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
