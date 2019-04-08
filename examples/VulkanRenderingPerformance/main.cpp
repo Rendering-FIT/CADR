@@ -49,6 +49,7 @@ static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static uint32_t presentationQueueFamily;
+static vk::PhysicalDeviceFeatures features;
 static vk::UniqueDevice device;
 static vk::Queue graphicsQueue;
 static vk::Queue presentationQueue;
@@ -105,7 +106,8 @@ static vector<vk::UniqueCommandBuffer> commandBuffers;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
 static vk::UniqueBuffer coordinateAttribute;
-static vk::UniqueDeviceMemory coordinateAttributeMemory;
+static vk::UniqueBuffer coordinateBuffer;
+static vk::UniqueDeviceMemory coordinateMemory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
@@ -499,6 +501,11 @@ static void init(size_t deviceIndex)
 	cout<<"Using device:\n"
 		   "   "<<physicalDevice.getProperties().deviceName<<endl;
 
+	// get supported features
+	features=physicalDevice.getFeatures();
+	vk::PhysicalDeviceFeatures enabledFeatures;
+	enabledFeatures.setMultiDrawIndirect(features.multiDrawIndirect);
+
 	// create device
 	device.reset(  // move assignment and physicalDevice.createDeviceUnique() does not work here because of bug in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git). Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp.
 		physicalDevice.createDevice(
@@ -522,7 +529,7 @@ static void init(size_t deviceIndex)
 				0,nullptr,  // no layers
 				1,          // number of enabled extensions
 				array<const char*,1>{"VK_KHR_swapchain"}.data(),  // enabled extension names
-				nullptr,    // enabled features
+				&enabledFeatures,  // enabled features
 			}
 		)
 	);
@@ -604,7 +611,7 @@ static void init(size_t deviceIndex)
 				&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
 					0,                     // srcSubpass
 					0,                     // dstSubpass
-					vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+					vk::PipelineStageFlagBits::eAllGraphics,  // srcStageMask
 					vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
 					vk::AccessFlags(),     // srcAccessMask
 					vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
@@ -828,7 +835,8 @@ static void recreateSwapchainAndPipeline()
 	attributelessInputIndicesPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
-	coordinateAttributeMemory.reset();
+	coordinateBuffer.reset();
+	coordinateMemory.reset();
 	singleUniformBuffer.reset();
 	singleUniformMemory.reset();
 	sameMatrixBuffer.reset();
@@ -1233,7 +1241,7 @@ static void recreateSwapchainAndPipeline()
 			)
 		);
 
-	// vertex attribute buffers
+	// vertex attribute and storage buffer
 	size_t coordinateBufferSize=getBufferSize(numTriangles,true);
 	coordinateAttribute=
 		device->createBufferUnique(
@@ -1246,12 +1254,28 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	coordinateBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				coordinateBufferSize,         // size
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 
-	// vertex attribute memory
-	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	// vertex memory
+	coordinateMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		coordinateAttribute.get(),  // image
-		coordinateAttributeMemory.get(),  // memory
+		coordinateMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		coordinateBuffer.get(),  // image
+		coordinateMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
@@ -1607,7 +1631,7 @@ static void recreateSwapchainAndPipeline()
 			nullptr,  // pImageInfo
 			array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
 				vk::DescriptorBufferInfo(
-					coordinateAttribute.get(),  // buffer
+					coordinateBuffer.get(),  // buffer
 					0,  // offset
 					coordinateBufferSize  // range
 				),
@@ -1723,21 +1747,23 @@ static void recreateSwapchainAndPipeline()
 					vk::SubpassContents::eInline
 				);
 				cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline);  // bind pipeline
-				cb.bindDescriptorSets(
-					vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-					pipelineLayout,  // layout
-					0,  // firstSet
-					descriptorSets,  // descriptorSets
-					nullptr  // dynamicOffsets
-				);
-				cb.bindVertexBuffers(
-					0,  // firstBinding
-					uint32_t(attributes.size()),  // bindingCount
-					attributes.data(),  // pBuffers
-					vector<vk::DeviceSize>(attributes.size(),0).data()  // pOffsets
-				);
+				if(descriptorSets.size()>0)
+					cb.bindDescriptorSets(
+						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+						pipelineLayout,  // layout
+						0,  // firstSet
+						descriptorSets,  // descriptorSets
+						nullptr  // dynamicOffsets
+					);
+				if(attributes.size()>0)
+					cb.bindVertexBuffers(
+						0,  // firstBinding
+						uint32_t(attributes.size()),  // bindingCount
+						attributes.data(),  // pBuffers
+						vector<vk::DeviceSize>(attributes.size(),0).data()  // pOffsets
+					);
 				cb.pipelineBarrier(
-					vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+					vk::PipelineStageFlagBits::eAllGraphics,  // srcStageMask
 					vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
 					vk::DependencyFlags(),  // dependencyFlags
 					0,nullptr,  // memoryBarrierCount+pMemoryBarriers
