@@ -1777,7 +1777,7 @@ static void recreateSwapchainAndPipeline()
 						vector<vk::DeviceSize>(attributes.size(),0).data()  // pOffsets
 					);
 				cb.pipelineBarrier(
-					vk::PipelineStageFlagBits::eAllGraphics,  // srcStageMask
+					vk::PipelineStageFlagBits::eBottomOfPipe,  // srcStageMask
 					vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
 					vk::DependencyFlags(),  // dependencyFlags
 					0,nullptr,  // memoryBarrierCount+pMemoryBarriers
