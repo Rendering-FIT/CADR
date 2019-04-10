@@ -175,6 +175,7 @@ int main(int,char**)
 
 		}
 
+	// catch exceptions
 	} catch(vk::Error &e) {
 		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
 	} catch(exception &e) {

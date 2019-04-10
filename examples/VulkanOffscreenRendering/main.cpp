@@ -1,10 +1,3 @@
-#ifdef _WIN32
-# define VK_USE_PLATFORM_WIN32_KHR
-#else
-# include <X11/Xlib.h>
-# include <X11/Xutil.h>
-# define VK_USE_PLATFORM_XLIB_KHR
-#endif
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <fstream>
