@@ -62,7 +62,7 @@ static vk::UniqueShaderModule coordinateBufferVS;
 static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule matrixAttributeVS;
 static vk::UniqueShaderModule matrixBufferVS;
-static vk::UniqueShaderModule fsModule;
+static vk::UniqueShaderModule constantColorFS;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
@@ -134,8 +134,8 @@ static const uint32_t matrixAttributeVS_spirv[]={
 static const uint32_t matrixBufferVS_spirv[]={
 #include "matrixBuffer.vert.spv"
 };
-static const uint32_t fsSpirv[]={
-#include "shader.frag.spv"
+static const uint32_t constantColorFS_spirv[]={
+#include "constantColor.frag.spv"
 };
 
 struct Test {
@@ -670,12 +670,12 @@ static void init(size_t deviceIndex)
 				matrixBufferVS_spirv            // pCode
 			)
 		);
-	fsModule=
+	constantColorFS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(fsSpirv),                // codeSize
-				fsSpirv                         // pCode
+				sizeof(constantColorFS_spirv),  // codeSize
+				constantColorFS_spirv           // pCode
 			)
 		);
 
@@ -1135,32 +1135,32 @@ static void recreateSwapchainAndPipeline()
 			);
 		};
 	attributelessConstantOutputPipeline=
-		createPipeline(attributelessConstantOutputVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		createPipeline(attributelessConstantOutputVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               });
 	attributelessInputIndicesPipeline=
-		createPipeline(attributelessInputIndicesVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		createPipeline(attributelessInputIndicesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               });
 	coordinateAttributePipeline=
-		createPipeline(coordinateAttributeVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent);
+		createPipeline(coordinateAttributeVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent);
 	coordinateBufferPipeline=
-		createPipeline(coordinateBufferVS.get(),fsModule.get(),coordinateBufferPipelineLayout.get(),currentSurfaceExtent,
+		createPipeline(coordinateBufferVS.get(),constantColorFS.get(),coordinateBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               });
 	singleUniformMatrixPipeline=
-		createPipeline(singleUniformMatrixVS.get(),fsModule.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
+		createPipeline(singleUniformMatrixVS.get(),constantColorFS.get(),singleUniformPipelineLayout.get(),currentSurfaceExtent);
 	matrixAttributePipeline=
-		createPipeline(matrixAttributeVS.get(),fsModule.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		createPipeline(matrixAttributeVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               2,  // vertexBindingDescriptionCount
@@ -1211,7 +1211,7 @@ static void recreateSwapchainAndPipeline()
 			               }.data()
 		               });
 	matrixBufferPipeline=
-		createPipeline(matrixBufferVS.get(),fsModule.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent);
+		createPipeline(matrixBufferVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent);
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());

@@ -17,7 +17,7 @@ set(APP_SHADERS
 	singleUniformMatrix.vert
 	matrixAttribute.vert
 	matrixBuffer.vert
-	shader.frag
+	constantColor.frag
 	)
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
