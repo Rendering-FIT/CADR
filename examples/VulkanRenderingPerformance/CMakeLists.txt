@@ -17,7 +17,12 @@ set(APP_SHADERS
 	singleUniformMatrix.vert
 	matrixAttribute.vert
 	matrixBuffer.vert
+	twoAttributesNoMatrix.vert
+	fourAttributesNoMatrix.vert
+	fourAttributes.vert
+	phongTextured.vert
 	constantColor.frag
+	phongTextured.frag
 	)
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
