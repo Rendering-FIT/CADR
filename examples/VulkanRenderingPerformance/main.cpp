@@ -1427,7 +1427,7 @@ static void recreateSwapchainAndPipeline()
 				               vk::VertexInputAttributeDescription(
 					               2,  // location
 					               2,  // binding
-					               vk::Format::eR8G8B8A8Uint,  // format
+					               vk::Format::eR8G8B8A8Unorm,  // format
 					               0   // offset
 				               ),
 				               vk::VertexInputAttributeDescription(
@@ -1459,7 +1459,7 @@ static void recreateSwapchainAndPipeline()
 			)
 		);
 
-	// vertex attribute and storage buffer
+	// coordinate attribute and storage buffer
 	size_t coordinateBufferSize=getBufferSize(numTriangles,true);
 	size_t normalBufferSize=numTriangles*3*3*sizeof(float);
 	size_t colorBufferSize=numTriangles*3*4;
