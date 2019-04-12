@@ -84,7 +84,7 @@ static void init()
 			vk::InstanceCreateInfo{
 				vk::InstanceCreateFlags(),  // flags
 				&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-					"CADR Vk HelloTriangle", // application name
+					"CADR tut06",            // application name
 					VK_MAKE_VERSION(0,0,0),  // application version
 					"CADR",                  // engine name
 					VK_MAKE_VERSION(0,0,0),  // engine version
