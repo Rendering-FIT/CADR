@@ -4,6 +4,8 @@ set(examples_folder_name "Examples")
 set(PACKAGES
 	tut01-deviceList
 	tut02-vulkanInfo
+	tut03-simpleImage
+	tut04-robustImage
 	tut04-swapChain
 	tut05-resizableWindow
 	tut06-helloTriangle
