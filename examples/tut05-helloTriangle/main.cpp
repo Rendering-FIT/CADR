@@ -57,7 +57,7 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"CADR Vk Offscreen Rendering", // application name
+						"CADR tut05",            // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						"CADR",                  // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -68,9 +68,7 @@ int main(int,char**)
 				});
 
 		// find compatible devices
-		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-		// renders the window).
+		// (the device must have a queue supporting graphics operations)
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
@@ -123,6 +121,7 @@ int main(int,char**)
 		// get queues
 		graphicsQueue=device->getQueue(graphicsQueueFamily,0);
 
+
 		// render pass
 		renderPass=
 			device->createRenderPassUnique(
@@ -138,7 +137,7 @@ int main(int,char**)
 						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
 						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 						vk::ImageLayout::eUndefined,       // initialLayout
-						vk::ImageLayout::eGeneral          // finalLayout
+						vk::ImageLayout::eTransferSrcOptimal  // finalLayout
 					),
 					1,  // subpassCount
 					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
@@ -156,70 +155,9 @@ int main(int,char**)
 						0,        // preserveAttachmentCount
 						nullptr   // pPreserveAttachments
 					),
-					1,  // dependencyCount
-					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
-						VK_SUBPASS_EXTERNAL,   // srcSubpass
-						0,                     // dstSubpass
-						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
-						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
-						vk::AccessFlags(),     // srcAccessMask
-						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
-						vk::DependencyFlags()  // dependencyFlags
-					)
+					0,  // dependencyCount
+					nullptr  // pDependencies
 				)
-			);
-
-		// create shader modules
-		vsModule=device->createShaderModuleUnique(
-			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(vsSpirv),  // codeSize
-				vsSpirv  // pCode
-			)
-		);
-		fsModule=device->createShaderModuleUnique(
-			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(fsSpirv),  // codeSize
-				fsSpirv  // pCode
-			)
-		);
-
-		// pipeline cache
-		pipelineCache=device->createPipelineCacheUnique(
-			vk::PipelineCacheCreateInfo(
-				vk::PipelineCacheCreateFlags(),  // flags
-				0,       // initialDataSize
-				nullptr  // pInitialData
-			)
-		);
-
-		// pipeline layout
-		pipelineLayout=device->createPipelineLayoutUnique(
-			vk::PipelineLayoutCreateInfo{
-				vk::PipelineLayoutCreateFlags(),  // flags
-				0,       // setLayoutCount
-				nullptr, // pSetLayouts
-				0,       // pushConstantRangeCount
-				nullptr  // pPushConstantRanges
-			}
-		);
-
-		// command pool
-		commandPool=
-			device->createCommandPoolUnique(
-				vk::CommandPoolCreateInfo(
-					vk::CommandPoolCreateFlags(),  // flags
-					graphicsQueueFamily  // queueFamilyIndex
-				)
-			);
-
-		// fence
-		renderingFinishedFence=
-			device->createFenceUnique(
-				vk::FenceCreateInfo{
-					vk::FenceCreateFlags()  // flags
-				}
 			);
 
 
@@ -309,6 +247,56 @@ int main(int,char**)
 					)
 				)
 			);
+
+		// framebuffers
+		framebuffer=
+			device->createFramebufferUnique(
+				vk::FramebufferCreateInfo(
+					vk::FramebufferCreateFlags(),  // flags
+					renderPass.get(),              // renderPass
+					1,&frameImageView.get(),       // attachmentCount, pAttachments
+					imageExtent.width,             // width
+					imageExtent.height,            // height
+					1  // layers
+				)
+			);
+
+
+		// create shader modules
+		vsModule=device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(vsSpirv),  // codeSize
+				vsSpirv  // pCode
+			)
+		);
+		fsModule=device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(fsSpirv),  // codeSize
+				fsSpirv  // pCode
+			)
+		);
+
+		// pipeline cache
+		pipelineCache=device->createPipelineCacheUnique(
+			vk::PipelineCacheCreateInfo(
+				vk::PipelineCacheCreateFlags(),  // flags
+				0,       // initialDataSize
+				nullptr  // pInitialData
+			)
+		);
+
+		// pipeline layout
+		pipelineLayout=device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				0,       // setLayoutCount
+				nullptr, // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
 
 		// pipeline
 		pipeline=device->createGraphicsPipelineUnique(
@@ -402,16 +390,13 @@ int main(int,char**)
 			)
 		);
 
-		// framebuffers
-		framebuffer=
-			device->createFramebufferUnique(
-				vk::FramebufferCreateInfo(
-					vk::FramebufferCreateFlags(),  // flags
-					renderPass.get(),              // renderPass
-					1,&frameImageView.get(),       // attachmentCount, pAttachments
-					imageExtent.width,             // width
-					imageExtent.height,            // height
-					1  // layers
+
+		// command pool
+		commandPool=
+			device->createCommandPoolUnique(
+				vk::CommandPoolCreateInfo(
+					vk::CommandPoolCreateFlags(),  // flags
+					graphicsQueueFamily  // queueFamilyIndex
 				)
 			);
 
@@ -433,33 +418,6 @@ int main(int,char**)
 			)
 		);
 
-		// put image transitions into command buffer
-		commandBuffer->pipelineBarrier(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // dstStageMask
-			vk::DependencyFlags(),  // dependencyFlags
-			nullptr,  // memoryBarriers
-			nullptr,  // bufferMemoryBarriers
-			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
-				vk::ImageMemoryBarrier{
-					vk::AccessFlags(),                          // srcAccessMask
-					vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
-					vk::ImageLayout::eUndefined,                // oldLayout
-					vk::ImageLayout::eColorAttachmentOptimal,   // newLayout
-					0,                          // srcQueueFamilyIndex
-					0,                          // dstQueueFamilyIndex
-					framebufferImage.get(),     // image
-					vk::ImageSubresourceRange{  // subresourceRange
-						vk::ImageAspectFlagBits::eColor,  // aspectMask
-						0,  // baseMipLevel
-						1,  // levelCount
-						0,  // baseArrayLayer
-						1   // layerCount
-					}
-				},
-			}
-		);
-
 		// begin render pass
 		commandBuffer->beginRenderPass(
 			vk::RenderPassBeginInfo(
@@ -479,35 +437,20 @@ int main(int,char**)
 		// end render pass
 		commandBuffer->endRenderPass();
 
-		// barrier for rendering completion
+
+		// hostVisibleImage layout to TransferDstOptimal
 		commandBuffer->pipelineBarrier(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStageMask
-			vk::PipelineStageFlagBits::eTransfer,  // dstStageMask
+			vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+			vk::PipelineStageFlagBits::eTransfer,   // dstStageMask
 			vk::DependencyFlags(),  // dependencyFlags
 			nullptr,  // memoryBarriers
 			nullptr,  // bufferMemoryBarriers
 			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
 				vk::ImageMemoryBarrier{
-					vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
-					vk::AccessFlagBits::eTransferRead,          // dstAccessMask
-					vk::ImageLayout::eColorAttachmentOptimal,   // oldLayout
-					vk::ImageLayout::eGeneral,                  // newLayout
-					0,                          // srcQueueFamilyIndex
-					0,                          // dstQueueFamilyIndex
-					framebufferImage.get(),     // image
-					vk::ImageSubresourceRange{  // subresourceRange
-						vk::ImageAspectFlagBits::eColor,  // aspectMask
-						0,  // baseMipLevel
-						1,  // levelCount
-						0,  // baseArrayLayer
-						1   // layerCount
-					}
-				},
-				vk::ImageMemoryBarrier{
-					vk::AccessFlags(),                   // srcAccessMask
-					vk::AccessFlagBits::eTransferWrite,  // dstAccessMask
-					vk::ImageLayout::eUndefined,         // oldLayout
-					vk::ImageLayout::eGeneral,           // newLayout
+					vk::AccessFlags(),                     // srcAccessMask
+					vk::AccessFlagBits::eTransferWrite,    // dstAccessMask
+					vk::ImageLayout::eUndefined,           // oldLayout
+					vk::ImageLayout::eTransferDstOptimal,  // newLayout
 					0,                          // srcQueueFamilyIndex
 					0,                          // dstQueueFamilyIndex
 					hostVisibleImage.get(),     // image
@@ -524,8 +467,8 @@ int main(int,char**)
 
 		// copy framebufferImage to hostVisibleImage
 		commandBuffer->copyImage(
-			framebufferImage.get(),vk::ImageLayout::eGeneral,
-			hostVisibleImage.get(),vk::ImageLayout::eGeneral,
+			framebufferImage.get(),vk::ImageLayout::eTransferSrcOptimal,
+			hostVisibleImage.get(),vk::ImageLayout::eTransferDstOptimal,
 			vk::ImageCopy(
 				vk::ImageSubresourceLayers(  // srcSubresource
 					vk::ImageAspectFlagBits::eColor,  // aspectMask
@@ -545,9 +488,44 @@ int main(int,char**)
 			)
 		);
 
+		// hostVisibleImage layout to General
+		commandBuffer->pipelineBarrier(
+			vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
+			vk::PipelineStageFlagBits::eHost,      // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags
+			nullptr,  // memoryBarriers
+			nullptr,  // bufferMemoryBarriers
+			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlagBits::eTransferWrite,    // srcAccessMask
+					vk::AccessFlagBits::eHostRead,         // dstAccessMask
+					vk::ImageLayout::eTransferDstOptimal,  // oldLayout
+					vk::ImageLayout::eGeneral,  // newLayout
+					0,                          // srcQueueFamilyIndex
+					0,                          // dstQueueFamilyIndex
+					hostVisibleImage.get(),     // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					}
+				}
+			}
+		);
+
 		// end command buffer
 		commandBuffer->end();
 
+
+		// fence
+		renderingFinishedFence=
+			device->createFenceUnique(
+				vk::FenceCreateInfo{
+					vk::FenceCreateFlags()  // flags
+				}
+			);
 
 		// submit work
 		graphicsQueue.submit(
@@ -572,6 +550,7 @@ int main(int,char**)
 		if(r==vk::Result::eTimeout)
 			throw std::runtime_error("GPU timeout. Task is probably hanging.");
 
+
 		// map memory
 		struct MappedMemoryDeleter { void operator()(void*) { device->unmapMemory(hostVisibleImageMemory.get()); } } mappedMemoryDeleter;
 		unique_ptr<void,MappedMemoryDeleter> m(
@@ -589,6 +568,7 @@ int main(int,char**)
 					0   // arrayLayer
 				}
 			);
+
 
 		// open the output file
 		cout<<"Writing \"image.bmp\"..."<<endl;
@@ -613,8 +593,8 @@ int main(int,char**)
 			uint16_t(fileSize&0xffff),
 			uint16_t(fileSize>>16),
 			0,0,
-		   14+40+2,  // equal to sum of sizeof(BitmapFileHeader), sizeof(BitmapInfoHeader) and 2 (as alignment)
-		   0
+			14+40+2,  // equal to sum of sizeof(BitmapFileHeader), sizeof(BitmapInfoHeader) and 2 (as alignment)
+			0
 		};
 		s.write(reinterpret_cast<char*>(&bitmapFileHeader),sizeof(BitmapFileHeader));
 

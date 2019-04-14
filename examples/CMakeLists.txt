@@ -6,13 +6,13 @@ set(PACKAGES
 	tut02-vulkanInfo
 	tut03-simpleImage
 	tut04-robustImage
+	tut05-helloTriangle
 	tut04-swapChain
 	tut05-resizableWindow
 	tut06-helloTriangle
 	VulkanDepthBuffer
 	OpenGLInteroperability
 	HelloQtWindow
-	VulkanOffscreenRendering
 	VulkanAttributesAndUniforms
 	VulkanRenderingPerformance
 	)

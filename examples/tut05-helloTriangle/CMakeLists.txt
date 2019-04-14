@@ -1,4 +1,4 @@
-set(APP_NAME VulkanOffscreenRendering)
+set(APP_NAME tut05-helloTriangle)
 
 project(${APP_NAME})
 
@@ -19,13 +19,7 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 
 # dependencies
 find_package(Vulkan REQUIRED)
-if(UNIX)
-	find_package(X11 REQUIRED)
-	set(deps Vulkan X11)
-elseif(WIN32)
-	set(deps Vulkan)
-endif()
 
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(${APP_NAME} ${deps})
+target_link_libraries(${APP_NAME} Vulkan)
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")
