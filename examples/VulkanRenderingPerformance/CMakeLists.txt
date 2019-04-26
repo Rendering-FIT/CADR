@@ -17,9 +17,9 @@ set(APP_SHADERS
 	singleUniformMatrix.vert
 	matrixAttribute.vert
 	matrixBuffer.vert
-	twoAttributesNoMatrix.vert
-	fourAttributesNoMatrix.vert
+	twoAttributes.vert
 	fourAttributes.vert
+	fourAttributesAndMatrix.vert
 	phongTextured.vert
 	constantColor.frag
 	phongTextured.frag

@@ -63,9 +63,9 @@ static vk::UniqueShaderModule coordinateBufferVS;
 static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule matrixAttributeVS;
 static vk::UniqueShaderModule matrixBufferVS;
-static vk::UniqueShaderModule twoAttributesNoMatrixVS;
-static vk::UniqueShaderModule fourAttributesNoMatrixVS;
+static vk::UniqueShaderModule twoAttributesVS;
 static vk::UniqueShaderModule fourAttributesVS;
+static vk::UniqueShaderModule fourAttributesAndMatrixVS;
 static vk::UniqueShaderModule phongTexturedVS;
 static vk::UniqueShaderModule constantColorFS;
 static vk::UniqueShaderModule phongTexturedFS;
@@ -107,10 +107,10 @@ static vk::UniquePipeline coordinateBufferPipeline;
 static vk::UniquePipeline singleUniformMatrixPipeline;
 static vk::UniquePipeline matrixAttributePipeline;
 static vk::UniquePipeline matrixBufferPipeline;
-static vk::UniquePipeline twoAttributesNoMatrixPipeline;
-static vk::UniquePipeline two4F32Two4U8AttributesNoMatrixPipeline;
-static vk::UniquePipeline fourAttributesNoMatrixPipeline;
+static vk::UniquePipeline twoAttributesPipeline;
+static vk::UniquePipeline two4F32Two4U8AttributesPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
+static vk::UniquePipeline fourAttributesAndMatrixPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
@@ -159,14 +159,14 @@ static const uint32_t matrixAttributeVS_spirv[]={
 static const uint32_t matrixBufferVS_spirv[]={
 #include "matrixBuffer.vert.spv"
 };
-static const uint32_t twoAttributesNoMatrixVS_spirv[]={
-#include "twoAttributesNoMatrix.vert.spv"
-};
-static const uint32_t fourAttributesNoMatrixVS_spirv[]={
-#include "fourAttributesNoMatrix.vert.spv"
+static const uint32_t twoAttributesVS_spirv[]={
+#include "twoAttributes.vert.spv"
 };
 static const uint32_t fourAttributesVS_spirv[]={
 #include "fourAttributes.vert.spv"
+};
+static const uint32_t fourAttributesAndMatrixVS_spirv[]={
+#include "fourAttributesAndMatrix.vert.spv"
 };
 static const uint32_t phongTexturedVS_spirv[]={
 #include "phongTextured.vert.spv"
@@ -721,20 +721,12 @@ static void init(size_t deviceIndex)
 				matrixBufferVS_spirv            // pCode
 			)
 		);
-	twoAttributesNoMatrixVS=
+	twoAttributesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),          // flags
-				sizeof(twoAttributesNoMatrixVS_spirv),  // codeSize
-				twoAttributesNoMatrixVS_spirv           // pCode
-			)
-		);
-	fourAttributesNoMatrixVS=
-		device->createShaderModuleUnique(
-			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),           // flags
-				sizeof(fourAttributesNoMatrixVS_spirv),  // codeSize
-				fourAttributesNoMatrixVS_spirv           // pCode
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(twoAttributesVS_spirv),  // codeSize
+				twoAttributesVS_spirv           // pCode
 			)
 		);
 	fourAttributesVS=
@@ -743,6 +735,14 @@ static void init(size_t deviceIndex)
 				vk::ShaderModuleCreateFlags(),   // flags
 				sizeof(fourAttributesVS_spirv),  // codeSize
 				fourAttributesVS_spirv           // pCode
+			)
+		);
+	fourAttributesAndMatrixVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),            // flags
+				sizeof(fourAttributesAndMatrixVS_spirv),  // codeSize
+				fourAttributesAndMatrixVS_spirv           // pCode
 			)
 		);
 	phongTexturedVS=
@@ -917,10 +917,10 @@ static void recreateSwapchainAndPipeline()
 	singleUniformMatrixPipeline.reset();
 	matrixAttributePipeline.reset();
 	matrixBufferPipeline.reset();
-	twoAttributesNoMatrixPipeline.reset();
-	two4F32Two4U8AttributesNoMatrixPipeline.reset();
-	fourAttributesNoMatrixPipeline.reset();
+	twoAttributesPipeline.reset();
+	two4F32Two4U8AttributesPipeline.reset();
 	fourAttributesPipeline.reset();
+	fourAttributesAndMatrixPipeline.reset();
 	phongTexturedPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
@@ -1373,8 +1373,8 @@ static void recreateSwapchainAndPipeline()
 		4,  // vertexAttributeDescriptionCount
 		fourAttributesDescription.data(),  // pVertexAttributeDescriptions
 	};
-	twoAttributesNoMatrixPipeline=
-		createPipeline(twoAttributesNoMatrixVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+	twoAttributesPipeline=
+		createPipeline(twoAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               2,  // vertexBindingDescriptionCount
@@ -1382,8 +1382,8 @@ static void recreateSwapchainAndPipeline()
 			               2,  // vertexAttributeDescriptionCount
 			               fourAttributesDescription.data(),  // pVertexAttributeDescriptions
 		               });
-	two4F32Two4U8AttributesNoMatrixPipeline=
-		createPipeline(fourAttributesNoMatrixVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+	two4F32Two4U8AttributesPipeline=
+		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               4,  // vertexBindingDescriptionCount
@@ -1437,11 +1437,11 @@ static void recreateSwapchainAndPipeline()
 				               ),
 			               }.data()
 		               });
-	fourAttributesNoMatrixPipeline=
-		createPipeline(fourAttributesNoMatrixVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
-		               &fourAttributesInputState);
 	fourAttributesPipeline=
-		createPipeline(fourAttributesVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
+		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &fourAttributesInputState);
+	fourAttributesAndMatrixPipeline=
+		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &fourAttributesInputState);
 	phongTexturedPipeline=
 		createPipeline(phongTexturedVS.get(),phongTexturedFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
@@ -2409,7 +2409,7 @@ static void recreateSwapchainAndPipeline()
 
 		// two attributes test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          twoAttributesNoMatrixPipeline.get(),simplePipelineLayout.get(),
+		          twoAttributesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get() },
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
@@ -2427,7 +2427,7 @@ static void recreateSwapchainAndPipeline()
 
 		// four attributes (two4F32Two4U8) test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          two4F32Two4U8AttributesNoMatrixPipeline.get(),simplePipelineLayout.get(),
+		          two4F32Two4U8AttributesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
 		                              vec4u8Attributes[0].get(),vec4u8Attributes[1].get() },
 		          vector<vk::DescriptorSet>());
@@ -2446,7 +2446,7 @@ static void recreateSwapchainAndPipeline()
 
 		// four attributes test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          fourAttributesNoMatrixPipeline.get(),simplePipelineLayout.get(),
+		          fourAttributesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
 		                              vec4Attributes[1].get(),vec4Attributes[2].get() },
 		          vector<vk::DescriptorSet>());
@@ -2465,7 +2465,7 @@ static void recreateSwapchainAndPipeline()
 
 		// textured phong test, per-triangle transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          fourAttributesPipeline.get(),matrixBufferPipelineLayout.get(),
+		          fourAttributesAndMatrixPipeline.get(),matrixBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
 		                              vec4Attributes[1].get(),vec4Attributes[2].get() },
 		          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
