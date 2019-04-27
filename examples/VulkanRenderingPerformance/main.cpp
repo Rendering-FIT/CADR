@@ -64,6 +64,7 @@ static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule matrixAttributeVS;
 static vk::UniqueShaderModule matrixBufferVS;
 static vk::UniqueShaderModule twoAttributesVS;
+static vk::UniqueShaderModule fourPackedAttributesVS;
 static vk::UniqueShaderModule fourAttributesVS;
 static vk::UniqueShaderModule fourAttributesAndMatrixVS;
 static vk::UniqueShaderModule phongTexturedVS;
@@ -109,6 +110,7 @@ static vk::UniquePipeline matrixAttributePipeline;
 static vk::UniquePipeline matrixBufferPipeline;
 static vk::UniquePipeline twoAttributesPipeline;
 static vk::UniquePipeline two4F32Two4U8AttributesPipeline;
+static vk::UniquePipeline fourPackedAttributesPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
@@ -124,6 +126,8 @@ static vk::UniqueBuffer colorAttribute;
 static vk::UniqueBuffer texCoordAttribute;
 static array<vk::UniqueBuffer,3> vec4Attributes;
 static array<vk::UniqueBuffer,2> vec4u8Attributes;
+static vk::UniqueBuffer packedAttribute1;
+static vk::UniqueBuffer packedAttribute2;
 static vk::UniqueDeviceMemory coordinateAttributeMemory;
 static vk::UniqueDeviceMemory coordinateBufferMemory;
 static vk::UniqueDeviceMemory normalAttributeMemory;
@@ -131,6 +135,8 @@ static vk::UniqueDeviceMemory colorAttributeMemory;
 static vk::UniqueDeviceMemory texCoordAttributeMemory;
 static array<vk::UniqueDeviceMemory,3> vec4AttributeMemory;
 static array<vk::UniqueDeviceMemory,2> vec4u8AttributeMemory;
+static vk::UniqueDeviceMemory packedAttribute1Memory;
+static vk::UniqueDeviceMemory packedAttribute2Memory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
@@ -161,6 +167,9 @@ static const uint32_t matrixBufferVS_spirv[]={
 };
 static const uint32_t twoAttributesVS_spirv[]={
 #include "twoAttributes.vert.spv"
+};
+static const uint32_t fourPackedAttributesVS_spirv[]={
+#include "fourPackedAttributes.vert.spv"
 };
 static const uint32_t fourAttributesVS_spirv[]={
 #include "fourAttributes.vert.spv"
@@ -194,6 +203,7 @@ static vector<Test> tests={
 	Test("One draw call, per-triangle 1xMatrix in attrib."),
 	Test("One draw call, per-triangle 1xMatrix in buffer"),
 	Test("Two attributes, no transformation"),
+	Test("Four packed attributes, no transformation"),
 	Test("Four (2xf32,2xu8) attributes, no transformation"),
 	Test("Four attributes, no transformation"),
 	Test("Four attributes, 1xMatrix"),
@@ -729,6 +739,14 @@ static void init(size_t deviceIndex)
 				twoAttributesVS_spirv           // pCode
 			)
 		);
+	fourPackedAttributesVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),         // flags
+				sizeof(fourPackedAttributesVS_spirv),  // codeSize
+				fourPackedAttributesVS_spirv           // pCode
+			)
+		);
 	fourAttributesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -919,6 +937,7 @@ static void recreateSwapchainAndPipeline()
 	matrixBufferPipeline.reset();
 	twoAttributesPipeline.reset();
 	two4F32Two4U8AttributesPipeline.reset();
+	fourPackedAttributesPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
 	phongTexturedPipeline.reset();
@@ -937,6 +956,10 @@ static void recreateSwapchainAndPipeline()
 	for(auto& m : vec4AttributeMemory)    m.reset();
 	for(auto& a : vec4u8Attributes)       a.reset();
 	for(auto& m : vec4u8AttributeMemory)  m.reset();
+	packedAttribute1.reset();
+	packedAttribute1Memory.reset();
+	packedAttribute2.reset();
+	packedAttribute2Memory.reset();
 	singleUniformBuffer.reset();
 	singleUniformMemory.reset();
 	sameMatrixBuffer.reset();
@@ -1318,25 +1341,25 @@ static void recreateSwapchainAndPipeline()
 		               });
 	matrixBufferPipeline=
 		createPipeline(matrixBufferVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent);
-	const array<const vk::VertexInputBindingDescription,4> fourAttributesBinding{
+	const array<const vk::VertexInputBindingDescription,4> stride16AttributesBinding{
 		vk::VertexInputBindingDescription(
-			0,  // binding
-			4*sizeof(float),  // stride
+			0,   // binding
+			16,  // stride
 			vk::VertexInputRate::eVertex  // inputRate
 		),
 		vk::VertexInputBindingDescription(
-			1,  // binding
-			4*sizeof(float),  // stride
+			1,   // binding
+			16,  // stride
 			vk::VertexInputRate::eVertex  // inputRate
 		),
 		vk::VertexInputBindingDescription(
-			2,  // binding
-			4*sizeof(float),  // stride
+			2,   // binding
+			16,  // stride
 			vk::VertexInputRate::eVertex  // inputRate
 		),
 		vk::VertexInputBindingDescription(
-			3,  // binding
-			4*sizeof(float),  // stride
+			3,   // binding
+			16,  // stride
 			vk::VertexInputRate::eVertex  // inputRate
 		),
 	};
@@ -1369,7 +1392,7 @@ static void recreateSwapchainAndPipeline()
 	const vk::PipelineVertexInputStateCreateInfo fourAttributesInputState{
 		vk::PipelineVertexInputStateCreateFlags(),  // flags
 		4,  // vertexBindingDescriptionCount
-		fourAttributesBinding.data(),  // pVertexBindingDescriptions
+		stride16AttributesBinding.data(),  // pVertexBindingDescriptions
 		4,  // vertexAttributeDescriptionCount
 		fourAttributesDescription.data(),  // pVertexAttributeDescriptions
 	};
@@ -1378,7 +1401,7 @@ static void recreateSwapchainAndPipeline()
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               2,  // vertexBindingDescriptionCount
-			               fourAttributesBinding.data(),  // pVertexBindingDescriptions
+			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
 			               2,  // vertexAttributeDescriptionCount
 			               fourAttributesDescription.data(),  // pVertexAttributeDescriptions
 		               });
@@ -1433,6 +1456,28 @@ static void recreateSwapchainAndPipeline()
 					               3,  // location
 					               3,  // binding
 					               vk::Format::eR8G8B8A8Unorm,  // format
+					               0   // offset
+				               ),
+			               }.data()
+		               });
+	fourPackedAttributesPipeline=
+		createPipeline(fourPackedAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               2,  // vertexBindingDescriptionCount
+			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+			               2,  // vertexAttributeDescriptionCount
+			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+				               vk::VertexInputAttributeDescription(
+					               0,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Uint,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               1,  // location
+					               1,  // binding
+					               vk::Format::eR32G32B32A32Uint,  // format
 					               0   // offset
 				               ),
 			               }.data()
@@ -1525,6 +1570,7 @@ static void recreateSwapchainAndPipeline()
 	size_t colorBufferSize=numTriangles*3*4;
 	size_t texCoordBufferSize=numTriangles*3*2*sizeof(float);
 	size_t vec4u8BufferSize=numTriangles*3*4;
+	size_t packedDataBufferSize=numTriangles*3*16;
 	coordinateAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -1604,6 +1650,28 @@ static void recreateSwapchainAndPipeline()
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
+	packedAttribute1=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				packedDataBufferSize,         // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	packedAttribute2=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				packedDataBufferSize,         // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 
 	// vertex memory
 	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -1615,6 +1683,8 @@ static void recreateSwapchainAndPipeline()
 		vec4AttributeMemory[i]=allocateMemory(vec4Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	for(size_t i=0; i<vec4u8Attributes.size(); i++)
 		vec4u8AttributeMemory[i]=allocateMemory(vec4u8Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	packedAttribute1Memory=allocateMemory(packedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	packedAttribute2Memory=allocateMemory(packedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		coordinateAttribute.get(),  // image
 		coordinateAttributeMemory.get(),  // memory
@@ -1652,6 +1722,16 @@ static void recreateSwapchainAndPipeline()
 			vec4u8AttributeMemory[i].get(),  // memory
 			0  // memoryOffset
 		);
+	device->bindBufferMemory(
+		packedAttribute1.get(),  // image
+		packedAttribute1Memory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		packedAttribute2.get(),  // image
+		packedAttribute2Memory.get(),  // memory
+		0  // memoryOffset
+	);
 
 
 	// staging buffer struct
@@ -1696,6 +1776,8 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer vec4Attribute1StagingBuffer(coordinateBufferSize);
 	StagingBuffer vec4Attribute2StagingBuffer(coordinateBufferSize);
 	StagingBuffer vec4u8AttributeStagingBuffer(vec4u8BufferSize);
+	StagingBuffer packedAttribute1StagingBuffer(packedDataBufferSize);
+	StagingBuffer packedAttribute2StagingBuffer(packedDataBufferSize);
 	generateCoordinates(
 		reinterpret_cast<float*>(coordinateStagingBuffer.map()),numTriangles,triangleSize,
 		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
@@ -1704,9 +1786,9 @@ static void recreateSwapchainAndPipeline()
 	for(size_t i=0,c=numTriangles*3*3; i<c; i++)
 		pfloat[i]=1.f;
 	normalStagingBuffer.unmap();
-	uint32_t* pint=reinterpret_cast<uint32_t*>(colorStagingBuffer.map());
+	uint32_t* puint=reinterpret_cast<uint32_t*>(colorStagingBuffer.map());
 	for(size_t i=0,c=numTriangles*3; i<c; i++)
-		pint[i]=0x0055AAFF;
+		puint[i]=0x0055AAFF;
 	colorStagingBuffer.unmap();
 	pfloat=reinterpret_cast<float*>(texCoordStagingBuffer.map());
 	for(size_t i=0,c=numTriangles*3*2; i<c; ) {
@@ -1726,10 +1808,32 @@ static void recreateSwapchainAndPipeline()
 	for(size_t i=0,c=numTriangles*3*3; i<c; i++)
 		pfloat[i]=4.f;
 	vec4Attribute2StagingBuffer.unmap();
-	pint=reinterpret_cast<uint32_t*>(vec4u8AttributeStagingBuffer.map());
+	puint=reinterpret_cast<uint32_t*>(vec4u8AttributeStagingBuffer.map());
 	for(size_t i=0,c=numTriangles*3; i<c; i++)
-		pint[i]=0xFFFFFFFF;
+		puint[i]=0xFFFFFFFF;
 	vec4u8AttributeStagingBuffer.unmap();
+	generateCoordinates(
+		reinterpret_cast<float*>(packedAttribute1StagingBuffer.map()),numTriangles,triangleSize,
+		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
+	for(size_t i=3,e=numTriangles*3*4; i<e; i+=4)
+		reinterpret_cast<uint32_t*>(packedAttribute1StagingBuffer.ptr)[i]=0x3c003c00; // two half-floats, both set to one
+	packedAttribute1StagingBuffer.unmap();
+	puint=reinterpret_cast<uint32_t*>(packedAttribute2StagingBuffer.map());
+	for(size_t i=0,e=numTriangles*3*4; i<e; ) {
+		puint[i++]=0x00000000;  // texture U (float), zero
+		puint[i++]=0x00000000;  // texture V (float), zero
+		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
+		puint[i++]=0x0055AAFF;  // color
+		puint[i++]=0x3f800000;  // texture U (float), one
+		puint[i++]=0x00000000;  // texture V (float), zero
+		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
+		puint[i++]=0x0055AAFF;  // color
+		puint[i++]=0x00000000;  // texture U (float), zero
+		puint[i++]=0x3f800000;  // texture V (float), one
+		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
+		puint[i++]=0x0055AAFF;  // color
+	}
+	packedAttribute2StagingBuffer.unmap();
 
 	// copy data from staging to attribute and storage buffer
 	submitNowCommandBuffer->copyBuffer(
@@ -1787,6 +1891,18 @@ static void recreateSwapchainAndPipeline()
 			1,                                          // regionCount
 			&(const vk::BufferCopy&)vk::BufferCopy(0,0,vec4u8BufferSize)  // pRegions
 		);
+	submitNowCommandBuffer->copyBuffer(
+		packedAttribute1StagingBuffer.buffer.get(),  // srcBuffer
+		packedAttribute1.get(),                      // dstBuffer
+		1,                                           // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,packedDataBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		packedAttribute2StagingBuffer.buffer.get(),  // srcBuffer
+		packedAttribute2.get(),                      // dstBuffer
+		1,                                           // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,packedDataBufferSize)  // pRegions
+	);
 
 	// uniform buffers and memory
 	singleUniformBuffer=
@@ -2425,7 +2541,25 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// four attributes (two4F32Two4U8) test, no transformation
+		// four attributes packed in two test, no transformation
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fourPackedAttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// four attributes (two4F32+two4U8) test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          two4F32Two4U8AttributesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
