@@ -200,8 +200,8 @@ static vector<Test> tests={
 	Test("One draw call, coordinates in attribute"),
 	Test("One draw call, coordinates in buffer"),
 	Test("One draw call, constant uniform 1xMatrix"),
-	Test("One draw call, per-triangle 1xMatrix in attrib."),
 	Test("One draw call, per-triangle 1xMatrix in buffer"),
+	Test("One draw call, per-triangle 1xMatrix in attrib."),
 	Test("Two attributes, no transformation"),
 	Test("Four packed attributes, no transformation"),
 	Test("Four (2xf32,2xu8) attributes, no transformation"),
@@ -2487,24 +2487,6 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// matrixAttribute test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          matrixAttributePipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get(), transformationMatrixAttribute.get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3,numTriangles,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
 		// matrixBuffer test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          matrixBufferPipeline.get(),matrixBufferPipelineLayout.get(),
@@ -2516,6 +2498,24 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// matrixAttribute test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          matrixAttributePipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get(), transformationMatrixAttribute.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3,numTriangles,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
