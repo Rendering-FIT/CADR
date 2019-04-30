@@ -2291,7 +2291,7 @@ static void recreateSwapchainAndPipeline()
 				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						1  // descriptorCount
+						2  // descriptorCount
 					)
 				}.data()
 			)
