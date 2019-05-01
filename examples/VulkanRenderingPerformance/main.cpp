@@ -3176,5 +3176,11 @@ int main(int argc,char** argv)
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
 
+	// wait device idle
+	// if there was an exception
+	// (device must be idle before destructors of buffers and other stuff are called)
+	if(device)
+		device->waitIdle();
+
 	return 0;
 }
