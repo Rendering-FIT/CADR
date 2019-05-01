@@ -18,8 +18,8 @@ set(APP_SHADERS
 	matrixAttribute.vert
 	matrixBuffer.vert
 	twoAttributes.vert
-	fourPackedAttributes.vert
-	fourPackedBuffers.vert
+	twoPackedAttributes.vert
+	twoPackedBuffers.vert
 	fourAttributes.vert
 	fourAttributesAndMatrix.vert
 	phongTextured.vert

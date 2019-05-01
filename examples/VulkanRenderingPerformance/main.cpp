@@ -64,8 +64,8 @@ static vk::UniqueShaderModule singleUniformMatrixVS;
 static vk::UniqueShaderModule matrixAttributeVS;
 static vk::UniqueShaderModule matrixBufferVS;
 static vk::UniqueShaderModule twoAttributesVS;
-static vk::UniqueShaderModule fourPackedAttributesVS;
-static vk::UniqueShaderModule fourPackedBuffersVS;
+static vk::UniqueShaderModule twoPackedAttributesVS;
+static vk::UniqueShaderModule twoPackedBuffersVS;
 static vk::UniqueShaderModule fourAttributesVS;
 static vk::UniqueShaderModule fourAttributesAndMatrixVS;
 static vk::UniqueShaderModule phongTexturedVS;
@@ -114,9 +114,9 @@ static vk::UniquePipeline singleUniformMatrixPipeline;
 static vk::UniquePipeline matrixAttributePipeline;
 static vk::UniquePipeline matrixBufferPipeline;
 static vk::UniquePipeline twoAttributesPipeline;
+static vk::UniquePipeline twoPackedAttributesPipeline;
+static vk::UniquePipeline twoPackedBuffersPipeline;
 static vk::UniquePipeline two4F32Two4U8AttributesPipeline;
-static vk::UniquePipeline fourPackedAttributesPipeline;
-static vk::UniquePipeline fourPackedBuffersPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
@@ -178,11 +178,11 @@ static const uint32_t matrixBufferVS_spirv[]={
 static const uint32_t twoAttributesVS_spirv[]={
 #include "twoAttributes.vert.spv"
 };
-static const uint32_t fourPackedAttributesVS_spirv[]={
-#include "fourPackedAttributes.vert.spv"
+static const uint32_t twoPackedAttributesVS_spirv[]={
+#include "twoPackedAttributes.vert.spv"
 };
-static const uint32_t fourPackedBuffersVS_spirv[]={
-#include "fourPackedBuffers.vert.spv"
+static const uint32_t twoPackedBuffersVS_spirv[]={
+#include "twoPackedBuffers.vert.spv"
 };
 static const uint32_t fourAttributesVS_spirv[]={
 #include "fourAttributes.vert.spv"
@@ -216,8 +216,8 @@ static vector<Test> tests={
 	Test("One draw call, per-triangle 1xMatrix in buffer"),
 	Test("One draw call, per-triangle 1xMatrix in attrib."),
 	Test("Two attributes, no transformation"),
-	Test("Four packed attributes, no transformation"),
-	Test("Four packed buffers, no transformation"),
+	Test("Two packed attributes, no transformation"),
+	Test("Two packed buffers, no transformation"),
 	Test("Four (2xf32,2xu8) attributes, no transformation"),
 	Test("Four attributes, no transformation"),
 	Test("Four attributes, 1xMatrix"),
@@ -753,20 +753,20 @@ static void init(size_t deviceIndex)
 				twoAttributesVS_spirv           // pCode
 			)
 		);
-	fourPackedAttributesVS=
+	twoPackedAttributesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),         // flags
-				sizeof(fourPackedAttributesVS_spirv),  // codeSize
-				fourPackedAttributesVS_spirv           // pCode
+				vk::ShaderModuleCreateFlags(),        // flags
+				sizeof(twoPackedAttributesVS_spirv),  // codeSize
+				twoPackedAttributesVS_spirv           // pCode
 			)
 		);
-	fourPackedBuffersVS=
+	twoPackedBuffersVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),      // flags
-				sizeof(fourPackedBuffersVS_spirv),  // codeSize
-				fourPackedBuffersVS_spirv           // pCode
+				vk::ShaderModuleCreateFlags(),     // flags
+				sizeof(twoPackedBuffersVS_spirv),  // codeSize
+				twoPackedBuffersVS_spirv           // pCode
 			)
 		);
 	fourAttributesVS=
@@ -992,8 +992,8 @@ static void recreateSwapchainAndPipeline()
 	matrixBufferPipeline.reset();
 	twoAttributesPipeline.reset();
 	two4F32Two4U8AttributesPipeline.reset();
-	fourPackedAttributesPipeline.reset();
-	fourPackedBuffersPipeline.reset();
+	twoPackedAttributesPipeline.reset();
+	twoPackedBuffersPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
 	phongTexturedPipeline.reset();
@@ -1466,6 +1466,35 @@ static void recreateSwapchainAndPipeline()
 			               2,  // vertexAttributeDescriptionCount
 			               fourAttributesDescription.data(),  // pVertexAttributeDescriptions
 		               });
+	twoPackedAttributesPipeline=
+		createPipeline(twoPackedAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               2,  // vertexBindingDescriptionCount
+			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+			               2,  // vertexAttributeDescriptionCount
+			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+				               vk::VertexInputAttributeDescription(
+					               0,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Uint,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               1,  // location
+					               1,  // binding
+					               vk::Format::eR32G32B32A32Uint,  // format
+					               0   // offset
+				               ),
+			               }.data()
+		               });
+	twoPackedBuffersPipeline=
+		createPipeline(twoPackedBuffersVS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
 	two4F32Two4U8AttributesPipeline=
 		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -1520,35 +1549,6 @@ static void recreateSwapchainAndPipeline()
 					               0   // offset
 				               ),
 			               }.data()
-		               });
-	fourPackedAttributesPipeline=
-		createPipeline(fourPackedAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               2,  // vertexBindingDescriptionCount
-			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
-			               2,  // vertexAttributeDescriptionCount
-			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
-				               vk::VertexInputAttributeDescription(
-					               0,  // location
-					               0,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-				               vk::VertexInputAttributeDescription(
-					               1,  // location
-					               1,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-			               }.data()
-		               });
-	fourPackedBuffersPipeline=
-		createPipeline(fourPackedBuffersVS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
-			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               });
 	fourAttributesPipeline=
 		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
@@ -2701,9 +2701,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// four attributes packed in two test, no transformation
+		// two packed attributes test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          fourPackedAttributesPipeline.get(),simplePipelineLayout.get(),
+		          twoPackedAttributesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
@@ -2719,9 +2719,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// four buffers packed in two test, no transformation
+		// two packed buffers test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          fourPackedBuffersPipeline.get(),twoBuffersPipelineLayout.get(),
+		          twoPackedBuffersPipeline.get(),twoBuffersPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
 		cb.writeTimestamp(
