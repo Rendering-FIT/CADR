@@ -20,6 +20,8 @@ set(APP_SHADERS
 	twoAttributes.vert
 	twoPackedAttributes.vert
 	twoPackedBuffers.vert
+	twoPackedBuffersUsingStruct.vert
+	twoPackedBuffersUsingStructSlow.vert
 	fourAttributes.vert
 	fourAttributesAndMatrix.vert
 	phongTextured.vert

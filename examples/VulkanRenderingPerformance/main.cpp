@@ -66,6 +66,8 @@ static vk::UniqueShaderModule matrixBufferVS;
 static vk::UniqueShaderModule twoAttributesVS;
 static vk::UniqueShaderModule twoPackedAttributesVS;
 static vk::UniqueShaderModule twoPackedBuffersVS;
+static vk::UniqueShaderModule twoPackedBuffersUsingStructVS;
+static vk::UniqueShaderModule twoPackedBuffersUsingStructSlowVS;
 static vk::UniqueShaderModule fourAttributesVS;
 static vk::UniqueShaderModule fourAttributesAndMatrixVS;
 static vk::UniqueShaderModule phongTexturedVS;
@@ -116,6 +118,8 @@ static vk::UniquePipeline matrixBufferPipeline;
 static vk::UniquePipeline twoAttributesPipeline;
 static vk::UniquePipeline twoPackedAttributesPipeline;
 static vk::UniquePipeline twoPackedBuffersPipeline;
+static vk::UniquePipeline twoPackedBuffersUsingStructPipeline;
+static vk::UniquePipeline twoPackedBuffersUsingStructSlowPipeline;
 static vk::UniquePipeline two4F32Two4U8AttributesPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
@@ -184,6 +188,12 @@ static const uint32_t twoPackedAttributesVS_spirv[]={
 static const uint32_t twoPackedBuffersVS_spirv[]={
 #include "twoPackedBuffers.vert.spv"
 };
+static const uint32_t twoPackedBuffersUsingStructVS_spirv[]={
+#include "twoPackedBuffersUsingStruct.vert.spv"
+};
+static const uint32_t twoPackedBuffersUsingStructSlowVS_spirv[]={
+#include "twoPackedBuffersUsingStructSlow.vert.spv"
+};
 static const uint32_t fourAttributesVS_spirv[]={
 #include "fourAttributes.vert.spv"
 };
@@ -215,11 +225,13 @@ static vector<Test> tests={
 	Test("One draw call, constant uniform 1xMatrix"),
 	Test("One draw call, per-triangle 1xMatrix in buffer"),
 	Test("One draw call, per-triangle 1xMatrix in attrib."),
-	Test("Two attributes, no transformation"),
-	Test("Two packed attributes, no transformation"),
-	Test("Two packed buffers, no transformation"),
-	Test("Four (2xf32,2xu8) attributes, no transformation"),
-	Test("Four attributes, no transformation"),
+	Test("Two attributes"),
+	Test("Two packed attributes"),
+	Test("Two packed buffers"),
+	Test("Two packed buffers using struct"),
+	Test("Two packed buffers using struct slow"),
+	Test("Four (2xf32,2xu8) attributes"),
+	Test("Four attributes"),
 	Test("Four attributes, 1xMatrix"),
 	Test("Phong, texture, 1xMatrix"),
 	Test("Per-triangle draw call, no transformations"),
@@ -769,6 +781,22 @@ static void init(size_t deviceIndex)
 				twoPackedBuffersVS_spirv           // pCode
 			)
 		);
+	twoPackedBuffersUsingStructVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                // flags
+				sizeof(twoPackedBuffersUsingStructVS_spirv),  // codeSize
+				twoPackedBuffersUsingStructVS_spirv           // pCode
+			)
+		);
+	twoPackedBuffersUsingStructSlowVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                    // flags
+				sizeof(twoPackedBuffersUsingStructSlowVS_spirv),  // codeSize
+				twoPackedBuffersUsingStructSlowVS_spirv           // pCode
+			)
+		);
 	fourAttributesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -994,6 +1022,8 @@ static void recreateSwapchainAndPipeline()
 	two4F32Two4U8AttributesPipeline.reset();
 	twoPackedAttributesPipeline.reset();
 	twoPackedBuffersPipeline.reset();
+	twoPackedBuffersUsingStructPipeline.reset();
+	twoPackedBuffersUsingStructSlowPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
 	phongTexturedPipeline.reset();
@@ -1490,6 +1520,20 @@ static void recreateSwapchainAndPipeline()
 		               });
 	twoPackedBuffersPipeline=
 		createPipeline(twoPackedBuffersVS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	twoPackedBuffersUsingStructPipeline=
+		createPipeline(twoPackedBuffersUsingStructVS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	twoPackedBuffersUsingStructSlowPipeline=
+		createPipeline(twoPackedBuffersUsingStructSlowVS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
@@ -2722,6 +2766,42 @@ static void recreateSwapchainAndPipeline()
 		// two packed buffers test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          twoPackedBuffersPipeline.get(),twoBuffersPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// two packed buffers using struct test, no transformation
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedBuffersUsingStructPipeline.get(),twoBuffersPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// two packed buffers using struct slow test, no transformation
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedBuffersUsingStructSlowPipeline.get(),twoBuffersPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
 		cb.writeTimestamp(
