@@ -24,6 +24,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		/usr/lib64
 		/usr/local/lib64
 		/usr/lib
+		/usr/lib/x86_64-linux-gnu
 		/usr/local/lib
 		"$ENV{VULKAN_SDK}/lib"
 	)
