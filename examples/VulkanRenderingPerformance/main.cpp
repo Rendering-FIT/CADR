@@ -154,7 +154,9 @@ static vk::UniqueDeviceMemory packedBuffer2Memory;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
-static const size_t numTriangles=size_t(1*1e6);
+static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
+static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
+static uint32_t numTriangles;
 static const unsigned triangleSize=0;
 
 // shader code in SPIR-V binary
@@ -241,13 +243,13 @@ static vector<Test> tests={
 };
 
 
-static size_t getBufferSize(size_t numTriangles,bool useVec4)
+static size_t getBufferSize(uint32_t numTriangles,bool useVec4)
 {
-	return numTriangles*3*(useVec4?4:3)*sizeof(float);
+	return size_t(numTriangles)*3*(useVec4?4:3)*sizeof(float);
 }
 
 
-static void generateCoordinates(float* vertices,size_t numTriangles,unsigned triangleSize,
+static void generateCoordinates(float* vertices,uint32_t numTriangles,unsigned triangleSize,
                                 unsigned regionWidth,unsigned regionHeight,bool useVec4,
                                 double scaleX=1.,double scaleY=1.,double offsetX=0.,double offsetY=0.)
 {
@@ -255,7 +257,7 @@ static void generateCoordinates(float* vertices,size_t numTriangles,unsigned tri
 	unsigned numTrianglesPerLine=regionWidth/stride*2;
 	unsigned numLinesPerScreen=regionHeight/stride;
 	size_t idx=0;
-	size_t idxEnd=numTriangles*(useVec4?4:3)*3;
+	size_t idxEnd=size_t(numTriangles)*(useVec4?4:3)*3;
 
 	// Each iteration generates two triangles.
 	// triangleSize is dimension of square that is cut into the two triangles.
@@ -325,7 +327,7 @@ static void generateCoordinates(float* vertices,size_t numTriangles,unsigned tri
 }
 
 
-static void generateMatrices(float* matrices,size_t numMatrices,unsigned triangleSize,
+static void generateMatrices(float* matrices,uint32_t numMatrices,unsigned triangleSize,
                              unsigned regionWidth,unsigned regionHeight,
                              double scaleX=1.,double scaleY=1.,double offsetX=0.,double offsetY=0.)
 {
@@ -333,7 +335,7 @@ static void generateMatrices(float* matrices,size_t numMatrices,unsigned triangl
 	unsigned numTrianglesPerLine=regionWidth/stride;
 	unsigned numLinesPerScreen=regionHeight/stride;
 	size_t idx=0;
-	size_t idxEnd=numMatrices*16;
+	size_t idxEnd=size_t(numMatrices)*16;
 
 	// Each iteration generates two triangles.
 	// triangleSize is dimension of square that is cut into the two triangles.
@@ -585,6 +587,12 @@ static void init(size_t deviceIndex)
 	features=physicalDevice.getFeatures();
 	vk::PhysicalDeviceFeatures enabledFeatures;
 	enabledFeatures.setMultiDrawIndirect(features.multiDrawIndirect);
+
+	// number of triangles
+	// (reduce the number on integrated graphics as it may easily run out of memory)
+	numTriangles=
+		physicalDevice.getProperties().deviceType!=vk::PhysicalDeviceType::eIntegratedGpu
+			?numTrianglesStandard:numTrianglesReduced;
 
 	// create device
 	device.reset(  // move assignment and physicalDevice.createDeviceUnique() does not work here because of bug in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git). Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp.
@@ -1678,11 +1686,11 @@ static void recreateSwapchainAndPipeline()
 
 	// coordinate attribute and storage buffer
 	size_t coordinateBufferSize=getBufferSize(numTriangles,true);
-	size_t normalBufferSize=numTriangles*3*3*sizeof(float);
-	size_t colorBufferSize=numTriangles*3*4;
-	size_t texCoordBufferSize=numTriangles*3*2*sizeof(float);
-	size_t vec4u8BufferSize=numTriangles*3*4;
-	size_t packedDataBufferSize=numTriangles*3*16;
+	size_t normalBufferSize=size_t(numTriangles)*3*3*sizeof(float);
+	size_t colorBufferSize=size_t(numTriangles)*3*4;
+	size_t texCoordBufferSize=size_t(numTriangles)*3*2*sizeof(float);
+	size_t vec4u8BufferSize=size_t(numTriangles)*3*4;
+	size_t packedDataBufferSize=size_t(numTriangles)*3*16;
 	coordinateAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -1929,15 +1937,15 @@ static void recreateSwapchainAndPipeline()
 		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	coordinateStagingBuffer.unmap();
 	float* pfloat=reinterpret_cast<float*>(normalStagingBuffer.map());
-	for(size_t i=0,c=numTriangles*3*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
 		pfloat[i]=1.f;
 	normalStagingBuffer.unmap();
 	uint32_t* puint=reinterpret_cast<uint32_t*>(colorStagingBuffer.map());
-	for(size_t i=0,c=numTriangles*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3; i<c; i++)
 		puint[i]=0x0055AAFF;
 	colorStagingBuffer.unmap();
 	pfloat=reinterpret_cast<float*>(texCoordStagingBuffer.map());
-	for(size_t i=0,c=numTriangles*3*2; i<c; ) {
+	for(size_t i=0,c=size_t(numTriangles)*3*2; i<c; ) {
 		pfloat[i++]=0.f;
 		pfloat[i++]=0.f;
 		pfloat[i++]=1.f;
@@ -1947,25 +1955,25 @@ static void recreateSwapchainAndPipeline()
 	}
 	texCoordStagingBuffer.unmap();
 	pfloat=reinterpret_cast<float*>(vec4Attribute1StagingBuffer.map());
-	for(size_t i=0,c=numTriangles*3*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
 		pfloat[i]=-2.f;
 	vec4Attribute1StagingBuffer.unmap();
 	pfloat=reinterpret_cast<float*>(vec4Attribute2StagingBuffer.map());
-	for(size_t i=0,c=numTriangles*3*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
 		pfloat[i]=4.f;
 	vec4Attribute2StagingBuffer.unmap();
 	puint=reinterpret_cast<uint32_t*>(vec4u8AttributeStagingBuffer.map());
-	for(size_t i=0,c=numTriangles*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3; i<c; i++)
 		puint[i]=0xFFFFFFFF;
 	vec4u8AttributeStagingBuffer.unmap();
 	generateCoordinates(
 		reinterpret_cast<float*>(packedAttribute1StagingBuffer.map()),numTriangles,triangleSize,
 		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
-	for(size_t i=3,e=numTriangles*3*4; i<e; i+=4)
+	for(size_t i=3,e=size_t(numTriangles)*3*4; i<e; i+=4)
 		reinterpret_cast<uint32_t*>(packedAttribute1StagingBuffer.ptr)[i]=0x3c003c00; // two half-floats, both set to one
 	packedAttribute1StagingBuffer.unmap();
 	puint=reinterpret_cast<uint32_t*>(packedAttribute2StagingBuffer.map());
-	for(size_t i=0,e=numTriangles*3*4; i<e; ) {
+	for(size_t i=0,e=size_t(numTriangles)*3*4; i<e; ) {
 		puint[i++]=0x00000000;  // texture U (float), zero
 		puint[i++]=0x00000000;  // texture V (float), zero
 		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
@@ -2107,7 +2115,7 @@ static void recreateSwapchainAndPipeline()
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				numTriangles*16*sizeof(float),  // size
+				size_t(numTriangles)*16*sizeof(float),  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -2130,9 +2138,9 @@ static void recreateSwapchainAndPipeline()
 		0.f,0.f,1.f,0.f,
 		0.f,0.0625f,0.f,1.f
 	};
-	StagingBuffer sameMatrixStagingBuffer(numTriangles*sizeof(matrixData));
+	StagingBuffer sameMatrixStagingBuffer(size_t(numTriangles)*sizeof(matrixData));
 	sameMatrixStagingBuffer.map();
-	for(size_t i=0; i<numTriangles; i++)
+	for(size_t i=0; i<size_t(numTriangles); i++)
 		memcpy(reinterpret_cast<char*>(sameMatrixStagingBuffer.ptr)+(i*sizeof(matrixData)),matrixData,sizeof(matrixData));
 	sameMatrixStagingBuffer.unmap();
 
@@ -2141,7 +2149,7 @@ static void recreateSwapchainAndPipeline()
 		sameMatrixStagingBuffer.buffer.get(),  // srcBuffer
 		sameMatrixBuffer.get(),                // dstBuffer
 		1,                                     // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*sizeof(matrixData))  // pRegions
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,size_t(numTriangles)*sizeof(matrixData))  // pRegions
 	);
 
 	// transformation matrix attribute and storage buffer
@@ -2149,7 +2157,7 @@ static void recreateSwapchainAndPipeline()
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				numTriangles*16*sizeof(float),  // size
+				size_t(numTriangles)*16*sizeof(float),  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -2160,7 +2168,7 @@ static void recreateSwapchainAndPipeline()
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				numTriangles*16*sizeof(float),  // size
+				size_t(numTriangles)*16*sizeof(float),  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -2183,7 +2191,7 @@ static void recreateSwapchainAndPipeline()
 	);
 
 	// transformation matrix staging buffer
-	StagingBuffer transformationMatrixStagingBuffer(numTriangles*16*sizeof(float));
+	StagingBuffer transformationMatrixStagingBuffer(size_t(numTriangles)*16*sizeof(float));
 	generateMatrices(
 		reinterpret_cast<float*>(transformationMatrixStagingBuffer.map()),numTriangles,triangleSize,
 		1000,1000,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,0.,0.);
@@ -2194,13 +2202,13 @@ static void recreateSwapchainAndPipeline()
 		transformationMatrixStagingBuffer.buffer.get(),  // srcBuffer
 		transformationMatrixAttribute.get(),                // dstBuffer
 		1,                                               // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*16*sizeof(float))  // pRegions
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,size_t(numTriangles)*16*sizeof(float))  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
 		transformationMatrixStagingBuffer.buffer.get(),  // srcBuffer
 		transformationMatrixBuffer.get(),                // dstBuffer
 		1,                                               // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,numTriangles*16*sizeof(float))  // pRegions
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,size_t(numTriangles)*16*sizeof(float))  // pRegions
 	);
 
 	// indirect buffer
@@ -2208,7 +2216,7 @@ static void recreateSwapchainAndPipeline()
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				(numTriangles+1)*sizeof(vk::DrawIndirectCommand),  // size
+				(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand),  // size
 				vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -2225,9 +2233,9 @@ static void recreateSwapchainAndPipeline()
 	);
 
 	// indirect staging buffer
-	StagingBuffer indirectStagingBuffer((numTriangles+1)*sizeof(vk::DrawIndirectCommand));
+	StagingBuffer indirectStagingBuffer((size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand));
 	auto indirectBufferPtr=reinterpret_cast<vk::DrawIndirectCommand*>(indirectStagingBuffer.map());
-	for(size_t i=0; i<numTriangles; i++) {
+	for(size_t i=0; i<size_t(numTriangles); i++) {
 		indirectBufferPtr[i].vertexCount=3;
 		indirectBufferPtr[i].instanceCount=1;
 		indirectBufferPtr[i].firstVertex=uint32_t(i)*3;
@@ -2244,7 +2252,7 @@ static void recreateSwapchainAndPipeline()
 		indirectStagingBuffer.buffer.get(),  // srcBuffer
 		indirectBuffer.get(),                // dstBuffer
 		1,                                   // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,(numTriangles+1)*sizeof(vk::DrawIndirectCommand))  // pRegions
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand))  // pRegions
 	);
 
 	// submit command buffer
@@ -2430,7 +2438,7 @@ static void recreateSwapchainAndPipeline()
 				vk::DescriptorBufferInfo(
 					sameMatrixBuffer.get(),  // buffer
 					0,  // offset
-					numTriangles*16*sizeof(float)  // range
+					size_t(numTriangles)*16*sizeof(float)  // range
 				),
 			}.data(),
 			nullptr  // pTexelBufferView
@@ -2449,7 +2457,7 @@ static void recreateSwapchainAndPipeline()
 				vk::DescriptorBufferInfo(
 					transformationMatrixBuffer.get(),  // buffer
 					0,  // offset
-					numTriangles*16*sizeof(float)  // range
+					size_t(numTriangles)*16*sizeof(float)  // range
 				),
 			}.data(),
 			nullptr  // pTexelBufferView
@@ -2903,8 +2911,8 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		for(size_t i=0; i<numTriangles; i++)
-			cb.draw(3,1,uint32_t(i*3),0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		for(uint32_t i=0; i<numTriangles; i++)
+			cb.draw(3,1,i*3,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -2923,7 +2931,7 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.drawIndirect(indirectBuffer.get(),  // buffer
-		                numTriangles*sizeof(vk::DrawIndirectCommand),  // offset
+		                size_t(numTriangles)*sizeof(vk::DrawIndirectCommand),  // offset
 		                1,  // drawCount
 		                sizeof(vk::DrawIndirectCommand));  // stride
 		cb.writeTimestamp(
