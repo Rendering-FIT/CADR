@@ -616,6 +616,7 @@ static void init(size_t deviceIndex)
 	features=physicalDevice.getFeatures();
 	vk::PhysicalDeviceFeatures enabledFeatures;
 	enabledFeatures.setMultiDrawIndirect(features.multiDrawIndirect);
+	enabledFeatures.setGeometryShader(features.geometryShader);
 
 	// number of triangles
 	// (reduce the number on integrated graphics as it may easily run out of memory)
@@ -1790,14 +1791,15 @@ static void recreateSwapchainAndPipeline()
 	fourAttributesAndMatrixPipeline=
 		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &fourAttributesInputState);
-	geometryShaderPipeline=
-		createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersGeometryShaderPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
-			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
-		               },
-		               geometryShaderGS.get());
+	if(features.geometryShader)
+		geometryShaderPipeline=
+			createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersGeometryShaderPipelineLayout.get(),currentSurfaceExtent,
+			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+				               vk::PipelineVertexInputStateCreateFlags(),  // flags
+				               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+				               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+			               },
+			               geometryShaderGS.get());
 	phongTexturedPipeline=
 		createPipeline(phongTexturedVS.get(),phongTexturedFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -2547,7 +2549,7 @@ static void recreateSwapchainAndPipeline()
 				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						3  // descriptorCount
+						6  // descriptorCount
 					)
 				}.data()
 			)
@@ -3140,22 +3142,37 @@ static void recreateSwapchainAndPipeline()
 		cb.endRenderPass();
 
 		// geometry shader two packed buffers test, one matrix
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          geometryShaderPipeline.get(),threeBuffersGeometryShaderPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ threeBuffersGeometryShaderDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(features.geometryShader) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          geometryShaderPipeline.get(),threeBuffersGeometryShaderPipelineLayout.get(),
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>{ threeBuffersGeometryShaderDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}
+		else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// four attributes (two4F32+two4U8) test, no transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
