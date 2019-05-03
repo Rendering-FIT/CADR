@@ -72,6 +72,8 @@ static vk::UniqueShaderModule twoPackedAttributesAndMatrixVS;
 static vk::UniqueShaderModule twoPackedBuffersAndMatrixVS;
 static vk::UniqueShaderModule fourAttributesVS;
 static vk::UniqueShaderModule fourAttributesAndMatrixVS;
+static vk::UniqueShaderModule geometryShaderVS;
+static vk::UniqueShaderModule geometryShaderGS;
 static vk::UniqueShaderModule phongTexturedVS;
 static vk::UniqueShaderModule constantColorFS;
 static vk::UniqueShaderModule phongTexturedFS;
@@ -82,11 +84,13 @@ static vk::UniquePipelineLayout coordinateBufferPipelineLayout;
 static vk::UniquePipelineLayout matrixBufferPipelineLayout;
 static vk::UniquePipelineLayout twoBuffersPipelineLayout;
 static vk::UniquePipelineLayout threeBuffersPipelineLayout;
+static vk::UniquePipelineLayout threeBuffersGeometryShaderPipelineLayout;
 static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout coordinateBufferDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout matrixBufferDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout twoBuffersDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout threeBuffersDescriptorSetLayout;
+static vk::UniqueDescriptorSetLayout threeBuffersGeometryShaderDescriptorSetLayout;
 static vk::UniqueBuffer singleUniformBuffer;
 static vk::UniqueBuffer sameMatrixBuffer;
 static vk::UniqueBuffer transformationMatrixAttribute;
@@ -109,6 +113,7 @@ static vk::DescriptorSet sameMatrixBufferDescriptorSet;
 static vk::DescriptorSet transformationMatrixBufferDescriptorSet;
 static vk::DescriptorSet twoBuffersDescriptorSet;
 static vk::DescriptorSet threeBuffersDescriptorSet;
+static vk::DescriptorSet threeBuffersGeometryShaderDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
@@ -131,6 +136,7 @@ static vk::UniquePipeline twoPackedAttributesAndMatrixPipeline;
 static vk::UniquePipeline twoPackedBuffersAndMatrixPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
+static vk::UniquePipeline geometryShaderPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
@@ -216,6 +222,12 @@ static const uint32_t fourAttributesVS_spirv[]={
 static const uint32_t fourAttributesAndMatrixVS_spirv[]={
 #include "fourAttributesAndMatrix.vert.spv"
 };
+static const uint32_t geometryShaderVS_spirv[]={
+#include "geometryShader.vert.spv"
+};
+static const uint32_t geometryShaderGS_spirv[]={
+#include "geometryShader.geom.spv"
+};
 static const uint32_t phongTexturedVS_spirv[]={
 #include "phongTextured.vert.spv"
 };
@@ -248,6 +260,7 @@ static vector<Test> tests={
 	Test("Two packed buffers using struct slow"),
 	Test("Two packed attributes, 1xMatrix"),
 	Test("Two packed buffers, 1xMatrix"),
+	Test("Geometry shader, 1xMatrix"),
 	Test("Four (2xf32,2xu8) attributes"),
 	Test("Four attributes"),
 	Test("Four attributes, 1xMatrix"),
@@ -853,6 +866,22 @@ static void init(size_t deviceIndex)
 				fourAttributesAndMatrixVS_spirv           // pCode
 			)
 		);
+	geometryShaderVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),   // flags
+				sizeof(geometryShaderVS_spirv),  // codeSize
+				geometryShaderVS_spirv           // pCode
+			)
+		);
+	geometryShaderGS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),   // flags
+				sizeof(geometryShaderGS_spirv),  // codeSize
+				geometryShaderGS_spirv           // pCode
+			)
+		);
 	phongTexturedVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -990,6 +1019,36 @@ static void init(size_t deviceIndex)
 				}.data()
 			)
 		);
+	threeBuffersGeometryShaderDescriptorSetLayout=
+		device->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),  // flags
+				3,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,3>{  // pBindings
+					vk::DescriptorSetLayoutBinding(
+						0,  // binding
+						vk::DescriptorType::eStorageBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					),
+					vk::DescriptorSetLayoutBinding(
+						1,  // binding
+						vk::DescriptorType::eStorageBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					),
+					vk::DescriptorSetLayoutBinding(
+						2,  // binding
+						vk::DescriptorType::eStorageBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					)
+				}.data()
+			)
+		);
 
 	// pipeline layouts
 	simplePipelineLayout=
@@ -1052,6 +1111,16 @@ static void init(size_t deviceIndex)
 				nullptr  // pPushConstantRanges
 			}
 		);
+	threeBuffersGeometryShaderPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				1,       // setLayoutCount
+				&threeBuffersGeometryShaderDescriptorSetLayout.get(),  // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
 
 	// command pool
 	commandPool=
@@ -1108,6 +1177,7 @@ static void recreateSwapchainAndPipeline()
 	twoPackedBuffersAndMatrixPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
+	geometryShaderPipeline.reset();
 	phongTexturedPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
@@ -1318,14 +1388,15 @@ static void recreateSwapchainAndPipeline()
 	auto createPipeline=
 		[](vk::ShaderModule vsModule,vk::ShaderModule fsModule,vk::PipelineLayout pipelineLayout,
 		   const vk::Extent2D currentSurfaceExtent,
-		   const vk::PipelineVertexInputStateCreateInfo* vertexInputState=nullptr)->vk::UniquePipeline
+		   const vk::PipelineVertexInputStateCreateInfo* vertexInputState=nullptr,
+			vk::ShaderModule gsModule=nullptr)->vk::UniquePipeline
 		{
 			return device->createGraphicsPipelineUnique(
 				pipelineCache.get(),
 				vk::GraphicsPipelineCreateInfo(
 					vk::PipelineCreateFlags(),  // flags
-					2,  // stageCount
-					array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+					!gsModule?2:3,  // stageCount
+					array<const vk::PipelineShaderStageCreateInfo,3>{  // pStages
 						vk::PipelineShaderStageCreateInfo{
 							vk::PipelineShaderStageCreateFlags(),  // flags
 							vk::ShaderStageFlagBits::eVertex,      // stage
@@ -1337,6 +1408,13 @@ static void recreateSwapchainAndPipeline()
 							vk::PipelineShaderStageCreateFlags(),  // flags
 							vk::ShaderStageFlagBits::eFragment,    // stage
 							fsModule,  // module
+							"main",    // pName
+							nullptr    // pSpecializationInfo
+						},
+						vk::PipelineShaderStageCreateInfo{
+							vk::PipelineShaderStageCreateFlags(),  // flags
+							vk::ShaderStageFlagBits::eGeometry,    // stage
+							gsModule,  // module
 							"main",    // pName
 							nullptr    // pSpecializationInfo
 						}
@@ -1712,6 +1790,14 @@ static void recreateSwapchainAndPipeline()
 	fourAttributesAndMatrixPipeline=
 		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &fourAttributesInputState);
+	geometryShaderPipeline=
+		createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersGeometryShaderPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               geometryShaderGS.get());
 	phongTexturedPipeline=
 		createPipeline(phongTexturedVS.get(),phongTexturedFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -2456,7 +2542,7 @@ static void recreateSwapchainAndPipeline()
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				1,  // maxSets
+				2,  // maxSets
 				1,  // poolSizeCount
 				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
 					vk::DescriptorPoolSize(
@@ -2512,6 +2598,14 @@ static void recreateSwapchainAndPipeline()
 				threeBuffersDescriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&threeBuffersDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
+	threeBuffersGeometryShaderDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				threeBuffersDescriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&threeBuffersGeometryShaderDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	device->updateDescriptorSets(
@@ -2617,6 +2711,35 @@ static void recreateSwapchainAndPipeline()
 	device->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
 			threeBuffersDescriptorSet,  // dstSet
+			0,  // dstBinding
+			0,  // dstArrayElement
+			3,  // descriptorCount
+			vk::DescriptorType::eStorageBuffer,  // descriptorType
+			nullptr,  // pImageInfo
+			array<vk::DescriptorBufferInfo,3>{  // pBufferInfo
+				vk::DescriptorBufferInfo(
+					packedBuffer1.get(),  // buffer
+					0,  // offset
+					packedDataBufferSize  // range
+				),
+				vk::DescriptorBufferInfo(
+					packedBuffer2.get(),  // buffer
+					0,  // offset
+					packedDataBufferSize  // range
+				),
+				vk::DescriptorBufferInfo(
+					sameMatrixBuffer.get(),  // buffer
+					0,  // offset
+					size_t(numTriangles)*16*sizeof(float)  // range
+				),
+			}.data(),
+			nullptr  // pTexelBufferView
+		),
+		nullptr  // descriptorCopies
+	);
+	device->updateDescriptorSets(
+		vk::WriteDescriptorSet(  // descriptorWrites
+			threeBuffersGeometryShaderDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			3,  // descriptorCount
@@ -3003,6 +3126,24 @@ static void recreateSwapchainAndPipeline()
 		          twoPackedBuffersAndMatrixPipeline.get(),threeBuffersPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ threeBuffersDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// geometry shader two packed buffers test, one matrix
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          geometryShaderPipeline.get(),threeBuffersGeometryShaderPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ threeBuffersGeometryShaderDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool

@@ -26,6 +26,8 @@ set(APP_SHADERS
 	twoPackedBuffersAndMatrix.vert
 	fourAttributes.vert
 	fourAttributesAndMatrix.vert
+	geometryShader.vert
+	geometryShader.geom
 	phongTextured.vert
 	constantColor.frag
 	phongTextured.frag
