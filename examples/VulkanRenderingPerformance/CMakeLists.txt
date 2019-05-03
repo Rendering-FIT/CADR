@@ -26,6 +26,8 @@ set(APP_SHADERS
 	twoPackedBuffersAndMatrix.vert
 	fourAttributes.vert
 	fourAttributesAndMatrix.vert
+	geometryShaderConstantOutput.vert
+	geometryShaderConstantOutput.geom
 	geometryShader.vert
 	geometryShader.geom
 	phongTextured.vert

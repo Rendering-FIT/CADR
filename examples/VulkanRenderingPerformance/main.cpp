@@ -72,6 +72,8 @@ static vk::UniqueShaderModule twoPackedAttributesAndMatrixVS;
 static vk::UniqueShaderModule twoPackedBuffersAndMatrixVS;
 static vk::UniqueShaderModule fourAttributesVS;
 static vk::UniqueShaderModule fourAttributesAndMatrixVS;
+static vk::UniqueShaderModule geometryShaderConstantOutputVS;
+static vk::UniqueShaderModule geometryShaderConstantOutputGS;
 static vk::UniqueShaderModule geometryShaderVS;
 static vk::UniqueShaderModule geometryShaderGS;
 static vk::UniqueShaderModule phongTexturedVS;
@@ -136,6 +138,7 @@ static vk::UniquePipeline twoPackedAttributesAndMatrixPipeline;
 static vk::UniquePipeline twoPackedBuffersAndMatrixPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
+static vk::UniquePipeline geometryShaderConstantOutputPipeline;
 static vk::UniquePipeline geometryShaderPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
@@ -222,6 +225,12 @@ static const uint32_t fourAttributesVS_spirv[]={
 static const uint32_t fourAttributesAndMatrixVS_spirv[]={
 #include "fourAttributesAndMatrix.vert.spv"
 };
+static const uint32_t geometryShaderConstantOutputVS_spirv[]={
+#include "geometryShaderConstantOutput.vert.spv"
+};
+static const uint32_t geometryShaderConstantOutputGS_spirv[]={
+#include "geometryShaderConstantOutput.geom.spv"
+};
 static const uint32_t geometryShaderVS_spirv[]={
 #include "geometryShader.vert.spv"
 };
@@ -248,6 +257,7 @@ static vector<Test> tests={
 	Test("One draw call, attributeless, constant output"),
 	Test("One draw call, attributeless, input indices"),
 	Test("One draw call, attributeless instancing"),
+	Test("One draw call, geometry shader constant output"),
 	Test("One draw call, coordinates in attribute"),
 	Test("One draw call, coordinates in buffer"),
 	Test("One draw call, constant uniform 1xMatrix"),
@@ -867,6 +877,22 @@ static void init(size_t deviceIndex)
 				fourAttributesAndMatrixVS_spirv           // pCode
 			)
 		);
+	geometryShaderConstantOutputVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                 // flags
+				sizeof(geometryShaderConstantOutputVS_spirv),  // codeSize
+				geometryShaderConstantOutputVS_spirv           // pCode
+			)
+		);
+	geometryShaderConstantOutputGS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                 // flags
+				sizeof(geometryShaderConstantOutputGS_spirv),  // codeSize
+				geometryShaderConstantOutputGS_spirv           // pCode
+			)
+		);
 	geometryShaderVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -1178,6 +1204,7 @@ static void recreateSwapchainAndPipeline()
 	twoPackedBuffersAndMatrixPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
+	geometryShaderConstantOutputPipeline.reset();
 	geometryShaderPipeline.reset();
 	phongTexturedPipeline.reset();
 	swapchainImageViews.clear();
@@ -1800,6 +1827,15 @@ static void recreateSwapchainAndPipeline()
 				               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 			               },
 			               geometryShaderGS.get());
+	if(features.geometryShader)
+		geometryShaderConstantOutputPipeline=
+			createPipeline(geometryShaderConstantOutputVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+				               vk::PipelineVertexInputStateCreateFlags(),  // flags
+				               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+				               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+			               },
+			               geometryShaderConstantOutputGS.get());
 	phongTexturedPipeline=
 		createPipeline(phongTexturedVS.get(),phongTexturedFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -2924,6 +2960,39 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.endRenderPass();
+
+		// geometry shader constant output test
+		if(features.geometryShader) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          geometryShaderConstantOutputPipeline.get(),simplePipelineLayout.get(),
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>());
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}
+		else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// coordinate attribute test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
