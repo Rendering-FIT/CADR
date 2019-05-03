@@ -49,7 +49,7 @@ static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static uint32_t presentationQueueFamily;
-static vk::PhysicalDeviceFeatures features;
+static vk::PhysicalDeviceFeatures enabledFeatures;
 static vk::UniqueDevice device;
 static vk::Queue graphicsQueue;
 static vk::Queue presentationQueue;
@@ -623,10 +623,9 @@ static void init(size_t deviceIndex)
 		   "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 	// get supported features
-	features=physicalDevice.getFeatures();
-	vk::PhysicalDeviceFeatures enabledFeatures;
-	enabledFeatures.setMultiDrawIndirect(features.multiDrawIndirect);
-	enabledFeatures.setGeometryShader(features.geometryShader);
+	vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
+	enabledFeatures.setMultiDrawIndirect(physicalFeatures.multiDrawIndirect);
+	enabledFeatures.setGeometryShader(physicalFeatures.geometryShader);
 
 	// number of triangles
 	// (reduce the number on integrated graphics as it may easily run out of memory)
@@ -1818,7 +1817,7 @@ static void recreateSwapchainAndPipeline()
 	fourAttributesAndMatrixPipeline=
 		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),matrixBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &fourAttributesInputState);
-	if(features.geometryShader)
+	if(enabledFeatures.geometryShader)
 		geometryShaderPipeline=
 			createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersGeometryShaderPipelineLayout.get(),currentSurfaceExtent,
 			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -1827,7 +1826,7 @@ static void recreateSwapchainAndPipeline()
 				               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 			               },
 			               geometryShaderGS.get());
-	if(features.geometryShader)
+	if(enabledFeatures.geometryShader)
 		geometryShaderConstantOutputPipeline=
 			createPipeline(geometryShaderConstantOutputVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -2962,7 +2961,7 @@ static void recreateSwapchainAndPipeline()
 		cb.endRenderPass();
 
 		// geometry shader constant output test
-		if(features.geometryShader) {
+		if(enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          geometryShaderConstantOutputPipeline.get(),simplePipelineLayout.get(),
 			          vector<vk::Buffer>(),
@@ -3211,7 +3210,7 @@ static void recreateSwapchainAndPipeline()
 		cb.endRenderPass();
 
 		// geometry shader two packed buffers test, one matrix
-		if(features.geometryShader) {
+		if(enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          geometryShaderPipeline.get(),threeBuffersGeometryShaderPipelineLayout.get(),
 			          vector<vk::Buffer>(),
@@ -3369,7 +3368,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		if(features.multiDrawIndirect)
+		if(enabledFeatures.multiDrawIndirect)
 			cb.drawIndirect(indirectBuffer.get(),  // buffer
 			                0,  // offset
 			                numTriangles,  // drawCount
@@ -3393,7 +3392,7 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		if(features.multiDrawIndirect)
+		if(enabledFeatures.multiDrawIndirect)
 			cb.drawIndirect(indirectBuffer.get(),  // buffer
 			                0,  // offset
 			                numTriangles,  // drawCount
