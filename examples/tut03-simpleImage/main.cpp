@@ -410,5 +410,10 @@ int main(int,char**)
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
 
+	// wait device idle, particularly, if there was an exception and device is busy
+	// (device must be idle before destructors of buffers and other stuff are called)
+	if(device)
+		device->waitIdle();
+
 	return 0;
 }
