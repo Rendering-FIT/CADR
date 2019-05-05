@@ -106,10 +106,10 @@ int main(int,char**)
 					vk::DeviceCreateFlags(),  // flags
 					1,                        // queueCreateInfoCount
 					&(const vk::DeviceQueueCreateInfo&)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
-						vk::DeviceQueueCreateFlags(),
-						graphicsQueueFamily,
-						1,
-						&(const float&)1.f,
+						vk::DeviceQueueCreateFlags(),  // flags
+						graphicsQueueFamily,  // queueFamilyIndex
+						1,  // queueCount
+						&(const float&)1.f,  // pQueuePriorities
 					},
 					0,nullptr,  // no layers
 					0,nullptr,  // number of enabled extensions, enabled extension names
@@ -159,7 +159,6 @@ int main(int,char**)
 					nullptr  // pDependencies
 				)
 			);
-
 
 		// images
 		framebufferImage=
@@ -467,8 +466,8 @@ int main(int,char**)
 
 		// copy framebufferImage to hostVisibleImage
 		commandBuffer->copyImage(
-			framebufferImage.get(),vk::ImageLayout::eTransferSrcOptimal,
-			hostVisibleImage.get(),vk::ImageLayout::eTransferDstOptimal,
+			framebufferImage.get(),vk::ImageLayout::eTransferSrcOptimal,  // srcImage,srcImageLayout
+			hostVisibleImage.get(),vk::ImageLayout::eTransferDstOptimal,  // dstImage,dstImageLayout
 			vk::ImageCopy(
 				vk::ImageSubresourceLayers(  // srcSubresource
 					vk::ImageAspectFlagBits::eColor,  // aspectMask
@@ -650,6 +649,11 @@ int main(int,char**)
 	} catch(...) {
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
+
+	// wait device idle, particularly, if there was an exception and device is busy
+	// (device must be idle before destructors of buffers and other stuff are called)
+	if(device)
+		device->waitIdle();
 
 	return 0;
 }

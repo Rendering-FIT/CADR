@@ -3,16 +3,16 @@ set(APP_NAME tut05-helloTriangle)
 project(${APP_NAME})
 
 set(APP_SOURCES
-	main.cpp
-	)
+    main.cpp
+   )
 
 set(APP_INCLUDES
-	)
+   )
 
 set(APP_SHADERS
-	shader.vert
-	shader.frag
-	)
+    shader.vert
+    shader.frag
+   )
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
 add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
