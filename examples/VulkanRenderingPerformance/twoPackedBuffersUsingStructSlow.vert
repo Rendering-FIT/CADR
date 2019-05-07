@@ -24,7 +24,6 @@ out gl_PerVertex {
 
 void main() {
 	vec2 normalZandPosW=unpackHalf2x16(packedData1[gl_VertexIndex].extra1);
-	vec3 normal=vec3(unpackHalf2x16(packedData2[gl_VertexIndex].extra2),normalZandPosW.x);
 	gl_Position=vec4(packedData1[gl_VertexIndex].position,normalZandPosW.y)*
 	            unpackUnorm4x8(packedData2[gl_VertexIndex].packedColor)*
 	            vec4(unpackHalf2x16(packedData2[gl_VertexIndex].extra2),normalZandPosW.x,1)*
