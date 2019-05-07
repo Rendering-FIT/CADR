@@ -102,10 +102,7 @@ static vk::UniqueDeviceMemory sameMatrixMemory;
 static vk::UniqueDeviceMemory transformationMatrixAttributeMemory;
 static vk::UniqueDeviceMemory transformationMatrixBufferMemory;
 static vk::UniqueDeviceMemory indirectBufferMemory;
-static vk::UniqueDescriptorPool singleUniformDescriptorPool;
-static vk::UniqueDescriptorPool oneBufferDescriptorPool;
-static vk::UniqueDescriptorPool twoBuffersDescriptorPool;
-static vk::UniqueDescriptorPool threeBuffersDescriptorPool;
+static vk::UniqueDescriptorPool descriptorPool;
 static vk::DescriptorSet singleUniformDescriptorSet;
 static vk::DescriptorSet coordinateBufferDescriptorSet;
 static vk::DescriptorSet sameMatrixBufferDescriptorSet;
@@ -1226,10 +1223,7 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixBuffer.reset();
 	transformationMatrixAttributeMemory.reset();
 	transformationMatrixBufferMemory.reset();
-	singleUniformDescriptorPool.reset();
-	oneBufferDescriptorPool.reset();
-	twoBuffersDescriptorPool.reset();
-	threeBuffersDescriptorPool.reset();
+	descriptorPool.reset();
 	timestampPool.reset();
 
 	// submitNowCommandBuffer
@@ -2533,66 +2527,28 @@ static void recreateSwapchainAndPipeline()
 
 
 	// descriptor sets
-	singleUniformDescriptorPool=
+	descriptorPool=
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				1,  // maxSets
-				1,  // poolSizeCount
-				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+				8,  // maxSets
+				2,  // poolSizeCount
+				array<vk::DescriptorPoolSize,2>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eUniformBuffer,  // type
 						1  // descriptorCount
-					)
-				}.data()
-			)
-		);
-	oneBufferDescriptorPool=
-		device->createDescriptorPoolUnique(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlags(),  // flags
-				4,  // maxSets
-				1,  // poolSizeCount
-				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						4  // descriptorCount
-					)
-				}.data()
-			)
-		);
-	twoBuffersDescriptorPool=
-		device->createDescriptorPoolUnique(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlags(),  // flags
-				1,  // maxSets
-				1,  // poolSizeCount
-				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
-					vk::DescriptorPoolSize(
-						vk::DescriptorType::eStorageBuffer,  // type
-						2  // descriptorCount
-					)
-				}.data()
-			)
-		);
-	threeBuffersDescriptorPool=
-		device->createDescriptorPoolUnique(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlags(),  // flags
-				2,  // maxSets
-				1,  // poolSizeCount
-				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
-					vk::DescriptorPoolSize(
-						vk::DescriptorType::eStorageBuffer,  // type
-						6  // descriptorCount
-					)
+						12  // descriptorCount
+					),
 				}.data()
 			)
 		);
 	singleUniformDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				singleUniformDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&singleUniformDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2600,7 +2556,7 @@ static void recreateSwapchainAndPipeline()
 	coordinateBufferDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				oneBufferDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&oneBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2608,7 +2564,7 @@ static void recreateSwapchainAndPipeline()
 	sameMatrixBufferDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				oneBufferDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&oneBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2616,7 +2572,7 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixBufferDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				oneBufferDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&oneBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2624,7 +2580,7 @@ static void recreateSwapchainAndPipeline()
 	singlePackedBufferDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				oneBufferDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&oneBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2632,7 +2588,7 @@ static void recreateSwapchainAndPipeline()
 	twoBuffersDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				twoBuffersDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&twoBuffersDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2640,7 +2596,7 @@ static void recreateSwapchainAndPipeline()
 	threeBuffersDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				threeBuffersDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&threeBuffersDescriptorSetLayout.get()  // pSetLayouts
 			)
@@ -2648,7 +2604,7 @@ static void recreateSwapchainAndPipeline()
 	threeBuffersGeometryShaderDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				threeBuffersDescriptorPool.get(),  // descriptorPool
+				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&threeBuffersGeometryShaderDescriptorSetLayout.get()  // pSetLayouts
 			)
