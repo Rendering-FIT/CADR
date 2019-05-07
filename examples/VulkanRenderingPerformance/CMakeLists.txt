@@ -22,6 +22,7 @@ set(APP_SHADERS
 	twoPackedBuffers.vert
 	twoPackedBuffersUsingStruct.vert
 	twoPackedBuffersUsingStructSlow.vert
+	singlePackedBuffer.vert
 	twoPackedAttributesAndMatrix.vert
 	twoPackedBuffersAndMatrix.vert
 	fourAttributes.vert
