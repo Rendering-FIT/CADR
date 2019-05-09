@@ -93,14 +93,16 @@ static vk::UniqueDescriptorSetLayout twoBuffersDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout threeBuffersDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout threeBuffersGeometryShaderDescriptorSetLayout;
 static vk::UniqueBuffer singleUniformBuffer;
+static vk::UniqueBuffer sameMatrixAttribute;  // not used now
 static vk::UniqueBuffer sameMatrixBuffer;
 static vk::UniqueBuffer transformationMatrixAttribute;
 static vk::UniqueBuffer transformationMatrixBuffer;
 static vk::UniqueBuffer indirectBuffer;
 static vk::UniqueDeviceMemory singleUniformMemory;
-static vk::UniqueDeviceMemory sameMatrixMemory;
+static vk::UniqueDeviceMemory sameMatrixAttributeMemory;  // not used now
+static vk::UniqueDeviceMemory sameMatrixBufferMemory;
 static vk::UniqueDeviceMemory transformationMatrixAttributeMemory;
-static vk::UniqueDeviceMemory transformationMatrixBufferMemory;
+static vk::UniqueDeviceMemory transformationMatrixBufferMemory;  // not used now
 static vk::UniqueDeviceMemory indirectBufferMemory;
 static vk::UniqueDescriptorPool descriptorPool;
 static vk::DescriptorSet singleUniformDescriptorSet;
@@ -1217,8 +1219,10 @@ static void recreateSwapchainAndPipeline()
 	singlePackedBufferMemory.reset();
 	singleUniformBuffer.reset();
 	singleUniformMemory.reset();
+	sameMatrixAttribute.reset();
+	sameMatrixAttributeMemory.reset();
 	sameMatrixBuffer.reset();
-	sameMatrixMemory.reset();
+	sameMatrixBufferMemory.reset();
 	transformationMatrixAttribute.reset();
 	transformationMatrixBuffer.reset();
 	transformationMatrixAttributeMemory.reset();
@@ -2341,11 +2345,11 @@ static void recreateSwapchainAndPipeline()
 	);
 
 	// single uniform staging buffer
-	constexpr float singleUniformMatrix[]{
+	const float singleUniformMatrix[]{
 		1.f,0.f,0.f,0.f,
 		0.f,1.f,0.f,0.f,
 		0.f,0.f,1.f,0.f,
-		0.125f,0.f,0.f,1.f
+		2.f/currentSurfaceExtent.width*64.f,0.f,0.f,1.f
 	};
 	StagingBuffer singleUniformStagingBuffer(sizeof(singleUniformMatrix));
 	memcpy(singleUniformStagingBuffer.map(),singleUniformMatrix,sizeof(singleUniformMatrix));
@@ -2359,7 +2363,18 @@ static void recreateSwapchainAndPipeline()
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(singleUniformMatrix))  // pRegions
 	);
 
-	// same matrix buffer
+	// same matrix attribute and buffer
+	sameMatrixAttribute=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				size_t(numTriangles)*16*sizeof(float),  // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 	sameMatrixBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -2371,21 +2386,29 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-	sameMatrixMemory=
+	sameMatrixAttributeMemory=
+		allocateMemory(sameMatrixAttribute.get(),
+		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+	sameMatrixBufferMemory=
 		allocateMemory(sameMatrixBuffer.get(),
 		               vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
+		sameMatrixAttribute.get(),  // image
+		sameMatrixAttributeMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
 		sameMatrixBuffer.get(),  // image
-		sameMatrixMemory.get(),  // memory
+		sameMatrixBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
 	// same matrix staging buffer
-	constexpr float matrixData[]{
+	const float matrixData[]{
 		1.f,0.f,0.f,0.f,
 		0.f,1.f,0.f,0.f,
 		0.f,0.f,1.f,0.f,
-		0.f,0.0625f,0.f,1.f
+		0.f,2.f/currentSurfaceExtent.height*64.f,0.f,1.f
 	};
 	StagingBuffer sameMatrixStagingBuffer(size_t(numTriangles)*sizeof(matrixData));
 	sameMatrixStagingBuffer.map();
@@ -2393,7 +2416,13 @@ static void recreateSwapchainAndPipeline()
 		memcpy(reinterpret_cast<char*>(sameMatrixStagingBuffer.ptr)+(i*sizeof(matrixData)),matrixData,sizeof(matrixData));
 	sameMatrixStagingBuffer.unmap();
 
-	// copy data from staging to uniform buffer
+	// copy data from staging to attribute and buffer
+	submitNowCommandBuffer->copyBuffer(
+		sameMatrixStagingBuffer.buffer.get(),  // srcBuffer
+		sameMatrixAttribute.get(),             // dstBuffer
+		1,                                     // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,size_t(numTriangles)*sizeof(matrixData))  // pRegions
+	);
 	submitNowCommandBuffer->copyBuffer(
 		sameMatrixStagingBuffer.buffer.get(),  // srcBuffer
 		sameMatrixBuffer.get(),                // dstBuffer
@@ -2442,7 +2471,7 @@ static void recreateSwapchainAndPipeline()
 	// transformation matrix staging buffer
 	StagingBuffer transformationMatrixStagingBuffer(size_t(numTriangles)*16*sizeof(float));
 	generateMatrices(
-		reinterpret_cast<float*>(transformationMatrixStagingBuffer.map()),numTriangles,triangleSize,
+		reinterpret_cast<float*>(transformationMatrixStagingBuffer.map()),numTriangles/2,triangleSize,
 		1000,1000,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,0.,0.);
 	transformationMatrixStagingBuffer.unmap();
 
@@ -3058,7 +3087,8 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.draw(3,numTriangles,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.draw(3,numTriangles/2,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.draw(3,numTriangles/2,3,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
