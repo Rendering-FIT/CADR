@@ -2192,49 +2192,60 @@ static void recreateSwapchainAndPipeline()
 	}
 	texCoordStagingBuffer.unmap();
 	pfloat=reinterpret_cast<float*>(vec4Attribute1StagingBuffer.map());
-	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3*4; i<c; i++)
 		pfloat[i]=-2.f;
 	vec4Attribute1StagingBuffer.unmap();
 	pfloat=reinterpret_cast<float*>(vec4Attribute2StagingBuffer.map());
-	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
+	for(size_t i=0,c=size_t(numTriangles)*3*4; i<c; i++)
 		pfloat[i]=4.f;
 	vec4Attribute2StagingBuffer.unmap();
 	puint=reinterpret_cast<uint32_t*>(vec4u8AttributeStagingBuffer.map());
 	for(size_t i=0,c=size_t(numTriangles)*3; i<c; i++)
 		puint[i]=0xFFFFFFFF;
 	vec4u8AttributeStagingBuffer.unmap();
+	unique_ptr<float[]> packedAttribute1cpuMemory(new float[packedDataBufferSize/4]);
+	unique_ptr<uint32_t[]> packedAttribute2cpuMemory(new uint32_t[packedDataBufferSize/4]);
 	generateCoordinates(
-		reinterpret_cast<float*>(packedAttribute1StagingBuffer.map()),numTriangles,triangleSize,
+		packedAttribute1cpuMemory.get(),numTriangles,triangleSize,
 		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	for(size_t i=3,e=size_t(numTriangles)*3*4; i<e; i+=4)
-		reinterpret_cast<uint32_t*>(packedAttribute1StagingBuffer.ptr)[i]=0x3c003c00; // two half-floats, both set to one
-	puint=reinterpret_cast<uint32_t*>(packedAttribute2StagingBuffer.map());
+		reinterpret_cast<uint32_t*>(packedAttribute1cpuMemory.get())[i]=0x3c003c00; // two half-floats, both set to one
+	memcpy(packedAttribute1StagingBuffer.map(),packedAttribute1cpuMemory.get(),packedDataBufferSize);
+	packedAttribute1StagingBuffer.unmap();
+	puint=packedAttribute2cpuMemory.get();
 	for(size_t i=0,e=size_t(numTriangles)*3*4; i<e; ) {
-		puint[i++]=0x00000000;  // texture U (float), zero
-		puint[i++]=0x00000000;  // texture V (float), zero
-		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
-		puint[i++]=0x0055AAFF;  // color
-		puint[i++]=0x3f800000;  // texture U (float), one
-		puint[i++]=0x00000000;  // texture V (float), zero
-		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
-		puint[i++]=0x0055AAFF;  // color
-		puint[i++]=0x00000000;  // texture U (float), zero
+		puint[i++]=0x3f800000;  // texture U (float), one (1.f is 0x3f800000, 0.f is 0x00000000)
 		puint[i++]=0x3f800000;  // texture V (float), one
-		puint[i++]=0x00000000;  // normalX+Y (2x half), two zeros
-		puint[i++]=0x0055AAFF;  // color
+		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one (1.f in half-float is 0x3c00, 0.f is 0x0000)
+		puint[i++]=0xffffffff;  // color
+		puint[i++]=0x3f800000;  // texture U (float), one
+		puint[i++]=0x3f800000;  // texture V (float), one
+		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one
+		puint[i++]=0xffffffff;  // color
+		puint[i++]=0x3f800000;  // texture U (float), one
+		puint[i++]=0x3f800000;  // texture V (float), one
+		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one
+		puint[i++]=0xffffffff;  // color
 	}
+	memcpy(packedAttribute2StagingBuffer.map(),packedAttribute2cpuMemory.get(),packedDataBufferSize);
+	packedAttribute2StagingBuffer.unmap();
 	singlePackedBufferStagingBuffer.map();
-	for(size_t i=0,e=size_t(numTriangles)*3*16; i<e; i+=16) {
-		memcpy(&reinterpret_cast<uint8_t*>(singlePackedBufferStagingBuffer.ptr)[i*2],
-		       &reinterpret_cast<uint8_t*>(packedAttribute1StagingBuffer.ptr)[i],
-		       16);
-		memcpy(&reinterpret_cast<uint8_t*>(singlePackedBufferStagingBuffer.ptr)[i*2+16],
-		       &reinterpret_cast<uint8_t*>(packedAttribute2StagingBuffer.ptr)[i],
-		       16);
+	for(size_t i=0,e=size_t(numTriangles)*3*4; i<e; i+=4) {
+		uint32_t* src1=&reinterpret_cast<uint32_t*>(packedAttribute1cpuMemory.get())[i];
+		uint32_t* src2=&reinterpret_cast<uint32_t*>(packedAttribute2cpuMemory.get())[i];
+		uint32_t* dest=&reinterpret_cast<uint32_t*>(singlePackedBufferStagingBuffer.ptr)[i*2];
+		dest[0]=src1[0];  // posX
+		dest[1]=src1[1];  // posY
+		dest[2]=src1[2];  // posZ
+		dest[3]=src2[3];  // packedColor
+		dest[4]=src2[0];  // texCoord U
+		dest[5]=src2[1];  // texCoord V
+		dest[6]=src2[2];  // normalX+Y
+		dest[7]=src1[3];  // normalZ+posW
 	}
 	singlePackedBufferStagingBuffer.unmap();
-	packedAttribute1StagingBuffer.unmap();
-	packedAttribute2StagingBuffer.unmap();
+	packedAttribute1cpuMemory.reset();
+	packedAttribute2cpuMemory.reset();
 
 	// copy data from staging to attribute and storage buffer
 	submitNowCommandBuffer->copyBuffer(

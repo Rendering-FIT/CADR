@@ -19,6 +19,6 @@ void main() {
 	vec4 position=vec4(uintBitsToFloat(data1.xyz),extra.y);
 	vec3 normal=vec3(unpackHalf2x16(data2.z),extra.x);
 	vec4 color=unpackUnorm4x8(data2.w);
-	vec2 texCoord=data2.xy;
+	vec2 texCoord=uintBitsToFloat(data2.xy);
 	gl_Position=position*color*vec4(normal,1)*vec4(texCoord,1,1);
 }
