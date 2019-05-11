@@ -3322,7 +3322,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// textured phong test, per-triangle transformation
+		// four attributes test, per-triangle transformation
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          fourAttributesAndMatrixPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
