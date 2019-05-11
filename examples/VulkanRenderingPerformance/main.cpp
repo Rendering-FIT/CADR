@@ -2149,7 +2149,7 @@ static void recreateSwapchainAndPipeline()
 				);
 			memory=
 				allocateMemory(buffer.get(),
-				               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent);
+				               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent|vk::MemoryPropertyFlagBits::eHostCached);
 			device->bindBufferMemory(
 				buffer.get(),  // image
 				memory.get(),  // memory
@@ -3574,6 +3574,9 @@ int main(int argc,char** argv)
 					// recreate swapchain
 					recreateSwapchainAndPipeline();
 				}
+
+				// restart measurement
+				startTime=chrono::steady_clock::now();
 
 				needResize=false;
 			}
