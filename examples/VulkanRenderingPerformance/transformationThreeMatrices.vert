@@ -8,7 +8,7 @@ layout(std430,binding=0) restrict readonly buffer TransformationMatrix {
 	mat4 transformationMatrix[];
 };
 
-layout(binding=2) uniform UniformBufferObject {
+layout(binding=1) uniform UniformBufferObject {
 	mat4 viewMatrix;
 	mat4 projectionMatrix;
 	mat3 normalViewMatrix;
