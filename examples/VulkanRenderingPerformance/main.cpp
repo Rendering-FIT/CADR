@@ -3153,7 +3153,7 @@ static void recreateSwapchainAndPipeline()
 				nullptr  // pTexelBufferView
 			},
 			{
-				transformationFiveMatricesDescriptorSet,  // dstSet
+				transformationFiveMatricesUsingGSDescriptorSet,  // dstSet
 				4,  // dstBinding
 				0,  // dstArrayElement
 				1,  // descriptorCount
