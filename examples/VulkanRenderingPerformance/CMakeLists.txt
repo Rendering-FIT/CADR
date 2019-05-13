@@ -31,6 +31,7 @@ set(APP_SHADERS
 	geometryShaderConstantOutput.geom
 	geometryShader.vert
 	geometryShader.geom
+	transformationThreeMatrices.vert
 	transformationFiveMatrices.vert
 	transformationFiveMatricesUsingGS.geom
 	phongTextured.vert
