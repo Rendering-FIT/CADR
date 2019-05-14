@@ -193,7 +193,7 @@ static float timestampPeriod_ns=0;
 static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
 static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
 static uint32_t numTriangles;
-static const unsigned triangleSize=0;
+static const unsigned triangleSize=2;
 
 // shader code in SPIR-V binary
 static const uint32_t attributelessConstantOutputVS_spirv[]={
@@ -311,9 +311,9 @@ static vector<Test> tests={
 	Test("Indirect buffer instancing, attributeless"),
 	Test("Indirect buffer per-triangle record, attr.less"),
 	Test("Indirect buffer per-triangle record"),
+	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
 	Test("Transformation 5xMatrix in GS"),
-	Test("Transformation 3xMatrix in VS"),
 };
 
 
@@ -3906,6 +3906,24 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
+		// transformation 3 matrices test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          transformationThreeMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationThreeMatricesDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
 		// transformation 5 matrices test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationFiveMatricesPipeline.get(),twoBuffersAndUniformPipelineLayout.get(),
@@ -3929,24 +3947,6 @@ static void recreateSwapchainAndPipeline()
 		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// transformation 3 matrices test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          transformationThreeMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationThreeMatricesDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
