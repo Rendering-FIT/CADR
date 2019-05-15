@@ -287,33 +287,33 @@ struct Test {
 static vector<Test> tests={
 	Test("One draw call, attributeless, constant output"),
 	Test("One draw call, attributeless, input indices"),
-	Test("One draw call, attributeless instancing"),
+	Test("One draw call, attributeless, instancing"),
 	Test("One draw call, geometry shader constant output"),
-	Test("One draw call, coordinates in attribute"),
-	Test("One draw call, coordinates in buffer"),
-	Test("One draw call, constant uniform 1xMatrix"),
-	Test("One draw call, per-triangle 1xMatrix in buffer"),
-	Test("One draw call, per-triangle 1xMatrix in attrib."),
+	Test("Indirect buffer instancing, attributeless"),
+	Test("Indirect buffer per-triangle record, attr.less"),
+	Test("Indirect buffer per-triangle record"),
+	Test("Per-triangle draw call, coordinates in attr."),
+	Test("Coordinates in attribute"),
+	Test("Coordinates in buffer"),
+	Test("One attribute, constant uniform 1xMatrix"),
+	Test("One attribute, per-triangle 1xMatrix in buffer"),
+	Test("One attribute, per-triangle 1xMatrix in attrib."),
 	Test("Two attributes"),
 	Test("Two packed attributes"),
 	Test("Two packed buffers"),
 	Test("Two packed buffers using struct"),
 	Test("Two packed buffers using struct slow"),
-	Test("Single packed buffer"),
+	Test("All-in-one packed buffer"),
 	Test("Two packed attributes, 1xMatrix"),
 	Test("Two packed buffers, 1xMatrix"),
-	Test("Geometry shader, 1xMatrix"),
+	Test("Two packed buffers in geom. shader, 1xMatrix"),
 	Test("Four (2xf32,2xu8) attributes"),
 	Test("Four attributes"),
 	Test("Four attributes, 1xMatrix"),
-	Test("Phong, texture, 1xMatrix"),
-	Test("Per-triangle draw call, no transformations"),
-	Test("Indirect buffer instancing, attributeless"),
-	Test("Indirect buffer per-triangle record, attr.less"),
-	Test("Indirect buffer per-triangle record"),
 	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
 	Test("Transformation 5xMatrix in GS"),
+	Test("Phong, texture, 1xMatrix"),
 };
 
 
@@ -3474,6 +3474,94 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
+		// attributeless indirect buffer instancing
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndirect(indirectBuffer.get(),  // buffer
+		                size_t(numTriangles)*sizeof(vk::DrawIndirectCommand),  // offset
+		                1,  // drawCount
+		                sizeof(vk::DrawIndirectCommand));  // stride
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// attributeless indirect buffer per-triangle record
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		if(enabledFeatures.multiDrawIndirect)
+			cb.drawIndirect(indirectBuffer.get(),  // buffer
+			                0,  // offset
+			                numTriangles,  // drawCount
+			                sizeof(vk::DrawIndirectCommand));  // stride
+		else
+			tests[timestampIndex/2].enabled=false;
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// indirect buffer per-triangle record
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		if(enabledFeatures.multiDrawIndirect)
+			cb.drawIndirect(indirectBuffer.get(),  // buffer
+			                0,  // offset
+			                numTriangles,  // drawCount
+			                sizeof(vk::DrawIndirectCommand));  // stride
+		else
+			tests[timestampIndex/2].enabled=false;
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// per-triangle draw call test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		for(uint32_t i=0; i<numTriangles; i++)
+			cb.draw(3,1,i*3,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
 		// coordinate attribute test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
@@ -3799,113 +3887,6 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// textured phong test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedPipeline.get(),oneBufferPipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get(),normalAttribute.get(),
-		                              colorAttribute.get(),texCoordAttribute.get() },
-		          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// per-triangle draw call test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0; i<numTriangles; i++)
-			cb.draw(3,1,i*3,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// attributeless indirect buffer instancing
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.drawIndirect(indirectBuffer.get(),  // buffer
-		                size_t(numTriangles)*sizeof(vk::DrawIndirectCommand),  // offset
-		                1,  // drawCount
-		                sizeof(vk::DrawIndirectCommand));  // stride
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// attributeless indirect buffer per-triangle record
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		if(enabledFeatures.multiDrawIndirect)
-			cb.drawIndirect(indirectBuffer.get(),  // buffer
-			                0,  // offset
-			                numTriangles,  // drawCount
-			                sizeof(vk::DrawIndirectCommand));  // stride
-		else
-			tests[timestampIndex/2].enabled=false;
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// indirect buffer per-triangle record
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		if(enabledFeatures.multiDrawIndirect)
-			cb.drawIndirect(indirectBuffer.get(),  // buffer
-			                0,  // offset
-			                numTriangles,  // drawCount
-			                sizeof(vk::DrawIndirectCommand));  // stride
-		else
-			tests[timestampIndex/2].enabled=false;
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
 		// transformation 3 matrices test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationThreeMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
@@ -3947,6 +3928,25 @@ static void recreateSwapchainAndPipeline()
 		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// textured phong test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedPipeline.get(),oneBufferPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get(),normalAttribute.get(),
+		                              colorAttribute.get(),texCoordAttribute.get() },
+		          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -4129,14 +4129,6 @@ int main(int argc,char** argv)
 						sort(t.renderingTimes.begin(),t.renderingTimes.end());
 						double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
 						cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
-					}
-					else
-						cout<<"   "<<t.resultString<<": not supported"<<endl;
-				cout<<"Time of a triangle:"<<endl;
-				for(Test& t : tests)
-					if(t.enabled) {
-						double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
-						cout<<"   "<<t.resultString<<": "<<time_ns/numTriangles<<"ns"<<endl;
 					}
 					else
 						cout<<"   "<<t.resultString<<": not supported"<<endl;
