@@ -34,6 +34,7 @@ set(APP_SHADERS
 	transformationThreeMatrices.vert
 	transformationFiveMatrices.vert
 	transformationFiveMatricesUsingGS.geom
+	phongTexturedFourAttributes.vert
 	phongTextured.vert
 	constantColor.frag
 	phongTextured.frag
