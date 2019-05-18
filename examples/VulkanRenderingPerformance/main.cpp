@@ -195,7 +195,7 @@ static float timestampPeriod_ns=0;
 static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
 static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
 static uint32_t numTriangles;
-static const unsigned triangleSize=2;
+static const unsigned triangleSize=0;
 
 // shader code in SPIR-V binary
 static const uint32_t attributelessConstantOutputVS_spirv[]={
@@ -318,8 +318,8 @@ static vector<Test> tests={
 	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
 	Test("Transformation 5xMatrix in GS"),
-	Test("Phong, texture, four attributes, 1xMatrix"),
-	Test("Phong, texture, 1xMatrix"),
+	Test("Phong, texture, four attributes, 3xMatrix"),
+	Test("Phong, texture, 3xMatrix"),
 };
 
 
