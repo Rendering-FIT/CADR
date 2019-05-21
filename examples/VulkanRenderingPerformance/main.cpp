@@ -80,6 +80,7 @@ static vk::UniqueShaderModule geometryShaderGS;
 static vk::UniqueShaderModule transformationThreeMatricesVS;
 static vk::UniqueShaderModule transformationFiveMatricesVS;
 static vk::UniqueShaderModule transformationFiveMatricesUsingGS;
+static vk::UniqueShaderModule phongTexturedFourAttributesFiveMatricesVS;
 static vk::UniqueShaderModule phongTexturedFourAttributesVS;
 static vk::UniqueShaderModule phongTexturedVS;
 static vk::UniqueShaderModule constantColorFS;
@@ -158,6 +159,7 @@ static vk::UniquePipeline geometryShaderPipeline;
 static vk::UniquePipeline transformationThreeMatricesPipeline;
 static vk::UniquePipeline transformationFiveMatricesPipeline;
 static vk::UniquePipeline transformationFiveMatricesUsingGSPipeline;
+static vk::UniquePipeline phongTexturedFourAttributesFiveMatricesPipeline;
 static vk::UniquePipeline phongTexturedFourAttributesPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
@@ -270,6 +272,9 @@ static const uint32_t transformationFiveMatricesVS_spirv[]={
 static const uint32_t transformationFiveMatricesUsingGS_spirv[]={
 #include "transformationFiveMatricesUsingGS.geom.spv"
 };
+static const uint32_t phongTexturedFourAttributesFiveMatricesVS_spirv[]={
+#include "phongTexturedFourAttributesFiveMatrices.vert.spv"
+};
 static const uint32_t phongTexturedFourAttributesVS_spirv[]={
 #include "phongTexturedFourAttributes.vert.spv"
 };
@@ -318,6 +323,7 @@ static vector<Test> tests={
 	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
 	Test("Transformation 5xMatrix in GS"),
+	Test("Phong, texture, four attributes, 5xMatrix"),
 	Test("Phong, texture, four attributes, 3xMatrix"),
 	Test("Phong, texture, 3xMatrix"),
 };
@@ -981,6 +987,14 @@ static void init(size_t deviceIndex)
 				transformationFiveMatricesUsingGS_spirv           // pCode
 			)
 		);
+	phongTexturedFourAttributesFiveMatricesVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                            // flags
+				sizeof(phongTexturedFourAttributesFiveMatricesVS_spirv),  // codeSize
+				phongTexturedFourAttributesFiveMatricesVS_spirv           // pCode
+			)
+		);
 	phongTexturedFourAttributesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -1390,6 +1404,7 @@ static void recreateSwapchainAndPipeline()
 	transformationThreeMatricesPipeline.reset();
 	transformationFiveMatricesPipeline.reset();
 	transformationFiveMatricesUsingGSPipeline.reset();
+	phongTexturedFourAttributesFiveMatricesPipeline.reset();
 	phongTexturedFourAttributesPipeline.reset();
 	phongTexturedPipeline.reset();
 	swapchainImageViews.clear();
@@ -2082,6 +2097,61 @@ static void recreateSwapchainAndPipeline()
 				               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 			               },
 			               transformationFiveMatricesUsingGS.get());
+	phongTexturedFourAttributesFiveMatricesPipeline=
+		createPipeline(phongTexturedFourAttributesFiveMatricesVS.get(),phongTexturedFS.get(),twoBuffersAndUniformPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               4,  // vertexBindingDescriptionCount
+			               array<const vk::VertexInputBindingDescription,4>{  // pVertexBindingDescriptions
+				               vk::VertexInputBindingDescription(
+					               0,  // binding
+					               4*sizeof(float),  // stride
+					               vk::VertexInputRate::eVertex  // inputRate
+				               ),
+				               vk::VertexInputBindingDescription(
+					               1,  // binding
+					               3*sizeof(float),  // stride
+					               vk::VertexInputRate::eVertex  // inputRate
+				               ),
+				               vk::VertexInputBindingDescription(
+					               2,  // binding
+					               4,  // stride
+					               vk::VertexInputRate::eVertex  // inputRate
+				               ),
+				               vk::VertexInputBindingDescription(
+					               3,  // binding
+					               2*sizeof(float),  // stride
+					               vk::VertexInputRate::eVertex  // inputRate
+				               ),
+			               }.data(),
+			               4,  // vertexAttributeDescriptionCount
+			               array<const vk::VertexInputAttributeDescription,4>{  // pVertexAttributeDescriptions
+				               vk::VertexInputAttributeDescription(
+					               0,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               1,  // location
+					               1,  // binding
+					               vk::Format::eR32G32B32Sfloat,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               2,  // location
+					               2,  // binding
+					               vk::Format::eR8G8B8A8Unorm,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               3,  // location
+					               3,  // binding
+					               vk::Format::eR32G32Sfloat,  // format
+					               0   // offset
+				               ),
+			               }.data()
+		               });
 	phongTexturedFourAttributesPipeline=
 		createPipeline(phongTexturedFourAttributesVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3965,6 +4035,25 @@ static void recreateSwapchainAndPipeline()
 		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// textured phong four attribute five matrices test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedFourAttributesFiveMatricesPipeline.get(),twoBuffersAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get(),normalAttribute.get(),
+		                              colorAttribute.get(),texCoordAttribute.get() },
+		          vector<vk::DescriptorSet>{ transformationFiveMatricesDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
