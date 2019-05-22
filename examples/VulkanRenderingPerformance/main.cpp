@@ -84,6 +84,7 @@ static vk::UniqueShaderModule phongTexturedFourAttributesFiveMatricesVS;
 static vk::UniqueShaderModule phongTexturedFourAttributesVS;
 static vk::UniqueShaderModule phongTexturedVS;
 static vk::UniqueShaderModule phongTexturedDMatricesVS;
+static vk::UniqueShaderModule phongTexturedDMatricesOnlyInputVS;
 static vk::UniqueShaderModule constantColorFS;
 static vk::UniqueShaderModule phongTexturedFS;
 static vk::UniquePipelineCache pipelineCache;
@@ -169,6 +170,7 @@ static vk::UniquePipeline phongTexturedFourAttributesFiveMatricesPipeline;
 static vk::UniquePipeline phongTexturedFourAttributesPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
 static vk::UniquePipeline phongTexturedDMatricesPipeline;
+static vk::UniquePipeline phongTexturedDMatricesOnlyInputPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -291,6 +293,9 @@ static const uint32_t phongTexturedVS_spirv[]={
 static const uint32_t phongTexturedDMatricesVS_spirv[]={
 #include "phongTexturedDMatrices.vert.spv"
 };
+static const uint32_t phongTexturedDMatricesOnlyInputVS_spirv[]={
+#include "phongTexturedDMatricesOnlyInput.vert.spv"
+};
 static const uint32_t constantColorFS_spirv[]={
 #include "constantColor.frag.spv"
 };
@@ -337,6 +342,7 @@ static vector<Test> tests={
 	Test("Phong, texture, four attributes, 3xMatrix"),
 	Test("Phong, texture, 3xMatrix"),
 	Test("Phong, texture, 3xMatrix, dmatrices"),
+	Test("Phong, texture, 3xMatrix, dmat. only on input"),
 };
 
 
@@ -1030,6 +1036,14 @@ static void init(size_t deviceIndex)
 				phongTexturedDMatricesVS_spirv           // pCode
 			)
 		);
+	phongTexturedDMatricesOnlyInputVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                    // flags
+				sizeof(phongTexturedDMatricesOnlyInputVS_spirv),  // codeSize
+				phongTexturedDMatricesOnlyInputVS_spirv           // pCode
+			)
+		);
 	constantColorFS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -1427,6 +1441,7 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedFourAttributesPipeline.reset();
 	phongTexturedPipeline.reset();
 	phongTexturedDMatricesPipeline.reset();
+	phongTexturedDMatricesOnlyInputPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
@@ -2253,6 +2268,28 @@ static void recreateSwapchainAndPipeline()
 		               });
 	phongTexturedDMatricesPipeline=
 		createPipeline(phongTexturedDMatricesVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               2,  // vertexBindingDescriptionCount
+			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+			               2,  // vertexAttributeDescriptionCount
+			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+				               vk::VertexInputAttributeDescription(
+					               0,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Uint,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               1,  // location
+					               1,  // binding
+					               vk::Format::eR32G32B32A32Uint,  // format
+					               0   // offset
+				               ),
+			               }.data()
+		               });
+	phongTexturedDMatricesOnlyInputPipeline=
+		createPipeline(phongTexturedDMatricesOnlyInputVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               2,  // vertexBindingDescriptionCount
@@ -4275,6 +4312,24 @@ static void recreateSwapchainAndPipeline()
 		// textured phong with double precision matrices test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedDMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// textured phong with double precision matrices on input but computation in standard floats test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedDMatricesOnlyInputPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
 		          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
 		cb.writeTimestamp(
