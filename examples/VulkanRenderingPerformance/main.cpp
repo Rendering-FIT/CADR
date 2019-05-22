@@ -2631,16 +2631,12 @@ static void recreateSwapchainAndPipeline()
 	for(size_t i=0,c=size_t(numTriangles)*3; i<c; i++)
 		puint[i]=0xFFFFFFFF;
 	vec4u8AttributeStagingBuffer.unmap();
-	unique_ptr<float[]> packedAttribute1cpuMemory(new float[packedDataBufferSize/4]);
-	unique_ptr<uint32_t[]> packedAttribute2cpuMemory(new uint32_t[packedDataBufferSize/4]);
 	generateCoordinates(
-		packedAttribute1cpuMemory.get(),numTriangles,triangleSize,
+		reinterpret_cast<float*>(packedAttribute1StagingBuffer.map()),numTriangles,triangleSize,
 		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	for(size_t i=3,e=size_t(numTriangles)*3*4; i<e; i+=4)
-		reinterpret_cast<uint32_t*>(packedAttribute1cpuMemory.get())[i]=0x3c003c00; // two half-floats, both set to one
-	memcpy(packedAttribute1StagingBuffer.map(),packedAttribute1cpuMemory.get(),packedDataBufferSize);
-	packedAttribute1StagingBuffer.unmap();
-	puint=packedAttribute2cpuMemory.get();
+		reinterpret_cast<uint32_t*>(packedAttribute1StagingBuffer.ptr)[i]=0x3c003c00; // two half-floats, both set to one
+	puint=reinterpret_cast<uint32_t*>(packedAttribute2StagingBuffer.map());
 	for(size_t i=0,e=size_t(numTriangles)*3*4; i<e; ) {
 		puint[i++]=0x3f800000;  // texture U (float), one (1.f is 0x3f800000, 0.f is 0x00000000)
 		puint[i++]=0x3f800000;  // texture V (float), one
@@ -2655,12 +2651,10 @@ static void recreateSwapchainAndPipeline()
 		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one
 		puint[i++]=0xffffffff;  // color
 	}
-	memcpy(packedAttribute2StagingBuffer.map(),packedAttribute2cpuMemory.get(),packedDataBufferSize);
-	packedAttribute2StagingBuffer.unmap();
 	singlePackedBufferStagingBuffer.map();
 	for(size_t i=0,e=size_t(numTriangles)*3*4; i<e; i+=4) {
-		uint32_t* src1=&reinterpret_cast<uint32_t*>(packedAttribute1cpuMemory.get())[i];
-		uint32_t* src2=&reinterpret_cast<uint32_t*>(packedAttribute2cpuMemory.get())[i];
+		uint32_t* src1=&reinterpret_cast<uint32_t*>(packedAttribute1StagingBuffer.ptr)[i];
+		uint32_t* src2=&reinterpret_cast<uint32_t*>(packedAttribute2StagingBuffer.ptr)[i];
 		uint32_t* dest=&reinterpret_cast<uint32_t*>(singlePackedBufferStagingBuffer.ptr)[i*2];
 		dest[0]=src1[0];  // posX
 		dest[1]=src1[1];  // posY
@@ -2671,9 +2665,9 @@ static void recreateSwapchainAndPipeline()
 		dest[6]=src2[2];  // normalX+Y
 		dest[7]=src1[3];  // normalZ+posW
 	}
+	packedAttribute1StagingBuffer.unmap();
+	packedAttribute2StagingBuffer.unmap();
 	singlePackedBufferStagingBuffer.unmap();
-	packedAttribute1cpuMemory.reset();
-	packedAttribute2cpuMemory.reset();
 
 	// copy data from staging to attribute and storage buffer
 	submitNowCommandBuffer->copyBuffer(
