@@ -34,6 +34,8 @@ set(APP_SHADERS
 	transformationThreeMatrices.vert
 	transformationFiveMatrices.vert
 	transformationFiveMatricesUsingGS.geom
+	transformationFiveMatricesUsingGSAndAttributes.vert
+	transformationFiveMatricesUsingGSAndAttributes.geom
 	phongTexturedFourAttributesFiveMatrices.vert
 	phongTexturedFourAttributes.vert
 	phongTextured.vert

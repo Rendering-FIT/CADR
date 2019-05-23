@@ -80,6 +80,8 @@ static vk::UniqueShaderModule geometryShaderGS;
 static vk::UniqueShaderModule transformationThreeMatricesVS;
 static vk::UniqueShaderModule transformationFiveMatricesVS;
 static vk::UniqueShaderModule transformationFiveMatricesUsingGS;
+static vk::UniqueShaderModule transformationFiveMatricesUsingGSAndAttributesVS;
+static vk::UniqueShaderModule transformationFiveMatricesUsingGSAndAttributesGS;
 static vk::UniqueShaderModule phongTexturedFourAttributesFiveMatricesVS;
 static vk::UniqueShaderModule phongTexturedFourAttributesVS;
 static vk::UniqueShaderModule phongTexturedVS;
@@ -94,18 +96,20 @@ static vk::UniquePipelineLayout singleUniformPipelineLayout;
 static vk::UniquePipelineLayout oneBufferPipelineLayout;
 static vk::UniquePipelineLayout twoBuffersPipelineLayout;
 static vk::UniquePipelineLayout threeBuffersPipelineLayout;
-static vk::UniquePipelineLayout threeBuffersGeometryShaderPipelineLayout;
+static vk::UniquePipelineLayout threeBuffersInGSPipelineLayout;
 static vk::UniquePipelineLayout bufferAndUniformPipelineLayout;
 static vk::UniquePipelineLayout twoBuffersAndUniformPipelineLayout;
-static vk::UniquePipelineLayout fourBuffersAndUniformPipelineLayout;
+static vk::UniquePipelineLayout twoBuffersAndUniformInGSPipelineLayout;
+static vk::UniquePipelineLayout fourBuffersAndUniformInGSPipelineLayout;
 static vk::UniqueDescriptorSetLayout singleUniformDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout oneBufferDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout twoBuffersDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout threeBuffersDescriptorSetLayout;
-static vk::UniqueDescriptorSetLayout threeBuffersGeometryShaderDescriptorSetLayout;
+static vk::UniqueDescriptorSetLayout threeBuffersInGSDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout bufferAndUniformDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout twoBuffersAndUniformDescriptorSetLayout;
-static vk::UniqueDescriptorSetLayout fourBuffersAndUniformDescriptorSetLayout;
+static vk::UniqueDescriptorSetLayout twoBuffersAndUniformInGSDescriptorSetLayout;
+static vk::UniqueDescriptorSetLayout fourBuffersAndUniformInGSDescriptorSetLayout;
 static vk::UniqueBuffer singleMatrixUniformBuffer;
 static vk::UniqueBuffer sameMatrixAttribute;  // not used now
 static vk::UniqueBuffer sameMatrixBuffer;
@@ -134,11 +138,12 @@ static vk::DescriptorSet transformationMatrixBufferDescriptorSet;
 static vk::DescriptorSet singlePackedBufferDescriptorSet;
 static vk::DescriptorSet twoBuffersDescriptorSet;
 static vk::DescriptorSet threeBuffersDescriptorSet;
-static vk::DescriptorSet threeBuffersGeometryShaderDescriptorSet;
+static vk::DescriptorSet threeBuffersInGSDescriptorSet;
 static vk::DescriptorSet transformationThreeMatricesDescriptorSet;
 static vk::DescriptorSet transformationThreeDMatricesDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesUsingGSDescriptorSet;
+static vk::DescriptorSet transformationFiveMatricesUsingGSAndAttributesDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
@@ -167,6 +172,7 @@ static vk::UniquePipeline geometryShaderPipeline;
 static vk::UniquePipeline transformationThreeMatricesPipeline;
 static vk::UniquePipeline transformationFiveMatricesPipeline;
 static vk::UniquePipeline transformationFiveMatricesUsingGSPipeline;
+static vk::UniquePipeline transformationFiveMatricesUsingGSAndAttributesPipeline;
 static vk::UniquePipeline phongTexturedFourAttributesFiveMatricesPipeline;
 static vk::UniquePipeline phongTexturedFourAttributesPipeline;
 static vk::UniquePipeline phongTexturedPipeline;
@@ -289,6 +295,12 @@ static const uint32_t transformationFiveMatricesVS_spirv[]={
 static const uint32_t transformationFiveMatricesUsingGS_spirv[]={
 #include "transformationFiveMatricesUsingGS.geom.spv"
 };
+static const uint32_t transformationFiveMatricesUsingGSAndAttributesVS_spirv[]={
+#include "transformationFiveMatricesUsingGSAndAttributes.vert.spv"
+};
+static const uint32_t transformationFiveMatricesUsingGSAndAttributesGS_spirv[]={
+#include "transformationFiveMatricesUsingGSAndAttributes.geom.spv"
+};
 static const uint32_t phongTexturedFourAttributesFiveMatricesVS_spirv[]={
 #include "phongTexturedFourAttributesFiveMatrices.vert.spv"
 };
@@ -348,7 +360,8 @@ static vector<Test> tests={
 	Test("Four attributes, 1xMatrix"),
 	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
-	Test("Transformation 5xMatrix in GS"),
+	Test("Transformation 5xMatrix in GS, buffers"),
+	Test("Transformation 5xMatrix in GS, attributes"),
 	Test("Phong, texture, four attributes, 5xMatrix"),
 	Test("Phong, texture, four attributes, 3xMatrix"),
 	Test("Phong, texture, 3xMatrix"),
@@ -1016,6 +1029,22 @@ static void init(size_t deviceIndex)
 				transformationFiveMatricesUsingGS_spirv           // pCode
 			)
 		);
+	transformationFiveMatricesUsingGSAndAttributesVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                                   // flags
+				sizeof(transformationFiveMatricesUsingGSAndAttributesVS_spirv),  // codeSize
+				transformationFiveMatricesUsingGSAndAttributesVS_spirv           // pCode
+			)
+		);
+	transformationFiveMatricesUsingGSAndAttributesGS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                                   // flags
+				sizeof(transformationFiveMatricesUsingGSAndAttributesGS_spirv),  // codeSize
+				transformationFiveMatricesUsingGSAndAttributesGS_spirv           // pCode
+			)
+		);
 	phongTexturedFourAttributesFiveMatricesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -1177,7 +1206,7 @@ static void init(size_t deviceIndex)
 				}.data()
 			)
 		);
-	threeBuffersGeometryShaderDescriptorSetLayout=
+	threeBuffersInGSDescriptorSetLayout=
 		device->createDescriptorSetLayoutUnique(
 			vk::DescriptorSetLayoutCreateInfo(
 				vk::DescriptorSetLayoutCreateFlags(),  // flags
@@ -1260,7 +1289,37 @@ static void init(size_t deviceIndex)
 				}.data()
 			)
 		);
-	fourBuffersAndUniformDescriptorSetLayout=
+	twoBuffersAndUniformInGSDescriptorSetLayout=
+		device->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),  // flags
+				3,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,3>{  // pBindings
+					vk::DescriptorSetLayoutBinding(
+						0,  // binding
+						vk::DescriptorType::eStorageBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					),
+					vk::DescriptorSetLayoutBinding(
+						1,  // binding
+						vk::DescriptorType::eStorageBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					),
+					vk::DescriptorSetLayoutBinding(
+						2,  // binding
+						vk::DescriptorType::eUniformBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					)
+				}.data()
+			)
+		);
+	fourBuffersAndUniformInGSDescriptorSetLayout=
 		device->createDescriptorSetLayoutUnique(
 			vk::DescriptorSetLayoutCreateInfo(
 				vk::DescriptorSetLayoutCreateFlags(),  // flags
@@ -1356,12 +1415,12 @@ static void init(size_t deviceIndex)
 				nullptr  // pPushConstantRanges
 			}
 		);
-	threeBuffersGeometryShaderPipelineLayout=
+	threeBuffersInGSPipelineLayout=
 		device->createPipelineLayoutUnique(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				1,       // setLayoutCount
-				&threeBuffersGeometryShaderDescriptorSetLayout.get(),  // pSetLayouts
+				&threeBuffersInGSDescriptorSetLayout.get(),  // pSetLayouts
 				0,       // pushConstantRangeCount
 				nullptr  // pPushConstantRanges
 			}
@@ -1386,12 +1445,22 @@ static void init(size_t deviceIndex)
 				nullptr  // pPushConstantRanges
 			}
 		);
-	fourBuffersAndUniformPipelineLayout=
+	twoBuffersAndUniformInGSPipelineLayout=
 		device->createPipelineLayoutUnique(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				1,       // setLayoutCount
-				&fourBuffersAndUniformDescriptorSetLayout.get(),  // pSetLayouts
+				&twoBuffersAndUniformInGSDescriptorSetLayout.get(),  // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
+	fourBuffersAndUniformInGSPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				1,       // setLayoutCount
+				&fourBuffersAndUniformInGSDescriptorSetLayout.get(),  // pSetLayouts
 				0,       // pushConstantRangeCount
 				nullptr  // pPushConstantRanges
 			}
@@ -1457,6 +1526,7 @@ static void recreateSwapchainAndPipeline()
 	transformationThreeMatricesPipeline.reset();
 	transformationFiveMatricesPipeline.reset();
 	transformationFiveMatricesUsingGSPipeline.reset();
+	transformationFiveMatricesUsingGSAndAttributesPipeline.reset();
 	phongTexturedFourAttributesFiveMatricesPipeline.reset();
 	phongTexturedFourAttributesPipeline.reset();
 	phongTexturedPipeline.reset();
@@ -2092,7 +2162,7 @@ static void recreateSwapchainAndPipeline()
 		               &fourAttributesInputState);
 	if(enabledFeatures.geometryShader)
 		geometryShaderPipeline=
-			createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersGeometryShaderPipelineLayout.get(),currentSurfaceExtent,
+			createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersInGSPipelineLayout.get(),currentSurfaceExtent,
 			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 				               vk::PipelineVertexInputStateCreateFlags(),  // flags
 				               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
@@ -2154,13 +2224,37 @@ static void recreateSwapchainAndPipeline()
 		               });
 	if(enabledFeatures.geometryShader)
 		transformationFiveMatricesUsingGSPipeline=
-			createPipeline(geometryShaderVS.get(),constantColorFS.get(),fourBuffersAndUniformPipelineLayout.get(),currentSurfaceExtent,
+			createPipeline(geometryShaderVS.get(),constantColorFS.get(),fourBuffersAndUniformInGSPipelineLayout.get(),currentSurfaceExtent,
 			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 				               vk::PipelineVertexInputStateCreateFlags(),  // flags
 				               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
 				               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 			               },
 			               transformationFiveMatricesUsingGS.get());
+	if(enabledFeatures.geometryShader)
+		transformationFiveMatricesUsingGSAndAttributesPipeline=
+			createPipeline(transformationFiveMatricesUsingGSAndAttributesVS.get(),constantColorFS.get(),twoBuffersAndUniformInGSPipelineLayout.get(),currentSurfaceExtent,
+			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+				               vk::PipelineVertexInputStateCreateFlags(),  // flags
+				               2,  // vertexBindingDescriptionCount
+				               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+				               2,  // vertexAttributeDescriptionCount
+				               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+					               vk::VertexInputAttributeDescription(
+						               0,  // location
+						               0,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+					               vk::VertexInputAttributeDescription(
+						               1,  // location
+						               1,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+				               }.data()
+			               },
+			               transformationFiveMatricesUsingGSAndAttributesGS.get());
 	phongTexturedFourAttributesFiveMatricesPipeline=
 		createPipeline(phongTexturedFourAttributesFiveMatricesVS.get(),phongTexturedFS.get(),twoBuffersAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3295,16 +3389,16 @@ static void recreateSwapchainAndPipeline()
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				12,  // maxSets
+				13,  // maxSets
 				2,  // poolSizeCount
 				array<vk::DescriptorPoolSize,2>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eUniformBuffer,  // type
-						5  // descriptorCount
+						6  // descriptorCount
 					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						20  // descriptorCount
+						22  // descriptorCount
 					),
 				}.data()
 			)
@@ -3365,12 +3459,12 @@ static void recreateSwapchainAndPipeline()
 				&threeBuffersDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
-	threeBuffersGeometryShaderDescriptorSet=
+	threeBuffersInGSDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
-				&threeBuffersGeometryShaderDescriptorSetLayout.get()  // pSetLayouts
+				&threeBuffersInGSDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	transformationThreeMatricesDescriptorSet=
@@ -3402,7 +3496,15 @@ static void recreateSwapchainAndPipeline()
 			vk::DescriptorSetAllocateInfo(
 				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
-				&fourBuffersAndUniformDescriptorSetLayout.get()  // pSetLayouts
+				&fourBuffersAndUniformInGSDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
+	transformationFiveMatricesUsingGSAndAttributesDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&twoBuffersAndUniformInGSDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	device->updateDescriptorSets(
@@ -3555,7 +3657,7 @@ static void recreateSwapchainAndPipeline()
 	);
 	device->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
-			threeBuffersGeometryShaderDescriptorSet,  // dstSet
+			threeBuffersInGSDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			3,  // descriptorCount
@@ -3583,7 +3685,7 @@ static void recreateSwapchainAndPipeline()
 		nullptr  // descriptorCopies
 	);
 	device->updateDescriptorSets(
-		array<vk::WriteDescriptorSet,8>{{  // descriptorWrites
+		array<vk::WriteDescriptorSet,10>{{  // descriptorWrites
 			{
 				transformationThreeMatricesDescriptorSet,  // dstSet
 				0,  // dstBinding
@@ -3719,6 +3821,43 @@ static void recreateSwapchainAndPipeline()
 			{
 				transformationFiveMatricesUsingGSDescriptorSet,  // dstSet
 				4,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eUniformBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						viewAndProjectionMatricesUniformBuffer.get(),  // buffer
+						0,  // offset
+						viewAndProjectionMatricesBufferSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
+				transformationFiveMatricesUsingGSAndAttributesDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				2,  // descriptorCount
+				vk::DescriptorType::eStorageBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,2>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						sameMatrixBuffer.get(),  // buffer
+						0,  // offset
+						transformationMatrix4x4BufferSize  // range
+					),
+					vk::DescriptorBufferInfo(
+						normalMatrix4x3Buffer.get(),  // buffer
+						0,  // offset
+						normalMatrix4x3BufferSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
+				transformationFiveMatricesUsingGSAndAttributesDescriptorSet,  // dstSet
+				2,  // dstBinding
 				0,  // dstArrayElement
 				1,  // descriptorCount
 				vk::DescriptorType::eUniformBuffer,  // descriptorType
@@ -4251,9 +4390,9 @@ static void recreateSwapchainAndPipeline()
 		// geometry shader two packed buffers test, one matrix
 		if(enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-			          geometryShaderPipeline.get(),threeBuffersGeometryShaderPipelineLayout.get(),
+			          geometryShaderPipeline.get(),threeBuffersInGSPipelineLayout.get(),
 			          vector<vk::Buffer>(),
-			          vector<vk::DescriptorSet>{ threeBuffersGeometryShaderDescriptorSet });
+			          vector<vk::DescriptorSet>{ threeBuffersInGSDescriptorSet });
 			cb.writeTimestamp(
 				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 				timestampPool.get(),  // queryPool
@@ -4376,9 +4515,27 @@ static void recreateSwapchainAndPipeline()
 
 		// transformation 5 matrices test using geometry shader
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformPipelineLayout.get(),
+		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformInGSPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// transformation 5 matrices test using geometry shader and attributes
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),twoBuffersAndUniformInGSPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSAndAttributesDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
