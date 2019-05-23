@@ -37,8 +37,9 @@ set(APP_SHADERS
 	phongTexturedFourAttributesFiveMatrices.vert
 	phongTexturedFourAttributes.vert
 	phongTextured.vert
-	phongTexturedDMatrices.vert
 	phongTexturedDMatricesOnlyInput.vert
+	phongTexturedDMatrices.vert
+	phongTexturedDMatricesDVertices.vert
 	constantColor.frag
 	phongTextured.frag
 	)
