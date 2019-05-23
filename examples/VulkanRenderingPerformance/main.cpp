@@ -360,8 +360,8 @@ static vector<Test> tests={
 	Test("Four attributes, 1xMatrix"),
 	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
-	Test("Transformation 5xMatrix in GS, buffers"),
 	Test("Transformation 5xMatrix in GS, attributes"),
+	Test("Transformation 5xMatrix in GS, buffers"),
 	Test("Phong, texture, four attributes, 5xMatrix"),
 	Test("Phong, texture, four attributes, 3xMatrix"),
 	Test("Phong, texture, 3xMatrix"),
@@ -715,6 +715,7 @@ static void init(size_t deviceIndex)
 	vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
 	enabledFeatures.setMultiDrawIndirect(physicalFeatures.multiDrawIndirect);
 	enabledFeatures.setGeometryShader(physicalFeatures.geometryShader);
+	enabledFeatures.setShaderFloat64(physicalFeatures.shaderFloat64);
 
 	// number of triangles
 	// (reduce the number on integrated graphics as it may easily run out of memory)
@@ -4513,11 +4514,11 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test using geometry shader
+		// transformation 5 matrices test using geometry shader and attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformInGSPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
+		          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),twoBuffersAndUniformInGSPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSAndAttributesDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
@@ -4531,11 +4532,11 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test using geometry shader and attributes
+		// transformation 5 matrices test using geometry shader
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),twoBuffersAndUniformInGSPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSAndAttributesDescriptorSet });
+		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformInGSPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
