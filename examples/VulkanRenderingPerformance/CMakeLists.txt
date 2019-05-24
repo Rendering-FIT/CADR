@@ -42,6 +42,8 @@ set(APP_SHADERS
 	phongTexturedDMatricesOnlyInput.vert
 	phongTexturedDMatrices.vert
 	phongTexturedDMatricesDVertices.vert
+	phongTexturedInGSDMatricesDVertices.vert
+	phongTexturedInGSDMatricesDVertices.geom
 	constantColor.frag
 	phongTextured.frag
 	)
