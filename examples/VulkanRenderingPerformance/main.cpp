@@ -148,6 +148,7 @@ static vk::DescriptorSet transformationThreeDMatricesDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesUsingGSDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesUsingGSAndAttributesDescriptorSet;
+static vk::DescriptorSet phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
@@ -3482,16 +3483,16 @@ static void recreateSwapchainAndPipeline()
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				13,  // maxSets
+				14,  // maxSets
 				2,  // poolSizeCount
 				array<vk::DescriptorPoolSize,2>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eUniformBuffer,  // type
-						6  // descriptorCount
+						7  // descriptorCount
 					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						22  // descriptorCount
+						23  // descriptorCount
 					),
 				}.data()
 			)
@@ -3598,6 +3599,14 @@ static void recreateSwapchainAndPipeline()
 				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&twoBuffersAndUniformInGSDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
+	phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&bufferAndUniformInGSDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	device->updateDescriptorSets(
@@ -3778,7 +3787,7 @@ static void recreateSwapchainAndPipeline()
 		nullptr  // descriptorCopies
 	);
 	device->updateDescriptorSets(
-		array<vk::WriteDescriptorSet,10>{{  // descriptorWrites
+		array<vk::WriteDescriptorSet,12>{{  // descriptorWrites
 			{
 				transformationThreeMatricesDescriptorSet,  // dstSet
 				0,  // dstBinding
@@ -3960,6 +3969,38 @@ static void recreateSwapchainAndPipeline()
 						viewAndProjectionMatricesUniformBuffer.get(),  // buffer
 						0,  // offset
 						viewAndProjectionMatricesBufferSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
+				phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eStorageBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						sameDMatrixBuffer.get(),  // buffer
+						0,  // offset
+						transformationDMatrix4x4BufferSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
+				phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet,  // dstSet
+				1,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eUniformBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						viewAndProjectionDMatricesUniformBuffer.get(),  // buffer
+						0,  // offset
+						viewAndProjectionDMatricesBufferSize  // range
 					),
 				}.data(),
 				nullptr  // pTexelBufferView
@@ -4756,7 +4797,7 @@ static void recreateSwapchainAndPipeline()
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedInGSDMatricesDVerticesPipeline.get(),bufferAndUniformInGSPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedDAttribute1.get(),packedDAttribute2.get(),packedDAttribute3.get() },
-		          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
+		          vector<vk::DescriptorSet>{ phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
