@@ -2451,79 +2451,82 @@ static void recreateSwapchainAndPipeline()
 				               ),
 			               }.data()
 		               });
-	phongTexturedDMatricesOnlyInputPipeline=
-		createPipeline(phongTexturedDMatricesOnlyInputVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               2,  // vertexBindingDescriptionCount
-			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
-			               2,  // vertexAttributeDescriptionCount
-			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
-				               vk::VertexInputAttributeDescription(
-					               0,  // location
-					               0,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-				               vk::VertexInputAttributeDescription(
-					               1,  // location
-					               1,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-			               }.data()
-		               });
-	phongTexturedDMatricesPipeline=
-		createPipeline(phongTexturedDMatricesVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               2,  // vertexBindingDescriptionCount
-			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
-			               2,  // vertexAttributeDescriptionCount
-			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
-				               vk::VertexInputAttributeDescription(
-					               0,  // location
-					               0,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-				               vk::VertexInputAttributeDescription(
-					               1,  // location
-					               1,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-			               }.data()
-		               });
-	phongTexturedDMatricesDVerticesPipeline=
-		createPipeline(phongTexturedDMatricesDVerticesVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               3,  // vertexBindingDescriptionCount
-			               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
-			               3,  // vertexAttributeDescriptionCount
-			               array<const vk::VertexInputAttributeDescription,3>{  // pVertexAttributeDescriptions
-				               vk::VertexInputAttributeDescription(
-					               0,  // location
-					               0,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-				               vk::VertexInputAttributeDescription(
-					               1,  // location
-					               1,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-				               vk::VertexInputAttributeDescription(
-					               2,  // location
-					               2,  // binding
-					               vk::Format::eR32G32B32A32Uint,  // format
-					               0   // offset
-				               ),
-			               }.data()
-		               });
-	if(enabledFeatures.geometryShader)
+	if(enabledFeatures.shaderFloat64)
+		phongTexturedDMatricesOnlyInputPipeline=
+			createPipeline(phongTexturedDMatricesOnlyInputVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+				               vk::PipelineVertexInputStateCreateFlags(),  // flags
+				               2,  // vertexBindingDescriptionCount
+				               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+				               2,  // vertexAttributeDescriptionCount
+				               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+					               vk::VertexInputAttributeDescription(
+						               0,  // location
+						               0,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+					               vk::VertexInputAttributeDescription(
+						               1,  // location
+						               1,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+				               }.data()
+			               });
+	if(enabledFeatures.shaderFloat64)
+		phongTexturedDMatricesPipeline=
+			createPipeline(phongTexturedDMatricesVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+				               vk::PipelineVertexInputStateCreateFlags(),  // flags
+				               2,  // vertexBindingDescriptionCount
+				               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+				               2,  // vertexAttributeDescriptionCount
+				               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+					               vk::VertexInputAttributeDescription(
+						               0,  // location
+						               0,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+					               vk::VertexInputAttributeDescription(
+						               1,  // location
+						               1,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+				               }.data()
+			               });
+	if(enabledFeatures.shaderFloat64)
+		phongTexturedDMatricesDVerticesPipeline=
+			createPipeline(phongTexturedDMatricesDVerticesVS.get(),phongTexturedFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+				               vk::PipelineVertexInputStateCreateFlags(),  // flags
+				               3,  // vertexBindingDescriptionCount
+				               stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+				               3,  // vertexAttributeDescriptionCount
+				               array<const vk::VertexInputAttributeDescription,3>{  // pVertexAttributeDescriptions
+					               vk::VertexInputAttributeDescription(
+						               0,  // location
+						               0,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+					               vk::VertexInputAttributeDescription(
+						               1,  // location
+						               1,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+					               vk::VertexInputAttributeDescription(
+						               2,  // location
+						               2,  // binding
+						               vk::Format::eR32G32B32A32Uint,  // format
+						               0   // offset
+					               ),
+				               }.data()
+			               });
+	if(enabledFeatures.shaderFloat64 && enabledFeatures.geometryShader)
 		phongTexturedInGSDMatricesDVerticesPipeline=
 			createPipeline(phongTexturedInGSDMatricesDVerticesVS.get(),phongTexturedFS.get(),bufferAndUniformInGSPipelineLayout.get(),currentSurfaceExtent,
 			               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -4648,40 +4651,68 @@ static void recreateSwapchainAndPipeline()
 		cb.endRenderPass();
 
 		// transformation 5 matrices test using geometry shader and attributes
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),twoBuffersAndUniformInGSPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSAndAttributesDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(enabledFeatures.geometryShader) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),twoBuffersAndUniformInGSPipelineLayout.get(),
+			          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSAndAttributesDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		} else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// transformation 5 matrices test using geometry shader
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformInGSPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(enabledFeatures.geometryShader) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          transformationFiveMatricesUsingGSPipeline.get(),fourBuffersAndUniformInGSPipelineLayout.get(),
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		} else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// textured phong four attribute five matrices test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
@@ -4740,76 +4771,132 @@ static void recreateSwapchainAndPipeline()
 		cb.endRenderPass();
 
 		// textured phong with double precision matrices on input but computation in standard floats test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedDMatricesOnlyInputPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(enabledFeatures.shaderFloat64) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          phongTexturedDMatricesOnlyInputPipeline.get(),bufferAndUniformPipelineLayout.get(),
+			          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		} else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// textured phong with double precision matrices test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedDMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(enabledFeatures.shaderFloat64) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          phongTexturedDMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
+			          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		} else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// textured phong with double precision matrices and vertices test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedDMatricesDVerticesPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedDAttribute1.get(),packedDAttribute2.get(),packedDAttribute3.get() },
-		          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(enabledFeatures.shaderFloat64) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          phongTexturedDMatricesDVerticesPipeline.get(),bufferAndUniformPipelineLayout.get(),
+			          vector<vk::Buffer>{ packedDAttribute1.get(),packedDAttribute2.get(),packedDAttribute3.get() },
+			          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		} else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// textured phong with double precision matrices and vertices in GS test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedInGSDMatricesDVerticesPipeline.get(),bufferAndUniformInGSPipelineLayout.get(),
-		          vector<vk::Buffer>{ packedDAttribute1.get(),packedDAttribute2.get(),packedDAttribute3.get() },
-		          vector<vk::DescriptorSet>{ phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		if(enabledFeatures.shaderFloat64 && enabledFeatures.geometryShader) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+					  phongTexturedInGSDMatricesDVerticesPipeline.get(),bufferAndUniformInGSPipelineLayout.get(),
+					  vector<vk::Buffer>{ packedDAttribute1.get(),packedDAttribute2.get(),packedDAttribute3.get() },
+					  vector<vk::DescriptorSet>{ phongTextureThreeDMatricesUsingGSAndAttributesDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		} else {
+			tests[timestampIndex/2].enabled=false;
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+		}
 
 		// end command buffer
 		cb.end();
@@ -4965,7 +5052,13 @@ int main(int argc,char** argv)
 			);
 			size_t i=0;
 			for(Test& t : tests) {
-				t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
+				if(t.enabled)
+					t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
+				else
+					// neutralize invalid timestamps
+					// e.g. avoid "run in parallel" error
+					if(i==0)  timestamps[0]=timestamps[1]=0;
+					else  timestamps[i]=timestamps[i+1]=timestamps[i-1];
 				i+=2;
 			}
 			if(!is_sorted(timestamps.begin(),timestamps.end()))
