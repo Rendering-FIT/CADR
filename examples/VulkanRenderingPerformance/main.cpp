@@ -92,6 +92,7 @@ static vk::UniqueShaderModule phongTexturedInGSDMatricesDVerticesVS;
 static vk::UniqueShaderModule phongTexturedInGSDMatricesDVerticesGS;
 static vk::UniqueShaderModule constantColorFS;
 static vk::UniqueShaderModule phongTexturedFS;
+static vk::UniqueShaderModule fullscreenQuadVS;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
@@ -185,6 +186,7 @@ static vk::UniquePipeline phongTexturedDMatricesOnlyInputPipeline;
 static vk::UniquePipeline phongTexturedDMatricesPipeline;
 static vk::UniquePipeline phongTexturedDMatricesDVerticesPipeline;
 static vk::UniquePipeline phongTexturedInGSDMatricesDVerticesPipeline;
+static vk::UniquePipeline fillrateContantColorPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -227,6 +229,7 @@ static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
 static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
 static uint32_t numTriangles;
 static const unsigned triangleSize=0;
+static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad.vert is still drawing to the clip space (by gl_InstanceIndex)
 
 // shader code in SPIR-V binary
 static const uint32_t attributelessConstantOutputVS_spirv[]={
@@ -337,12 +340,18 @@ static const uint32_t constantColorFS_spirv[]={
 static const uint32_t phongTexturedFS_spirv[]={
 #include "phongTextured.frag.spv"
 };
+static const uint32_t fullscreenQuadVS_spirv[]={
+#include "fullscreenQuad.vert.spv"
+};
 
 struct Test {
 	vector<uint64_t> renderingTimes;
 	string resultString;
 	bool enabled = true;
-	Test(const char* resultString_) : resultString(resultString_)  {}
+	enum class Type { VertexThroughput, FragmentThroughput };
+	Type type;
+	double numRenderedItems;
+	Test(const char* resultString_,Type t=Type::VertexThroughput) : resultString(resultString_), type(t)  {}
 };
 static vector<Test> tests={
 	Test("One draw call, attributeless, constant output"),
@@ -381,6 +390,8 @@ static vector<Test> tests={
 	Test("Phong, texture, 3xMatrix, dmatrices"),
 	Test("Phong, texture, 3xMatrix, dmatrices, dvertices"),
 	Test("Phong, texture, 3xMatrix, in GS, dmat., dvert."),
+	Test("Fullscreen quad 1x",Test::Type::FragmentThroughput),
+	Test("Fullscreen quad 10x",Test::Type::FragmentThroughput),
 };
 
 
@@ -1139,6 +1150,14 @@ static void init(size_t deviceIndex)
 				phongTexturedFS_spirv           // pCode
 			)
 		);
+	fullscreenQuadVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),   // flags
+				sizeof(fullscreenQuadVS_spirv),  // codeSize
+				fullscreenQuadVS_spirv           // pCode
+			)
+		);
 
 	// pipeline cache
 	pipelineCache=
@@ -1816,7 +1835,9 @@ static void recreateSwapchainAndPipeline()
 		[](vk::ShaderModule vsModule,vk::ShaderModule fsModule,vk::PipelineLayout pipelineLayout,
 		   const vk::Extent2D currentSurfaceExtent,
 		   const vk::PipelineVertexInputStateCreateInfo* vertexInputState=nullptr,
-			vk::ShaderModule gsModule=nullptr)->vk::UniquePipeline
+		   vk::ShaderModule gsModule=nullptr,
+		   vk::PrimitiveTopology topology=vk::PrimitiveTopology::eTriangleList)
+		   ->vk::UniquePipeline
 		{
 			return device->createGraphicsPipelineUnique(
 				pipelineCache.get(),
@@ -1870,7 +1891,7 @@ static void recreateSwapchainAndPipeline()
 						},
 					&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 						vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-						vk::PrimitiveTopology::eTriangleList,  // topology
+						topology,  // topology
 						VK_FALSE  // primitiveRestartEnable
 					},
 					nullptr, // pTessellationState
@@ -2556,6 +2577,15 @@ static void recreateSwapchainAndPipeline()
 				               }.data()
 			               },
 			               phongTexturedInGSDMatricesDVerticesGS.get());
+	fillrateContantColorPipeline=
+		createPipeline(fullscreenQuadVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               nullptr,
+		               vk::PrimitiveTopology::eTriangleStrip);
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
@@ -4898,6 +4928,44 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
+		// fillrate constant color test
+		tests[timestampIndex/2].numRenderedItems=1.;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fillrateContantColorPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// fillrate constant color test
+		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fillrateContantColorPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,numFullscreenQuads,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
 		// end command buffer
 		cb.end();
 		assert(timestampIndex==tests.size()*2 && "Number of timestamps and number of tests mismatch.");
@@ -5069,13 +5137,28 @@ int main(int argc,char** argv)
 			if(totalMeasurementTime>2.) {
 				cout<<"Triangle throughput:"<<endl;
 				for(Test& t : tests)
-					if(t.enabled) {
-						sort(t.renderingTimes.begin(),t.renderingTimes.end());
-						double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
-						cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
+					if(t.type==Test::Type::VertexThroughput) {
+						if(t.enabled) {
+							sort(t.renderingTimes.begin(),t.renderingTimes.end());
+							double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+							cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
+						}
+						else
+							cout<<"   "<<t.resultString<<": not supported"<<endl;
 					}
-					else
-						cout<<"   "<<t.resultString<<": not supported"<<endl;
+				cout<<"Fragment throughput:"<<endl;
+				size_t numScreenFragments=size_t(currentSurfaceExtent.width)*currentSurfaceExtent.height;
+				for(Test& t : tests)
+					if(t.type==Test::Type::FragmentThroughput) {
+						if(t.enabled) {
+							sort(t.renderingTimes.begin(),t.renderingTimes.end());
+							double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+							cout<<"   "<<t.resultString<<": "<<double(numScreenFragments)*t.numRenderedItems/time_ns*1e9/1e9<<" * 1e9 per second"<<endl;
+							cout<<"      measurement time: "<<time_ns/1e6<<"ms"<<endl;
+						}
+						else
+							cout<<"   "<<t.resultString<<": not supported"<<endl;
+					}
 				cout<<"Number of measurements of each test: "<<tests.front().renderingTimes.size()<<endl;
 				cout<<"Total time of all measurements: "<<totalMeasurementTime<<" seconds"<<endl;
 				break;

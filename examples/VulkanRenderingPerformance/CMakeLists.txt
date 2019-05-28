@@ -46,6 +46,7 @@ set(APP_SHADERS
 	phongTexturedInGSDMatricesDVertices.geom
 	constantColor.frag
 	phongTextured.frag
+	fullscreenQuad.vert
 	)
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
