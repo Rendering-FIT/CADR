@@ -93,6 +93,9 @@ static vk::UniqueShaderModule phongTexturedInGSDMatricesDVerticesGS;
 static vk::UniqueShaderModule constantColorFS;
 static vk::UniqueShaderModule phongTexturedFS;
 static vk::UniqueShaderModule fullscreenQuadVS;
+static vk::UniqueShaderModule fullscreenQuadFourInterpolatorsVS;
+static vk::UniqueShaderModule fullscreenQuadFourSmoothInterpolatorsFS;
+static vk::UniqueShaderModule fullscreenQuadFourFlatInterpolatorsFS;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
@@ -187,6 +190,8 @@ static vk::UniquePipeline phongTexturedDMatricesPipeline;
 static vk::UniquePipeline phongTexturedDMatricesDVerticesPipeline;
 static vk::UniquePipeline phongTexturedInGSDMatricesDVerticesPipeline;
 static vk::UniquePipeline fillrateContantColorPipeline;
+static vk::UniquePipeline fillrateFourSmoothInterpolatorsPipeline;
+static vk::UniquePipeline fillrateFourFlatInterpolatorsPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -343,6 +348,15 @@ static const uint32_t phongTexturedFS_spirv[]={
 static const uint32_t fullscreenQuadVS_spirv[]={
 #include "fullscreenQuad.vert.spv"
 };
+static const uint32_t fullscreenQuadFourInterpolatorsVS_spirv[]={
+#include "fullscreenQuadFourInterpolators.vert.spv"
+};
+static const uint32_t fullscreenQuadFourSmoothInterpolatorsFS_spirv[]={
+#include "fullscreenQuadFourSmoothInterpolators.frag.spv"
+};
+static const uint32_t fullscreenQuadFourFlatInterpolatorsFS_spirv[]={
+#include "fullscreenQuadFourFlatInterpolators.frag.spv"
+};
 
 struct Test {
 	vector<uint64_t> renderingTimes;
@@ -392,6 +406,8 @@ static vector<Test> tests={
 	Test("Phong, texture, 3xMatrix, in GS, dmat., dvert."),
 	Test("Fullscreen quad 1x",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad 10x",Test::Type::FragmentThroughput),
+	Test("Fullscreen quad 10x, four smooth interpolators",Test::Type::FragmentThroughput),
+	Test("Fullscreen quad 10x, four flat interpolators",Test::Type::FragmentThroughput),
 };
 
 
@@ -1158,6 +1174,30 @@ static void init(size_t deviceIndex)
 				fullscreenQuadVS_spirv           // pCode
 			)
 		);
+	fullscreenQuadFourInterpolatorsVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                    // flags
+				sizeof(fullscreenQuadFourInterpolatorsVS_spirv),  // codeSize
+				fullscreenQuadFourInterpolatorsVS_spirv           // pCode
+			)
+		);
+	fullscreenQuadFourSmoothInterpolatorsFS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                          // flags
+				sizeof(fullscreenQuadFourSmoothInterpolatorsFS_spirv),  // codeSize
+				fullscreenQuadFourSmoothInterpolatorsFS_spirv           // pCode
+			)
+		);
+	fullscreenQuadFourFlatInterpolatorsFS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                        // flags
+				sizeof(fullscreenQuadFourFlatInterpolatorsFS_spirv),  // codeSize
+				fullscreenQuadFourFlatInterpolatorsFS_spirv           // pCode
+			)
+		);
 
 	// pipeline cache
 	pipelineCache=
@@ -1601,6 +1641,7 @@ static void recreateSwapchainAndPipeline()
 	twoPackedBuffersUsingStructSlowPipeline.reset();
 	twoPackedAttributesAndMatrixPipeline.reset();
 	twoPackedBuffersAndMatrixPipeline.reset();
+	singlePackedBufferPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
 	geometryShaderConstantOutputPipeline.reset();
@@ -1616,6 +1657,9 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedDMatricesPipeline.reset();
 	phongTexturedDMatricesDVerticesPipeline.reset();
 	phongTexturedInGSDMatricesDVerticesPipeline.reset();
+	fillrateContantColorPipeline.reset();
+	fillrateFourSmoothInterpolatorsPipeline.reset();
+	fillrateFourFlatInterpolatorsPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
@@ -2579,6 +2623,24 @@ static void recreateSwapchainAndPipeline()
 			               phongTexturedInGSDMatricesDVerticesGS.get());
 	fillrateContantColorPipeline=
 		createPipeline(fullscreenQuadVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               nullptr,
+		               vk::PrimitiveTopology::eTriangleStrip);
+	fillrateFourSmoothInterpolatorsPipeline=
+		createPipeline(fullscreenQuadFourInterpolatorsVS.get(),fullscreenQuadFourSmoothInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               nullptr,
+		               vk::PrimitiveTopology::eTriangleStrip);
+	fillrateFourFlatInterpolatorsPipeline=
+		createPipeline(fullscreenQuadFourInterpolatorsVS.get(),fullscreenQuadFourFlatInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
@@ -4928,7 +4990,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// fillrate constant color test
+		// fillrate constant color test, 1x whole screen
 		tests[timestampIndex/2].numRenderedItems=1.;
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          fillrateContantColorPipeline.get(),simplePipelineLayout.get(),
@@ -4947,10 +5009,48 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// fillrate constant color test
+		// fillrate constant color test, 10x whole screen
 		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          fillrateContantColorPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,numFullscreenQuads,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// fillrate four smooth interpolators test
+		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fillrateFourSmoothInterpolatorsPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,numFullscreenQuads,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// fillrate four flat interpolators test
+		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fillrateFourFlatInterpolatorsPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(

@@ -47,6 +47,9 @@ set(APP_SHADERS
 	constantColor.frag
 	phongTextured.frag
 	fullscreenQuad.vert
+	fullscreenQuadFourInterpolators.vert
+	fullscreenQuadFourSmoothInterpolators.frag
+	fullscreenQuadFourFlatInterpolators.frag
 	)
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
