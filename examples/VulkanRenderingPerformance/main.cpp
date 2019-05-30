@@ -96,6 +96,8 @@ static vk::UniqueShaderModule fullscreenQuadVS;
 static vk::UniqueShaderModule fullscreenQuadFourInterpolatorsVS;
 static vk::UniqueShaderModule fullscreenQuadFourSmoothInterpolatorsFS;
 static vk::UniqueShaderModule fullscreenQuadFourFlatInterpolatorsFS;
+static vk::UniqueShaderModule fullscreenQuadTexturedPhongInterpolatorsVS;
+static vk::UniqueShaderModule fullscreenQuadTexturedPhongInterpolatorsFS;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout singleUniformPipelineLayout;
@@ -192,6 +194,7 @@ static vk::UniquePipeline phongTexturedInGSDMatricesDVerticesPipeline;
 static vk::UniquePipeline fillrateContantColorPipeline;
 static vk::UniquePipeline fillrateFourSmoothInterpolatorsPipeline;
 static vk::UniquePipeline fillrateFourFlatInterpolatorsPipeline;
+static vk::UniquePipeline fillrateTexturedPhongInterpolatorsPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -234,7 +237,7 @@ static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
 static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
 static uint32_t numTriangles;
 static const unsigned triangleSize=0;
-static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad.vert is still drawing to the clip space (by gl_InstanceIndex)
+static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad*.vert is still drawing to the clip space (by gl_InstanceIndex)
 
 // shader code in SPIR-V binary
 static const uint32_t attributelessConstantOutputVS_spirv[]={
@@ -357,6 +360,12 @@ static const uint32_t fullscreenQuadFourSmoothInterpolatorsFS_spirv[]={
 static const uint32_t fullscreenQuadFourFlatInterpolatorsFS_spirv[]={
 #include "fullscreenQuadFourFlatInterpolators.frag.spv"
 };
+static const uint32_t fullscreenQuadTexturedPhongInterpolatorsVS_spirv[]={
+#include "fullscreenQuadTexturedPhongInterpolators.vert.spv"
+};
+static const uint32_t fullscreenQuadTexturedPhongInterpolatorsFS_spirv[]={
+#include "fullscreenQuadTexturedPhongInterpolators.frag.spv"
+};
 
 struct Test {
 	vector<uint64_t> renderingTimes;
@@ -408,6 +417,7 @@ static vector<Test> tests={
 	Test("Fullscreen quad 10x",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad 10x, four smooth interpolators",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad 10x, four flat interpolators",Test::Type::FragmentThroughput),
+	Test("Fullscreen quad 10x, textured Phong interp.",Test::Type::FragmentThroughput),
 };
 
 
@@ -1198,6 +1208,22 @@ static void init(size_t deviceIndex)
 				fullscreenQuadFourFlatInterpolatorsFS_spirv           // pCode
 			)
 		);
+	fullscreenQuadTexturedPhongInterpolatorsVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                             // flags
+				sizeof(fullscreenQuadTexturedPhongInterpolatorsVS_spirv),  // codeSize
+				fullscreenQuadTexturedPhongInterpolatorsVS_spirv           // pCode
+			)
+		);
+	fullscreenQuadTexturedPhongInterpolatorsFS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                             // flags
+				sizeof(fullscreenQuadTexturedPhongInterpolatorsFS_spirv),  // codeSize
+				fullscreenQuadTexturedPhongInterpolatorsFS_spirv           // pCode
+			)
+		);
 
 	// pipeline cache
 	pipelineCache=
@@ -1660,6 +1686,7 @@ static void recreateSwapchainAndPipeline()
 	fillrateContantColorPipeline.reset();
 	fillrateFourSmoothInterpolatorsPipeline.reset();
 	fillrateFourFlatInterpolatorsPipeline.reset();
+	fillrateTexturedPhongInterpolatorsPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
@@ -2641,6 +2668,15 @@ static void recreateSwapchainAndPipeline()
 		               vk::PrimitiveTopology::eTriangleStrip);
 	fillrateFourFlatInterpolatorsPipeline=
 		createPipeline(fullscreenQuadFourInterpolatorsVS.get(),fullscreenQuadFourFlatInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               nullptr,
+		               vk::PrimitiveTopology::eTriangleStrip);
+	fillrateTexturedPhongInterpolatorsPipeline=
+		createPipeline(fullscreenQuadTexturedPhongInterpolatorsVS.get(),fullscreenQuadTexturedPhongInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
@@ -4806,7 +4842,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// textured phong four attribute five matrices test
+		// textured Phong four attribute five matrices test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedFourAttributesFiveMatricesPipeline.get(),twoBuffersAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),normalAttribute.get(),
@@ -4825,7 +4861,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// textured phong four attribute test
+		// textured Phong four attribute test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedFourAttributesPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),normalAttribute.get(),
@@ -4844,7 +4880,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// textured phong test
+		// textured Phong test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -4862,7 +4898,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// textured phong with double precision matrices on input but computation in standard floats test
+		// textured Phong with double precision matrices on input but computation in standard floats test
 		if(enabledFeatures.shaderFloat64) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          phongTexturedDMatricesOnlyInputPipeline.get(),bufferAndUniformPipelineLayout.get(),
@@ -4894,7 +4930,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// textured phong with double precision matrices test
+		// textured Phong with double precision matrices test
 		if(enabledFeatures.shaderFloat64) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          phongTexturedDMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
@@ -4926,7 +4962,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// textured phong with double precision matrices and vertices test
+		// textured Phong with double precision matrices and vertices test
 		if(enabledFeatures.shaderFloat64) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          phongTexturedDMatricesDVerticesPipeline.get(),bufferAndUniformPipelineLayout.get(),
@@ -4958,7 +4994,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// textured phong with double precision matrices and vertices in GS test
+		// textured Phong with double precision matrices and vertices in GS test
 		if(enabledFeatures.shaderFloat64 && enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 					  phongTexturedInGSDMatricesDVerticesPipeline.get(),bufferAndUniformInGSPipelineLayout.get(),
@@ -5051,6 +5087,25 @@ static void recreateSwapchainAndPipeline()
 		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          fillrateFourFlatInterpolatorsPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,numFullscreenQuads,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// fillrate textured Phong interpolators test
+		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fillrateTexturedPhongInterpolatorsPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
