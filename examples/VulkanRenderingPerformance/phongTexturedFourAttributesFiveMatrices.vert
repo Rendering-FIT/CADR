@@ -23,7 +23,7 @@ layout(binding=2) uniform UniformBufferObject {
 out gl_PerVertex {
 	vec4 gl_Position;
 };
-layout(location=0) out vec4 eyePosition;
+layout(location=0) out vec3 eyePosition;
 layout(location=1) out vec3 eyeNormal;
 layout(location=2) out vec4 outColor;
 layout(location=3) out vec2 outTexCoord;
@@ -32,8 +32,9 @@ layout(location=3) out vec2 outTexCoord;
 void main() {
 
 	// compute outputs
-	eyePosition=viewMatrix*modelMatrix[gl_VertexIndex/3]*inPosition;
-	gl_Position=projectionMatrix*eyePosition;
+	vec4 eyePosition4=viewMatrix*modelMatrix[gl_VertexIndex/3]*inPosition;
+	gl_Position=projectionMatrix*eyePosition4;
+	eyePosition=eyePosition4.xyz;
 	eyeNormal=normalViewMatrix*normalMatrix[gl_VertexIndex/3]*inNormal;
 	outColor=inColor;
 	outTexCoord=inTexCoord;
