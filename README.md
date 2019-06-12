@@ -16,9 +16,10 @@ Prerequisities:
 * Linux: libx11-dev package
 
 ## Vulkan issues
-If applications on Linux are failing with error message:
-Failed because of Vulkan exception: vk::createInstanceUnique: ErrorIncompatibleDriver,
-it might be caused by no Vulkan driver installed. On Ubuntu distribution, you may
-check if there are any *.json files in /usr/share/vulkan/icd.d/.
+If applications are failing with error message:
+"Failed because of Vulkan exception: vk::createInstanceUnique: ErrorIncompatibleDriver" on Linux,
+"Failed because of Vulkan exception: vk::createInstanceUnique: ErrorInitializationFailed" on Windows,
+it might be caused by no Vulkan driver installed. On Windows, try to reinstall graphics driver.
+On Ubuntu distribution, you may check if there are any *.json files in /usr/share/vulkan/icd.d/.
 For AMD and Intel, installation of mesa-vulkan-drivers package might solve the problem.
-For Nvidia, installation of their graphics drivers might solve the problem.
+For Nvidia, installation of their graphics drivers could resolve the problem.
