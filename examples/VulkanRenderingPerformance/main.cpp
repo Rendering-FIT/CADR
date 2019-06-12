@@ -241,6 +241,10 @@ static vk::UniqueDeviceMemory singlePackedBufferMemory;
 static vk::UniqueDeviceMemory packedDAttribute1Memory;
 static vk::UniqueDeviceMemory packedDAttribute2Memory;
 static vk::UniqueDeviceMemory packedDAttribute3Memory;
+static vk::UniqueImage singleTexelImage;
+static vk::UniqueDeviceMemory singleTexelImageMemory;
+static vk::UniqueImageView singleTexelImageView;
+static vk::UniqueSampler trilinearSampler;
 static vk::UniqueQueryPool timestampPool;
 static uint32_t timestampValidBits=0;
 static float timestampPeriod_ns=0;
@@ -579,6 +583,25 @@ static vk::UniqueDeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropert
 						)
 					);
 	throw std::runtime_error("No suitable memory type found for the buffer.");
+}
+
+
+// allocate memory for images
+static vk::UniqueDeviceMemory allocateMemory(vk::Image image,vk::MemoryPropertyFlags requiredFlags)
+{
+	vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(image);
+	vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
+	for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+		if(memoryRequirements.memoryTypeBits&(1<<i))
+			if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
+				return
+					device->allocateMemoryUnique(
+						vk::MemoryAllocateInfo(
+							memoryRequirements.size,  // allocationSize
+							i                         // memoryTypeIndex
+						)
+					);
+	throw std::runtime_error("No suitable memory type found for the image.");
 }
 
 
@@ -1684,6 +1707,70 @@ static void init(size_t deviceIndex)
 			}
 		);
 
+	// textures
+	singleTexelImage=
+		device->createImageUnique(
+			vk::ImageCreateInfo(
+				vk::ImageCreateFlags(),  // flags
+				vk::ImageType::e2D,      // imageType
+				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::Extent3D(1,1,1),     // extent
+				1,                       // mipLevels
+				1,                       // arrayLayers
+				vk::SampleCountFlagBits::e1,  // samples
+				vk::ImageTiling::eOptimal,    // tiling
+				vk::ImageUsageFlagBits::eSampled|vk::ImageUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr,                      // pQueueFamilyIndices
+				vk::ImageLayout::eUndefined   // initialLayout
+			)
+		);
+	singleTexelImageMemory=allocateMemory(singleTexelImage.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	device->bindImageMemory(
+		singleTexelImage.get(),  // image
+		singleTexelImageMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	singleTexelImageView=
+		device->createImageViewUnique(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),  // flags
+				singleTexelImage.get(),      // image
+				vk::ImageViewType::e2D,      // viewType
+				vk::Format::eR8G8B8A8Unorm,  // format
+				vk::ComponentMapping(),      // components
+				vk::ImageSubresourceRange(   // subresourceRange
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				)
+			)
+		);
+	trilinearSampler=
+		device->createSamplerUnique(
+			vk::SamplerCreateInfo(
+				vk::SamplerCreateFlags(),  // flags
+				vk::Filter::eLinear,   // magFilter
+				vk::Filter::eLinear,   // minFilter
+				vk::SamplerMipmapMode::eLinear,  // mipmapMode
+				vk::SamplerAddressMode::eClampToEdge,  // addressModeU
+				vk::SamplerAddressMode::eClampToEdge,  // addressModeV
+				vk::SamplerAddressMode::eClampToEdge,  // addressModeW
+				0.f,  // mipLodBias
+				VK_FALSE,  // anisotropyEnable
+				0.f,  // maxAnisotropy
+				VK_FALSE,  // compareEnable
+				vk::CompareOp::eNever,  // compareOp
+				0.f,  // minLod
+				0.f,  // maxLod
+				vk::BorderColor::eFloatTransparentBlack,  // borderColor
+				VK_FALSE  // unnormalizedCoordinates
+			)
+		);
+
 	// command pool
 	commandPool=
 		device->createCommandPoolUnique(
@@ -1910,21 +1997,7 @@ static void recreateSwapchainAndPipeline()
 		);
 
 	// depth image memory
-	depthImageMemory=
-		device->allocateMemoryUnique(
-			[](vk::Image depthImage)->vk::MemoryAllocateInfo{
-				vk::MemoryRequirements memoryRequirements=device->getImageMemoryRequirements(depthImage);
-				vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
-				for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-					if(memoryRequirements.memoryTypeBits&(1<<i))
-						if(memoryProperties.memoryTypes[i].propertyFlags&vk::MemoryPropertyFlagBits::eDeviceLocal)
-							return vk::MemoryAllocateInfo(
-									memoryRequirements.size,  // allocationSize
-									i                         // memoryTypeIndex
-								);
-				throw std::runtime_error("No suitable memory type found for depth buffer.");
-			}(depthImage.get())
-		);
+	depthImageMemory=allocateMemory(depthImage.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindImageMemory(
 		depthImage.get(),  // image
 		depthImageMemory.get(),  // memory
@@ -3640,7 +3713,7 @@ static void recreateSwapchainAndPipeline()
 			5.f,  // shininess
 		};
 		int32_t i[1] = {
-			0,    // textureMode
+			0x2100, // 0 - no texturing, 0x2100 - modulate, 0x1e01 - replace, 0x2101 - decal
 		};
 	} materialUniformData;
 	static_assert(materialUniformBufferSize==sizeof(materialUniformData),"materialUniformBufferSize must match size of materialUniformData");
@@ -3789,6 +3862,76 @@ static void recreateSwapchainAndPipeline()
 		indirectBuffer.get(),                // dstBuffer
 		1,                                   // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand))  // pRegions
+	);
+
+	// single texel image
+	StagingBuffer singleTexelStagingBuffer(4);
+	singleTexelStagingBuffer.map();
+	reinterpret_cast<uint32_t*>(singleTexelStagingBuffer.ptr)[0]=0xffffffff;
+	singleTexelStagingBuffer.unmap();
+	submitNowCommandBuffer->pipelineBarrier(
+		vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+		vk::PipelineStageFlagBits::eTransfer,  // dstStageMask
+		vk::DependencyFlags(),  // dependencyFlags
+		nullptr,  // memoryBarriers
+		nullptr,  // bufferMemoryBarriers
+		vk::ImageMemoryBarrier(  // imageMemoryBarriers
+			vk::AccessFlags(),  // srcAccessMask
+			vk::AccessFlagBits::eTransferWrite,  // dstAccessMask
+			vk::ImageLayout::eUndefined,  // oldLayout
+			vk::ImageLayout::eTransferDstOptimal,  // newLayout
+			VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+			VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+			singleTexelImage.get(),  // image
+			vk::ImageSubresourceRange(  // subresourceRange
+				vk::ImageAspectFlagBits::eColor,  // aspectMask
+				0,  // baseMipLevel
+				1,  // levelCount
+				0,  // baseArrayLayer
+				1   // layerCount
+			)
+		)
+	);
+	submitNowCommandBuffer->copyBufferToImage(
+		singleTexelStagingBuffer.buffer.get(),  // srcBuffer
+		singleTexelImage.get(),                 // dstImage
+		vk::ImageLayout::eTransferDstOptimal,   // dstImageLayout
+		vk::BufferImageCopy(  // regions
+			0,  // bufferOffset
+			0,  // bufferRowLength
+			0,  // bufferImageHeight
+			vk::ImageSubresourceLayers(  // imageSubresource
+				vk::ImageAspectFlagBits::eColor,  // aspectMask
+				0,  // mipLevel
+				0,  // baseArrayLayer
+				1   // layerCount
+			),
+			vk::Offset3D(0,0,0),  // imageOffset
+			vk::Extent3D(1,1,1)   // imageExtent
+		)
+	);
+	submitNowCommandBuffer->pipelineBarrier(
+		vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
+		vk::PipelineStageFlagBits::eFragmentShader,  // dstStageMask
+		vk::DependencyFlags(),  // dependencyFlags
+		nullptr,  // memoryBarriers
+		nullptr,  // bufferMemoryBarriers
+		vk::ImageMemoryBarrier(  // imageMemoryBarriers
+			vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
+			vk::AccessFlagBits::eShaderRead,  // dstAccessMask
+			vk::ImageLayout::eTransferDstOptimal,  // oldLayout
+			vk::ImageLayout::eShaderReadOnlyOptimal,  // newLayout
+			VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+			VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+			singleTexelImage.get(),  // image
+			vk::ImageSubresourceRange(  // subresourceRange
+				vk::ImageAspectFlagBits::eColor,  // aspectMask
+				0,  // baseMipLevel
+				1,  // levelCount
+				0,  // baseArrayLayer
+				1   // layerCount
+			)
+		)
 	);
 
 	// submit command buffer
@@ -4134,7 +4277,7 @@ static void recreateSwapchainAndPipeline()
 		nullptr  // descriptorCopies
 	);
 	device->updateDescriptorSets(
-		array<vk::WriteDescriptorSet,13>{{  // descriptorWrites
+		array<vk::WriteDescriptorSet,14>{{  // descriptorWrites
 			{
 				transformationThreeMatricesDescriptorSet,  // dstSet
 				0,  // dstBinding
@@ -4378,7 +4521,7 @@ static void recreateSwapchainAndPipeline()
 				}.data(),
 				nullptr  // pTexelBufferView
 			},
-			/*{
+			{
 				phongTexturedDescriptorSet,  // dstSet
 				3,  // dstBinding
 				0,  // dstArrayElement
@@ -4386,14 +4529,14 @@ static void recreateSwapchainAndPipeline()
 				vk::DescriptorType::eCombinedImageSampler,  // descriptorType
 				array<vk::DescriptorImageInfo,1>{  // pImageInfo
 					vk::DescriptorImageInfo(
-						vk::Sampler(),  // sampler
-						vk::ImageView(),  // imageView
-						vk::ImageLayout::eUndefined  // imageLayout
+						trilinearSampler.get(),      // sampler
+						singleTexelImageView.get(),  // imageView
+						vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
 					),
 				}.data(),
 				nullptr,  // pBufferInfo
 				nullptr  // pTexelBufferView
-			},*/
+			},
 		}},
 		nullptr  // descriptorCopies
 	);

@@ -6,23 +6,17 @@ layout(location=1) in smooth vec3 eyeNormal;
 layout(location=2) in smooth vec4 color;
 layout(location=3) in smooth vec2 texCoord;
 
-layout(binding=0) uniform Material {
-	vec3 ambientColor;
-	vec3 diffuseColor;
-	vec3 specularColor;
-	vec3 emissiveColor;
-	float shininess;
-	int textureMode; // 0 - no texturing, 0x2100 - modulate, 0x1e01 - replace, 0x2101 - decal, 0x0BE2 - blend
+layout(binding=0,std140) uniform Material {
+	vec4 materialData[3]; // ambient on offset 0, diffuse on offset 12, specular on offset 24, emissive on offset 36
+	layout(offset=48) float shininess;
+	layout(offset=52) int textureMode; // 0 - no texturing, 0x2100 - modulate, 0x1e01 - replace, 0x2101 - decal*/
 };
 layout(binding=1) uniform Global {
 	vec3 globalAmbientLight;
 };
 layout(binding=2) uniform Light {
 	vec4 lightPosition;
-	vec3 lightAttenuation;
-	vec3 ambientLight;
-	vec3 diffuseLight;
-	vec3 specularLight;
+	vec4 lightData[3]; // attenuation on offset 16, ambient on offset 28, diffuse on offset 40, specular on offset 52
 };
 layout(binding=3) uniform sampler2D textureSampler;
 
@@ -57,7 +51,7 @@ void main() {
 		// attenuation
 		float attenuation=1.;
 		if(lightPosition.w!=0.)
-			attenuation/=lightAttenuation[0]+lightAttenuation[1]*lLen+lightAttenuation[2]*lLen*lLen;
+			attenuation/=lightData[0].x+lightData[0].y*lLen+lightData[0].z*lLen*lLen;
 
 		// n - Normal of vertex, in eye coordinates
 		vec3 n=normalize(eyeNormal);
@@ -65,6 +59,17 @@ void main() {
 		// invert normals on back facing triangles
 		if(gl_FrontFacing==false)
 			n=-n;
+
+		// unpack material data
+		vec3 ambientColor=vec3(materialData[0].rgb);
+		vec3 diffuseColor=vec3(materialData[0].a,materialData[1].rg);
+		vec3 specularColor=vec3(materialData[1].ba,materialData[2].r);
+		vec3 emissiveColor=vec3(materialData[2].gba);
+
+		// unpack light data
+		vec3 ambientLight=vec3(lightData[0].a,lightData[1].rg);
+		vec3 diffuseLight=vec3(lightData[1].ba,lightData[2].r);
+		vec3 specularLight=vec3(lightData[2].gba);
 
 		// Lambert's diffuse reflection
 		float nDotL=dot(n,l);
