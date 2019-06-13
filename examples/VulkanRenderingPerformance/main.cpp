@@ -402,7 +402,8 @@ static vector<Test> tests={
 	Test("Indirect buffer instancing, attributeless"),
 	Test("Indirect buffer per-triangle record, attr.less"),
 	Test("Indirect buffer per-triangle record"),
-	Test("Per-triangle draw call, coordinates in attr."),
+	Test("Per-triangle drawCmd, attr.less, constant output"),
+	Test("Per-triangle drawCmd, coordinates in attr."),
 	Test("Coordinates in attribute"),
 	Test("Coordinates in buffer"),
 	Test("One attribute, constant uniform 1xMatrix"),
@@ -4799,7 +4800,26 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// per-triangle draw call test
+		// per-triangle drawCmd in command buffer, attributeless constant output test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		for(uint32_t i=0; i<numTriangles; i++)
+			cb.draw(3,1,numTriangles*3,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// per-triangle drawCmd test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
