@@ -53,6 +53,8 @@ set(APP_SHADERS
 	fullscreenQuadFourFlatInterpolators.frag
 	fullscreenQuadTexturedPhongInterpolators.vert
 	fullscreenQuadTexturedPhongInterpolators.frag
+	uniformColor4f.frag
+	uniformColor4b.frag
 	)
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
