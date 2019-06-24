@@ -101,6 +101,8 @@ static vk::UniqueShaderModule fullscreenQuadTexturedPhongInterpolatorsVS;
 static vk::UniqueShaderModule fullscreenQuadTexturedPhongInterpolatorsFS;
 static vk::UniqueShaderModule uniformColor4fFS;
 static vk::UniqueShaderModule uniformColor4bFS;
+static vk::UniqueShaderModule fullscreenQuadTwoVec3InterpolatorsVS;
+static vk::UniqueShaderModule phongNoSpecularFS;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout oneUniformVSPipelineLayout;
@@ -109,6 +111,7 @@ static vk::UniquePipelineLayout oneBufferPipelineLayout;
 static vk::UniquePipelineLayout twoBuffersPipelineLayout;
 static vk::UniquePipelineLayout threeBuffersPipelineLayout;
 static vk::UniquePipelineLayout threeBuffersInGSPipelineLayout;
+static vk::UniquePipelineLayout threeUniformFSPipelineLayout;
 static vk::UniquePipelineLayout bufferAndUniformPipelineLayout;
 static vk::UniquePipelineLayout bufferAndUniformInGSPipelineLayout;
 static vk::UniquePipelineLayout twoBuffersAndUniformPipelineLayout;
@@ -121,6 +124,7 @@ static vk::UniqueDescriptorSetLayout oneBufferDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout twoBuffersDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout threeBuffersDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout threeBuffersInGSDescriptorSetLayout;
+static vk::UniqueDescriptorSetLayout threeUniformFSDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout bufferAndUniformDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout bufferAndUniformInGSDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout twoBuffersAndUniformDescriptorSetLayout;
@@ -164,6 +168,7 @@ static vk::DescriptorSet singlePackedBufferDescriptorSet;
 static vk::DescriptorSet twoBuffersDescriptorSet;
 static vk::DescriptorSet threeBuffersDescriptorSet;
 static vk::DescriptorSet threeBuffersInGSDescriptorSet;
+static vk::DescriptorSet threeUniformFSDescriptorSet;
 static vk::DescriptorSet transformationThreeMatricesDescriptorSet;
 static vk::DescriptorSet transformationThreeDMatricesDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesDescriptorSet;
@@ -214,6 +219,7 @@ static vk::UniquePipeline fillrateTexturedPhongInterpolatorsPipeline;
 static vk::UniquePipeline fillrateTexturedPhongPipeline;
 static vk::UniquePipeline fillrateUniformColor4fPipeline;
 static vk::UniquePipeline fillrateUniformColor4bPipeline;
+static vk::UniquePipeline phongNoSpecularPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -398,6 +404,12 @@ static const uint32_t uniformColor4fFS_spirv[]={
 static const uint32_t uniformColor4bFS_spirv[]={
 #include "uniformColor4b.frag.spv"
 };
+static const uint32_t fullscreenQuadTwoVec3InterpolatorsVS_spirv[]={
+#include "fullscreenQuadTwoVec3Interpolators.vert.spv"
+};
+static const uint32_t phongNoSpecularFS_spirv[]={
+#include "phongNoSpecular.frag.spv"
+};
 
 struct Test {
 	vector<uint64_t> renderingTimes;
@@ -454,6 +466,7 @@ static vector<Test> tests={
 	Test("Fullscreen quad, Phong, texture",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad, uniform color4f",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad, uniform color4b",Test::Type::FragmentThroughput),
+	Test("Fullscreen quad, phong no specular",Test::Type::FragmentThroughput),
 };
 
 
@@ -1303,6 +1316,22 @@ static void init(size_t deviceIndex)
 				uniformColor4bFS_spirv           // pCode
 			)
 		);
+	fullscreenQuadTwoVec3InterpolatorsVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                       // flags
+				sizeof(fullscreenQuadTwoVec3InterpolatorsVS_spirv),  // codeSize
+				fullscreenQuadTwoVec3InterpolatorsVS_spirv           // pCode
+			)
+		);
+	phongNoSpecularFS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),    // flags
+				sizeof(phongNoSpecularFS_spirv),  // codeSize
+				phongNoSpecularFS_spirv           // pCode
+			)
+		);
 
 	// pipeline cache
 	pipelineCache=
@@ -1441,6 +1470,36 @@ static void init(size_t deviceIndex)
 						vk::DescriptorType::eStorageBuffer,  // descriptorType
 						1,  // descriptorCount
 						vk::ShaderStageFlagBits::eGeometry,  // stageFlags
+						nullptr  // pImmutableSamplers
+					)
+				}.data()
+			)
+		);
+	threeUniformFSDescriptorSetLayout=
+		device->createDescriptorSetLayoutUnique(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlags(),  // flags
+				3,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,3>{  // pBindings
+					vk::DescriptorSetLayoutBinding(
+						0,  // binding
+						vk::DescriptorType::eUniformBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eFragment,  // stageFlags
+						nullptr  // pImmutableSamplers
+					),
+					vk::DescriptorSetLayoutBinding(
+						1,  // binding
+						vk::DescriptorType::eUniformBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eFragment,  // stageFlags
+						nullptr  // pImmutableSamplers
+					),
+					vk::DescriptorSetLayoutBinding(
+						2,  // binding
+						vk::DescriptorType::eUniformBuffer,  // descriptorType
+						1,  // descriptorCount
+						vk::ShaderStageFlagBits::eFragment,  // stageFlags
 						nullptr  // pImmutableSamplers
 					)
 				}.data()
@@ -1705,6 +1764,16 @@ static void init(size_t deviceIndex)
 				nullptr  // pPushConstantRanges
 			}
 		);
+	threeUniformFSPipelineLayout=
+		device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				1,       // setLayoutCount
+				&threeUniformFSDescriptorSetLayout.get(),  // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
 	bufferAndUniformPipelineLayout=
 		device->createPipelineLayoutUnique(
 			vk::PipelineLayoutCreateInfo{
@@ -1906,6 +1975,7 @@ static void recreateSwapchainAndPipeline()
 	fillrateTexturedPhongPipeline.reset();
 	fillrateUniformColor4fPipeline.reset();
 	fillrateUniformColor4bPipeline.reset();
+	phongNoSpecularPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
@@ -2915,6 +2985,15 @@ static void recreateSwapchainAndPipeline()
 		               vk::PrimitiveTopology::eTriangleStrip);
 	fillrateUniformColor4bPipeline=
 		createPipeline(fullscreenQuadVS.get(),uniformColor4bFS.get(),oneUniformFSPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               nullptr,
+		               vk::PrimitiveTopology::eTriangleStrip);
+	phongNoSpecularPipeline=
+		createPipeline(fullscreenQuadTwoVec3InterpolatorsVS.get(),phongNoSpecularFS.get(),threeUniformFSPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
@@ -4040,12 +4119,12 @@ static void recreateSwapchainAndPipeline()
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				17,  // maxSets
+				18,  // maxSets
 				3,  // poolSizeCount
 				array<vk::DescriptorPoolSize,3>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eUniformBuffer,  // type
-						12  // descriptorCount
+						15  // descriptorCount
 					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
@@ -4136,6 +4215,14 @@ static void recreateSwapchainAndPipeline()
 				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&threeBuffersInGSDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
+	threeUniformFSDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&threeUniformFSDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	transformationThreeMatricesDescriptorSet=
@@ -4410,7 +4497,7 @@ static void recreateSwapchainAndPipeline()
 		nullptr  // descriptorCopies
 	);
 	device->updateDescriptorSets(
-		array<vk::WriteDescriptorSet,14>{{  // descriptorWrites
+		array<vk::WriteDescriptorSet,15>{{  // descriptorWrites
 			{
 				transformationThreeMatricesDescriptorSet,  // dstSet
 				0,  // dstBinding
@@ -4668,6 +4755,32 @@ static void recreateSwapchainAndPipeline()
 					),
 				}.data(),
 				nullptr,  // pBufferInfo
+				nullptr  // pTexelBufferView
+			},
+			{
+				threeUniformFSDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				3,  // descriptorCount
+				vk::DescriptorType::eUniformBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,3>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						materialUniformBuffer.get(),  // buffer
+						0,  // offset
+						materialUniformBufferSize  // range
+					),
+					vk::DescriptorBufferInfo(
+						globalLightUniformBuffer.get(),  // buffer
+						0,  // offset
+						globalLightUniformBufferSize  // range
+					),
+					vk::DescriptorBufferInfo(
+						lightUniformBuffer.get(),  // buffer
+						0,  // offset
+						lightUniformBufferSize  // range
+					),
+				}.data(),
 				nullptr  // pTexelBufferView
 			},
 		}},
@@ -5731,6 +5844,25 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
+		// fillrate phong without specular computations test
+		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongNoSpecularPipeline.get(),threeUniformFSPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ threeUniformFSDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,numFullscreenQuads,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
 		// end command buffer
 		cb.end();
 		assert(timestampIndex==tests.size()*2 && "Number of timestamps and number of tests mismatch.");
@@ -5919,7 +6051,9 @@ int main(int argc,char** argv)
 							sort(t.renderingTimes.begin(),t.renderingTimes.end());
 							double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
 							cout<<"   "<<t.resultString<<": "<<double(numScreenFragments)*t.numRenderedItems/time_ns*1e9/1e9<<" * 1e9 per second"<<endl;
+						#if 0 // tuning of tests to not take too long
 							cout<<"      measurement time: "<<time_ns/1e6<<"ms"<<endl;
+						#endif
 						}
 						else
 							cout<<"   "<<t.resultString<<": not supported"<<endl;

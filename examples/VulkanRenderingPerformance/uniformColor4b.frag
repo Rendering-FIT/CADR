@@ -1,7 +1,7 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(binding=0,std140) uniform Color {
+layout(binding=0) uniform Color {
 	uint color;
 };
 
