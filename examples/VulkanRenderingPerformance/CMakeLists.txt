@@ -47,6 +47,7 @@ set(APP_SHADERS
 	constantColor.frag
 	phongTexturedDummy.frag
 	phongTextured.frag
+	phongTexturedNotPacked.frag
 	fullscreenQuad.vert
 	fullscreenQuadFourInterpolators.vert
 	fullscreenQuadFourSmoothInterpolators.frag
