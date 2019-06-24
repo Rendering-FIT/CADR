@@ -103,6 +103,7 @@ static vk::UniqueShaderModule uniformColor4fFS;
 static vk::UniqueShaderModule uniformColor4bFS;
 static vk::UniqueShaderModule fullscreenQuadTwoVec3InterpolatorsVS;
 static vk::UniqueShaderModule phongNoSpecularFS;
+static vk::UniqueShaderModule phongNoSpecularSingleUniformFS;
 static vk::UniquePipelineCache pipelineCache;
 static vk::UniquePipelineLayout simplePipelineLayout;
 static vk::UniquePipelineLayout oneUniformVSPipelineLayout;
@@ -144,6 +145,7 @@ static vk::UniqueBuffer viewAndProjectionDMatricesUniformBuffer;
 static vk::UniqueBuffer materialUniformBuffer;
 static vk::UniqueBuffer globalLightUniformBuffer;
 static vk::UniqueBuffer lightUniformBuffer;
+static vk::UniqueBuffer allInOneLightingUniformBuffer;
 static vk::UniqueDeviceMemory singleMatrixUniformMemory;
 static vk::UniqueDeviceMemory sameMatrixAttributeMemory;  // not used now
 static vk::UniqueDeviceMemory sameMatrixBufferMemory;
@@ -157,6 +159,7 @@ static vk::UniqueDeviceMemory viewAndProjectionDMatricesMemory;
 static vk::UniqueDeviceMemory materialUniformBufferMemory;
 static vk::UniqueDeviceMemory globalLightUniformBufferMemory;
 static vk::UniqueDeviceMemory lightUniformBufferMemory;
+static vk::UniqueDeviceMemory allInOneLightingUniformBufferMemory;
 static vk::UniqueDescriptorPool descriptorPool;
 static vk::DescriptorSet oneUniformVSDescriptorSet;
 static vk::DescriptorSet one4fUniformFSDescriptorSet;
@@ -176,6 +179,7 @@ static vk::DescriptorSet transformationFiveMatricesUsingGSDescriptorSet;
 static vk::DescriptorSet transformationFiveMatricesUsingGSAndAttributesDescriptorSet;
 static vk::DescriptorSet phongTexturedThreeDMatricesUsingGSAndAttributesDescriptorSet;
 static vk::DescriptorSet phongTexturedDescriptorSet;
+static vk::DescriptorSet allInOneLightingUniformDescriptorSet;
 static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vk::UniqueImage depthImage;
@@ -220,6 +224,7 @@ static vk::UniquePipeline fillrateTexturedPhongPipeline;
 static vk::UniquePipeline fillrateUniformColor4fPipeline;
 static vk::UniquePipeline fillrateUniformColor4bPipeline;
 static vk::UniquePipeline phongNoSpecularPipeline;
+static vk::UniquePipeline phongNoSpecularSingleUniformPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vector<vk::UniqueCommandBuffer> commandBuffers;
@@ -410,6 +415,9 @@ static const uint32_t fullscreenQuadTwoVec3InterpolatorsVS_spirv[]={
 static const uint32_t phongNoSpecularFS_spirv[]={
 #include "phongNoSpecular.frag.spv"
 };
+static const uint32_t phongNoSpecularSingleUniformFS_spirv[]={
+#include "phongNoSpecularSingleUniform.frag.spv"
+};
 
 struct Test {
 	vector<uint64_t> renderingTimes;
@@ -463,10 +471,11 @@ static vector<Test> tests={
 	Test("Fullscreen quad 10x, four smooth interpolators",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad 10x, four flat interpolators",Test::Type::FragmentThroughput),
 	Test("Fullscreen quad 10x, textured Phong interp.",Test::Type::FragmentThroughput),
-	Test("Fullscreen quad, Phong, texture",Test::Type::FragmentThroughput),
-	Test("Fullscreen quad, uniform color4f",Test::Type::FragmentThroughput),
-	Test("Fullscreen quad, uniform color4b",Test::Type::FragmentThroughput),
-	Test("Fullscreen quad, phong no specular",Test::Type::FragmentThroughput),
+	Test("Phong, texture",Test::Type::FragmentThroughput),
+	Test("Uniform color4f",Test::Type::FragmentThroughput),
+	Test("Uniform color4b",Test::Type::FragmentThroughput),
+	Test("Phong no specular",Test::Type::FragmentThroughput),
+	Test("Phong no specular, single uniform",Test::Type::FragmentThroughput),
 };
 
 
@@ -1332,6 +1341,14 @@ static void init(size_t deviceIndex)
 				phongNoSpecularFS_spirv           // pCode
 			)
 		);
+	phongNoSpecularSingleUniformFS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                 // flags
+				sizeof(phongNoSpecularSingleUniformFS_spirv),  // codeSize
+				phongNoSpecularSingleUniformFS_spirv           // pCode
+			)
+		);
 
 	// pipeline cache
 	pipelineCache=
@@ -1976,6 +1993,7 @@ static void recreateSwapchainAndPipeline()
 	fillrateUniformColor4fPipeline.reset();
 	fillrateUniformColor4bPipeline.reset();
 	phongNoSpecularPipeline.reset();
+	phongNoSpecularSingleUniformPipeline.reset();
 	swapchainImageViews.clear();
 	coordinateAttribute.reset();
 	coordinateAttributeMemory.reset();
@@ -2027,6 +2045,8 @@ static void recreateSwapchainAndPipeline()
 	globalLightUniformBufferMemory.reset();
 	lightUniformBuffer.reset();
 	lightUniformBufferMemory.reset();
+	allInOneLightingUniformBuffer.reset();
+	allInOneLightingUniformBufferMemory.reset();
 	descriptorPool.reset();
 	timestampPool.reset();
 
@@ -3001,6 +3021,15 @@ static void recreateSwapchainAndPipeline()
 		               },
 		               nullptr,
 		               vk::PrimitiveTopology::eTriangleStrip);
+	phongNoSpecularSingleUniformPipeline=
+		createPipeline(fullscreenQuadTwoVec3InterpolatorsVS.get(),phongNoSpecularSingleUniformFS.get(),oneUniformFSPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               },
+		               nullptr,
+		               vk::PrimitiveTopology::eTriangleStrip);
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
@@ -3546,6 +3575,7 @@ static void recreateSwapchainAndPipeline()
 	constexpr size_t materialUniformBufferSize=4*12+4+4;
 	constexpr size_t globalLightUniformBufferSize=12;
 	constexpr size_t lightUniformBufferSize=16+4*12;
+	constexpr size_t allInOneLightingUniformBufferSize=6*16;
 	singleMatrixUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -3678,6 +3708,17 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	allInOneLightingUniformBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				allInOneLightingUniformBufferSize,  // size
+				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 	singleMatrixUniformMemory=
 		allocateMemory(singleMatrixUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	sameMatrixAttributeMemory=
@@ -3702,6 +3743,8 @@ static void recreateSwapchainAndPipeline()
 		allocateMemory(globalLightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	lightUniformBufferMemory=
 		allocateMemory(lightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	allInOneLightingUniformBufferMemory=
+		allocateMemory(allInOneLightingUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		singleMatrixUniformBuffer.get(),  // image
 		singleMatrixUniformMemory.get(),  // memory
@@ -3760,6 +3803,11 @@ static void recreateSwapchainAndPipeline()
 	device->bindBufferMemory(
 		lightUniformBuffer.get(),  // image
 		lightUniformBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		allInOneLightingUniformBuffer.get(),  // image
+		allInOneLightingUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 
@@ -3904,6 +3952,22 @@ static void recreateSwapchainAndPipeline()
 	memcpy(lightUniformStagingBuffer.ptr,lightUniformData,sizeof(lightUniformData));
 	lightUniformStagingBuffer.unmap();
 
+	// all-in-one lighting staging buffer
+	const float allInOneLightingUniformData[]{
+		0.8f,0.8f,0.8f,1.f,  // ambientColor
+		0.8f,0.8f,0.8f,1.f,  // diffuseColor
+		0.2f,0.2f,0.2f,0.f,  // globalAmbientLight
+		-0.4f,0.4f,0.2f,  // lightPosition
+		1.0f,0.0f,0.0f,  // lightAttenuation
+		0.2f,0.2f,0.2f,  // ambientLight
+		0.6f,0.6f,0.6f,  // diffuseLight
+	};
+	static_assert(allInOneLightingUniformBufferSize==sizeof(allInOneLightingUniformData),"allInOneLightingUniformBufferSize must match size of allInOneLightingUniformData");
+	StagingBuffer allInOneLightingUniformStagingBuffer(allInOneLightingUniformBufferSize);
+	allInOneLightingUniformStagingBuffer.map();
+	memcpy(allInOneLightingUniformStagingBuffer.ptr,allInOneLightingUniformData,sizeof(allInOneLightingUniformData));
+	allInOneLightingUniformStagingBuffer.unmap();
+
 	// copy data from staging to attributes, buffers and uniforms
 	submitNowCommandBuffer->copyBuffer(
 		singleMatrixStagingBuffer.buffer.get(),  // srcBuffer
@@ -3976,6 +4040,12 @@ static void recreateSwapchainAndPipeline()
 		lightUniformBuffer.get(),                // dstBuffer
 		1,                                       // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,lightUniformBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		allInOneLightingUniformStagingBuffer.buffer.get(),  // srcBuffer
+		allInOneLightingUniformBuffer.get(),                // dstBuffer
+		1,                                                  // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,allInOneLightingUniformBufferSize)  // pRegions
 	);
 
 	// indirect buffer
@@ -4119,12 +4189,12 @@ static void recreateSwapchainAndPipeline()
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				18,  // maxSets
+				19,  // maxSets
 				3,  // poolSizeCount
 				array<vk::DescriptorPoolSize,3>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eUniformBuffer,  // type
-						15  // descriptorCount
+						16  // descriptorCount
 					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
@@ -4279,6 +4349,14 @@ static void recreateSwapchainAndPipeline()
 				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&phongTexturedDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
+	allInOneLightingUniformDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&oneUniformFSDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	device->updateDescriptorSets(
@@ -4497,7 +4575,7 @@ static void recreateSwapchainAndPipeline()
 		nullptr  // descriptorCopies
 	);
 	device->updateDescriptorSets(
-		array<vk::WriteDescriptorSet,15>{{  // descriptorWrites
+		array<vk::WriteDescriptorSet,16>{{  // descriptorWrites
 			{
 				transformationThreeMatricesDescriptorSet,  // dstSet
 				0,  // dstBinding
@@ -4779,6 +4857,22 @@ static void recreateSwapchainAndPipeline()
 						lightUniformBuffer.get(),  // buffer
 						0,  // offset
 						lightUniformBufferSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
+				allInOneLightingUniformDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eUniformBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						allInOneLightingUniformBuffer.get(),  // buffer
+						0,  // offset
+						allInOneLightingUniformBufferSize  // range
 					),
 				}.data(),
 				nullptr  // pTexelBufferView
@@ -5850,6 +5944,25 @@ static void recreateSwapchainAndPipeline()
 		          phongNoSpecularPipeline.get(),threeUniformFSPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ threeUniformFSDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(4,numFullscreenQuads,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// fillrate phong without specular computations, single uniform test
+		tests[timestampIndex/2].numRenderedItems=numFullscreenQuads;
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongNoSpecularSingleUniformPipeline.get(),oneUniformFSPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ allInOneLightingUniformDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool

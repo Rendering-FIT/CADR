@@ -57,6 +57,7 @@ set(APP_SHADERS
 	uniformColor4b.frag
 	fullscreenQuadTwoVec3Interpolators.vert
 	phongNoSpecular.frag
+	phongNoSpecularSingleUniform.frag
 	)
 
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
