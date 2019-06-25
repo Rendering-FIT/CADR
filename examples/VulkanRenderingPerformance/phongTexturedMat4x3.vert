@@ -4,12 +4,12 @@
 layout(location=0) in uvec4 packedData1;  // 0: float posX, 1: float posY, 2: float posZ, 3: half normalZ + half posW
 layout(location=1) in uvec4 packedData2;  // 0: float texU, 1: float texV, 2: half normalX + half normalY, 3: uint color
 
-layout(std430,binding=0) restrict readonly buffer ModelMatrix {
-	layout(column_major) mat4 modelMatrix[];
+layout(binding=0) restrict readonly buffer ModelMatrix {
+	vec4 modelMatrix[];  // each matrix is composed of three vec4
 };
 
 layout(binding=1) uniform UniformBufferObject {
-	mat4 viewMatrix;
+	mat4x4 viewMatrix;
 	mat4 projectionMatrix;
 };
 
@@ -26,14 +26,17 @@ void main() {
 
 	// unpack data
 	vec2 extra=unpackHalf2x16(packedData1.w);
-	vec4 position=vec4(uintBitsToFloat(packedData1.xyz),extra.y);
+	vec3 position=uintBitsToFloat(packedData1.xyz);
 	vec3 normal=vec3(unpackHalf2x16(packedData2.z),extra.x);
 
 	// compute outputs
-	mat4 m=modelMatrix[gl_VertexIndex/3];
-	vec4 eyePosition4=viewMatrix*m*position;
-	gl_Position=projectionMatrix*eyePosition4;
-	eyePosition=eyePosition4.xyz;
+	uint matrixIndex=gl_VertexIndex/3*3;
+	mat4x3 m=mat4x3(modelMatrix[matrixIndex+0],
+	                modelMatrix[matrixIndex+1],
+	                modelMatrix[matrixIndex+2]);
+	vec3 worldPosition=mat3(m)*position+m[3];
+	eyePosition=mat3(viewMatrix)*worldPosition+viewMatrix[3].xyz;
+	gl_Position=projectionMatrix*vec4(eyePosition,1);
 	eyeNormal=mat3(viewMatrix)*mat3(m)*normal;
 	color=unpackUnorm4x8(packedData2.w);
 	texCoord=uintBitsToFloat(packedData2.xy);
