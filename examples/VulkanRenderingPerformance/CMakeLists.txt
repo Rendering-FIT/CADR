@@ -39,12 +39,14 @@ set(APP_SHADERS
 	phongTexturedFourAttributesFiveMatrices.vert
 	phongTexturedFourAttributes.vert
 	phongTextured.vert
+	phongTexturedRowMajor.vert
+	phongTexturedMat4x3.vert
+	phongTexturedMat4x3RowMajor.vert
 	phongTexturedDMatricesOnlyInput.vert
 	phongTexturedDMatrices.vert
 	phongTexturedDMatricesDVertices.vert
 	phongTexturedInGSDMatricesDVertices.vert
 	phongTexturedInGSDMatricesDVertices.geom
-	phongTexturedMat4x3.vert
 	constantColor.frag
 	phongTexturedDummy.frag
 	phongTextured.frag
