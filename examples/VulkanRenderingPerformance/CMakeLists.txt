@@ -42,6 +42,9 @@ set(APP_SHADERS
 	phongTexturedRowMajor.vert
 	phongTexturedMat4x3.vert
 	phongTexturedMat4x3RowMajor.vert
+	phongTexturedQuat1.vert
+	phongTexturedQuat2.vert
+	phongTexturedQuat3.vert
 	phongTexturedDMatricesOnlyInput.vert
 	phongTexturedDMatrices.vert
 	phongTexturedDMatricesDVertices.vert
