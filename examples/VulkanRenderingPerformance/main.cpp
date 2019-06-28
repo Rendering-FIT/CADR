@@ -303,6 +303,7 @@ static float timestampPeriod_ns=0;
 static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
 static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
 static uint32_t numTriangles;
+static vk::Extent2D renderingExtent(1366,768);  // HD resultion (it should always fit to FullHD screen, even with window captions, taskbar, etc.)
 static const unsigned triangleSize=0;
 static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad*.vert is still drawing to the clip space (by gl_InstanceIndex)
 
@@ -3560,7 +3561,8 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer indexStagingBuffer(indexBufferSize);
 	generateCoordinates(
 		reinterpret_cast<float*>(coordinateStagingBuffer.map()),numTriangles,triangleSize,
-		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
+		renderingExtent.width,renderingExtent.height,true,
+		2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	coordinateStagingBuffer.unmap();
 	float* pfloat=reinterpret_cast<float*>(normalStagingBuffer.map());
 	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
@@ -3594,7 +3596,8 @@ static void recreateSwapchainAndPipeline()
 	vec4u8AttributeStagingBuffer.unmap();
 	generateCoordinates(
 		reinterpret_cast<float*>(packedAttribute1StagingBuffer.map()),numTriangles,triangleSize,
-		1000,1000,true,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
+		renderingExtent.width,renderingExtent.height,true,
+		2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 	for(size_t i=3,e=size_t(numTriangles)*3*4; i<e; i+=4)
 		reinterpret_cast<uint32_t*>(packedAttribute1StagingBuffer.ptr)[i]=0x3c003c00; // two half-floats, both set to one
 	puint=reinterpret_cast<uint32_t*>(packedAttribute2StagingBuffer.map());
@@ -4200,7 +4203,8 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer transformationMatrixStagingBuffer(transformationMatrix4x4BufferSize);
 	generateMatrices(
 		reinterpret_cast<float*>(transformationMatrixStagingBuffer.map()),numTriangles/2,triangleSize,
-		1000,1000,2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,0.,0.);
+		renderingExtent.width,renderingExtent.height,
+		2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,0.,0.);
 	transformationMatrixStagingBuffer.unmap();
 
 	// normal matrix staging buffer
