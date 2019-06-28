@@ -15,7 +15,7 @@ class Renderer;
 
 /** \brief AttribStorage class provides GPU storage for vertex attributes
  *  and vertex indices of the scene geometry. All the data are stored in
- *  Buffers and VertexArray. Many Drawable objects can be stored
+ *  vk::Buffers. Any number of Drawable objects can be stored
  *  in a single AttribStorage as long as they have the same attribute
  *  configuration (see AttribConfig) and as long as there is space in the
  *  preallocated buffers.

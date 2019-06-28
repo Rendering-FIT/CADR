@@ -20,13 +20,13 @@ struct Buffer;
  *  Geode class is used to render Drawables using particular StateSet and instancing them by
  *  evaluating Transformation graph.
  */
-class CADR_EXPORT Drawable {
+class CADR_EXPORT Mesh {
 protected:
 
 	AttribStorage* _attribStorage;  ///< AttribStorage where vertex and index data are stored.
-	unsigned _verticesDataId;  ///< Id of vertex data allocation inside AttribStorage.
-	unsigned _indicesDataId;  ///< Id of index data allocation inside AttribStorage.
-	unsigned _drawCommandDataId;  ///< Id od DrawCommand data allocation.
+	unsigned _vertexDataId;  ///< Id of vertex data allocation inside AttribStorage.
+	unsigned _indexDataId;  ///< Id of index data allocation inside AttribStorage.
+	unsigned _primitiveSetDataId;  ///< Id od DrawCommand data allocation.
 	DrawCommandList _drawCommandList;
 
 public:

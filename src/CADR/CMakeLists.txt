@@ -19,9 +19,7 @@ set(CADR_PUBLIC_HEADERS
     AttribStorage.h
     Export.h
     Buffer.h
-    Drawable.h
     Factory.h
-    Geode.h
     )
 
 # private headers
@@ -30,10 +28,7 @@ set(CADR_PRIVATE_HEADERS
 
 # sources
 set(CADR_SOURCES
-    AttribStorage.cpp
-    DrawCommand.cpp
     Factory.cpp
-    Renderer.cpp
     )
 
 # CADR library

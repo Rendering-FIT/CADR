@@ -13,7 +13,7 @@ namespace cd {
  *  and processed by compute shader to produce
  *  indirect rendering buffer content.
  */
-struct DrawCommandGpuData {
+struct PrimitiveSetGpuData {
 	unsigned countAndIndexedFlag; ///< Number of vertices of the primitive and indexing flag on the highest bit indicating whether glDrawArrays or glDrawElements should be used for rendering.
 	unsigned first;               ///< Index of the first vertex or first index of the primitive.
 	unsigned vertexOffset;        ///< Offset of the start of the allocated block of vertices or indices within AttribStorage. Thus, the real start index is first+vertexOffset. The value is computed and updated automatically.
@@ -44,7 +44,7 @@ struct DrawCommandGpuData {
  *  make sure it occupies only 4 bytes. (Bit fields are known not to be
  *  always tightly packed on MSVC.)
  */
-struct CADR_EXPORT DrawCommand {
+struct CADR_EXPORT PrimitiveSet {
 protected:
 
 	unsigned data; // 32-bits, verified by assert in DrawCommand.cpp
