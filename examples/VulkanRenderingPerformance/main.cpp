@@ -250,6 +250,7 @@ static vk::UniquePipeline phongTexturedDMatricesOnlyInputPipeline;
 static vk::UniquePipeline phongTexturedDMatricesPipeline;
 static vk::UniquePipeline phongTexturedDMatricesDVerticesPipeline;
 static vk::UniquePipeline phongTexturedInGSDMatricesDVerticesPipeline;
+static vk::UniquePipeline phongTexturedSingleQuat2Pipeline;
 static vk::UniquePipeline phongTexturedQuat2TriStripPipeline;
 static vk::UniquePipeline fillrateContantColorPipeline;
 static vk::UniquePipeline fillrateFourSmoothInterpolatorsPipeline;
@@ -553,6 +554,7 @@ static vector<Test> tests={
 	Test("Phong no specular",Test::Type::FragmentThroughput),
 	Test("Phong no specular, single uniform",Test::Type::FragmentThroughput),
 	Test("Phong, tex., const 2xMat+Quat2, 1000tri-strip"),
+	Test("Phong, tex., const 2xMat+Quat2, triangles"),
 };
 
 
@@ -2217,6 +2219,7 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedDMatricesPipeline.reset();
 	phongTexturedDMatricesDVerticesPipeline.reset();
 	phongTexturedInGSDMatricesDVerticesPipeline.reset();
+	phongTexturedSingleQuat2Pipeline.reset();
 	phongTexturedQuat2TriStripPipeline.reset();
 	fillrateContantColorPipeline.reset();
 	fillrateFourSmoothInterpolatorsPipeline.reset();
@@ -3118,6 +3121,10 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedQuat3Pipeline=
 		createPipeline(phongTexturedQuat3VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &twoPackedAttributesInputState);
+	phongTexturedSingleQuat2Pipeline=
+		createPipeline(phongTexturedSingleQuat2VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+		               &twoPackedAttributesInputState,
+		               nullptr);
 	phongTexturedQuat2TriStripPipeline=
 		createPipeline(phongTexturedSingleQuat2VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &twoPackedAttributesInputState,
@@ -4346,7 +4353,7 @@ static void recreateSwapchainAndPipeline()
 	// single PAT uniform staging buffer
 	const float singlePATData[]{
 		0.f,0.f,0.f,1.f,  // zero rotation quaternion
-		2.f/currentSurfaceExtent.height*64.f,0.f,0.f,1.f,  // xyz translation + scale
+		2.f/currentSurfaceExtent.width*4.f,0.f,0.f,1.f,  // xyz translation + scale
 	};
 	StagingBuffer singlePATStagingBuffer(sizeof(singlePATData));
 	memcpy(singlePATStagingBuffer.map(),singlePATData,sizeof(singlePATData));
@@ -7031,6 +7038,24 @@ static void recreateSwapchainAndPipeline()
 		);
 		for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
 			cb.draw(2+triStripLength,1,i,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
