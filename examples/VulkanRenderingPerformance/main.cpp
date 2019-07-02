@@ -69,6 +69,7 @@ static vk::UniqueShaderModule twoPackedBuffersVS;
 static vk::UniqueShaderModule twoPackedBuffersUsingStructVS;
 static vk::UniqueShaderModule twoPackedBuffersUsingStructSlowVS;
 static vk::UniqueShaderModule singlePackedBufferVS;
+static vk::UniqueShaderModule twoPackedAttributesAndSingleMatrixVS;
 static vk::UniqueShaderModule twoPackedAttributesAndMatrixVS;
 static vk::UniqueShaderModule twoPackedBuffersAndMatrixVS;
 static vk::UniqueShaderModule fourAttributesVS;
@@ -227,6 +228,7 @@ static vk::UniquePipeline twoPackedBuffersUsingStructPipeline;
 static vk::UniquePipeline twoPackedBuffersUsingStructSlowPipeline;
 static vk::UniquePipeline two4F32Two4U8AttributesPipeline;
 static vk::UniquePipeline singlePackedBufferPipeline;
+static vk::UniquePipeline twoPackedAttributesAndSingleMatrixPipeline;
 static vk::UniquePipeline twoPackedAttributesAndMatrixPipeline;
 static vk::UniquePipeline twoPackedBuffersAndMatrixPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
@@ -357,6 +359,9 @@ static const uint32_t twoPackedBuffersUsingStructSlowVS_spirv[]={
 };
 static const uint32_t singlePackedBufferVS_spirv[]={
 #include "singlePackedBuffer.vert.spv"
+};
+static const uint32_t twoPackedAttributesAndSingleMatrixVS_spirv[]={
+#include "twoPackedAttributesAndSingleMatrix.vert.spv"
 };
 static const uint32_t twoPackedAttributesAndMatrixVS_spirv[]={
 #include "twoPackedAttributesAndMatrix.vert.spv"
@@ -518,6 +523,7 @@ static vector<Test> tests={
 	Test("Two packed buffers using struct"),
 	Test("Two packed buffers using struct slow"),
 	Test("All-in-one packed buffer"),
+	Test("Two packed attributes, single 1xMatrix"),
 	Test("Two packed attributes, 1xMatrix"),
 	Test("Two packed buffers, 1xMatrix"),
 	Test("Two packed buffers in geom. shader, 1xMatrix"),
@@ -1231,6 +1237,14 @@ static void init(size_t deviceIndex)
 				vk::ShaderModuleCreateFlags(),       // flags
 				sizeof(singlePackedBufferVS_spirv),  // codeSize
 				singlePackedBufferVS_spirv           // pCode
+			)
+		);
+	twoPackedAttributesAndSingleMatrixVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                       // flags
+				sizeof(twoPackedAttributesAndSingleMatrixVS_spirv),  // codeSize
+				twoPackedAttributesAndSingleMatrixVS_spirv           // pCode
 			)
 		);
 	twoPackedAttributesAndMatrixVS=
@@ -2195,6 +2209,7 @@ static void recreateSwapchainAndPipeline()
 	twoPackedBuffersPipeline.reset();
 	twoPackedBuffersUsingStructPipeline.reset();
 	twoPackedBuffersUsingStructSlowPipeline.reset();
+	twoPackedAttributesAndSingleMatrixPipeline.reset();
 	twoPackedAttributesAndMatrixPipeline.reset();
 	twoPackedBuffersAndMatrixPipeline.reset();
 	singlePackedBufferPipeline.reset();
@@ -2860,6 +2875,9 @@ static void recreateSwapchainAndPipeline()
 				               ),
 			               }.data()
 		               });
+	twoPackedAttributesAndSingleMatrixPipeline=
+		createPipeline(twoPackedAttributesAndSingleMatrixVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
+		               &twoPackedAttributesInputState);
 	twoPackedAttributesAndMatrixPipeline=
 		createPipeline(twoPackedAttributesAndMatrixVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -6267,6 +6285,24 @@ static void recreateSwapchainAndPipeline()
 		          singlePackedBufferPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>(),
 		          vector<vk::DescriptorSet>{ singlePackedBufferDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// two packed attributes test, single matrix
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedAttributesAndSingleMatrixPipeline.get(),oneBufferPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
