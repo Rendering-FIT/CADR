@@ -287,6 +287,8 @@ static vk::UniqueBuffer packedDAttribute3;
 static vk::UniqueBuffer indexBuffer;
 static vk::UniqueBuffer stripPackedAttribute1;
 static vk::UniqueBuffer stripPackedAttribute2;
+static vk::UniqueBuffer sharedVertexPackedAttribute1;
+static vk::UniqueBuffer sharedVertexPackedAttribute2;
 static vk::UniqueDeviceMemory coordinateAttributeMemory;
 static vk::UniqueDeviceMemory coordinateBufferMemory;
 static vk::UniqueDeviceMemory normalAttributeMemory;
@@ -305,6 +307,8 @@ static vk::UniqueDeviceMemory packedDAttribute3Memory;
 static vk::UniqueDeviceMemory indexBufferMemory;
 static vk::UniqueDeviceMemory stripPackedAttribute1Memory;
 static vk::UniqueDeviceMemory stripPackedAttribute2Memory;
+static vk::UniqueDeviceMemory sharedVertexPackedAttribute1Memory;
+static vk::UniqueDeviceMemory sharedVertexPackedAttribute2Memory;
 static vk::UniqueImage singleTexelImage;
 static vk::UniqueDeviceMemory singleTexelImageMemory;
 static vk::UniqueImageView singleTexelImageView;
@@ -561,6 +565,7 @@ static vector<Test> tests={
 	Test("Phong no specular, single uniform",Test::Type::FragmentThroughput),
 	Test("Phong, tex., const 2xMat+Quat2, 1000tri-strip"),
 	Test("Phong, tex., const 2xMat+Quat2, triangles"),
+	Test("Phong, tex., const 2xMat+Quat2, connected-tri."),
 };
 
 
@@ -658,11 +663,6 @@ static void generateMatrices(float* matrices,uint32_t numMatrices,unsigned trian
 	size_t idx=0;
 	size_t idxEnd=size_t(numMatrices)*16;
 
-	// Each iteration generates two triangles.
-	// triangleSize is dimension of square that is cut into the two triangles.
-	// When triangleSize is set to 1:
-	//    Both triangles together produce 4 pixels: the first triangle 3 pixels and
-	//    the second triangle a single pixel. For more detail, see OpenGL rasterization rules.
 	for(float z=0.9f; z>0.01f; z-=0.01f) {
 		for(unsigned j=0; j<numLinesPerScreen; j++) {
 			for(unsigned i=0; i<numTrianglesPerLine; i++) {
@@ -708,11 +708,6 @@ static void generateStrips(float* vertices,uint32_t numStrips,uint32_t numTriang
 	size_t idx=0;
 	uint32_t stripCounter=0;
 
-	// Each iteration generates two triangles.
-	// triangleSize is dimension of square that is cut into the two triangles.
-	// When triangleSize is set to 1:
-	//    Both triangles together produce 4 pixels: the first triangle 3 pixels and
-	//    the second triangle a single pixel. For more detail, see OpenGL rasterization rules.
 	for(float z=0.9f; z>0.01f; z-=0.01f) {
 
 		for(unsigned k=0; k<numLinesPerScreen; k++) {
@@ -752,6 +747,101 @@ static void generateStrips(float* vertices,uint32_t numStrips,uint32_t numTriang
 						break;
 
 					// vertex 4
+					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
+					vertices[idx++]=float((y+0.7+triangleSize)*scaleY+offsetY);
+					vertices[idx++]=z;
+					if(useVec4)
+						vertices[idx++]=1.f;
+
+					i++;
+
+				}
+
+				x+=spaceBetweenStrips;
+
+				stripCounter++;
+				if(stripCounter>=numStrips)
+					return;
+			}
+		}
+	}
+
+	// throw if we did not managed to put all the triangles in designed area
+	throw std::runtime_error("Triangle strips do not fit into the rendered area.");
+}
+
+
+static size_t getBufferSizeForSharedVertexTriangles(uint32_t numStrips,uint32_t numTrianglesInStrip,bool useVec4)
+{
+	return 3*size_t(numTrianglesInStrip)*numStrips*(useVec4?4:3)*sizeof(float);
+}
+
+
+static void generateSharedVertexTriangles(
+		float* vertices,uint32_t numStrips,uint32_t numTrianglesInStrip,unsigned triangleSize,
+		unsigned regionWidth,unsigned regionHeight,bool useVec4,
+		double scaleX=1.,double scaleY=1.,double offsetX=0.,double offsetY=0.)
+{
+	unsigned spaceBetweenStrips=1;
+	unsigned numStripsPerLine=regionWidth/(numTrianglesInStrip+spaceBetweenStrips);
+	unsigned numLinesPerScreen=regionHeight/(triangleSize+1)-1;
+
+	size_t idx=0;
+	uint32_t stripCounter=0;
+
+	for(float z=0.9f; z>0.01f; z-=0.01f) {
+
+		for(unsigned k=0; k<numLinesPerScreen; k++) {
+
+			double y=double(k*(triangleSize+1));
+			double x=0.;
+
+			for(unsigned j=0; j<numStripsPerLine; j++) {
+
+				for(unsigned i=0; i<numTrianglesInStrip;) {
+
+					// triangle 1, vertex 1
+					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
+					vertices[idx++]=float((y+0.6)*scaleY+offsetY);
+					vertices[idx++]=z;
+					if(useVec4)
+						vertices[idx++]=1.f;
+
+					// triangle 1, vertex 2
+					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
+					vertices[idx++]=float((y+0.7+triangleSize)*scaleY+offsetY);
+					vertices[idx++]=z;
+					if(useVec4)
+						vertices[idx++]=1.f;
+
+					x+=1.0;
+
+					// triangle 1, vertex 3
+					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
+					vertices[idx++]=float((y+0.6)*scaleY+offsetY);
+					vertices[idx++]=z;
+					if(useVec4)
+						vertices[idx++]=1.f;
+
+					i++;
+					if(i>=numTrianglesInStrip)
+						break;
+
+					// triangle 2, vertex 1
+					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
+					vertices[idx++]=float((y+0.6)*scaleY+offsetY);
+					vertices[idx++]=z;
+					if(useVec4)
+						vertices[idx++]=1.f;
+
+					// triangle 2, vertex 2
+					vertices[idx++]=float((x+0.1-1.0)*scaleX+offsetX);
+					vertices[idx++]=float((y+0.7+triangleSize)*scaleY+offsetY);
+					vertices[idx++]=z;
+					if(useVec4)
+						vertices[idx++]=1.f;
+
+					// triangle 2, vertex 3
 					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
 					vertices[idx++]=float((y+0.7+triangleSize)*scaleY+offsetY);
 					vertices[idx++]=z;
@@ -2281,6 +2371,10 @@ static void recreateSwapchainAndPipeline()
 	stripPackedAttribute1Memory.reset();
 	stripPackedAttribute2.reset();
 	stripPackedAttribute2Memory.reset();
+	sharedVertexPackedAttribute1.reset();
+	sharedVertexPackedAttribute1Memory.reset();
+	sharedVertexPackedAttribute2.reset();
+	sharedVertexPackedAttribute2Memory.reset();
 	singlePackedBuffer.reset();
 	singlePackedBufferMemory.reset();
 	singleMatrixUniformBuffer.reset();
@@ -3373,6 +3467,7 @@ static void recreateSwapchainAndPipeline()
 	size_t packedDataBufferSize=size_t(numTriangles)*3*16;
 	size_t indexBufferSize=size_t(numTriangles)*3*4;
 	size_t stripPackedDataBufferSize=getBufferSize(numTriangles/triStripLength,triStripLength,true);
+	size_t sharedVertexPackedDataBufferSize=getBufferSizeForSharedVertexTriangles(numTriangles/triStripLength,triStripLength,true);
 	coordinateAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -3573,6 +3668,28 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	sharedVertexPackedAttribute1=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				sharedVertexPackedDataBufferSize,    // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	sharedVertexPackedAttribute2=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				sharedVertexPackedDataBufferSize,    // size
+				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 
 	// vertex memory
 	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -3595,6 +3712,8 @@ static void recreateSwapchainAndPipeline()
 	indexBufferMemory=allocateMemory(indexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripPackedAttribute1Memory=allocateMemory(stripPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripPackedAttribute2Memory=allocateMemory(stripPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	sharedVertexPackedAttribute1Memory=allocateMemory(sharedVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	sharedVertexPackedAttribute2Memory=allocateMemory(sharedVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
 		coordinateAttribute.get(),  // image
 		coordinateAttributeMemory.get(),  // memory
@@ -3687,6 +3806,16 @@ static void recreateSwapchainAndPipeline()
 		stripPackedAttribute2Memory.get(),  // memory
 		0  // memoryOffset
 	);
+	device->bindBufferMemory(
+		sharedVertexPackedAttribute1.get(),  // image
+		sharedVertexPackedAttribute1Memory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
+		sharedVertexPackedAttribute2.get(),  // image
+		sharedVertexPackedAttribute2Memory.get(),  // memory
+		0  // memoryOffset
+	);
 
 
 	// staging buffer struct
@@ -3740,6 +3869,8 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer indexStagingBuffer(indexBufferSize);
 	StagingBuffer stripPackedAttribute1StagingBuffer(stripPackedDataBufferSize);
 	StagingBuffer stripPackedAttribute2StagingBuffer(stripPackedDataBufferSize);
+	StagingBuffer sharedVertexPackedAttribute1StagingBuffer(sharedVertexPackedDataBufferSize);
+	StagingBuffer sharedVertexPackedAttribute2StagingBuffer(sharedVertexPackedDataBufferSize);
 	generateCoordinates(
 		reinterpret_cast<float*>(coordinateStagingBuffer.map()),numTriangles,triangleSize,
 		renderingExtent.width,renderingExtent.height,true,
@@ -3858,6 +3989,29 @@ static void recreateSwapchainAndPipeline()
 		puint[i++]=0xffffffff;  // color
 	}
 	stripPackedAttribute2StagingBuffer.unmap();
+	generateSharedVertexTriangles(
+		reinterpret_cast<float*>(sharedVertexPackedAttribute1StagingBuffer.map()),numTriangles/triStripLength,
+		triStripLength,triangleSize,renderingExtent.width,renderingExtent.height,true,
+		2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
+	for(size_t i=3,e=sharedVertexPackedDataBufferSize/4; i<e; i+=4)
+		reinterpret_cast<uint32_t*>(sharedVertexPackedAttribute1StagingBuffer.ptr)[i]=0x3c003c00; // two half-floats, both set to one
+	sharedVertexPackedAttribute1StagingBuffer.unmap();
+	puint=reinterpret_cast<uint32_t*>(sharedVertexPackedAttribute2StagingBuffer.map());
+	for(size_t i=0,e=sharedVertexPackedDataBufferSize/4; i<e; ) {
+		puint[i++]=0x3f800000;  // texture U (float), one (1.f is 0x3f800000, 0.f is 0x00000000)
+		puint[i++]=0x3f800000;  // texture V (float), one
+		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one (1.f in half-float is 0x3c00, 0.f is 0x0000)
+		puint[i++]=0xffffffff;  // color
+		puint[i++]=0x3f800000;  // texture U (float), one
+		puint[i++]=0x3f800000;  // texture V (float), one
+		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one
+		puint[i++]=0xffffffff;  // color
+		puint[i++]=0x3f800000;  // texture U (float), one
+		puint[i++]=0x3f800000;  // texture V (float), one
+		puint[i++]=0x3c003c00;  // normalX+Y (2x half), two times one
+		puint[i++]=0xffffffff;  // color
+	}
+	sharedVertexPackedAttribute2StagingBuffer.unmap();
 
 	// copy data from staging to attribute and storage buffer
 	submitNowCommandBuffer->copyBuffer(
@@ -3980,6 +4134,18 @@ static void recreateSwapchainAndPipeline()
 		stripPackedAttribute2.get(),                      // dstBuffer
 		1,                                                // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,stripPackedDataBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		sharedVertexPackedAttribute1StagingBuffer.buffer.get(),  // srcBuffer
+		sharedVertexPackedAttribute1.get(),                      // dstBuffer
+		1,                                                       // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sharedVertexPackedDataBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		sharedVertexPackedAttribute2StagingBuffer.buffer.get(),  // srcBuffer
+		sharedVertexPackedAttribute2.get(),                      // dstBuffer
+		1,                                                       // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sharedVertexPackedDataBufferSize)  // pRegions
 	);
 
 	// matrix attributes, buffers and uniforms
@@ -7085,6 +7251,24 @@ static void recreateSwapchainAndPipeline()
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ sharedVertexPackedAttribute1.get(),sharedVertexPackedAttribute2.get() },
 		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
