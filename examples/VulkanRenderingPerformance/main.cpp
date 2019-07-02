@@ -553,6 +553,7 @@ static vector<Test> tests={
 	Test("Phong, texture, 3xMatrix, dmatrices, dvertices"),
 	Test("Phong, texture, 3xMatrix, in GS, dmat., dvert."),
 	Test("Phong, tex., const 2xMat+Quat2, triangles"),
+	Test("Phong, tex., const 2xMat+Quat2, tri., indexed"),
 	Test("Phong, tex., const 2xMat+Quat2, connected-tri."),
 	Test("Phong, tex., const 2xMat+Quat2, 1000tri-strip"),
 	Test("Fullscreen quad 1x",Test::Type::FragmentThroughput),
@@ -566,7 +567,6 @@ static vector<Test> tests={
 	Test("Uniform color4b",Test::Type::FragmentThroughput),
 	Test("Phong no specular",Test::Type::FragmentThroughput),
 	Test("Phong no specular, single uniform",Test::Type::FragmentThroughput),
-	Test("Phong, tex., const 2xMat+Quat2, tri., indexed"),
 };
 
 
