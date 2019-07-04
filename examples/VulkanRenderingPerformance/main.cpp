@@ -256,6 +256,7 @@ static vk::UniquePipeline phongTexturedDMatricesDVerticesPipeline;
 static vk::UniquePipeline phongTexturedInGSDMatricesDVerticesPipeline;
 static vk::UniquePipeline phongTexturedSingleQuat2Pipeline;
 static vk::UniquePipeline phongTexturedSingleQuat2TriStripPipeline;
+static vk::UniquePipeline phongTexturedSingleQuat2PrimitiveRestartPipeline;
 static vk::UniquePipeline fillrateContantColorPipeline;
 static vk::UniquePipeline fillrateFourSmoothInterpolatorsPipeline;
 static vk::UniquePipeline fillrateFourFlatInterpolatorsPipeline;
@@ -564,6 +565,7 @@ static vector<Test> tests={
 	Test("Phong, texture, 3xMatrix, in GS, dmat., dvert."),
 	Test("TexturedPhong, const 2xMat+Quat2, triangles"),
 	Test("TexturedPhong, const 2xM+Q2, tri., indexed"),
+	Test("TexturedPhong, const 2xM+Q2, tri.ind.prim.res."),
 	Test("TexturedPhong, const 2xM+Q2, connected-tri."),
 	Test("TexturedPhong, const 2xM+Q2, shar.vert.index."),
 	Test("TexturedPhong, const 2xM+Q2, 1000tri-strip"),
@@ -2368,6 +2370,7 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedInGSDMatricesDVerticesPipeline.reset();
 	phongTexturedSingleQuat2Pipeline.reset();
 	phongTexturedSingleQuat2TriStripPipeline.reset();
+	phongTexturedSingleQuat2PrimitiveRestartPipeline.reset();
 	fillrateContantColorPipeline.reset();
 	fillrateFourSmoothInterpolatorsPipeline.reset();
 	fillrateFourFlatInterpolatorsPipeline.reset();
@@ -3306,6 +3309,15 @@ static void recreateSwapchainAndPipeline()
 		               &twoPackedAttributesInputState,
 		               nullptr,
 		               &triangleStripInputAssemblyState);
+	phongTexturedSingleQuat2PrimitiveRestartPipeline=
+		createPipeline(phongTexturedSingleQuat2VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+		               &twoPackedAttributesInputState,
+		               nullptr,
+		               &(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{
+			               vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+			               vk::PrimitiveTopology::eTriangleStrip,  // topology
+			               VK_TRUE  // primitiveRestartEnable
+		               });
 	if(enabledFeatures.shaderFloat64)
 		phongTexturedDMatricesOnlyInputPipeline=
 			createPipeline(phongTexturedDMatricesOnlyInputVS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
@@ -7193,6 +7205,25 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.drawIndexed(3*numTriangles,1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// primitive restart indexed textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndexed(4*numTriangles,1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
