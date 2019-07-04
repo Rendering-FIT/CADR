@@ -92,6 +92,7 @@ static vk::UniqueShaderModule phongTexturedMat4x3RowMajorVS;
 static vk::UniqueShaderModule phongTexturedQuat1VS;
 static vk::UniqueShaderModule phongTexturedQuat2VS;
 static vk::UniqueShaderModule phongTexturedQuat3VS;
+static vk::UniqueShaderModule phongTexturedQuat2PrimitiveRestartVS;
 static vk::UniqueShaderModule phongTexturedSingleQuat2VS;
 static vk::UniqueShaderModule phongTexturedDMatricesOnlyInputVS;
 static vk::UniqueShaderModule phongTexturedDMatricesVS;
@@ -248,6 +249,7 @@ static vk::UniquePipeline phongTexturedMat4x3RowMajorPipeline;
 static vk::UniquePipeline phongTexturedQuat1Pipeline;
 static vk::UniquePipeline phongTexturedQuat2Pipeline;
 static vk::UniquePipeline phongTexturedQuat3Pipeline;
+static vk::UniquePipeline phongTexturedQuat2PrimitiveRestartPipeline;
 static vk::UniquePipeline phongTexturedDMatricesOnlyInputPipeline;
 static vk::UniquePipeline phongTexturedDMatricesPipeline;
 static vk::UniquePipeline phongTexturedDMatricesDVerticesPipeline;
@@ -285,6 +287,7 @@ static vk::UniqueBuffer packedDAttribute1;
 static vk::UniqueBuffer packedDAttribute2;
 static vk::UniqueBuffer packedDAttribute3;
 static vk::UniqueBuffer indexBuffer;
+static vk::UniqueBuffer primitiveRestartIndexBuffer;
 static vk::UniqueBuffer stripIndexBuffer;
 static vk::UniqueBuffer stripPackedAttribute1;
 static vk::UniqueBuffer stripPackedAttribute2;
@@ -306,6 +309,7 @@ static vk::UniqueDeviceMemory packedDAttribute1Memory;
 static vk::UniqueDeviceMemory packedDAttribute2Memory;
 static vk::UniqueDeviceMemory packedDAttribute3Memory;
 static vk::UniqueDeviceMemory indexBufferMemory;
+static vk::UniqueDeviceMemory primitiveRestartIndexBufferMemory;
 static vk::UniqueDeviceMemory stripIndexBufferMemory;
 static vk::UniqueDeviceMemory stripPackedAttribute1Memory;
 static vk::UniqueDeviceMemory stripPackedAttribute2Memory;
@@ -435,6 +439,9 @@ static const uint32_t phongTexturedQuat2VS_spirv[]={
 static const uint32_t phongTexturedQuat3VS_spirv[]={
 #include "phongTexturedQuat3.vert.spv"
 };
+static const uint32_t phongTexturedQuat2PrimitiveRestartVS_spirv[]={
+#include "phongTexturedQuat2PrimitiveRestart.vert.spv"
+};
 static const uint32_t phongTexturedSingleQuat2VS_spirv[]={
 #include "phongTexturedSingleQuat2.vert.spv"
 };
@@ -550,6 +557,7 @@ static vector<Test> tests={
 	Test("Phong, texture, 2xMatrix+Quat2"),
 	Test("Phong, texture, 2xMatrix+Quat3"),
 	Test("Phong, texture, 2xMatrix+Quat2, indexed"),
+	Test("Phong, texture, 2xM+Q2, indexed prim.restart"),
 	Test("Phong, texture, 3xMatrix, dmat. only on input"),
 	Test("Phong, texture, 3xMatrix, dmatrices"),
 	Test("Phong, texture, 3xMatrix, dmatrices, dvertices"),
@@ -1538,6 +1546,14 @@ static void init(size_t deviceIndex)
 				phongTexturedQuat3VS_spirv           // pCode
 			)
 		);
+	phongTexturedQuat2PrimitiveRestartVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),                       // flags
+				sizeof(phongTexturedQuat2PrimitiveRestartVS_spirv),  // codeSize
+				phongTexturedQuat2PrimitiveRestartVS_spirv           // pCode
+			)
+		);
 	phongTexturedSingleQuat2VS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -2345,6 +2361,7 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedQuat1Pipeline.reset();
 	phongTexturedQuat2Pipeline.reset();
 	phongTexturedQuat3Pipeline.reset();
+	phongTexturedQuat2PrimitiveRestartPipeline.reset();
 	phongTexturedDMatricesOnlyInputPipeline.reset();
 	phongTexturedDMatricesPipeline.reset();
 	phongTexturedDMatricesDVerticesPipeline.reset();
@@ -2392,6 +2409,8 @@ static void recreateSwapchainAndPipeline()
 	packedDAttribute3Memory.reset();
 	indexBuffer.reset();
 	indexBufferMemory.reset();
+	primitiveRestartIndexBuffer.reset();
+	primitiveRestartIndexBufferMemory.reset();
 	stripIndexBuffer.reset();
 	stripIndexBufferMemory.reset();
 	stripPackedAttribute1.reset();
@@ -2601,7 +2620,7 @@ static void recreateSwapchainAndPipeline()
 		   const vk::Extent2D currentSurfaceExtent,
 		   const vk::PipelineVertexInputStateCreateInfo* vertexInputState=nullptr,
 		   vk::ShaderModule gsModule=nullptr,
-		   vk::PrimitiveTopology topology=vk::PrimitiveTopology::eTriangleList)
+		   const vk::PipelineInputAssemblyStateCreateInfo* inputAssemblyState=nullptr)
 		   ->vk::UniquePipeline
 		{
 			return device->createGraphicsPipelineUnique(
@@ -2654,11 +2673,13 @@ static void recreateSwapchainAndPipeline()
 								),
 							}.data()
 						},
-					&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
-						vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-						topology,  // topology
-						VK_FALSE  // primitiveRestartEnable
-					},
+					inputAssemblyState!=nullptr  // pInputAssemblyState
+						?inputAssemblyState
+						:&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{
+							vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+							vk::PrimitiveTopology::eTriangleList,  // topology
+							VK_FALSE  // primitiveRestartEnable
+						},
 					nullptr, // pTessellationState
 					&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
 						vk::PipelineViewportStateCreateFlags(),  // flags
@@ -2728,6 +2749,89 @@ static void recreateSwapchainAndPipeline()
 				)
 			);
 		};
+
+	const array<const vk::VertexInputBindingDescription,4> stride16AttributesBinding{
+		vk::VertexInputBindingDescription(
+			0,   // binding
+			16,  // stride
+			vk::VertexInputRate::eVertex  // inputRate
+		),
+		vk::VertexInputBindingDescription(
+			1,   // binding
+			16,  // stride
+			vk::VertexInputRate::eVertex  // inputRate
+		),
+		vk::VertexInputBindingDescription(
+			2,   // binding
+			16,  // stride
+			vk::VertexInputRate::eVertex  // inputRate
+		),
+		vk::VertexInputBindingDescription(
+			3,   // binding
+			16,  // stride
+			vk::VertexInputRate::eVertex  // inputRate
+		),
+	};
+	const array<const vk::VertexInputAttributeDescription,4> fourAttributesDescription{
+		vk::VertexInputAttributeDescription(
+			0,  // location
+			0,  // binding
+			vk::Format::eR32G32B32A32Sfloat,  // format
+			0   // offset
+		),
+		vk::VertexInputAttributeDescription(
+			1,  // location
+			1,  // binding
+			vk::Format::eR32G32B32A32Sfloat,  // format
+			0   // offset
+		),
+		vk::VertexInputAttributeDescription(
+			2,  // location
+			2,  // binding
+			vk::Format::eR32G32B32A32Sfloat,  // format
+			0   // offset
+		),
+		vk::VertexInputAttributeDescription(
+			3,  // location
+			3,  // binding
+			vk::Format::eR32G32B32A32Sfloat,  // format
+			0   // offset
+		),
+	};
+	const vk::PipelineVertexInputStateCreateInfo fourAttributesInputState{
+		vk::PipelineVertexInputStateCreateFlags(),  // flags
+		4,  // vertexBindingDescriptionCount
+		stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+		4,  // vertexAttributeDescriptionCount
+		fourAttributesDescription.data(),  // pVertexAttributeDescriptions
+	};
+	const array<const vk::VertexInputAttributeDescription,2> twoPackedAttributesDescription{
+		vk::VertexInputAttributeDescription(
+			0,  // location
+			0,  // binding
+			vk::Format::eR32G32B32A32Uint,  // format
+			0   // offset
+		),
+		vk::VertexInputAttributeDescription(
+			1,  // location
+			1,  // binding
+			vk::Format::eR32G32B32A32Uint,  // format
+			0   // offset
+		),
+	};
+	const vk::PipelineVertexInputStateCreateInfo twoPackedAttributesInputState{
+		vk::PipelineVertexInputStateCreateFlags(),  // flags
+		2,  // vertexBindingDescriptionCount
+		stride16AttributesBinding.data(),  // pVertexBindingDescriptions
+		2,  // vertexAttributeDescriptionCount
+		twoPackedAttributesDescription.data()  // pVertexAttributeDescriptions
+	};
+	const vk::PipelineInputAssemblyStateCreateInfo triangleStripInputAssemblyState{
+		vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+		vk::PrimitiveTopology::eTriangleStrip,  // topology
+		VK_FALSE  // primitiveRestartEnable
+	};
+
 	attributelessConstantOutputPipeline=
 		createPipeline(attributelessConstantOutputVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -2806,82 +2910,6 @@ static void recreateSwapchainAndPipeline()
 		               });
 	matrixBufferPipeline=
 		createPipeline(matrixBufferVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent);
-	const array<const vk::VertexInputBindingDescription,4> stride16AttributesBinding{
-		vk::VertexInputBindingDescription(
-			0,   // binding
-			16,  // stride
-			vk::VertexInputRate::eVertex  // inputRate
-		),
-		vk::VertexInputBindingDescription(
-			1,   // binding
-			16,  // stride
-			vk::VertexInputRate::eVertex  // inputRate
-		),
-		vk::VertexInputBindingDescription(
-			2,   // binding
-			16,  // stride
-			vk::VertexInputRate::eVertex  // inputRate
-		),
-		vk::VertexInputBindingDescription(
-			3,   // binding
-			16,  // stride
-			vk::VertexInputRate::eVertex  // inputRate
-		),
-	};
-	const array<const vk::VertexInputAttributeDescription,4> fourAttributesDescription{
-		vk::VertexInputAttributeDescription(
-			0,  // location
-			0,  // binding
-			vk::Format::eR32G32B32A32Sfloat,  // format
-			0   // offset
-		),
-		vk::VertexInputAttributeDescription(
-			1,  // location
-			1,  // binding
-			vk::Format::eR32G32B32A32Sfloat,  // format
-			0   // offset
-		),
-		vk::VertexInputAttributeDescription(
-			2,  // location
-			2,  // binding
-			vk::Format::eR32G32B32A32Sfloat,  // format
-			0   // offset
-		),
-		vk::VertexInputAttributeDescription(
-			3,  // location
-			3,  // binding
-			vk::Format::eR32G32B32A32Sfloat,  // format
-			0   // offset
-		),
-	};
-	const vk::PipelineVertexInputStateCreateInfo fourAttributesInputState{
-		vk::PipelineVertexInputStateCreateFlags(),  // flags
-		4,  // vertexBindingDescriptionCount
-		stride16AttributesBinding.data(),  // pVertexBindingDescriptions
-		4,  // vertexAttributeDescriptionCount
-		fourAttributesDescription.data(),  // pVertexAttributeDescriptions
-	};
-	const array<const vk::VertexInputAttributeDescription,2> twoPackedAttributesDescription{
-		vk::VertexInputAttributeDescription(
-			0,  // location
-			0,  // binding
-			vk::Format::eR32G32B32A32Uint,  // format
-			0   // offset
-		),
-		vk::VertexInputAttributeDescription(
-			1,  // location
-			1,  // binding
-			vk::Format::eR32G32B32A32Uint,  // format
-			0   // offset
-		),
-	};
-	const vk::PipelineVertexInputStateCreateInfo twoPackedAttributesInputState{
-		vk::PipelineVertexInputStateCreateFlags(),  // flags
-		2,  // vertexBindingDescriptionCount
-		stride16AttributesBinding.data(),  // pVertexBindingDescriptions
-		2,  // vertexAttributeDescriptionCount
-		twoPackedAttributesDescription.data()  // pVertexAttributeDescriptions
-	};
 	twoAttributesPipeline=
 		createPipeline(twoAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3260,6 +3288,15 @@ static void recreateSwapchainAndPipeline()
 	phongTexturedQuat3Pipeline=
 		createPipeline(phongTexturedQuat3VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &twoPackedAttributesInputState);
+	phongTexturedQuat2PrimitiveRestartPipeline=
+		createPipeline(phongTexturedQuat2PrimitiveRestartVS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
+		               &twoPackedAttributesInputState,
+		               nullptr,
+		               &(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{
+			               vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+			               vk::PrimitiveTopology::eTriangleStrip,  // topology
+			               VK_TRUE  // primitiveRestartEnable
+		               });
 	phongTexturedSingleQuat2Pipeline=
 		createPipeline(phongTexturedSingleQuat2VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &twoPackedAttributesInputState,
@@ -3268,7 +3305,7 @@ static void recreateSwapchainAndPipeline()
 		createPipeline(phongTexturedSingleQuat2VS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
 		               &twoPackedAttributesInputState,
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	if(enabledFeatures.shaderFloat64)
 		phongTexturedDMatricesOnlyInputPipeline=
 			createPipeline(phongTexturedDMatricesOnlyInputVS.get(),phongTexturedDummyFS.get(),bufferAndUniformPipelineLayout.get(),currentSurfaceExtent,
@@ -3382,7 +3419,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateFourSmoothInterpolatorsPipeline=
 		createPipeline(fullscreenQuadFourInterpolatorsVS.get(),fullscreenQuadFourSmoothInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3391,7 +3428,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateFourFlatInterpolatorsPipeline=
 		createPipeline(fullscreenQuadFourInterpolatorsVS.get(),fullscreenQuadFourFlatInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3400,7 +3437,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateTexturedPhongInterpolatorsPipeline=
 		createPipeline(fullscreenQuadTexturedPhongInterpolatorsVS.get(),fullscreenQuadTexturedPhongInterpolatorsFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3409,7 +3446,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateTexturedPhongPipeline=
 		createPipeline(fullscreenQuadTexturedPhongInterpolatorsVS.get(),phongTexturedFS.get(),phongTexturedPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3418,7 +3455,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateTexturedPhongNotPackedPipeline=
 		createPipeline(fullscreenQuadTexturedPhongInterpolatorsVS.get(),phongTexturedNotPackedFS.get(),phongTexturedPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3427,7 +3464,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateUniformColor4fPipeline=
 		createPipeline(fullscreenQuadVS.get(),uniformColor4fFS.get(),oneUniformFSPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3436,7 +3473,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	fillrateUniformColor4bPipeline=
 		createPipeline(fullscreenQuadVS.get(),uniformColor4bFS.get(),oneUniformFSPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3445,7 +3482,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	phongNoSpecularPipeline=
 		createPipeline(fullscreenQuadTwoVec3InterpolatorsVS.get(),phongNoSpecularFS.get(),threeUniformFSPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3454,7 +3491,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 	phongNoSpecularSingleUniformPipeline=
 		createPipeline(fullscreenQuadTwoVec3InterpolatorsVS.get(),phongNoSpecularSingleUniformFS.get(),oneUniformFSPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -3463,7 +3500,7 @@ static void recreateSwapchainAndPipeline()
 			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
 		               },
 		               nullptr,
-		               vk::PrimitiveTopology::eTriangleStrip);
+		               &triangleStripInputAssemblyState);
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
@@ -3493,6 +3530,7 @@ static void recreateSwapchainAndPipeline()
 	size_t vec4u8BufferSize=size_t(numTriangles)*3*4;
 	size_t packedDataBufferSize=size_t(numTriangles)*3*16;
 	size_t indexBufferSize=size_t(numTriangles)*3*4;
+	size_t primitiveRestartIndexBufferSize=size_t(numTriangles)*4*4;
 	size_t stripIndexBufferSize=getIndexBufferSize(numTriangles/triStripLength,triStripLength);
 	size_t stripPackedDataBufferSize=getBufferSize(numTriangles/triStripLength,triStripLength,true);
 	size_t sharedVertexPackedDataBufferSize=getBufferSizeForSharedVertexTriangles(numTriangles/triStripLength,triStripLength,true);
@@ -3674,6 +3712,17 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	primitiveRestartIndexBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				primitiveRestartIndexBufferSize,  // size
+				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 	stripIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -3749,6 +3798,7 @@ static void recreateSwapchainAndPipeline()
 	packedDAttribute2Memory=allocateMemory(packedDAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	packedDAttribute3Memory=allocateMemory(packedDAttribute3.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	indexBufferMemory=allocateMemory(indexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	primitiveRestartIndexBufferMemory=allocateMemory(primitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripIndexBufferMemory=allocateMemory(stripIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripPackedAttribute1Memory=allocateMemory(stripPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripPackedAttribute2Memory=allocateMemory(stripPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -3837,6 +3887,11 @@ static void recreateSwapchainAndPipeline()
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
+		primitiveRestartIndexBuffer.get(),  // image
+		primitiveRestartIndexBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
 		stripIndexBuffer.get(),  // image
 		stripIndexBufferMemory.get(),  // memory
 		0  // memoryOffset
@@ -3912,6 +3967,7 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer packedDAttribute2StagingBuffer(packedDataBufferSize);
 	StagingBuffer packedDAttribute3StagingBuffer(packedDataBufferSize);
 	StagingBuffer indexStagingBuffer(indexBufferSize);
+	StagingBuffer primitiveRestartIndexStagingBuffer(primitiveRestartIndexBufferSize);
 	StagingBuffer stripIndexStagingBuffer(stripIndexBufferSize);
 	StagingBuffer stripPackedAttribute1StagingBuffer(stripPackedDataBufferSize);
 	StagingBuffer stripPackedAttribute2StagingBuffer(stripPackedDataBufferSize);
@@ -4012,6 +4068,14 @@ static void recreateSwapchainAndPipeline()
 	for(uint32_t i=0,e=uint32_t(numTriangles)*3; i<e; i++)
 		reinterpret_cast<uint32_t*>(indexStagingBuffer.ptr)[i]=i;
 	indexStagingBuffer.unmap();
+	primitiveRestartIndexStagingBuffer.map();
+	for(uint32_t i=0,j=0,e=uint32_t(numTriangles)*3; i<e;) {
+		reinterpret_cast<uint32_t*>(primitiveRestartIndexStagingBuffer.ptr)[j++]=i++;
+		reinterpret_cast<uint32_t*>(primitiveRestartIndexStagingBuffer.ptr)[j++]=i++;
+		reinterpret_cast<uint32_t*>(primitiveRestartIndexStagingBuffer.ptr)[j++]=i++;
+		reinterpret_cast<uint32_t*>(primitiveRestartIndexStagingBuffer.ptr)[j++]=-1;
+	}
+	primitiveRestartIndexStagingBuffer.unmap();
 	stripIndexStagingBuffer.map();
 	generateStripIndices(reinterpret_cast<uint32_t*>(stripIndexStagingBuffer.ptr),numTriangles/triStripLength,triStripLength);
 	stripIndexStagingBuffer.unmap();
@@ -4170,6 +4234,12 @@ static void recreateSwapchainAndPipeline()
 		indexStagingBuffer.buffer.get(),  // srcBuffer
 		indexBuffer.get(),                // dstBuffer
 		1,                                // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,indexBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		primitiveRestartIndexStagingBuffer.buffer.get(),  // srcBuffer
+		primitiveRestartIndexBuffer.get(),                // dstBuffer
+		1,                                                // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,indexBufferSize)  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
@@ -6939,6 +7009,25 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.drawIndexed(3*numTriangles,1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// primitive restart indexed textured Phong Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndPATDescriptorSet });
+		cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndexed(4*numTriangles,1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool

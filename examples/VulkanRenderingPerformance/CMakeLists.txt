@@ -46,6 +46,7 @@ set(APP_SHADERS
 	phongTexturedQuat1.vert
 	phongTexturedQuat2.vert
 	phongTexturedQuat3.vert
+	phongTexturedQuat2PrimitiveRestart.vert
 	phongTexturedSingleQuat2.vert
 	phongTexturedDMatricesOnlyInput.vert
 	phongTexturedDMatrices.vert
