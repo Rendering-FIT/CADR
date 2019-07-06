@@ -15,6 +15,7 @@ set(PACKAGES
 	HelloQtWindow
 	VulkanAttributesAndUniforms
 	VulkanRenderingPerformance
+	VulkanDynamicFuncs
 	)
 if(UNIX)
 	list(INSERT PACKAGES 2 tut03-helloWindowX11)
