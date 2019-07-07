@@ -1,8 +1,9 @@
-//#include <vulkan/vulkan.h>
 #include <vulkan/vulkan.hpp>
 #include <iostream>
 #include <stddef.h>
 #ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #else
 # include <dlfcn.h>
 #endif
@@ -45,7 +46,7 @@ void VulkanLibrary::reset()
 	if(_lib) {
 		// release Vulkan library
 #ifdef _WIN32
-		FreeLibrary("vulkan-1.dll");
+		FreeLibrary(_lib);
 #else
 		dlclose(_lib);
 #endif
@@ -71,7 +72,10 @@ void VulkanLibrary::init()
 	// load library
 	// and get vkGetInstanceProcAddr pointer
 #ifdef _WIN32
-	_lib=LoadLibrary("vulkan-1.dll");
+	_lib=LoadLibraryA("vulkan-1.dll");
+	if(_lib==nullptr)
+		throw std::runtime_error("Can not open \"vulkan-1.dll\".");
+	funcs.vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(GetProcAddress(_lib,"vkGetInstanceProcAddr"));
 #else
 	_lib=dlopen("libvulkan.so.1",RTLD_NOW);
 	if(_lib==nullptr)
@@ -294,7 +298,12 @@ int main(int,char**)
 			}
 		);
 #ifdef _WIN32
-		GetModuleHandleExA(device.vkGetDeviceProcAddr)
+		HMODULE handle;
+		GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		                   reinterpret_cast<LPCSTR>(vulkanInstance.funcs.vkDestroyInstance),&handle);
+		WCHAR path[MAX_PATH];
+		GetModuleFileNameW(handle,path,MAX_PATH);
+		wcout<<"Library of vkDestroyInstance(): "<<path<<endl;
 #else
 		Dl_info dlInfo;
 		dladdr(reinterpret_cast<void*>(vulkanInstance.funcs.vkDestroyInstance),&dlInfo);
@@ -321,7 +330,14 @@ int main(int,char**)
 			);
 
 #ifdef _WIN32
-			GetModuleHandleExA(device.vkGetDeviceProcAddr)
+			GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			                   reinterpret_cast<LPCSTR>(device->getProcAddr("vkCreateShaderModule",device.funcs)),&handle);
+			GetModuleFileNameW(handle,path,MAX_PATH);
+			wcout<<"   Library of vkCreateShaderModule(): "<<path<<endl;
+			GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			                   reinterpret_cast<LPCSTR>(device->getProcAddr("vkQueueSubmit",device.funcs)),&handle);
+			GetModuleFileNameW(handle,path,MAX_PATH);
+			wcout<<"   Library of vkQueueSubmit(): "<<path<<endl;
 #else
 			Dl_info dlInfo;
 			auto vkCreateShaderModule=PFN_vkCreateShaderModule(device->getProcAddr("vkCreateShaderModule",device.funcs));
