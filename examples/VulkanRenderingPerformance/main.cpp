@@ -806,7 +806,7 @@ static void generateStripIndices(uint32_t* indices,uint32_t numStrips,uint32_t n
 {
 	size_t idx=0;
 
-	for(size_t j=0; j<numStrips; j++) {
+	for(uint32_t j=0; j<numStrips; j++) {
 		for(uint32_t i=j*(numTrianglesInStrip+2),e=i+numTrianglesInStrip; i<e; i++) {
 			indices[idx++]=i;
 			indices[idx++]=i+1;
@@ -832,7 +832,7 @@ static void generateStripPrimitiveRestartIndices(uint32_t* indices,uint32_t numS
 
 	size_t idx=0;
 
-	for(size_t j=0; j<numStrips; j++) {
+	for(uint32_t j=0; j<numStrips; j++) {
 		for(uint32_t i=j*(numTrianglesInStrip+2),e=i+numTrianglesInStrip; i<e;) {
 			for(uint32_t k=0; k<numIndicesBetweenRestarts; k++)
 				indices[idx++]=i+k;
