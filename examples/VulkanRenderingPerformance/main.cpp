@@ -7568,8 +7568,8 @@ static void recreateSwapchainAndPipeline()
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*3*(2+triStripLength); i<e; i+=3*(2+triStripLength))
-			cb.drawIndexed(3*(2+triStripLength),1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		for(uint32_t i=0,e=(numTriangles/triStripLength)*3*triStripLength; i<e; i+=3*triStripLength)
+			cb.drawIndexed(3*triStripLength,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
