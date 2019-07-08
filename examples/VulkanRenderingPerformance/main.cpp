@@ -143,7 +143,7 @@ static vk::UniqueDescriptorSetLayout twoBuffersAndUniformInGSDescriptorSetLayout
 static vk::UniqueDescriptorSetLayout fourBuffersAndUniformInGSDescriptorSetLayout;
 static vk::UniqueDescriptorSetLayout phongTexturedDescriptorSetLayout;
 static vk::UniqueBuffer singleMatrixUniformBuffer;
-static vk::UniqueBuffer singlePATUniformBuffer;
+static vk::UniqueBuffer singlePATBuffer;
 static vk::UniqueBuffer sameMatrixAttribute;  // not used now
 static vk::UniqueBuffer sameMatrixBuffer;
 static vk::UniqueBuffer sameMatrixRowMajorBuffer;
@@ -164,7 +164,7 @@ static vk::UniqueBuffer lightUniformBuffer;
 static vk::UniqueBuffer lightNotPackedUniformBuffer;
 static vk::UniqueBuffer allInOneLightingUniformBuffer;
 static vk::UniqueDeviceMemory singleMatrixUniformMemory;
-static vk::UniqueDeviceMemory singlePATUniformMemory;
+static vk::UniqueDeviceMemory singlePATMemory;
 static vk::UniqueDeviceMemory sameMatrixAttributeMemory;  // not used now
 static vk::UniqueDeviceMemory sameMatrixBufferMemory;
 static vk::UniqueDeviceMemory sameMatrixRowMajorBufferMemory;
@@ -2508,8 +2508,8 @@ static void recreateSwapchainAndPipeline()
 	singlePackedBufferMemory.reset();
 	singleMatrixUniformBuffer.reset();
 	singleMatrixUniformMemory.reset();
-	singlePATUniformBuffer.reset();
-	singlePATUniformMemory.reset();
+	singlePATBuffer.reset();
+	singlePATMemory.reset();
 	sameMatrixAttribute.reset();
 	sameMatrixAttributeMemory.reset();
 	sameMatrixBuffer.reset();
@@ -2550,7 +2550,7 @@ static void recreateSwapchainAndPipeline()
 	vk::UniqueCommandPool commandPoolTransient=
 		device->createCommandPoolUnique(
 			vk::CommandPoolCreateInfo(
-				vk::CommandPoolCreateFlagBits::eTransient,  // flags
+				vk::CommandPoolCreateFlagBits::eTransient|vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
 				graphicsQueueFamily  // queueFamilyIndex
 			)
 		);
@@ -4584,6 +4584,7 @@ static void recreateSwapchainAndPipeline()
 	sharedVertexPackedAttribute2StagingBuffer.reset();
 
 	// start new command buffer
+	submitNowCommandBuffer->reset(vk::CommandBufferResetFlags());
 	submitNowCommandBuffer->begin(
 		vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
@@ -4617,12 +4618,12 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-	singlePATUniformBuffer=
+	singlePATBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				8*sizeof(float),              // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
@@ -4828,8 +4829,8 @@ static void recreateSwapchainAndPipeline()
 		);
 	singleMatrixUniformMemory=
 		allocateMemory(singleMatrixUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	singlePATUniformMemory=
-		allocateMemory(singlePATUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	singlePATMemory=
+		allocateMemory(singlePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	sameMatrixAttributeMemory=
 		allocateMemory(sameMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	sameMatrixBufferMemory=
@@ -4867,102 +4868,102 @@ static void recreateSwapchainAndPipeline()
 	allInOneLightingUniformBufferMemory=
 		allocateMemory(allInOneLightingUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device->bindBufferMemory(
-		singleMatrixUniformBuffer.get(),  // image
+		singleMatrixUniformBuffer.get(),  // buffer
 		singleMatrixUniformMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		singlePATUniformBuffer.get(),  // image
-		singlePATUniformMemory.get(),  // memory
+		singlePATBuffer.get(),  // buffer
+		singlePATMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		sameMatrixAttribute.get(),  // image
+		sameMatrixAttribute.get(),  // buffer
 		sameMatrixAttributeMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		sameMatrixBuffer.get(),  // image
+		sameMatrixBuffer.get(),  // buffer
 		sameMatrixBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		sameMatrixRowMajorBuffer.get(),  // image
+		sameMatrixRowMajorBuffer.get(),  // buffer
 		sameMatrixRowMajorBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		sameMatrix4x3Buffer.get(),  // image
+		sameMatrix4x3Buffer.get(),  // buffer
 		sameMatrix4x3BufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		sameMatrix4x3RowMajorBuffer.get(),  // image
+		sameMatrix4x3RowMajorBuffer.get(),  // buffer
 		sameMatrix4x3RowMajorBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		sameDMatrixBuffer.get(),  // image
+		sameDMatrixBuffer.get(),  // buffer
 		sameDMatrixBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		samePATBuffer.get(),  // image
+		samePATBuffer.get(),  // buffer
 		samePATBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		transformationMatrixAttribute.get(),  // image
+		transformationMatrixAttribute.get(),  // buffer
 		transformationMatrixAttributeMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		transformationMatrixBuffer.get(),  // image
+		transformationMatrixBuffer.get(),  // buffer
 		transformationMatrixBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		normalMatrix4x3Buffer.get(),  // image
+		normalMatrix4x3Buffer.get(),  // buffer
 		normalMatrix4x3Memory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		viewAndProjectionMatricesUniformBuffer.get(),  // image
+		viewAndProjectionMatricesUniformBuffer.get(),  // buffer
 		viewAndProjectionMatricesMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		viewAndProjectionDMatricesUniformBuffer.get(),  // image
+		viewAndProjectionDMatricesUniformBuffer.get(),  // buffer
 		viewAndProjectionDMatricesMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		materialUniformBuffer.get(),  // image
+		materialUniformBuffer.get(),  // buffer
 		materialUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		materialNotPackedUniformBuffer.get(),  // image
+		materialNotPackedUniformBuffer.get(),  // buffer
 		materialNotPackedUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		globalLightUniformBuffer.get(),  // image
+		globalLightUniformBuffer.get(),  // buffer
 		globalLightUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		lightUniformBuffer.get(),  // image
+		lightUniformBuffer.get(),  // buffer
 		lightUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		lightNotPackedUniformBuffer.get(),  // image
+		lightNotPackedUniformBuffer.get(),  // buffer
 		lightNotPackedUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
-		allInOneLightingUniformBuffer.get(),  // image
+		allInOneLightingUniformBuffer.get(),  // buffer
 		allInOneLightingUniformBufferMemory.get(),  // memory
 		0  // memoryOffset
 	);
@@ -5217,7 +5218,7 @@ static void recreateSwapchainAndPipeline()
 	);
 	submitNowCommandBuffer->copyBuffer(
 		singlePATStagingBuffer.buffer.get(),  // srcBuffer
-		singlePATUniformBuffer.get(),         // dstBuffer
+		singlePATBuffer.get(),                // dstBuffer
 		1,                                    // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(singleMatrixData))  // pRegions
 	);
@@ -5446,6 +5447,7 @@ static void recreateSwapchainAndPipeline()
 
 	// submit command buffer
 	submitNowCommandBuffer->end();
+	device->resetFences(fence.get());
 	graphicsQueue.submit(
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
 			0,nullptr,nullptr,       // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
@@ -6010,7 +6012,7 @@ static void recreateSwapchainAndPipeline()
 				nullptr,  // pImageInfo
 				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
 					vk::DescriptorBufferInfo(
-						singlePATUniformBuffer.get(),  // buffer
+						singlePATBuffer.get(),  // buffer
 						0,  // offset
 						8*sizeof(float)  // range
 					),
