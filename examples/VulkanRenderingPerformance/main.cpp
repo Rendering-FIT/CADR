@@ -594,7 +594,9 @@ static vector<Test> tests={
 	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, primRes, 1call"),
 	Test("TP, c.2xM+Q2, idx all -1, prim.Rest., numTri+2"),
 	Test("TP, c.2xM+Q2, idx all 0, primRestart, numTri+2"),
+	Test("TP, c.2xM+Q2, idx all 1, primRestart, numTri+2"),
 	Test("TP, c.2xM+Q2, idx all 0, triStrip, numTri+2"),
+	Test("TP, c.2xM+Q2, idx all 1, triStrip, numTri+2"),
 	Test("TP, c.2xM+Q2, idx all 0, triList, numTri*3"),
 	Test("TP, c.2xM+Q2, idx all 1, triList, numTri*3"),
 	Test("Fullscreen quad 1x",Test::Type::FragmentThroughput),
@@ -7881,12 +7883,50 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
+		// all 1 rendered numTriangles+2 tri-strip, primitive restart, textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(plusOneIndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndexed(numTriangles+2,1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
 		// all 0 rendered as numTriangles+2 tri-strip, textured Phong single Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
 		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 		cb.bindIndexBuffer(zeroIndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndexed(numTriangles+2,1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// all 1 rendered as numTriangles+2 tri-strip, textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(plusOneIndexBuffer.get(),0,vk::IndexType::eUint32);
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
