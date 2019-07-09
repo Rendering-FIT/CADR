@@ -293,6 +293,7 @@ static vk::UniqueBuffer stripIndexBuffer;
 static vk::UniqueBuffer stripPrimitiveRestartIndexBuffer;
 static vk::UniqueBuffer stripPrimitiveRestart3IndexBuffer;
 static vk::UniqueBuffer stripPrimitiveRestart4IndexBuffer;
+static vk::UniqueBuffer stripPrimitiveRestart7IndexBuffer;
 static vk::UniqueBuffer primitiveRestartMinusOne2IndexBuffer;
 static vk::UniqueBuffer primitiveRestartMinusOne5IndexBuffer;
 static vk::UniqueBuffer minusOneIndexBuffer;
@@ -323,6 +324,7 @@ static vk::UniqueDeviceMemory stripIndexBufferMemory;
 static vk::UniqueDeviceMemory stripPrimitiveRestartIndexBufferMemory;
 static vk::UniqueDeviceMemory stripPrimitiveRestart3IndexBufferMemory;
 static vk::UniqueDeviceMemory stripPrimitiveRestart4IndexBufferMemory;
+static vk::UniqueDeviceMemory stripPrimitiveRestart7IndexBufferMemory;
 static vk::UniqueDeviceMemory primitiveRestartMinusOne2IndexBufferMemory;
 static vk::UniqueDeviceMemory primitiveRestartMinusOne5IndexBufferMemory;
 static vk::UniqueDeviceMemory minusOneIndexBufferMemory;
@@ -586,6 +588,7 @@ static vector<Test> tests={
 	Test("TP, c.2xM+Q2, shared vertex triangles, indexed"),
 	Test("TP, c.2xM+Q2, shared vtx tri, primRes. after 3"),
 	Test("TP, c.2xM+Q2, shared vtx tri, primRes. after 4"),
+	Test("TP, c.2xM+Q2, shared vtx tri, primRes. after 7"),
 	Test("TP, c.2xM+Q2, shared vtx tri, primRes. two -1"),
 	Test("TP, c.2xM+Q2, shared vtx tri, primRes. five -1"),
 	Test("TP, c.2xM+Q2, shared vtx tri-strip, noIndex"),
@@ -2520,6 +2523,8 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestart3IndexBufferMemory.reset();
 	stripPrimitiveRestart4IndexBuffer.reset();
 	stripPrimitiveRestart4IndexBufferMemory.reset();
+	stripPrimitiveRestart7IndexBuffer.reset();
+	stripPrimitiveRestart7IndexBufferMemory.reset();
 	primitiveRestartMinusOne2IndexBuffer.reset();
 	primitiveRestartMinusOne2IndexBufferMemory.reset();
 	primitiveRestartMinusOne5IndexBuffer.reset();
@@ -3661,6 +3666,7 @@ static void recreateSwapchainAndPipeline()
 	size_t stripPrimitiveRestartIndexBufferSize=getStripIndexPrimitiveRestartBufferSize(numTriangles/triStripLength,triStripLength,triStripLength+2);
 	size_t stripPrimitiveRestart3IndexBufferSize=getStripIndexPrimitiveRestartBufferSize(numTriangles/triStripLength,triStripLength,3);
 	size_t stripPrimitiveRestart4IndexBufferSize=getStripIndexPrimitiveRestartBufferSize(numTriangles/triStripLength,triStripLength,4);
+	size_t stripPrimitiveRestart7IndexBufferSize=getStripIndexPrimitiveRestartBufferSize(numTriangles/triStripLength,triStripLength,7);
 	size_t primitiveRestartMinusOne2IndexBufferSize=getPrimitiveRestartMinusOneBufferSize(numTriangles/triStripLength,triStripLength,2);
 	size_t primitiveRestartMinusOne5IndexBufferSize=getPrimitiveRestartMinusOneBufferSize(numTriangles/triStripLength,triStripLength,5);
 	size_t minusOneIndexBufferSize=size_t(numTriangles)*4*4;
@@ -3901,6 +3907,17 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	stripPrimitiveRestart7IndexBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				stripPrimitiveRestart7IndexBufferSize,  // size
+				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 	primitiveRestartMinusOne2IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -4025,6 +4042,7 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestartIndexBufferMemory=allocateMemory(stripPrimitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripPrimitiveRestart3IndexBufferMemory=allocateMemory(stripPrimitiveRestart3IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	stripPrimitiveRestart4IndexBufferMemory=allocateMemory(stripPrimitiveRestart4IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	stripPrimitiveRestart7IndexBufferMemory=allocateMemory(stripPrimitiveRestart7IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	primitiveRestartMinusOne2IndexBufferMemory=allocateMemory(primitiveRestartMinusOne2IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	primitiveRestartMinusOne5IndexBufferMemory=allocateMemory(primitiveRestartMinusOne5IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
 	minusOneIndexBufferMemory=allocateMemory(minusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
@@ -4142,6 +4160,11 @@ static void recreateSwapchainAndPipeline()
 		0  // memoryOffset
 	);
 	device->bindBufferMemory(
+		stripPrimitiveRestart7IndexBuffer.get(),  // buffer
+		stripPrimitiveRestart7IndexBufferMemory.get(),  // memory
+		0  // memoryOffset
+	);
+	device->bindBufferMemory(
 		primitiveRestartMinusOne2IndexBuffer.get(),  // buffer
 		primitiveRestartMinusOne2IndexBufferMemory.get(),  // memory
 		0  // memoryOffset
@@ -4243,6 +4266,7 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer stripPrimitiveRestartIndexStagingBuffer(stripPrimitiveRestartIndexBufferSize);
 	StagingBuffer stripPrimitiveRestart3IndexStagingBuffer(stripPrimitiveRestart3IndexBufferSize);
 	StagingBuffer stripPrimitiveRestart4IndexStagingBuffer(stripPrimitiveRestart4IndexBufferSize);
+	StagingBuffer stripPrimitiveRestart7IndexStagingBuffer(stripPrimitiveRestart7IndexBufferSize);
 	StagingBuffer primitiveRestartMinusOne2IndexStagingBuffer(primitiveRestartMinusOne2IndexBufferSize);
 	StagingBuffer primitiveRestartMinusOne5IndexStagingBuffer(primitiveRestartMinusOne5IndexBufferSize);
 	StagingBuffer minusOneIndexStagingBuffer(minusOneIndexBufferSize);
@@ -4258,8 +4282,9 @@ static void recreateSwapchainAndPipeline()
 			packedDataBufferSize+packedDataBufferSize*2+packedDataBufferSize+packedDataBufferSize+
 			packedDataBufferSize+indexBufferSize+primitiveRestartIndexBufferSize+stripIndexBufferSize+
 			stripPrimitiveRestartIndexBufferSize+stripPrimitiveRestart3IndexBufferSize+
-			stripPrimitiveRestart4IndexBufferSize+primitiveRestartMinusOne2IndexBufferSize+
-			primitiveRestartMinusOne5IndexBufferSize+minusOneIndexBufferSize+zeroIndexBufferSize+plusOneIndexBufferSize+
+			stripPrimitiveRestart4IndexBufferSize+stripPrimitiveRestart7IndexBufferSize+
+			primitiveRestartMinusOne2IndexBufferSize+primitiveRestartMinusOne5IndexBufferSize+
+			minusOneIndexBufferSize+zeroIndexBufferSize+plusOneIndexBufferSize+
 			stripPackedDataBufferSize+stripPackedDataBufferSize+sharedVertexPackedDataBufferSize+
 			sharedVertexPackedDataBufferSize)/1024/1024<<"MiB"<<endl;
 #endif
@@ -4378,6 +4403,9 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestart4IndexStagingBuffer.map();
 	generateStripPrimitiveRestartIndices(reinterpret_cast<uint32_t*>(stripPrimitiveRestart4IndexStagingBuffer.ptr),numTriangles/triStripLength,triStripLength,4);
 	stripPrimitiveRestart4IndexStagingBuffer.unmap();
+	stripPrimitiveRestart7IndexStagingBuffer.map();
+	generateStripPrimitiveRestartIndices(reinterpret_cast<uint32_t*>(stripPrimitiveRestart7IndexStagingBuffer.ptr),numTriangles/triStripLength,triStripLength,7);
+	stripPrimitiveRestart7IndexStagingBuffer.unmap();
 	primitiveRestartMinusOne2IndexStagingBuffer.map();
 	generatePrimitiveRestartMinusOneIndices(reinterpret_cast<uint32_t*>(primitiveRestartMinusOne2IndexStagingBuffer.ptr),numTriangles/triStripLength,triStripLength,2);
 	primitiveRestartMinusOne2IndexStagingBuffer.unmap();
@@ -4579,6 +4607,12 @@ static void recreateSwapchainAndPipeline()
 		stripPrimitiveRestart4IndexBuffer.get(),                // dstBuffer
 		1,                                                      // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,stripPrimitiveRestart4IndexBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		stripPrimitiveRestart7IndexStagingBuffer.buffer.get(),  // srcBuffer
+		stripPrimitiveRestart7IndexBuffer.get(),                // dstBuffer
+		1,                                                      // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,stripPrimitiveRestart7IndexBufferSize)  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
 		primitiveRestartMinusOne2IndexStagingBuffer.buffer.get(),  // srcBuffer
@@ -7720,6 +7754,26 @@ static void recreateSwapchainAndPipeline()
 		);
 		for(uint32_t i=0,e=(numTriangles/triStripLength)*5*triStripLength/2; i<e; i+=5*triStripLength/2)
 			cb.drawIndexed(5*triStripLength/2,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// primitive restart after 7 indexed shared vertices, textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(stripPrimitiveRestart7IndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		for(uint32_t i=0,e=(numTriangles/triStripLength)*8*triStripLength/5; i<e; i+=8*triStripLength/5)
+			cb.drawIndexed(8*triStripLength/5,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
