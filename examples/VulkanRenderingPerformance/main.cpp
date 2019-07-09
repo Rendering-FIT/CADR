@@ -1187,7 +1187,8 @@ static void init(size_t deviceIndex)
 						presentationQueueFamily=i;
 			}
 		}
-		compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
+		if(graphicsQueueFamily!=UINT32_MAX && presentationQueueFamily!=UINT32_MAX)
+			compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
 		nextDevice:;
 	}
 	cout<<"Compatible devices:"<<endl;
