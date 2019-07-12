@@ -590,9 +590,6 @@ static vector<Test> tests={
 	Test("TP, c.2xM+Q2, separate tri. primitive restart"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, noIndex"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, indexed"),
-	Test("TP, c.2xM+Q2, shared vtx tri, primRes. after 1"),
-	Test("TP, c.2xM+Q2, shared vtx tri, primRes. after 2"),
-	Test("TP, c.2xM+Q2, shared vtx tri, primRes. after 5"),
 	Test("TP, c.2xM+Q2, shared vtx tri, primRes. two -1"),
 	Test("TP, c.2xM+Q2, shared vtx tri, primRes. five -1"),
 	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, noIndex"),
@@ -611,8 +608,11 @@ static vector<Test> tests={
 	Test("TP,c2MQ2, sh.vtx.tri-strip-idx. drawCmd aftr50"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-idx. drawCmd af.100"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-idx. drawCmd af.125"),
-	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, primRes"),
-	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, primRes, 1call"),
+	Test("TP, c.2xM+Q2, tri-strip, primRes, 1call"),
+	Test("TP, c.2xM+Q2, tri-strip, primRes, 1call/strip"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip, primRes. after 1"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip, primRes. after 2"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip, primRes. after 5"),
 	Test("TP, c.2xM+Q2, idx all -1, prim.Rest., numTri+2"),
 	Test("TP, c.2xM+Q2, idx all 0, primRestart, numTri+2"),
 	Test("TP, c.2xM+Q2, idx all 1, primRestart, numTri+2"),
@@ -7806,66 +7806,6 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// primitive restart after 3 indexed shared vertices, textured Phong single Quat2 test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.bindIndexBuffer(stripPrimitiveRestart3IndexBuffer.get(),0,vk::IndexType::eUint32);
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*4*triStripLength; i<e; i+=4*triStripLength)
-			cb.drawIndexed(4*triStripLength,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// primitive restart after 4 indexed shared vertices, textured Phong single Quat2 test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.bindIndexBuffer(stripPrimitiveRestart4IndexBuffer.get(),0,vk::IndexType::eUint32);
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*5*triStripLength/2; i<e; i+=5*triStripLength/2)
-			cb.drawIndexed(5*triStripLength/2,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// primitive restart after 7 indexed shared vertices, textured Phong single Quat2 test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.bindIndexBuffer(stripPrimitiveRestart7IndexBuffer.get(),0,vk::IndexType::eUint32);
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*8*triStripLength/5; i<e; i+=8*triStripLength/5)
-			cb.drawIndexed(8*triStripLength/5,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
 		// two -1 after each three triangle indices, primitive restart shared vertices, textured Phong single Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
@@ -8236,7 +8176,26 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// primitive restart after whole strip of 1000 indexed shared vertices, textured Phong single Quat2 test
+		// 1-drawCmd, primitive restart after whole strip of 1000 indexed shared vertices, textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(stripPrimitiveRestartIndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.drawIndexed((triStripLength+3)*(numTriangles/triStripLength),1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// 1-drawCmd per strip, primitive restart after whole strip of 1000 indexed shared vertices, textured Phong single Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
@@ -8256,18 +8215,59 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// primitive restart after whole strip of 1000 indexed shared vertices, textured Phong single Quat2 test
+		// primitive restart after 1 triangle (3 indexed shared vertices), textured Phong single Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
 		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.bindIndexBuffer(stripPrimitiveRestartIndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.bindIndexBuffer(stripPrimitiveRestart3IndexBuffer.get(),0,vk::IndexType::eUint32);
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			timestampPool.get(),  // queryPool
 			timestampIndex++      // query
 		);
-		cb.drawIndexed((triStripLength+3)*(numTriangles/triStripLength),1,0,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		for(uint32_t i=0,e=(numTriangles/triStripLength)*4*triStripLength; i<e; i+=4*triStripLength)
+			cb.drawIndexed(4*triStripLength,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// primitive restart after 2 triangles (4 indexed shared vertices), textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(stripPrimitiveRestart4IndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		for(uint32_t i=0,e=(numTriangles/triStripLength)*5*triStripLength/2; i<e; i+=5*triStripLength/2)
+			cb.drawIndexed(5*triStripLength/2,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// primitive restart after 5 triangles (7 indexed shared vertices), textured Phong single Quat2 test
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),bufferAndUniformPipelineLayout.get(),
+		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+		cb.bindIndexBuffer(stripPrimitiveRestart7IndexBuffer.get(),0,vk::IndexType::eUint32);
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		for(uint32_t i=0,e=(numTriangles/triStripLength)*8*triStripLength/5; i<e; i+=8*triStripLength/5)
+			cb.drawIndexed(8*triStripLength/5,1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
 			timestampPool.get(),  // queryPool
