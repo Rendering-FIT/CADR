@@ -3,6 +3,7 @@ set(examples_folder_name "Examples")
 
 set(PACKAGES
 	tut01-deviceList
+	tut02-funcPointers
 	tut02-vulkanInfo
 	tut03-simpleImage
 	tut04-robustImage
