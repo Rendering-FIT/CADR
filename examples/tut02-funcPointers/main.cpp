@@ -9,6 +9,7 @@
 using namespace std;
 
 
+// return name of library that contains the specified address (address of function, symbol, etc.)
 string getLibraryOfAddr(void* addr)
 {
 #ifdef _WIN32
@@ -58,9 +59,9 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"CADR tut02",            // application name
+						"tut02-funcPointers",    // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
-						"CADR",                  // engine name
+						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
