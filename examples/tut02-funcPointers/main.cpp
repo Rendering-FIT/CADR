@@ -2,6 +2,10 @@
 #include <iostream>
 #include <stddef.h>
 #ifdef _WIN32
+# define WIN32_LEAN_AND_MEAN
+# include <windows.h>
+# include <codecvt>
+# include <locale>
 #else
 # include <dlfcn.h>
 #endif
@@ -18,7 +22,7 @@ string getLibraryOfAddr(void* addr)
 	                   reinterpret_cast<LPCSTR>(addr),&handle);
 	WCHAR path[MAX_PATH];
 	GetModuleFileNameW(handle,path,MAX_PATH);
-	return string(path);
+	return wstring_convert<codecvt_utf8<wchar_t>>().to_bytes(path);
 #else
 	Dl_info dlInfo;
 	dladdr(addr,&dlInfo);
