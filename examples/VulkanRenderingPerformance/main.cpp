@@ -592,19 +592,39 @@ static vector<Test> tests={
 	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 1"),
 	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 2"),
 	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 5"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 8"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 10"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 20"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 25"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 40"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 50"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after100"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after125"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, indexed"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 1"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 2"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 5"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 8"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 10"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 20"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 25"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 40"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 50"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 64"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 100"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 125"),
 	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, noIndex"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd after1"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd after2"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd after5"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd after8"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd aftr10"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd aftr20"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd aftr25"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd aftr40"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd aftr50"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd af.100"),
+	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd af.125"),
 	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, indexed"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-idx. drawCmd after1"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-idx. drawCmd after2"),
@@ -7799,8 +7819,8 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// 1 to 5 triangle call, shared vertices textured Phong single Quat2 test
-		for(uint32_t n:array<uint32_t,3>{1,2,5}) {
+		// 1 to 125 triangle call, shared vertices textured Phong single Quat2 test
+		for(uint32_t n:array<uint32_t,11>{1,2,5,8,10,20,25,40,50,100,125}) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
 			          vector<vk::Buffer>{ sharedVertexPackedAttribute1.get(),sharedVertexPackedAttribute2.get() },
@@ -7840,8 +7860,8 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// 1 to 100 triangle call, indexed shared vertices textured Phong single Quat2 test
-		for(uint32_t n:array<uint32_t,8>{1,2,5,8,10,50,64,100}) {
+		// 1 to 125 triangle call, indexed shared vertices textured Phong single Quat2 test
+		for(uint32_t n:array<uint32_t,12>{1,2,5,8,10,20,25,40,50,64,100,125}) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
@@ -7881,65 +7901,27 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// 1-triangle tri-strip no-index textured Phong Quat2 test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
-			for(uint32_t j=i,je=j+triStripLength; j<je; j++)
-				cb.draw(3,1,j,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// 2-triangle tri-strip no-index textured Phong Quat2 test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
-			for(uint32_t j=i,je=j+triStripLength; j<je; j+=2)
-				cb.draw(4,1,j,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// 5-triangle tri-strip no-index textured Phong Quat2 test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
-		          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
-		          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
-			for(uint32_t j=i,je=j+triStripLength; j<je; j+=5)
-				cb.draw(7,1,j,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
+		// 1 to 125 triangles tri-strip no-index textured Phong Quat2 test
+		for(uint32_t n:array<uint32_t,11>{1,2,5,8,10,20,25,40,50,100,125}) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
+			          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
+				for(uint32_t j=i,je=j+triStripLength; j<je; j+=n)
+					cb.draw(n+2,1,j,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}
 
 		// tri-strip indexed textured Phong Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
