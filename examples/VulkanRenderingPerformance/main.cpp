@@ -589,6 +589,9 @@ static vector<Test> tests={
 	Test("TP, c.2xM+Q2, separate triangles, indexed"),
 	Test("TP, c.2xM+Q2, separate tri. primitive restart"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, noIndex"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 1"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 2"),
+	Test("TP,c2MQ2, sh.vtx.tri-noIndex, drawCmd after 5"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, indexed"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 1"),
 	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 2"),
@@ -952,6 +955,7 @@ static void generateSharedVertexTriangles(
 						vertices[idx++]=1.f;
 
 					// triangle 1, vertex 2
+					auto idx12=idx;
 					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
 					vertices[idx++]=float((y+0.7+triangleSize)*scaleY+offsetY);
 					vertices[idx++]=z;
@@ -961,6 +965,7 @@ static void generateSharedVertexTriangles(
 					x+=1.0;
 
 					// triangle 1, vertex 3
+					auto idx13=idx;
 					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
 					vertices[idx++]=float((y+0.6)*scaleY+offsetY);
 					vertices[idx++]=z;
@@ -972,15 +977,15 @@ static void generateSharedVertexTriangles(
 						break;
 
 					// triangle 2, vertex 1
-					vertices[idx++]=float((x+0.1)*scaleX+offsetX);
-					vertices[idx++]=float((y+0.6)*scaleY+offsetY);
+					vertices[idx++]=vertices[idx13++];
+					vertices[idx++]=vertices[idx13++];
 					vertices[idx++]=z;
 					if(useVec4)
 						vertices[idx++]=1.f;
 
 					// triangle 2, vertex 2
-					vertices[idx++]=float((x+0.1-1.0)*scaleX+offsetX);
-					vertices[idx++]=float((y+0.7+triangleSize)*scaleY+offsetY);
+					vertices[idx++]=vertices[idx12++];
+					vertices[idx++]=vertices[idx12++];
 					vertices[idx++]=z;
 					if(useVec4)
 						vertices[idx++]=1.f;
@@ -7793,6 +7798,27 @@ static void recreateSwapchainAndPipeline()
 			timestampIndex++      // query
 		);
 		cb.endRenderPass();
+
+		// 1 to 5 triangle call, shared vertices textured Phong single Quat2 test
+		for(uint32_t n:array<uint32_t,3>{1,2,5}) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
+			          vector<vk::Buffer>{ sharedVertexPackedAttribute1.get(),sharedVertexPackedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			for(uint32_t i=0,e=3*numTriangles; i<e; i+=n*3)
+				cb.draw(min(n*3,e-i),1,i,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}
 
 		// indexed shared vertices textured Phong single Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
