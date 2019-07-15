@@ -590,6 +590,14 @@ static vector<Test> tests={
 	Test("TP, c.2xM+Q2, separate tri. primitive restart"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, noIndex"),
 	Test("TP, c.2xM+Q2, shared vertex triangles, indexed"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 1"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 2"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 5"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 8"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 10"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 50"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 64"),
+	Test("TP,c2MQ2, sh.vtx.tri-idx, drawCmd after 100"),
 	Test("TP, c.2xM+Q2, sh.vtx.tri-strip, noIndex"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd after1"),
 	Test("TP,c2MQ2, sh.vtx.tri-strip-noI. drawCmd after2"),
@@ -7806,6 +7814,28 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
+		// 1 to 100 triangle call, indexed shared vertices textured Phong single Quat2 test
+		for(uint32_t n:array<uint32_t,8>{1,2,5,8,10,50,64,100}) {
+			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+			          phongTexturedSingleQuat2Pipeline.get(),bufferAndUniformPipelineLayout.get(),
+			          vector<vk::Buffer>{ stripPackedAttribute1.get(),stripPackedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
+			cb.bindIndexBuffer(stripIndexBuffer.get(),0,vk::IndexType::eUint32);
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			for(uint32_t i=0,e=3*numTriangles; i<e; i+=n*3)
+				cb.drawIndexed(min(n*3,e-i),1,i,0,0);  // indexCount,instanceCount,firstIndex,vertexOffset,firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}
+
 		// tri-strip no-index textured Phong Quat2 test
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          phongTexturedSingleQuat2TriStripPipeline.get(),bufferAndUniformPipelineLayout.get(),
@@ -8828,7 +8858,7 @@ int main(int argc,char** argv)
 					if(t.type==Test::Type::VertexThroughput) {
 						if(t.enabled) {
 							sort(t.renderingTimes.begin(),t.renderingTimes.end());
-							double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+							double time_ns=t.renderingTimes[(t.renderingTimes.size()-1)/2]*timestampPeriod_ns;
 							cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
 						}
 						else
@@ -8840,7 +8870,7 @@ int main(int argc,char** argv)
 					if(t.type==Test::Type::FragmentThroughput) {
 						if(t.enabled) {
 							sort(t.renderingTimes.begin(),t.renderingTimes.end());
-							double time_ns=t.renderingTimes[t.renderingTimes.size()/2]*timestampPeriod_ns;
+							double time_ns=t.renderingTimes[(t.renderingTimes.size()-1)/2]*timestampPeriod_ns;
 							cout<<"   "<<t.resultString<<": "<<double(numScreenFragments)*t.numRenderedItems/time_ns*1e9/1e9<<" * 1e9 per second"<<endl;
 						#if 0 // tuning of tests to not take too long
 							cout<<"      measurement time: "<<time_ns/1e6<<"ms"<<endl;
