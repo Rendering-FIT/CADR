@@ -1,5 +1,5 @@
 set(PACKAGES
-    CADR
+    CadR
    )
 
 foreach(pkg ${PACKAGES})

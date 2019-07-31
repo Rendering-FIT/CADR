@@ -1,5 +1,5 @@
 # project name
-set(LIB_NAME CADR)
+set(LIB_NAME CadR)
 set(LIB_NAME_UPPER)
 string(TOUPPER ${LIB_NAME} LIB_NAME_UPPER)
 
@@ -19,17 +19,17 @@ set(CADR_PUBLIC_HEADERS
     AttribStorage.h
     Export.h
     Buffer.h
-    Factory.h
-    )
+    PrimitiveSet.h
+   )
 
 # private headers
 set(CADR_PRIVATE_HEADERS
-    )
+   )
 
 # sources
 set(CADR_SOURCES
-    Factory.cpp
-    )
+    PrimitiveSet.cpp
+   )
 
 # CADR library
 add_library(${LIB_NAME}
