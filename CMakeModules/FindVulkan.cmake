@@ -16,17 +16,21 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		/usr/include
 		/usr/local/include
 		/opt/local/include
-		"$ENV{VULKAN_SDK}/include"
+		"$ENV{VULKAN_SDK}/Include"
+		${THIRD_PARTY_DIR}/Vulkan/include
 	)
 
 	# find Vulkan library
-	find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY vulkan
-		/usr/lib64
-		/usr/local/lib64
-		/usr/lib
-		/usr/lib/x86_64-linux-gnu
-		/usr/local/lib
-		"$ENV{VULKAN_SDK}/lib"
+	find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
+		NAMES vulkan vulkan-1
+		PATHS
+			/usr/lib64
+			/usr/local/lib64
+			/usr/lib
+			/usr/lib/x86_64-linux-gnu
+			/usr/local/lib
+			"$ENV{VULKAN_SDK}/Lib"
+			${THIRD_PARTY_DIR}/Vulkan/lib
 	)
 
 	# set *_FOUND flag

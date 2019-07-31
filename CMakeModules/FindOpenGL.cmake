@@ -11,6 +11,7 @@ find_path(OPENGL_GLEXT_INCLUDE_DIR GL/glext.h
 	/usr/include
 	/usr/local/include
 	/opt/local/include
+	${THIRD_PARTY_DIR}/GL
 )
 
 # do not process anything and do not create targets if GL/glext.h was not found
