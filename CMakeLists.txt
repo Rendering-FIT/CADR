@@ -17,6 +17,7 @@ set(CMAKE_MINSIZEREL_POSTFIX "s" CACHE STRING "add a postfix, usually empty on w
 
 # project settings
 set(CMAKE_MODULE_PATH "${CADR_SOURCE_DIR}/CMakeModules;${CMAKE_MODULE_PATH}")
+set(THIRD_PARTY_DIR "${CADR_SOURCE_DIR}/3rdParty" CACHE STRING "3rdParty directory.")
 set(INSTALL_CMAKE_CONFIG_DIR cmake)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
