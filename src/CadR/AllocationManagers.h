@@ -1,9 +1,9 @@
 #pragma once
 
 #include <vector>
-#include <CADR/Export.h>
+#include <CadR/Export.h>
 
-namespace cd {
+namespace CadR {
 
 
 /** ArrayAllocation represents a single allocation of memory.
@@ -25,8 +25,8 @@ struct ArrayAllocation {
 	unsigned numItems;         ///< Number of items in the array. The real size is numItems multiplied by the size of the item.
 	unsigned nextRec;          ///< \brief Index of ArrayAllocation whose allocated memory follows the current block's memory.
 	Owner*   owner;            ///< Object that owns the allocated array. Null indicates free memory block.
-	inline ArrayAllocation()  {}  ///< Default constructor. It does nothing.
-	inline ArrayAllocation(unsigned startIndex,unsigned numItems,unsigned nextRec,Owner* owner);  ///< Constructs object by the given values.
+	ArrayAllocation()  {}  ///< Default constructor. It does nothing.
+	ArrayAllocation(unsigned startIndex,unsigned numItems,unsigned nextRec,Owner* owner);  ///< Constructs object by the given values.
 };
 
 
@@ -69,27 +69,28 @@ public:
 	typedef typename std::vector<ArrayAllocation<Owner>>::iterator iterator;
 	typedef typename std::vector<ArrayAllocation<Owner>>::const_iterator const_iterator;
 
-	inline ArrayAllocationManager(unsigned capacity=0);
-	inline ArrayAllocationManager(unsigned capacity,unsigned numItemsOfNullObject);
+	ArrayAllocationManager(unsigned capacity=0);
+	ArrayAllocationManager(unsigned capacity,unsigned numItemsOfNullObject);
 	void setCapacity(unsigned value);
-	inline unsigned capacity() const;                   ///< Returns total number of items (allocated and unallocated).
-	inline unsigned available() const;                  ///< Returns the number of items that are available for allocation.
-	inline unsigned largestAvailable() const;           ///< Returns the number of available items in the largest continuous array.
-	inline unsigned numItemsAvailableAtTheEnd() const;  ///< Returns the number of items that are available at the end of the managed memory, e.g. number of items in the array at the end.
-	inline unsigned firstItemAvailableAtTheEnd() const; ///< Returns the index of the first available item at the end of the managed memory, e.g. the first available item that is followed by available items only.
-	inline unsigned idOfArrayAtTheEnd() const;          ///< Returns id (index to std::vector\<ArrayAllocation\>) of the last allocated array at the end of the managed memory.
-	inline unsigned numNullItems() const;               ///< Returns the number of null items. Null items are stored in the array with Id 0 and always placed on the beginning of the allocated memory or buffer.
+	unsigned capacity() const;                   ///< Returns total number of items (allocated and unallocated).
+	unsigned available() const;                  ///< Returns the number of items that are available for allocation.
+	unsigned largestAvailable() const;           ///< Returns the number of available items in the largest continuous array.
+	unsigned numItemsAvailableAtTheEnd() const;  ///< Returns the number of items that are available at the end of the managed memory, e.g. number of items in the array at the end.
+	unsigned firstItemAvailableAtTheEnd() const; ///< Returns the index of the first available item at the end of the managed memory, e.g. the first available item that is followed by available items only.
+	unsigned idOfArrayAtTheEnd() const;          ///< Returns id (index to std::vector\<ArrayAllocation\>) of the last allocated array at the end of the managed memory.
+	unsigned numNullItems() const;               ///< Returns the number of null items. Null items are stored in the array with Id 0 and always placed on the beginning of the allocated memory or buffer.
 
-	inline ArrayAllocation<Owner>& operator[](unsigned id);
-	inline const ArrayAllocation<Owner>& operator[](unsigned id) const;
-	inline iterator begin();
-	inline iterator end();
-	inline const_iterator begin() const;
-	inline const_iterator end() const;
+	ArrayAllocation<Owner>& operator[](unsigned id);
+	const ArrayAllocation<Owner>& operator[](unsigned id) const;
+	size_t numIDs() const;
+	iterator begin();
+	iterator end();
+	const_iterator begin() const;
+	const_iterator end() const;
 
-	inline bool canAllocate(unsigned numItems) const;
+	bool canAllocate(unsigned numItems) const;
 	unsigned alloc(unsigned numItems,Owner* owner);  ///< Allocates number of items. Returns id or zero on failure.
-	inline void free(unsigned id);  ///< Frees allocated items. Id must be valid. Zero id is allowed and safely ignored.
+	void free(unsigned id);  ///< Frees allocated items. Id must be valid. Zero id is allowed and safely ignored.
 	void clear();
 
 };
@@ -149,6 +150,7 @@ public:
 	inline unsigned lastId() const;
 
 	inline bool canAllocate(unsigned numItems) const;
+	unsigned alloc();  ///< \brief Allocates one item and stores the item's id in the variable pointed by id parameter.
 	bool alloc(unsigned *id);  ///< \brief Allocates one item and stores the item's id in the variable pointed by id parameter.
 	bool alloc(unsigned numItems,unsigned* ids);  ///< \brief Allocates number of items. The returned items may not form the continuous block of memory. Array pointed by ids must be at least numItems long.
 	void free(unsigned id);  ///< Frees allocated item. Id must be valid.
@@ -165,7 +167,7 @@ public:
 
 // inline and template methods
 #include <cstring>
-namespace cd {
+namespace CadR {
 
 template<typename Owner> inline ArrayAllocation<Owner>::ArrayAllocation(unsigned startIndex,unsigned numItems,unsigned nextRec,Owner* owner)
 { this->startIndex=startIndex; this->numItems=numItems; this->nextRec=nextRec; this->owner=owner; }
@@ -209,8 +211,8 @@ void ArrayAllocationManager<Owner>::clear()
 }
 inline ItemAllocationManager::ItemAllocationManager(unsigned capacity)
 	: _allocations(capacity), // sets the capacity and resizes the vector, default-inserting elements
-	  _capacity(capacity), _available(capacity-1), _numItemsAvailableAtTheEnd(capacity-1),
-	  _firstItemAvailableAtTheEnd(1), _numNullItems(1)  { operator[](0)=nullptr; }
+	  _capacity(capacity), _available(capacity), _numItemsAvailableAtTheEnd(capacity),
+	  _firstItemAvailableAtTheEnd(0), _numNullItems(0)  {}
 inline ItemAllocationManager::ItemAllocationManager(unsigned capacity,unsigned numNullItems)
 	: _allocations(capacity), // sets the capacity and resizes the vector, default-inserting elements
 	  _capacity(capacity), _available(capacity-numNullItems),
@@ -236,6 +238,7 @@ inline unsigned ItemAllocationManager::numNullItems() const  { return _numNullIt
 
 template<typename Owner> inline ArrayAllocation<Owner>& ArrayAllocationManager<Owner>::operator[](unsigned id)  { return _allocations[id]; }
 template<typename Owner> inline const ArrayAllocation<Owner>& ArrayAllocationManager<Owner>::operator[](unsigned id) const  { return _allocations[id]; }
+template<typename Owner> inline size_t ArrayAllocationManager<Owner>::numIDs() const  { return _allocations.size(); }
 template<typename Owner> inline typename ArrayAllocationManager<Owner>::iterator ArrayAllocationManager<Owner>::begin()
 { return _allocations.begin()+1; } // there is always null object in the list, so we increment by one to skip it
 template<typename Owner> inline typename ArrayAllocationManager<Owner>::iterator ArrayAllocationManager<Owner>::end()

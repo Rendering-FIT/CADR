@@ -17,9 +17,12 @@ set(CADR_PUBLIC_HEADERS
     AllocationManagers.h
     AttribConfig.h
     AttribStorage.h
+    BufferData.h
+    CadR.h
     Export.h
-    Buffer.h
+    Mesh.h
     PrimitiveSet.h
+    Renderer.h
    )
 
 # private headers
@@ -28,7 +31,10 @@ set(CADR_PRIVATE_HEADERS
 
 # sources
 set(CADR_SOURCES
+    AttribStorage.cpp
+    CadR.cpp
     PrimitiveSet.cpp
+    Renderer.cpp
    )
 
 # CADR library
@@ -49,7 +55,7 @@ target_link_libraries(${LIB_NAME} Vulkan)
 get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set_target_properties(${LIB_NAME} PROPERTIES
    INCLUDE_DIRECTORIES "${parent_dir}"
-   INTERFACE_INCLUDE_DIRECTORIES Vulkan
+   INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
    )
 
 # headers installation

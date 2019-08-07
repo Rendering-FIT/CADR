@@ -11,7 +11,8 @@ Prerequisities:
            Microsoft Visual C++ 2015 Update 3 (previous updates might work as well)
 * Linux: gcc 7.3 (previous not tested)
 * cmake 3.5.0 or newer
-* Vulkan 1.1.70 headers or newer (previous not tested), ubuntu package name libvulkan-dev
+* Vulkan 1.1.70 headers or newer (previous not tested), ubuntu package name libvulkan-dev,
+  version 1.1.101 is known to cause some compilation problems of some projects
 * glm 0.9.7.0 or newer
 * Linux: libx11-dev package
 

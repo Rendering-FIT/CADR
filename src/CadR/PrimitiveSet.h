@@ -5,7 +5,7 @@
 #include <vulkan/vulkan.hpp>
 #include <CadR/Export.h>
 
-namespace cadR {
+namespace CadR {
 
 
 /** PrimitiveSetGpuData are PrimitiveSet data that are stored

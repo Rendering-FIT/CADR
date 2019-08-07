@@ -1,31 +1,74 @@
 #pragma once
 
+#include <list>
+#include <map>
+#include <memory>
 #include <vulkan/vulkan.hpp>
-#include <CADR/Export.h>
+#include <CadR/AllocationManagers.h>
+#include <CadR/Export.h>
 
-namespace cd {
+namespace CadR {
 
 class AttribConfig;
-class Drawable;
+class AttribStorage;
+class Mesh;
 
 
-class CADR_EXPORT Renderer {
+class CADR_EXPORT Renderer final {
 protected:
-	vk::Device* _device;
+	vk::Device _device;
+	std::map<AttribConfig,std::list<AttribStorage>> _attribStorages;
+	AttribStorage* _emptyStorage;
+	vk::Buffer _indexBuffer;
+	vk::Buffer _primitiveSetBuffer;
+	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
+	ItemAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
+	static std::unique_ptr<Renderer> _instance;
 public:
+
+	static Renderer* get();
+	static std::unique_ptr<Renderer> release();
+	static void set(std::unique_ptr<Renderer>&& r);
 
 	Renderer();
 	virtual ~Renderer();
 
-	inline vk::Device* device() const;
+	vk::Device device() const;
+	vk::Buffer indexBuffer() const;
 
-	void allocDrawableData(Drawable* d,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands);
+	AttribStorage* getOrCreateAttribStorage(const AttribConfig& ac);
+	std::map<AttribConfig,std::list<AttribStorage>>& getAttribStorages();
+	const AttribStorage* emptyStorage() const;
+	AttribStorage* emptyStorage();
+
+	void uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+
+	const ArrayAllocation<Mesh>& indexAllocation(unsigned id) const;  ///< Returns index allocation for particular id.
+	ArrayAllocation<Mesh>& indexAllocation(unsigned id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
+	const ArrayAllocationManager<Mesh>& indexAllocationManager() const;
+	ArrayAllocationManager<Mesh>& indexAllocationManager();
+
+	const ItemAllocationManager& primitiveSetAllocationManager() const;
+	ItemAllocationManager& primitiveSetAllocationManager();
 
 };
 
 
 // inline methods
-inline vk::Device* Renderer::device() const  { return _device; }
+inline Renderer* Renderer::get()  { return _instance.get(); }
+inline std::unique_ptr<Renderer> Renderer::release()  { return move(_instance); }
+inline void Renderer::set(std::unique_ptr<Renderer>&& r)  { _instance=move(r); }
+inline vk::Device Renderer::device() const  { return _device; }
+inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
+inline std::map<AttribConfig,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
+inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
+inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }
+inline const ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id) const  { return _indexAllocationManager[id]; }
+inline ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id)  { return _indexAllocationManager[id]; }
+inline const ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }
+inline ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
+inline const ItemAllocationManager& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
+inline ItemAllocationManager& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
 
 
 }

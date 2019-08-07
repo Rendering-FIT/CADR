@@ -1,20 +1,19 @@
 #include <iostream> // for cerr
 #include <memory>
-#include <CADR/AttribStorage.h>
-#include <CADR/Drawable.h>
-#include <CADR/Renderer.h>
+#include <CadR/AttribStorage.h>
+#include <CadR/Renderer.h>
 
 using namespace std;
-using namespace cd;
+using namespace CadR;
 
 
 
 AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig)
-	: _vertexAllocationManager()
-	, _indexAllocationManager()
+	: _allocationManager(0,0)  // zero capacity, zero-sized object on index 0
 	, _attribConfig(attribConfig)
 	, _renderer(renderer)
 {
+#if 0
 	//_renderer->onAttribStorageInit(this);
 
 	// create buffers
@@ -46,6 +45,7 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig
 	}
 	else
 		_indexBuffer=nullptr;
+#endif
 
    // append transformation matrix to VAO
 #if 0
@@ -80,12 +80,7 @@ AttribStorage::~AttribStorage()
 }
 
 
-void AttribStorage::bind() const
-{
-	//_va->bind();
-}
-
-
+#if 0
 /** Allocates the memory for vertices and indices
  *  inside AttribStorage.
  *
@@ -270,21 +265,20 @@ void AttribStorage::render(const std::vector<RenderingCommandData>& renderingDat
       }
 }
 #endif
+#endif
 
 
 void AttribStorage::cancelAllAllocations()
 {
-	// break all Drawable references to this AttribStorage
-	for(auto it=_vertexAllocationManager.begin(); it!=_vertexAllocationManager.end(); it++)
-		if(it->owner)
-			it->owner->_attribStorage=nullptr;
-	for(auto it=_indexAllocationManager.begin(); it!=_indexAllocationManager.end(); it++)
+#if 0
+	// break all Mesh references to this AttribStorage
+	for(auto it=_allocationManager.begin(); it!=_allocationManager.end(); it++)
 		if(it->owner)
 			it->owner->_attribStorage=nullptr;
 
 	// empty allocation maps
-	_vertexAllocationManager.clear();
-	_indexAllocationManager.clear();
+	_allocationManager.clear();
+#endif
 }
 
 
