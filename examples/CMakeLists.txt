@@ -17,7 +17,7 @@ set(PACKAGES
 	VulkanAttributesAndUniforms
 	VulkanRenderingPerformance
 	VulkanDynamicFuncs
-	glTFreader
+	gltfReader
 	)
 if(UNIX)
 	list(INSERT PACKAGES 2 tut03-helloWindowX11)
