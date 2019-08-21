@@ -23,6 +23,9 @@ set(CADR_PUBLIC_HEADERS
     Mesh.h
     PrimitiveSet.h
     Renderer.h
+    VulkanDevice.h
+    VulkanInstance.h
+    VulkanLibrary.h
    )
 
 # private headers
@@ -35,6 +38,9 @@ set(CADR_SOURCES
     CadR.cpp
     PrimitiveSet.cpp
     Renderer.cpp
+    VulkanDevice.cpp
+    VulkanInstance.cpp
+    VulkanLibrary.cpp
    )
 
 # CADR library
@@ -50,6 +56,9 @@ find_package(Vulkan REQUIRED)
 
 # target libraries
 target_link_libraries(${LIB_NAME} Vulkan)
+if(UNIX)
+	target_link_libraries(${LIB_NAME} dl)
+endif()
 
 # target includes
 get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
