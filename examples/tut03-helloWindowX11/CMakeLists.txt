@@ -15,5 +15,5 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
 find_package(Vulkan REQUIRED)
 find_package(X11 REQUIRED)
 
-target_link_libraries(${APP_NAME} Vulkan X11)
+target_link_libraries(${APP_NAME} Vulkan::Vulkan X11)
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")

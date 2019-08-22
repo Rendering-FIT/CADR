@@ -14,7 +14,7 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
 # dependencies
 find_package(Vulkan REQUIRED)
 
-target_link_libraries(${APP_NAME} VulkanHeaders)
+target_link_libraries(${APP_NAME} Vulkan::Headers)
 if(NOT WIN32)
 	target_link_libraries(${APP_NAME} dl)
 endif()

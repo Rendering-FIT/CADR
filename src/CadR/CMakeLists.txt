@@ -55,7 +55,7 @@ add_library(${LIB_NAME}
 find_package(Vulkan REQUIRED)
 
 # target libraries
-target_link_libraries(${LIB_NAME} Vulkan)
+target_link_libraries(${LIB_NAME} Vulkan::Headers)
 if(UNIX)
 	target_link_libraries(${LIB_NAME} dl)
 endif()
