@@ -1,6 +1,6 @@
 #include <CadR/VulkanLibrary.h>
 #ifdef _WIN32
-# define WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN  // this reduces win32 headers default namespace pollution
 # include <windows.h>
 #else
 # include <dlfcn.h>
@@ -26,10 +26,10 @@ void VulkanLibrary::init(const std::experimental::filesystem::path& libPath)
 	// load library
 	// and get vkGetInstanceProcAddr pointer
 #ifdef _WIN32
-	_lib=LoadLibraryA(libPath);
+	_lib=reinterpret_cast<void*>(LoadLibraryW(libPath.native().c_str()));
 	if(_lib==nullptr)
-		throw std::runtime_error("Can not open \""+libPath.native()+"\".");
-	vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(GetProcAddress(_lib,"vkGetInstanceProcAddr"));
+		throw std::runtime_error("Can not open \""+libPath.string()+"\".");
+	vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(GetProcAddress(reinterpret_cast<HMODULE>(_lib),"vkGetInstanceProcAddr"));
 #else
 	_lib=dlopen(libPath.native().c_str(),RTLD_NOW);
 	if(_lib==nullptr)
@@ -55,7 +55,7 @@ void VulkanLibrary::reset()
 
 		// release Vulkan library
 #ifdef _WIN32
-		FreeLibrary(_lib);
+		FreeLibrary(reinterpret_cast<HMODULE>(_lib));
 #else
 		dlclose(_lib);
 #endif

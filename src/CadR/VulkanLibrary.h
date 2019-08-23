@@ -8,11 +8,7 @@ namespace CadR {
 
 class VulkanLibrary final {
 protected:
-#ifdef _WIN32
-	HMODULE _lib = nullptr;
-#else
 	void* _lib = nullptr;
-#endif
 	static const std::experimental::filesystem::path _defaultPath;
 
 public:
