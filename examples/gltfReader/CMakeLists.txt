@@ -10,9 +10,11 @@ project(${APP_NAME})
 
 set(APP_SOURCES
     main.cpp
+    Window.cpp
    )
 
 set(APP_INCLUDES
+    Window.h
    )
 
 add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})

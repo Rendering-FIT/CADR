@@ -19,8 +19,12 @@ Renderer::Renderer()
 
 Renderer::~Renderer()
 {
+#if 0
 	if(_device)
 		_device.destroy();
+#else
+	assert(false && "Not implemented yet.");
+#endif
 
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
 }

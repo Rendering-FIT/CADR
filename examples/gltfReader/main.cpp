@@ -1,6 +1,10 @@
 #include <CadR/BufferData.h>
 #include <CadR/CadR.h>
 #include <CadR/Mesh.h>
+#include <CadR/VulkanDevice.h>
+#include <CadR/VulkanInstance.h>
+#include <CadR/VulkanLibrary.h>
+#include "Window.h"
 #include <vulkan/vulkan.hpp>
 #include <nlohmann/json.hpp>
 #include <experimental/filesystem>
@@ -49,6 +53,17 @@ int main(int argc,char** argv) {
 
 		// init CADR
 		CadR::init();
+		CadR::VulkanLibrary vulkanLib;
+		CadR::VulkanInstance vulkanInstance(vulkanLib,"glTF reader",0,"CADR",0,VK_API_VERSION_1_0,nullptr,
+#ifdef _WIN32
+														{"VK_KHR_surface","VK_KHR_win32_surface"});  // enabled extension names
+#else
+		                                    {"VK_KHR_surface","VK_KHR_xlib_surface"});  // enabled extension names
+#endif
+		CadUI::Window window(vulkanInstance);
+		auto physicalDeviceAndQueueFamilies=vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
+		CadR::VulkanDevice vulkanDevice(vulkanInstance,physicalDeviceAndQueueFamilies,
+		                                nullptr,nullptr,nullptr);
 
 		// parse json
 		cout<<"Processing file "<<filePath<<"..."<<endl;
