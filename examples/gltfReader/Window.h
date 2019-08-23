@@ -43,7 +43,11 @@ public:
 
 	vk::SurfaceKHR surface() const;
 
+#ifdef _WIN32
+	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
+#else
 	PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;
+#endif
 	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
 
 };
