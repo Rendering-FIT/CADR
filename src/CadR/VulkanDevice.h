@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include <tuple>
 
 namespace CadR {
 
@@ -14,16 +15,16 @@ public:
 
 	VulkanDevice();
 	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
-	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-	             const vk::ArrayProxy<const vk::DeviceQueueCreateInfo> queueInfos,
+	VulkanDevice(VulkanInstance& instance,
+	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*> enabledLayers = nullptr,
 	             const vk::ArrayProxy<const char*> enabledExtensions = nullptr,
 	             const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	~VulkanDevice();
 
 	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
-	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-	          const vk::ArrayProxy<const vk::DeviceQueueCreateInfo> queueInfos,
+	void init(VulkanInstance& instance,
+	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	          const vk::ArrayProxy<const char*> enabledLayers = nullptr,
 	          const vk::ArrayProxy<const char*> enabledExtensions = nullptr,
 	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
@@ -60,18 +61,11 @@ private:
 // inline methods
 inline VulkanDevice::VulkanDevice()  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { init(instance,physicalDevice,createInfo); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-		const vk::ArrayProxy<const vk::DeviceQueueCreateInfo> queueInfos,const vk::ArrayProxy<const char*> enabledLayers,
-		const vk::ArrayProxy<const char*> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)
-	{	vk::DeviceCreateInfo createInfo(vk::DeviceCreateFlags(),queueInfos.size(),queueInfos.data(),enabledLayers.size(),enabledLayers.data(),enabledExtensions.size(),enabledExtensions.data(),enabledFeatures);
-		init(instance,physicalDevice,createInfo); }
 inline VulkanDevice::~VulkanDevice()  { reset(); }
 
-inline void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-		const vk::ArrayProxy<const vk::DeviceQueueCreateInfo> queueInfos,const vk::ArrayProxy<const char*> enabledLayers,
-		const vk::ArrayProxy<const char*> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)
-	{	vk::DeviceCreateInfo createInfo(vk::DeviceCreateFlags(),queueInfos.size(),queueInfos.data(),enabledLayers.size(),enabledLayers.data(),enabledExtensions.size(),enabledExtensions.data(),enabledFeatures);
-		init(instance,physicalDevice,createInfo); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+		const vk::ArrayProxy<const char*> enabledLayers,const vk::ArrayProxy<const char*> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)
+	{ init(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 
