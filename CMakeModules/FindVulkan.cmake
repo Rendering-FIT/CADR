@@ -22,7 +22,8 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
 	# find Vulkan library
 	find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
-		NAMES vulkan vulkan-1
+		NAMES
+			vulkan vulkan-1
 		PATHS
 			/usr/lib64
 			/usr/local/lib64
