@@ -10,15 +10,20 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 		reset();
 
 	_device=physicalDevice.createDevice(createInfo,nullptr,instance);
-	vkGetDeviceProcAddr=PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
-	vkDestroyDevice=PFN_vkDestroyDevice(_device.getProcAddr("vkDestroyDevice",*this));
+	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
+	vkDestroyDevice      =getProcAddr<PFN_vkDestroyDevice      >("vkDestroyDevice");
+	vkGetDeviceQueue     =getProcAddr<PFN_vkGetDeviceQueue     >("vkGetDeviceQueue");
+	vkCreateBuffer       =getProcAddr<PFN_vkCreateBuffer       >("vkCreateBuffer");
+	vkDestroyBuffer      =getProcAddr<PFN_vkDestroyBuffer      >("vkDestroyBuffer");
+	vkCreateRenderPass   =getProcAddr<PFN_vkCreateRenderPass   >("vkCreateRenderPass");
+	vkDestroyRenderPass  =getProcAddr<PFN_vkDestroyRenderPass  >("vkDestroyRenderPass");
 }
 
 
 void VulkanDevice::init(VulkanInstance& instance,
                         std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
-                        const vk::ArrayProxy<const char*> enabledLayers,
-                        const vk::ArrayProxy<const char*> enabledExtensions,
+                        const vk::ArrayProxy<const char*const> enabledLayers,
+                        const vk::ArrayProxy<const char*const> enabledExtensions,
                         const vk::PhysicalDeviceFeatures* enabledFeatures)
 {
 	if(_device)

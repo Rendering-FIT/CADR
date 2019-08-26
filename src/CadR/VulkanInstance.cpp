@@ -43,6 +43,7 @@ void VulkanInstance::init(VulkanLibrary& lib,const vk::InstanceCreateInfo& creat
 	vkGetDeviceProcAddr                       =getProcAddr<PFN_vkGetDeviceProcAddr                       >("vkGetDeviceProcAddr");
 	vkEnumerateDeviceExtensionProperties      =getProcAddr<PFN_vkEnumerateDeviceExtensionProperties      >("vkEnumerateDeviceExtensionProperties");
 	vkGetPhysicalDeviceSurfaceFormatsKHR      =getProcAddr<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      >("vkGetPhysicalDeviceSurfaceFormatsKHR");
+	vkGetPhysicalDeviceFormatProperties       =getProcAddr<PFN_vkGetPhysicalDeviceFormatProperties       >("vkGetPhysicalDeviceFormatProperties");
 	vkGetPhysicalDeviceSurfacePresentModesKHR =getProcAddr<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR >("vkGetPhysicalDeviceSurfacePresentModesKHR");
 	vkGetPhysicalDeviceQueueFamilyProperties  =getProcAddr<PFN_vkGetPhysicalDeviceQueueFamilyProperties  >("vkGetPhysicalDeviceQueueFamilyProperties");
 	vkGetPhysicalDeviceSurfaceSupportKHR      =getProcAddr<PFN_vkGetPhysicalDeviceSurfaceSupportKHR      >("vkGetPhysicalDeviceSurfaceSupportKHR");

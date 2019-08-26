@@ -5,27 +5,21 @@
 using namespace std;
 using namespace CadR;
 
-unique_ptr<Renderer> Renderer::_instance;
+Renderer* Renderer::_instance = nullptr;
 
 
 
-Renderer::Renderer()
-	: _attribStorages{{AttribConfig(),{AttribStorage(this,AttribConfig())}}}
-	, _emptyStorage(&_attribStorages.begin()->second.front())
+Renderer::Renderer(VulkanDevice* device)
+	: _device(device)
 	, _indexAllocationManager(0,0)  // zero capacity, zero-sized object on index 0
 {
+	_attribStorages[AttribConfig()].emplace_back(this,AttribConfig()); // create empty AttribStorage for empty AttribConfig
+	_emptyStorage=&_attribStorages.begin()->second.front();
 }
 
 
 Renderer::~Renderer()
 {
-#if 0
-	if(_device)
-		_device.destroy();
-#else
-	assert(false && "Not implemented yet.");
-#endif
-
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
 }
 

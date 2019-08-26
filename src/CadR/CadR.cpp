@@ -8,7 +8,6 @@ using namespace CadR;
 
 void CadR::init()
 {
-	Renderer::set(make_unique<Renderer>());
 }
 
 

@@ -32,8 +32,13 @@ public:
 	AttribStorage(Renderer* r,const AttribConfig& c);
 	~AttribStorage();
 
-	void allocAttribs(Mesh& m,unsigned num);
-	void reallocAttribs(Mesh& m,unsigned num);
+	AttribStorage(const AttribStorage&) = delete;
+	AttribStorage(AttribStorage&&) = default;
+	AttribStorage& operator=(const AttribStorage&) = delete;
+	AttribStorage& operator=(AttribStorage&&) = default;
+
+	void allocAttribs(Mesh& m,size_t num);
+	void reallocAttribs(Mesh& m,size_t num);
 	void freeAttribs(Mesh& m);
 
 	void uploadAttribs(Mesh& d,std::vector<std::vector<uint8_t>>&& vertexData,size_t dstIndex=0);
@@ -65,8 +70,8 @@ public:
 #include <CadR/Mesh.h>
 namespace CadR {
 
-inline void AttribStorage::allocAttribs(Mesh& m,unsigned num)  { m.allocAttribs(num); }
-inline void AttribStorage::reallocAttribs(Mesh& m,unsigned num)  { m.reallocAttribs(num); }
+inline void AttribStorage::allocAttribs(Mesh& m,size_t num)  { m.allocAttribs(num); }
+inline void AttribStorage::reallocAttribs(Mesh& m,size_t num)  { m.reallocAttribs(num); }
 inline void AttribStorage::freeAttribs(Mesh& m)  { m.freeAttribs(); }
 inline const ArrayAllocation<Mesh>& AttribStorage::attribAllocation(unsigned id) const  { return _allocationManager[id]; }
 inline ArrayAllocation<Mesh>& AttribStorage::attribAllocation(unsigned id)  { return _allocationManager[id]; }

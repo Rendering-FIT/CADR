@@ -51,19 +51,114 @@ int main(int argc,char** argv) {
 		}
 		f.exceptions(ifstream::badbit|ifstream::failbit);
 
-		// init CADR
-		CadR::init();
+		// init Vulkan and open window
 		CadR::VulkanLibrary vulkanLib;
 		CadR::VulkanInstance vulkanInstance(vulkanLib,"glTF reader",0,"CADR",0,VK_API_VERSION_1_0,nullptr,
 #ifdef _WIN32
-														{"VK_KHR_surface","VK_KHR_win32_surface"});  // enabled extension names
+		                                    {"VK_KHR_surface","VK_KHR_win32_surface"});  // enabled extension names
 #else
 		                                    {"VK_KHR_surface","VK_KHR_xlib_surface"});  // enabled extension names
 #endif
 		CadUI::Window window(vulkanInstance);
-		auto physicalDeviceAndQueueFamilies=vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
-		CadR::VulkanDevice vulkanDevice(vulkanInstance,physicalDeviceAndQueueFamilies,
+		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
+				vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
+		CadR::VulkanDevice vulkanDevice(vulkanInstance,deviceAndQueueFamilies,
 		                                nullptr,nullptr,nullptr);
+		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
+		CadR::Renderer renderer(&vulkanDevice);
+		CadR::Renderer::set(&renderer);
+
+		// get queues
+		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
+		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
+		vk::Queue graphicsQueue=vulkanDevice->getQueue(graphicsQueueFamily,0,vulkanDevice);
+		vk::Queue presentationQueue=vulkanDevice->getQueue(presentationQueueFamily,0,vulkanDevice);
+
+		// choose surface formats
+		vk::SurfaceFormatKHR chosenSurfaceFormat;
+		{
+			vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(window.surface(),vulkanInstance);
+			const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
+			chosenSurfaceFormat=
+				surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
+					?wantedSurfaceFormat
+					:std::find(surfaceFormats.begin(),surfaceFormats.end(),
+					           wantedSurfaceFormat)!=surfaceFormats.end()
+						           ?wantedSurfaceFormat
+						           :surfaceFormats[0];
+		}
+		vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
+			for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
+				vk::FormatProperties p=physicalDevice.getFormatProperties(f,vulkanInstance);
+				if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
+					return f;
+				}
+			}
+			throw std::runtime_error("No suitable depth buffer format.");
+		}(physicalDevice,vulkanInstance);
+
+		// render pass
+		vk::UniqueHandle<vk::RenderPass,CadR::VulkanDevice> renderPass=
+			vulkanDevice->createRenderPassUnique(
+				vk::RenderPassCreateInfo(
+					vk::RenderPassCreateFlags(),  // flags
+					2,                            // attachmentCount
+					array<const vk::AttachmentDescription,2>{  // pAttachments
+						vk::AttachmentDescription{  // color attachment
+							vk::AttachmentDescriptionFlags(),  // flags
+							chosenSurfaceFormat.format,        // format
+							vk::SampleCountFlagBits::e1,       // samples
+							vk::AttachmentLoadOp::eClear,      // loadOp
+							vk::AttachmentStoreOp::eStore,     // storeOp
+							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+							vk::ImageLayout::eUndefined,       // initialLayout
+							vk::ImageLayout::ePresentSrcKHR    // finalLayout
+						},
+						vk::AttachmentDescription{  // depth attachment
+							vk::AttachmentDescriptionFlags(),  // flags
+							depthFormat,                       // format
+							vk::SampleCountFlagBits::e1,       // samples
+							vk::AttachmentLoadOp::eClear,      // loadOp
+							vk::AttachmentStoreOp::eDontCare,  // storeOp
+							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+							vk::ImageLayout::eUndefined,       // initialLayout
+							vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
+						}
+					}.data(),
+					1,  // subpassCount
+					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
+						vk::SubpassDescriptionFlags(),     // flags
+						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+						0,        // inputAttachmentCount
+						nullptr,  // pInputAttachments
+						1,        // colorAttachmentCount
+						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
+							0,  // attachment
+							vk::ImageLayout::eColorAttachmentOptimal  // layout
+						),
+						nullptr,  // pResolveAttachments
+						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
+							1,  // attachment
+							vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
+						),
+						0,        // preserveAttachmentCount
+						nullptr   // pPreserveAttachments
+					),
+					1,  // dependencyCount
+					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
+						VK_SUBPASS_EXTERNAL,   // srcSubpass
+						0,                     // dstSubpass
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
+						vk::AccessFlags(),     // srcAccessMask
+						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
+						vk::DependencyFlags()  // dependencyFlags
+					)
+				),
+				nullptr,vulkanDevice
+			);
 
 		// parse json
 		cout<<"Processing file "<<filePath<<"..."<<endl;

@@ -12,28 +12,29 @@ namespace CadR {
 class AttribConfig;
 class AttribStorage;
 class Mesh;
+class VulkanDevice;
 
 
 class Renderer final {
 private:
-	vk::Device _device;
+	VulkanDevice* _device;
 	std::map<AttribConfig,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
 	vk::Buffer _indexBuffer;
 	vk::Buffer _primitiveSetBuffer;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ItemAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
-	static std::unique_ptr<Renderer> _instance;
+	static Renderer* _instance;
 public:
 
 	CADR_EXPORT static Renderer* get();
-	CADR_EXPORT static std::unique_ptr<Renderer> release();
-	CADR_EXPORT static void set(std::unique_ptr<Renderer>&& r);
+	CADR_EXPORT static void set(Renderer* r);
 
-	CADR_EXPORT Renderer();
+	CADR_EXPORT Renderer() = delete;
+	CADR_EXPORT Renderer(VulkanDevice* device);
 	CADR_EXPORT virtual ~Renderer();
 
-	CADR_EXPORT vk::Device device() const;
+	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 
 	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribConfig& ac);
@@ -55,10 +56,9 @@ public:
 
 
 // inline methods
-inline Renderer* Renderer::get()  { return _instance.get(); }
-inline std::unique_ptr<Renderer> Renderer::release()  { return move(_instance); }
-inline void Renderer::set(std::unique_ptr<Renderer>&& r)  { _instance=move(r); }
-inline vk::Device Renderer::device() const  { return _device; }
+inline Renderer* Renderer::get()  { return _instance; }
+inline void Renderer::set(Renderer* r)  { _instance=r; }
+inline VulkanDevice* Renderer::device() const  { return _device; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline std::map<AttribConfig,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }

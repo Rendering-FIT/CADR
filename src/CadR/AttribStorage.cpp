@@ -1,7 +1,8 @@
-#include <iostream> // for cerr
-#include <memory>
 #include <CadR/AttribStorage.h>
 #include <CadR/Renderer.h>
+#include <CadR/VulkanDevice.h>
+#include <iostream> // for cerr
+#include <memory>
 
 using namespace std;
 using namespace CadR;
@@ -15,27 +16,29 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig
 {
 #if 0
 	//_renderer->onAttribStorageInit(this);
+#endif
 
 	// create buffers
-	_bufferList.reserve(_attribConfig.numAttribs());
 	vk::BufferCreateInfo bufferInfo;
 	bufferInfo.flags=vk::BufferCreateFlags();
 	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer;
 	bufferInfo.sharingMode=vk::SharingMode::eExclusive;
 	bufferInfo.queueFamilyIndexCount=0;
 	bufferInfo.pQueueFamilyIndices=nullptr;
-	vk::Device* device=_renderer->device();
+	VulkanDevice* device=_renderer->device();
+	_bufferList.reserve(_attribConfig.numAttribs());
 	for(uint8_t size : _attribConfig.sizeList())
 	{
 		vk::Buffer b;
 		if(size!=0) {
 			bufferInfo.size=size*1024;
-			b=device->createBuffer(bufferInfo);
+			b=(*device)->createBuffer(bufferInfo,nullptr,*device);
 		} else
 			b=nullptr;
 		_bufferList.push_back(b);
 	}
 
+#if 0
 	// create index buffer
 	if(_attribConfig.indexed())
 	{
@@ -77,6 +80,12 @@ AttribStorage::~AttribStorage()
 	// invalidate all allocations and clean up
 	cancelAllAllocations();
 	//_renderer->onAttribStorageRelease(this);
+
+	// destroy buffers
+	VulkanDevice* device=_renderer->device();
+	for(vk::Buffer b : _bufferList)
+		if(b)
+			(*device)->destroy(b,nullptr,*device);
 }
 
 
