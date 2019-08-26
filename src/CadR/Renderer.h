@@ -14,8 +14,8 @@ class AttribStorage;
 class Mesh;
 
 
-class CADR_EXPORT Renderer final {
-protected:
+class Renderer final {
+private:
 	vk::Device _device;
 	std::map<AttribConfig,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
@@ -26,30 +26,30 @@ protected:
 	static std::unique_ptr<Renderer> _instance;
 public:
 
-	static Renderer* get();
-	static std::unique_ptr<Renderer> release();
-	static void set(std::unique_ptr<Renderer>&& r);
+	CADR_EXPORT static Renderer* get();
+	CADR_EXPORT static std::unique_ptr<Renderer> release();
+	CADR_EXPORT static void set(std::unique_ptr<Renderer>&& r);
 
-	Renderer();
-	virtual ~Renderer();
+	CADR_EXPORT Renderer();
+	CADR_EXPORT virtual ~Renderer();
 
-	vk::Device device() const;
-	vk::Buffer indexBuffer() const;
+	CADR_EXPORT vk::Device device() const;
+	CADR_EXPORT vk::Buffer indexBuffer() const;
 
-	AttribStorage* getOrCreateAttribStorage(const AttribConfig& ac);
-	std::map<AttribConfig,std::list<AttribStorage>>& getAttribStorages();
-	const AttribStorage* emptyStorage() const;
-	AttribStorage* emptyStorage();
+	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribConfig& ac);
+	CADR_EXPORT std::map<AttribConfig,std::list<AttribStorage>>& getAttribStorages();
+	CADR_EXPORT const AttribStorage* emptyStorage() const;
+	CADR_EXPORT AttribStorage* emptyStorage();
 
-	void uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+	CADR_EXPORT void uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
 
-	const ArrayAllocation<Mesh>& indexAllocation(unsigned id) const;  ///< Returns index allocation for particular id.
-	ArrayAllocation<Mesh>& indexAllocation(unsigned id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
-	const ArrayAllocationManager<Mesh>& indexAllocationManager() const;
-	ArrayAllocationManager<Mesh>& indexAllocationManager();
+	CADR_EXPORT const ArrayAllocation<Mesh>& indexAllocation(unsigned id) const;  ///< Returns index allocation for particular id.
+	CADR_EXPORT ArrayAllocation<Mesh>& indexAllocation(unsigned id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocationManager<Mesh>& indexAllocationManager() const;
+	CADR_EXPORT ArrayAllocationManager<Mesh>& indexAllocationManager();
 
-	const ItemAllocationManager& primitiveSetAllocationManager() const;
-	ItemAllocationManager& primitiveSetAllocationManager();
+	CADR_EXPORT const ItemAllocationManager& primitiveSetAllocationManager() const;
+	CADR_EXPORT ItemAllocationManager& primitiveSetAllocationManager();
 
 };
 

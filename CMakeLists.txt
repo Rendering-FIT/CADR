@@ -30,18 +30,21 @@ if(MSVC)
 	# avoid min and max macros
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX")
 
+	# disable warning C4251: class T1 (usually std::vector or so) needs to have dll-interface to be used by clients of class T2 (class containing member T1)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")
+
 	# no support for MSVC prior to 2015
 	if(MSVC_VERSION LESS 1900)
 		message(FATAL_ERROR "Microsoft Visual C++ 2013 and earlier are not supported "
 		                    "because of their limited support of C++11 and C++14.")
 	elseif(MSVC_VERSION LESS 1910)
-
-		# MSVC 2015 workarounds
-		
-		# disable warning C4251: class T1 (usually std::vector or so) needs to have dll-interface to be used by clients of class T2 (class containing member T1)
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")
-
+		# MSVC 2015 is exactly 1900
+	elseif(MSVC_VERSION LESS 1920)
+		# MSVC 2017 is range 1910 to 1916
+	elseif(MSVC_VERSION LESS 1999)
+		# MSVC 2019 is range 1920 to 19??
 	endif()
+
 endif()
 
 # g++
