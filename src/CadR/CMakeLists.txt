@@ -23,6 +23,7 @@ set(CADR_PUBLIC_HEADERS
     Mesh.h
     PrimitiveSet.h
     Renderer.h
+    StagingBuffer.h
     VulkanDevice.h
     VulkanInstance.h
     VulkanLibrary.h
@@ -38,6 +39,7 @@ set(CADR_SOURCES
     CadR.cpp
     PrimitiveSet.cpp
     Renderer.cpp
+    StagingBuffer.cpp
     VulkanDevice.cpp
     VulkanInstance.cpp
     VulkanLibrary.cpp

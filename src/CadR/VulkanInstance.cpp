@@ -35,18 +35,19 @@ void VulkanInstance::init(VulkanLibrary& lib,const vk::InstanceCreateInfo& creat
 		_instance=vk::createInstance(createInfo,nullptr,lib);
 
 	// get function pointers
-	vkGetInstanceProcAddr                     =lib.vkGetInstanceProcAddr;
-	vkDestroyInstance                         =getProcAddr<PFN_vkDestroyInstance                         >("vkDestroyInstance");
-	vkGetPhysicalDeviceProperties             =getProcAddr<PFN_vkGetPhysicalDeviceProperties             >("vkGetPhysicalDeviceProperties");
-	vkEnumeratePhysicalDevices                =getProcAddr<PFN_vkEnumeratePhysicalDevices                >("vkEnumeratePhysicalDevices");
-	vkCreateDevice                            =getProcAddr<PFN_vkCreateDevice                            >("vkCreateDevice");
-	vkGetDeviceProcAddr                       =getProcAddr<PFN_vkGetDeviceProcAddr                       >("vkGetDeviceProcAddr");
-	vkEnumerateDeviceExtensionProperties      =getProcAddr<PFN_vkEnumerateDeviceExtensionProperties      >("vkEnumerateDeviceExtensionProperties");
-	vkGetPhysicalDeviceSurfaceFormatsKHR      =getProcAddr<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR      >("vkGetPhysicalDeviceSurfaceFormatsKHR");
-	vkGetPhysicalDeviceFormatProperties       =getProcAddr<PFN_vkGetPhysicalDeviceFormatProperties       >("vkGetPhysicalDeviceFormatProperties");
-	vkGetPhysicalDeviceSurfacePresentModesKHR =getProcAddr<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR >("vkGetPhysicalDeviceSurfacePresentModesKHR");
-	vkGetPhysicalDeviceQueueFamilyProperties  =getProcAddr<PFN_vkGetPhysicalDeviceQueueFamilyProperties  >("vkGetPhysicalDeviceQueueFamilyProperties");
-	vkGetPhysicalDeviceSurfaceSupportKHR      =getProcAddr<PFN_vkGetPhysicalDeviceSurfaceSupportKHR      >("vkGetPhysicalDeviceSurfaceSupportKHR");
+	vkGetInstanceProcAddr                      =lib.vkGetInstanceProcAddr;
+	vkDestroyInstance                          =getProcAddr<PFN_vkDestroyInstance                          >("vkDestroyInstance");
+	vkGetPhysicalDeviceProperties              =getProcAddr<PFN_vkGetPhysicalDeviceProperties              >("vkGetPhysicalDeviceProperties");
+	vkEnumeratePhysicalDevices                 =getProcAddr<PFN_vkEnumeratePhysicalDevices                 >("vkEnumeratePhysicalDevices");
+	vkCreateDevice                             =getProcAddr<PFN_vkCreateDevice                             >("vkCreateDevice");
+	vkGetDeviceProcAddr                        =getProcAddr<PFN_vkGetDeviceProcAddr                        >("vkGetDeviceProcAddr");
+	vkEnumerateDeviceExtensionProperties       =getProcAddr<PFN_vkEnumerateDeviceExtensionProperties       >("vkEnumerateDeviceExtensionProperties");
+	vkGetPhysicalDeviceSurfaceFormatsKHR       =getProcAddr<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR       >("vkGetPhysicalDeviceSurfaceFormatsKHR");
+	vkGetPhysicalDeviceFormatProperties        =getProcAddr<PFN_vkGetPhysicalDeviceFormatProperties        >("vkGetPhysicalDeviceFormatProperties");
+	vkGetPhysicalDeviceMemoryProperties        =getProcAddr<PFN_vkGetPhysicalDeviceMemoryProperties        >("vkGetPhysicalDeviceMemoryProperties");
+	vkGetPhysicalDeviceSurfacePresentModesKHR  =getProcAddr<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR  >("vkGetPhysicalDeviceSurfacePresentModesKHR");
+	vkGetPhysicalDeviceQueueFamilyProperties   =getProcAddr<PFN_vkGetPhysicalDeviceQueueFamilyProperties   >("vkGetPhysicalDeviceQueueFamilyProperties");
+	vkGetPhysicalDeviceSurfaceSupportKHR       =getProcAddr<PFN_vkGetPhysicalDeviceSurfaceSupportKHR       >("vkGetPhysicalDeviceSurfaceSupportKHR");
 }
 
 

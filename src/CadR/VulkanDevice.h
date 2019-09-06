@@ -54,8 +54,22 @@ public:
 	PFN_vkDestroyRenderPass vkDestroyRenderPass;
 	PFN_vkCreateBuffer vkCreateBuffer;
 	PFN_vkDestroyBuffer vkDestroyBuffer;
-	PFN_vkCreateDescriptorPool vkCreateDescriptorPool;
-	PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool;
+	PFN_vkAllocateMemory vkAllocateMemory;
+	PFN_vkBindBufferMemory vkBindBufferMemory;
+	PFN_vkFreeMemory vkFreeMemory;
+	PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements;
+	PFN_vkMapMemory vkMapMemory;
+	PFN_vkUnmapMemory vkUnmapMemory;
+	PFN_vkCreateCommandPool vkCreateCommandPool;
+	PFN_vkDestroyCommandPool vkDestroyCommandPool;
+	PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
+	PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
+	PFN_vkEndCommandBuffer vkEndCommandBuffer;
+	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+	PFN_vkCreateFence vkCreateFence;
+	PFN_vkDestroyFence vkDestroyFence;
+	PFN_vkQueueSubmit vkQueueSubmit;
+	PFN_vkWaitForFences vkWaitForFences;
 
 private:
 	VulkanDevice(const VulkanDevice&) = default;  ///< Private copy contructor. Object copies not allowed. Only internal use.

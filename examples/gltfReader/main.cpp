@@ -65,12 +65,12 @@ int main(int argc,char** argv) {
 		CadR::VulkanDevice vulkanDevice(vulkanInstance,deviceAndQueueFamilies,
 		                                nullptr,nullptr,nullptr);
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
-		CadR::Renderer renderer(&vulkanDevice);
+		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
+		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
+		CadR::Renderer renderer(&vulkanDevice,&vulkanInstance,physicalDevice,graphicsQueueFamily);
 		CadR::Renderer::set(&renderer);
 
 		// get queues
-		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
-		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
 		vk::Queue graphicsQueue=vulkanDevice->getQueue(graphicsQueueFamily,0,vulkanDevice);
 		vk::Queue presentationQueue=vulkanDevice->getQueue(presentationQueueFamily,0,vulkanDevice);
 
@@ -258,13 +258,15 @@ int main(int argc,char** argv) {
 		b.exceptions(ifstream::badbit|ifstream::failbit);
 
 		// read buffer file
-		CadR::BufferData data(count*12);
+		//CadR::BufferData data(count*12);
+		vector<uint8_t> data(count*12);
 		b.seekg(bufferViewOffset+accessorOffset);
-		b.read(data.get<istream::char_type>(),data.size);
+		//b.read(data.get<istream::char_type>(),data.size);
+		b.read(reinterpret_cast<istream::char_type*>(data.data()),data.size());
 		b.close();
 
 		auto m=make_unique<CadR::Mesh>(CadR::AttribConfig{12},count,count,0);
-		//m->uploadAttrib(0,move(data));
+		m->uploadAttrib(0,data);
 		//auto a=make_unique<cadR::AttribStorage>();
 		//auto p=make_unique<CadR::PrimitiveSet>();
 

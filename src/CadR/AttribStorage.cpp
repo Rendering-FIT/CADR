@@ -1,5 +1,7 @@
 #include <CadR/AttribStorage.h>
+#include <CadR/BufferData.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingBuffer.h>
 #include <CadR/VulkanDevice.h>
 #include <iostream> // for cerr
 #include <memory>
@@ -225,14 +227,120 @@ void AttribStorage::uploadVertices(Drawable* /*d*/,std::vector<Buffer>&& /*verte
    }
 #endif
 }
+#endif
 
 
-void AttribStorage::uploadAttrib(Drawable* /*d*/,unsigned /*attribIndex*/,Buffer&& /*attribData*/,size_t /*dstIndex*/)
+StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex)
 {
-	assert(0 && "Not implemented yet.");
+	if(attribIndex>_bufferList.size())
+		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
+
+	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	const unsigned s=_attribConfig[attribIndex];
+	return StagingBuffer(
+			_bufferList[attribIndex],  // dstBuffer
+			a.startIndex*s,  // dstOffset
+			a.numItems*s,  // size
+			_renderer  // renderer
+		);
 }
 
 
+StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex,size_t dstIndex,size_t numItems)
+{
+	if(attribIndex>_bufferList.size())
+		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
+
+	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	if(numItems+dstIndex>a.numItems)
+		throw std::out_of_range("AttribStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Mesh preallocated space.");
+
+	const unsigned s=_attribConfig[attribIndex];
+	return StagingBuffer(
+			_bufferList[attribIndex],  // dstBuffer
+			(a.startIndex+dstIndex)*s,  // dstOffset
+			numItems*s,  // size
+			_renderer  // renderer
+		);
+}
+
+
+vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m)
+{
+	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	vector<StagingBuffer> v;
+	v.reserve(_bufferList.size());
+
+	for(size_t i=0,e=_bufferList.size(); i<e; i++) {
+		vk::Buffer b=_bufferList[i];
+		const unsigned s=_attribConfig[i];
+		v.emplace_back(
+				b,  // dstBuffer
+				a.startIndex*s,  // dstOffset
+				a.numItems*s,  // size
+				_renderer  // renderer
+			);
+	}
+	return v;
+}
+
+
+vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t dstIndex,size_t numItems)
+{
+	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	vector<StagingBuffer> v;
+	v.reserve(_bufferList.size());
+
+	for(size_t i=0,e=_bufferList.size(); i<e; i++) {
+		vk::Buffer b=_bufferList[i];
+		const unsigned s=_attribConfig[i];
+		v.emplace_back(
+				b,  // dstBuffer
+				(a.startIndex+dstIndex)*s,  // dstOffset
+				numItems*s,  // size
+				_renderer  // renderer
+			);
+	}
+	return v;
+}
+
+
+void AttribStorage::uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex)
+{
+	// attribIndex bound check
+	if(attribIndex>_bufferList.size())
+		throw std::out_of_range("AttribStorage::uploadAttrib() called with invalid attribIndex.");
+
+	// create StagingBuffer and submit it
+	size_t dataSize=attribData.size()/_attribConfig[attribIndex];
+	StagingBuffer sb(createStagingBuffer(m,attribIndex,dstIndex,dataSize));
+	memcpy(sb.data(),attribData.data(),dataSize);
+	sb.submit();
+}
+
+
+void AttribStorage::uploadAttribs(Mesh& m,const vector<vector<uint8_t>>& vertexData,size_t dstIndex)
+{
+	// check parameters validity
+	if(vertexData.size()!=_bufferList.size())
+		throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
+	if(vertexData.size()==0)
+		return;
+	size_t numItems=vertexData[0].size()/_attribConfig[0];
+	for(size_t i=1,e=vertexData.size(); i<e; i++)
+		if(vertexData[i].size()!=numItems*_attribConfig[i])
+			throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
+
+	// create StagingBuffers and submit them
+	vector<StagingBuffer> sbList(createStagingBuffers(m,dstIndex,numItems));
+	for(size_t i=0,e=vertexData.size(); i<e; i++) {
+		memcpy(sbList[i].data(),vertexData[i].data(),numItems*_attribConfig[i]);
+		sbList[i].submit();
+	}
+}
+
+
+#if 0
 void AttribStorage::uploadIndices(Drawable* /*d*/,std::vector<uint32_t>&& /*indexData*/,size_t /*dstIndex*/)
 {
 #if 0

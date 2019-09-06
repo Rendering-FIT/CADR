@@ -9,6 +9,7 @@ namespace CadR {
 
 class Mesh;
 class Renderer;
+class StagingBuffer;
 
 
 /** \brief AttribStorage class provides GPU storage for vertex attributes
@@ -41,8 +42,12 @@ public:
 	void reallocAttribs(Mesh& m,size_t num);
 	void freeAttribs(Mesh& m);
 
-	void uploadAttribs(Mesh& d,std::vector<std::vector<uint8_t>>&& vertexData,size_t dstIndex=0);
-	void uploadAttrib(Mesh& d,unsigned attribIndex,std::vector<uint8_t>&& attribData,size_t dstIndex=0);
+	void uploadAttribs(Mesh& m,const std::vector<std::vector<uint8_t>>& vertexData,size_t dstIndex=0);
+	void uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex=0);
+	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex);
+	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex,size_t dstIndex,size_t numItems);
+	std::vector<StagingBuffer> createStagingBuffers(Mesh& m);
+	std::vector<StagingBuffer> createStagingBuffers(Mesh& m,size_t dstIndex,size_t numItems);
 
 	const ArrayAllocation<Mesh>& attribAllocation(unsigned id) const; ///< Returns the attribute allocation for particular id.
 	ArrayAllocation<Mesh>& attribAllocation(unsigned id);  ///< Returns the attribute allocation for particular id. Modify the returned data only with caution.
@@ -52,9 +57,9 @@ public:
 	const AttribConfig& attribConfig() const;
 	Renderer* renderer() const;
 
-	inline const std::vector<vk::Buffer>& bufferList() const;
-	inline vk::Buffer buffer(unsigned index) const;
-	inline unsigned numBuffers() const;
+	const std::vector<vk::Buffer>& bufferList() const;
+	vk::Buffer buffer(unsigned index) const;
+	unsigned numBuffers() const;
 
 	void render();
 	void cancelAllAllocations();

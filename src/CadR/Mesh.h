@@ -7,8 +7,8 @@ namespace CadR {
 
 class AttribConfig;
 class AttribStorage;
-struct BufferData;
 class Renderer;
+class StagingBuffer;
 
 
 /** Mesh class represents geometry data that might be used for rendering.
@@ -92,9 +92,13 @@ public:
 	size_t numPrimitives() const;
 #endif
 
-	inline void uploadAttribs(std::vector<BufferData>&& vertexData,size_t dstIndex=0);
-	inline void uploadAttrib(unsigned attribIndex,BufferData&& attribData,size_t dstIndex=0);
-	inline void uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+	void uploadAttribs(const std::vector<std::vector<uint8_t>>& vertexData,size_t dstIndex=0);
+	void uploadAttrib(unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex=0);
+	StagingBuffer createStagingBuffer(unsigned attribIndex);
+	StagingBuffer createStagingBuffer(unsigned attribIndex,size_t dstIndex,size_t numItems);
+	std::vector<StagingBuffer> createStagingBuffers();
+	std::vector<StagingBuffer> createStagingBuffers(size_t dstIndex,size_t numItems);
+
 #if 0
 	inline void uploadDrawCommands(const std::vector<DrawCommand>&& drawCommands,
 	                               size_t dstIndex=0);
@@ -132,6 +136,7 @@ public:
 // inline methods
 #include <CadR/AttribStorage.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingBuffer.h>
 namespace CadR {
 
 inline Mesh::Mesh() : _attribStorage(Renderer::get()->emptyStorage())  {}
@@ -180,10 +185,12 @@ inline size_t Mesh::numVertices() const  { return size_t(_attribStorage->attribA
 inline size_t Mesh::numIndices() const  { return size_t(renderer()->indexAllocation(_indexDataID).numItems); }
 #if 0
 inline size_t Drawable::numPrimitives() const  { return _attribStorage ? _attribStorage->renderer()->primitiveStorage()->operator[](_primitivesDataId).numItems : 0; }
-inline void Drawable::uploadVertices(std::vector<Buffer>&& vertexData,size_t dstIndex=0);
-inline void Drawable::uploadAttrib(unsigned attribIndex,Buffer&& attribData,size_t dstIndex=0);
-inline void Drawable::uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0);
-inline void Drawable::setNullAttribStorage()  { _attribStorage=_attribStorage->nullAttribStorage(); }
 #endif
+inline void Mesh::uploadAttribs(const std::vector<std::vector<uint8_t>>& vertexData,size_t dstIndex)  { _attribStorage->uploadAttribs(*this,vertexData,dstIndex); }
+inline void Mesh::uploadAttrib(unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex)  { _attribStorage->uploadAttrib(*this,attribIndex,attribData,dstIndex); }
+inline StagingBuffer Mesh::createStagingBuffer(unsigned attribIndex)  { return _attribStorage->createStagingBuffer(*this,attribIndex); }
+inline StagingBuffer Mesh::createStagingBuffer(unsigned attribIndex,size_t dstIndex,size_t numItems)  { return _attribStorage->createStagingBuffer(*this,attribIndex,dstIndex,numItems); }
+inline std::vector<StagingBuffer> Mesh::createStagingBuffers()  { return _attribStorage->createStagingBuffers(*this); }
+inline std::vector<StagingBuffer> Mesh::createStagingBuffers(size_t dstIndex,size_t numItems)  { return _attribStorage->createStagingBuffers(*this,dstIndex,numItems); }
 
 }

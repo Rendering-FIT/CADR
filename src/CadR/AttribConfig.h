@@ -33,6 +33,8 @@ public:
 	AttribConfig(AttribConfig&& ac) = default;  ///< Move constructor.
 
 	const std::vector<uint8_t>& sizeList() const;
+	uint8_t operator[](size_t attribIndex) const;
+	uint8_t at(size_t attribIndex) const;
 	unsigned numAttribs() const;
 
 	AttribConfig& operator=(const AttribConfig& ac) = default;
@@ -57,6 +59,8 @@ inline AttribConfig::AttribConfig(const std::vector<uint8_t>& sizeList) : _sizeL
 inline AttribConfig::AttribConfig(const std::vector<uint8_t>&& sizeList) : _sizeList(move(sizeList))  { assert(_sizeList.size()==0||_sizeList.back()!=0 || !"No trailing zeros allowed for sizeList."); }
 inline AttribConfig::AttribConfig(std::initializer_list<uint8_t> init) : _sizeList(init)  { assert(_sizeList.size()==0||_sizeList.back()!=0 || !"No trailing zeros allowed for sizeList."); }
 inline const std::vector<uint8_t>& AttribConfig::sizeList() const  { return _sizeList; }
+inline uint8_t AttribConfig::operator[](size_t attribIndex) const  { return _sizeList[attribIndex]; }
+inline uint8_t AttribConfig::at(size_t attribIndex) const  { return _sizeList.at(attribIndex); }
 inline unsigned AttribConfig::numAttribs() const  { return unsigned(_sizeList.size()); }
 
 inline bool AttribConfig::operator==(const AttribConfig& rhs) const  { return _sizeList==rhs._sizeList; }

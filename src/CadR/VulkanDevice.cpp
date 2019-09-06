@@ -13,10 +13,27 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
 	vkDestroyDevice      =getProcAddr<PFN_vkDestroyDevice      >("vkDestroyDevice");
 	vkGetDeviceQueue     =getProcAddr<PFN_vkGetDeviceQueue     >("vkGetDeviceQueue");
-	vkCreateBuffer       =getProcAddr<PFN_vkCreateBuffer       >("vkCreateBuffer");
-	vkDestroyBuffer      =getProcAddr<PFN_vkDestroyBuffer      >("vkDestroyBuffer");
 	vkCreateRenderPass   =getProcAddr<PFN_vkCreateRenderPass   >("vkCreateRenderPass");
 	vkDestroyRenderPass  =getProcAddr<PFN_vkDestroyRenderPass  >("vkDestroyRenderPass");
+	vkCreateBuffer       =getProcAddr<PFN_vkCreateBuffer       >("vkCreateBuffer");
+	vkDestroyBuffer      =getProcAddr<PFN_vkDestroyBuffer      >("vkDestroyBuffer");
+	vkAllocateMemory     =getProcAddr<PFN_vkAllocateMemory     >("vkAllocateMemory");
+	vkBindBufferMemory   =getProcAddr<PFN_vkBindBufferMemory   >("vkBindBufferMemory");
+	vkFreeMemory         =getProcAddr<PFN_vkFreeMemory         >("vkFreeMemory");
+	vkGetBufferMemoryRequirements =getProcAddr<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
+	vkMapMemory          =getProcAddr<PFN_vkMapMemory          >("vkMapMemory");
+	vkUnmapMemory        =getProcAddr<PFN_vkUnmapMemory        >("vkUnmapMemory");
+	vkCreateCommandPool  =getProcAddr<PFN_vkCreateCommandPool  >("vkCreateCommandPool");
+	vkDestroyCommandPool =getProcAddr<PFN_vkDestroyCommandPool >("vkDestroyCommandPool");
+	vkAllocateCommandBuffers =getProcAddr<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
+	vkBeginCommandBuffer =getProcAddr<PFN_vkBeginCommandBuffer >("vkBeginCommandBuffer");
+	vkEndCommandBuffer   =getProcAddr<PFN_vkEndCommandBuffer   >("vkEndCommandBuffer");
+	vkCmdCopyBuffer      =getProcAddr<PFN_vkCmdCopyBuffer      >("vkCmdCopyBuffer");
+	vkCreateFence        =getProcAddr<PFN_vkCreateFence        >("vkCreateFence");
+	vkDestroyFence       =getProcAddr<PFN_vkDestroyFence       >("vkDestroyFence");
+	vkQueueSubmit        =getProcAddr<PFN_vkQueueSubmit        >("vkQueueSubmit");
+	vkWaitForFences      =getProcAddr<PFN_vkWaitForFences      >("vkWaitForFences");
+
 }
 
 

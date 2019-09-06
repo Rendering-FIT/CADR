@@ -12,26 +12,40 @@ namespace CadR {
 class AttribConfig;
 class AttribStorage;
 class Mesh;
+class StagingBuffer;
 class VulkanDevice;
+class VulkanInstance;
 
 
 class Renderer final {
 private:
+
 	VulkanDevice* _device;
+	uint32_t _graphicsQueueFamily;
+	vk::Queue _graphicsQueue;
+
 	std::map<AttribConfig,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
 	vk::Buffer _indexBuffer;
 	vk::Buffer _primitiveSetBuffer;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ItemAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
+
+	vk::PhysicalDeviceMemoryProperties _memoryProperties;
+	vk::CommandPool _commandPoolTransient;
+	vk::CommandBuffer _uploadCommandBuffer;
+	std::list<std::tuple<vk::Buffer,vk::DeviceMemory>> _objectsToDeleteAfterCopyOperation;
+
 	static Renderer* _instance;
+
 public:
 
 	CADR_EXPORT static Renderer* get();
 	CADR_EXPORT static void set(Renderer* r);
 
 	CADR_EXPORT Renderer() = delete;
-	CADR_EXPORT Renderer(VulkanDevice* device);
+	CADR_EXPORT Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDevice physicalDevice,
+	                     uint32_t graphicsQueueFamily);
 	CADR_EXPORT virtual ~Renderer();
 
 	CADR_EXPORT VulkanDevice* device() const;
@@ -41,6 +55,11 @@ public:
 	CADR_EXPORT std::map<AttribConfig,std::list<AttribStorage>>& getAttribStorages();
 	CADR_EXPORT const AttribStorage* emptyStorage() const;
 	CADR_EXPORT AttribStorage* emptyStorage();
+
+	CADR_EXPORT vk::DeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags);
+	CADR_EXPORT vk::CommandBuffer uploadCommandBuffer() const;
+	CADR_EXPORT void scheduleCopyOperation(StagingBuffer& stagingBuffer);
+	CADR_EXPORT void executeCopyOperations();
 
 	CADR_EXPORT void uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
 
@@ -52,6 +71,8 @@ public:
 	CADR_EXPORT const ItemAllocationManager& primitiveSetAllocationManager() const;
 	CADR_EXPORT ItemAllocationManager& primitiveSetAllocationManager();
 
+protected:
+	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
 };
 
 
@@ -69,6 +90,7 @@ inline const ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager() co
 inline ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
 inline const ItemAllocationManager& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
 inline ItemAllocationManager& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
+inline vk::CommandBuffer Renderer::uploadCommandBuffer() const  { return _uploadCommandBuffer; }
 
 
 }
