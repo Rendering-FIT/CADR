@@ -67,7 +67,7 @@ void VulkanDevice::init(VulkanInstance& instance,
 	};
 	vk::DeviceCreateInfo createInfo(
 		vk::DeviceCreateFlags(),   // flags
-		numQueues,queueInfos.data(),  // queueCreateInfo
+		uint32_t(numQueues),queueInfos.data(),  // queueCreateInfo
 		enabledLayers.size(),enabledLayers.data(),  // enabledLayersCount
 		enabledExtensions.size(),enabledExtensions.data(),  // enabledExtensions
 		enabledFeatures  // enabledFeatures

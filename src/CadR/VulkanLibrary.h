@@ -1,12 +1,13 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
 #include <experimental/filesystem>
+#include <vulkan/vulkan.hpp>
+#include <CadR/Export.h>
 
 namespace CadR {
 
 
-class VulkanLibrary final {
+class CADR_EXPORT VulkanLibrary final {
 protected:
 	void* _lib = nullptr;
 	static const std::experimental::filesystem::path _defaultPath;

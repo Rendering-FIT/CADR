@@ -25,16 +25,20 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
 		switch(msg)
 		{
-			case WM_SIZE:
-				needResize=true;
-				windowSize.setWidth(LOWORD(lParam));
-				windowSize.setHeight(HIWORD(lParam));
+			case WM_SIZE: {
+				Window* w=(Window*)GetWindowLongPtr(hwnd,0);
+				w->needResize=true;
+				w->windowSize.setWidth(LOWORD(lParam));
+				w->windowSize.setHeight(HIWORD(lParam));
 				return DefWindowProc(hwnd,msg,wParam,lParam);
+			}
 			case WM_CLOSE:
 				DestroyWindow(hwnd);
 				UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
-				window=nullptr;
 				return 0;
+			case WM_NCCREATE:
+				SetWindowLongPtr(hwnd,0,(LONG_PTR)((CREATESTRUCT*)lParam)->lpCreateParams);
+				return DefWindowProc(hwnd,msg,wParam,lParam);
 			case WM_DESTROY:
 				PostQuitMessage(0);
 				return 0;
@@ -49,7 +53,7 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	wc.style         = 0;
 	wc.lpfnWndProc   = wndProc;
 	wc.cbClsExtra    = 0;
-	wc.cbWndExtra    = 0;
+	wc.cbWndExtra    = sizeof(LONG_PTR);
 	wc.hInstance     = GetModuleHandle(NULL);
 	wc.hIcon         = LoadIcon(NULL,IDI_APPLICATION);
 	wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
@@ -67,7 +71,7 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 		"Hello triangle",
 		WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT,CW_USEDEFAULT,windowSize.width,windowSize.height,
-		NULL,NULL,wc.hInstance,NULL);
+		NULL,NULL,wc.hInstance,this);
 	if(window==NULL) {
 		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 		throw runtime_error("Can not create window.");
@@ -80,7 +84,7 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	_instance=&instance;
 	vkCreateWin32SurfaceKHR=_instance->getProcAddr<PFN_vkCreateWin32SurfaceKHR>("vkCreateWin32SurfaceKHR");
 	vkDestroySurfaceKHR=_instance->getProcAddr<PFN_vkDestroySurfaceKHR>("vkDestroySurfaceKHR");
-	_surface=(*_instance)->createWin32SurfaceKHR(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window));
+	_surface=(*_instance)->createWin32SurfaceKHR(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window),nullptr,*this);
 
 #else
 

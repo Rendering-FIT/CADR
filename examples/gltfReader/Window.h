@@ -1,6 +1,7 @@
 #pragma once
 
 #ifdef _WIN32
+# include <windows.h>
 # define VK_USE_PLATFORM_WIN32_KHR
 #else
 # include <X11/Xlib.h>
@@ -10,7 +11,9 @@
 
 // forward declarations
 struct VkXlibSurfaceCreateInfoKHR;
+struct VkWin32SurfaceCreateInfoKHR;
 typedef VkResult (VKAPI_PTR *PFN_vkCreateXlibSurfaceKHR)(VkInstance instance, const VkXlibSurfaceCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface);
+typedef VkResult (VKAPI_PTR *PFN_vkCreateWin32SurfaceKHR)(VkInstance instance, const VkWin32SurfaceCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface);
 
 namespace CadR {
 	class VulkanInstance;

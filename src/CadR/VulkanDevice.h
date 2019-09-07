@@ -1,14 +1,15 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
 #include <tuple>
+#include <vulkan/vulkan.hpp>
+#include <CadR/Export.h>
 
 namespace CadR {
 
 class VulkanInstance;
 
 
-class VulkanDevice final {
+class CADR_EXPORT VulkanDevice final {
 protected:
 	vk::Device _device;
 public:

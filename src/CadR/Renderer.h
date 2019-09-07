@@ -46,7 +46,7 @@ public:
 	CADR_EXPORT Renderer() = delete;
 	CADR_EXPORT Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDevice physicalDevice,
 	                     uint32_t graphicsQueueFamily);
-	CADR_EXPORT virtual ~Renderer();
+	CADR_EXPORT ~Renderer();
 
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT vk::Buffer indexBuffer() const;

@@ -166,12 +166,12 @@ inline void Mesh::allocData(size_t numVertices,size_t numIndices,size_t /*numPri
 inline void Mesh::reallocData(size_t numVertices,size_t numIndices,size_t /*numPrimitiveSets*/)  { reallocAttribs(numVertices); reallocIndices(numIndices); }
 inline void Mesh::freeData()  { freeAttribs(); freeIndices(); }
 
-inline void Mesh::allocAttribs(const AttribConfig& ac,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(ac); _attribDataID=_attribStorage->allocationManager().alloc(num,this); }
-inline void Mesh::allocAttribs(size_t num)  { freeAttribs(); _attribDataID=_attribStorage->allocationManager().alloc(num,this); }
+inline void Mesh::allocAttribs(const AttribConfig& ac,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(ac); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
+inline void Mesh::allocAttribs(size_t num)  { freeAttribs(); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
 inline void Mesh::reallocAttribs(size_t /*num*/)  { /* FIXME: not implemented yet */ }
 inline void Mesh::freeAttribs()  { if(_attribDataID==0) return; _attribStorage->allocationManager().free(_attribDataID); _attribDataID=0; }
 
-inline void Mesh::allocIndices(size_t num)  { freeIndices(); _indexDataID=renderer()->indexAllocationManager().alloc(num,this); }
+inline void Mesh::allocIndices(size_t num)  { freeIndices(); _indexDataID=renderer()->indexAllocationManager().alloc(unsigned(num),this); }
 inline void Mesh::reallocIndices(size_t /*num*/)  { /* FIXME: not implemented yet */ }
 inline void Mesh::freeIndices()  { if(_indexDataID==0) return; renderer()->indexAllocationManager().free(_indexDataID); _indexDataID=0; }
 
