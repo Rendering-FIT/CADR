@@ -56,7 +56,7 @@ void StagingBuffer::cleanUp()
 }
 
 
-StagingBuffer::StagingBuffer(StagingBuffer&& sb)
+StagingBuffer::StagingBuffer(StagingBuffer&& sb) noexcept
 	: _renderer(sb._renderer)
 	, _stgBuffer(sb._stgBuffer)
 	, _stgMemory(sb._stgMemory)
@@ -71,7 +71,7 @@ StagingBuffer::StagingBuffer(StagingBuffer&& sb)
 }
 
 
-StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs)
+StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs) noexcept
 {
 	_renderer=rhs._renderer;
 	_stgBuffer=rhs._stgBuffer;

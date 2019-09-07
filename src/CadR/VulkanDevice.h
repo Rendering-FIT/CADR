@@ -31,8 +31,8 @@ public:
 	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	void reset();
 
-	VulkanDevice(VulkanDevice&&);
-	VulkanDevice& operator=(VulkanDevice&&);
+	VulkanDevice(VulkanDevice&& vd) noexcept;
+	VulkanDevice& operator=(VulkanDevice&& rhs) noexcept;
 
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;

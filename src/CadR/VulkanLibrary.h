@@ -24,8 +24,8 @@ public:
 	void reset();
 	bool initialized() const;
 
-	VulkanLibrary(VulkanLibrary&&);
-	VulkanLibrary& operator=(VulkanLibrary&&);
+	VulkanLibrary(VulkanLibrary&& other) noexcept;
+	VulkanLibrary& operator=(VulkanLibrary&& rhs) noexcept;
 
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;

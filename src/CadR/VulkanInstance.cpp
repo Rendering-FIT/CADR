@@ -63,7 +63,7 @@ void VulkanInstance::reset()
 }
 
 
-VulkanInstance::VulkanInstance(VulkanInstance&& other)
+VulkanInstance::VulkanInstance(VulkanInstance&& other) noexcept
 	: VulkanInstance(other)
 {
 	other._instance=nullptr;
@@ -73,7 +73,7 @@ VulkanInstance::VulkanInstance(VulkanInstance&& other)
 }
 
 
-VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other)
+VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 {
 	if(_instance)
 		reset();

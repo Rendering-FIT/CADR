@@ -68,7 +68,7 @@ void VulkanLibrary::reset()
 }
 
 
-VulkanLibrary::VulkanLibrary(VulkanLibrary&& other)
+VulkanLibrary::VulkanLibrary(VulkanLibrary&& other) noexcept
 	: VulkanLibrary(other)
 {
 	other._lib=nullptr;
@@ -77,7 +77,7 @@ VulkanLibrary::VulkanLibrary(VulkanLibrary&& other)
 }
 
 
-VulkanLibrary& VulkanLibrary::operator=(VulkanLibrary&& other)
+VulkanLibrary& VulkanLibrary::operator=(VulkanLibrary&& other) noexcept
 {
 	if(_lib)
 		reset();

@@ -39,8 +39,8 @@ public:
 	          vk::ArrayProxy<const char*const> enabledExtensions = nullptr);
 	void reset();
 
-	VulkanInstance(VulkanInstance&&);
-	VulkanInstance& operator=(VulkanInstance&&);
+	VulkanInstance(VulkanInstance&& other) noexcept;
+	VulkanInstance& operator=(VulkanInstance&& rhs) noexcept;
 
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;

@@ -28,9 +28,9 @@ public:
 	~StagingBuffer();
 
 	StagingBuffer(const StagingBuffer&) = delete;
-	StagingBuffer(StagingBuffer&& sb);
+	StagingBuffer(StagingBuffer&& other) noexcept;
 	StagingBuffer& operator=(const StagingBuffer&) = delete;
-	StagingBuffer& operator=(StagingBuffer&& rhs);
+	StagingBuffer& operator=(StagingBuffer&& rhs) noexcept;
 
 	uint8_t* data() const;
 	size_t size() const;

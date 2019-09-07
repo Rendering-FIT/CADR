@@ -87,7 +87,7 @@ void VulkanDevice::reset()
 }
 
 
-VulkanDevice::VulkanDevice(VulkanDevice&& other)
+VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
 	: VulkanDevice(other)
 {
 	other._device=nullptr;
@@ -96,7 +96,7 @@ VulkanDevice::VulkanDevice(VulkanDevice&& other)
 }
 
 
-VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other)
+VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
 {
 	if(_device)
 		reset();
