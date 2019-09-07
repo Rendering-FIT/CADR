@@ -12,7 +12,7 @@ using namespace CadR;
 
 
 AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig)
-	: _allocationManager(0,0)  // zero capacity, zero-sized object on index 0
+	: _allocationManager(1024,0)  // zero capacity, zero-sized object on index 0
 	, _attribConfig(attribConfig)
 	, _renderer(renderer)
 {
@@ -23,14 +23,15 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig
 	// create buffers
 	vk::BufferCreateInfo bufferInfo;
 	bufferInfo.flags=vk::BufferCreateFlags();
-	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer;
+	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst;
 	bufferInfo.sharingMode=vk::SharingMode::eExclusive;
 	bufferInfo.queueFamilyIndexCount=0;
 	bufferInfo.pQueueFamilyIndices=nullptr;
 	VulkanDevice* device=_renderer->device();
 	_bufferList.reserve(_attribConfig.numAttribs());
-	for(uint8_t size : _attribConfig.sizeList())
-	{
+	for(uint8_t size : _attribConfig.sizeList()) {
+
+		// create buffer
 		vk::Buffer b;
 		if(size!=0) {
 			bufferInfo.size=size*1024;
@@ -38,6 +39,22 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig
 		} else
 			b=nullptr;
 		_bufferList.push_back(b);
+
+		// allocate memory
+		vk::DeviceMemory m;
+		if(size!=0) {
+			m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
+			_memoryList.push_back(m);
+			(*device)->bindBufferMemory(
+					b,  // buffer
+					m,  // memory
+					0,  // memoryOffset
+					*device  // dispatch
+				);
+		}
+		else
+			_memoryList.push_back(nullptr);
+
 	}
 
 #if 0
@@ -50,29 +67,6 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig
 	}
 	else
 		_indexBuffer=nullptr;
-#endif
-
-   // append transformation matrix to VAO
-#if 0
-   if(_renderingContext->getUseARBShaderDrawParameters()==false) {
-      _va->bind();
-      _renderingContext->matrixStorage()->buffer()->bind(GL_ARRAY_BUFFER);
-      const GLuint index=12;
-      auto& gl=_va->getContext();
-      gl.glEnableVertexAttribArray(index+0);
-      gl.glEnableVertexAttribArray(index+1);
-      gl.glEnableVertexAttribArray(index+2);
-      gl.glEnableVertexAttribArray(index+3);
-      gl.glVertexAttribPointer(index+0,4,GL_FLOAT,GL_FALSE,int(sizeof(float)*16),(void*)(sizeof(float)*0));
-      gl.glVertexAttribPointer(index+1,4,GL_FLOAT,GL_FALSE,int(sizeof(float)*16),(void*)(sizeof(float)*4));
-      gl.glVertexAttribPointer(index+2,4,GL_FLOAT,GL_FALSE,int(sizeof(float)*16),(void*)(sizeof(float)*8));
-      gl.glVertexAttribPointer(index+3,4,GL_FLOAT,GL_FALSE,int(sizeof(float)*16),(void*)(sizeof(float)*12));
-      gl.glVertexAttribDivisor(index+0,1);
-      gl.glVertexAttribDivisor(index+1,1);
-      gl.glVertexAttribDivisor(index+2,1);
-      gl.glVertexAttribDivisor(index+3,1);
-      _va->unbind();
-   }
 #endif
 }
 
@@ -88,6 +82,11 @@ AttribStorage::~AttribStorage()
 	for(vk::Buffer b : _bufferList)
 		if(b)
 			(*device)->destroy(b,nullptr,*device);
+
+	// free memory
+	for(vk::DeviceMemory m : _memoryList)
+		if(m)
+			(*device)->freeMemory(m,nullptr,*device);
 }
 
 
@@ -246,20 +245,20 @@ StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex)
 }
 
 
-StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex,size_t dstIndex,size_t numItems)
+StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex,size_t firstVertex,size_t numVertices)
 {
 	if(attribIndex>_bufferList.size())
 		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
 
 	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
-	if(numItems+dstIndex>a.numItems)
+	if(firstVertex+numVertices>a.numItems)
 		throw std::out_of_range("AttribStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Mesh preallocated space.");
 
 	const unsigned s=_attribConfig[attribIndex];
 	return StagingBuffer(
 			_bufferList[attribIndex],  // dstBuffer
-			(a.startIndex+dstIndex)*s,  // dstOffset
-			numItems*s,  // size
+			(a.startIndex+firstVertex)*s,  // dstOffset
+			numVertices*s,  // size
 			_renderer  // renderer
 		);
 }
@@ -285,7 +284,7 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m)
 }
 
 
-vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t dstIndex,size_t numItems)
+vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t firstVertex,size_t numVertices)
 {
 	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
 	vector<StagingBuffer> v;
@@ -296,8 +295,8 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t dstInde
 		const unsigned s=_attribConfig[i];
 		v.emplace_back(
 				b,  // dstBuffer
-				(a.startIndex+dstIndex)*s,  // dstOffset
-				numItems*s,  // size
+				(a.startIndex+firstVertex)*s,  // dstOffset
+				numVertices*s,  // size
 				_renderer  // renderer
 			);
 	}
@@ -305,36 +304,36 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t dstInde
 }
 
 
-void AttribStorage::uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex)
+void AttribStorage::uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
 {
 	// attribIndex bound check
 	if(attribIndex>_bufferList.size())
 		throw std::out_of_range("AttribStorage::uploadAttrib() called with invalid attribIndex.");
 
 	// create StagingBuffer and submit it
-	size_t dataSize=attribData.size()/_attribConfig[attribIndex];
-	StagingBuffer sb(createStagingBuffer(m,attribIndex,dstIndex,dataSize));
-	memcpy(sb.data(),attribData.data(),dataSize);
+	size_t numVertices=attribData.size()/_attribConfig[attribIndex];
+	StagingBuffer sb(createStagingBuffer(m,attribIndex,firstVertex,numVertices));
+	memcpy(sb.data(),attribData.data(),attribData.size());
 	sb.submit();
 }
 
 
-void AttribStorage::uploadAttribs(Mesh& m,const vector<vector<uint8_t>>& vertexData,size_t dstIndex)
+void AttribStorage::uploadAttribs(Mesh& m,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
 {
 	// check parameters validity
 	if(vertexData.size()!=_bufferList.size())
 		throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
 	if(vertexData.size()==0)
 		return;
-	size_t numItems=vertexData[0].size()/_attribConfig[0];
+	size_t numVertices=vertexData[0].size()/_attribConfig[0];
 	for(size_t i=1,e=vertexData.size(); i<e; i++)
-		if(vertexData[i].size()!=numItems*_attribConfig[i])
+		if(vertexData[i].size()!=numVertices*_attribConfig[i])
 			throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
 
 	// create StagingBuffers and submit them
-	vector<StagingBuffer> sbList(createStagingBuffers(m,dstIndex,numItems));
+	vector<StagingBuffer> sbList(createStagingBuffers(m,firstVertex,numVertices));
 	for(size_t i=0,e=vertexData.size(); i<e; i++) {
-		memcpy(sbList[i].data(),vertexData[i].data(),numItems*_attribConfig[i]);
+		memcpy(sbList[i].data(),vertexData[i].data(),vertexData[i].size());
 		sbList[i].submit();
 	}
 }

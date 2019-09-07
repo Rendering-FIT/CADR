@@ -267,6 +267,7 @@ int main(int argc,char** argv) {
 
 		auto m=make_unique<CadR::Mesh>(CadR::AttribConfig{12},count,count,0);
 		m->uploadAttrib(0,data);
+		renderer.executeCopyOperations();
 		//auto a=make_unique<cadR::AttribStorage>();
 		//auto p=make_unique<CadR::PrimitiveSet>();
 

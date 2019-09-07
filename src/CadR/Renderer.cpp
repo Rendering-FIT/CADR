@@ -57,7 +57,11 @@ Renderer::~Renderer()
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
 
 	_uploadCommandBuffer.end(*_device);
-	(*_device)->destroy(_commandPoolTransient,nullptr,*_device);
+	(*_device)->destroy(_commandPoolTransient,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
+	purgeObjectsToDeleteAfterCopyOperation();
+
+	if(_instance==this)
+		_instance=nullptr;
 }
 
 

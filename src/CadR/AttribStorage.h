@@ -26,6 +26,7 @@ protected:
 	Renderer* _renderer;  ///< Rendering context associated with the AttribStorage.
 
 	std::vector<vk::Buffer> _bufferList;
+	std::vector<vk::DeviceMemory> _memoryList;
 
 public:
 
@@ -42,12 +43,12 @@ public:
 	void reallocAttribs(Mesh& m,size_t num);
 	void freeAttribs(Mesh& m);
 
-	void uploadAttribs(Mesh& m,const std::vector<std::vector<uint8_t>>& vertexData,size_t dstIndex=0);
-	void uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex=0);
+	void uploadAttribs(Mesh& m,const std::vector<std::vector<uint8_t>>& vertexData,size_t firstVertex=0);
+	void uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex=0);
 	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex);
-	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex,size_t dstIndex,size_t numItems);
+	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex,size_t firstVertex,size_t numVertices);
 	std::vector<StagingBuffer> createStagingBuffers(Mesh& m);
-	std::vector<StagingBuffer> createStagingBuffers(Mesh& m,size_t dstIndex,size_t numItems);
+	std::vector<StagingBuffer> createStagingBuffers(Mesh& m,size_t firstVertex,size_t numVertices);
 
 	const ArrayAllocation<Mesh>& attribAllocation(unsigned id) const; ///< Returns the attribute allocation for particular id.
 	ArrayAllocation<Mesh>& attribAllocation(unsigned id);  ///< Returns the attribute allocation for particular id. Modify the returned data only with caution.
@@ -58,7 +59,9 @@ public:
 	Renderer* renderer() const;
 
 	const std::vector<vk::Buffer>& bufferList() const;
+	const std::vector<vk::DeviceMemory>& memoryList() const;
 	vk::Buffer buffer(unsigned index) const;
+	vk::DeviceMemory memory(unsigned index) const;
 	unsigned numBuffers() const;
 
 	void render();
@@ -85,7 +88,9 @@ inline ArrayAllocationManager<Mesh>& AttribStorage::allocationManager()  { retur
 inline const AttribConfig& AttribStorage::attribConfig() const  { return _attribConfig; }
 inline Renderer* AttribStorage::renderer() const  { return _renderer; }
 inline const std::vector<vk::Buffer>& AttribStorage::bufferList() const  { return _bufferList; }
+inline const std::vector<vk::DeviceMemory>& AttribStorage::memoryList() const  { return _memoryList; }
 inline vk::Buffer AttribStorage::buffer(unsigned index) const  { return _bufferList[index]; }
+inline vk::DeviceMemory AttribStorage::memory(unsigned index) const  { return _memoryList[index]; }
 inline unsigned AttribStorage::numBuffers() const  { return unsigned(_bufferList.size()); }
 
 }
