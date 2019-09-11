@@ -1,4 +1,5 @@
 #include "Window.h"
+#include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #ifdef _WIN32
 #else
@@ -18,8 +19,8 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	RECT screenSize;
 	if(GetWindowRect(GetDesktopWindow(),&screenSize)==0)
 		throw std::runtime_error("GetWindowRect() failed.");
-	windowSize.setWidth((screenSize.right-screenSize.left)/2);
-	windowSize.setHeight((screenSize.bottom-screenSize.top)/2);
+	_windowSize.setWidth((screenSize.right-screenSize.left)/2);
+	_windowSize.setHeight((screenSize.bottom-screenSize.top)/2);
 
 	// window's message handling procedure
 	auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
@@ -27,9 +28,9 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 		{
 			case WM_SIZE: {
 				Window* w=(Window*)GetWindowLongPtr(hwnd,0);
-				w->needResize=true;
-				w->windowSize.setWidth(LOWORD(lParam));
-				w->windowSize.setHeight(HIWORD(lParam));
+				w->_needResize=true;
+				w->_windowSize.setWidth(LOWORD(lParam));
+				w->_windowSize.setHeight(HIWORD(lParam));
 				return DefWindowProc(hwnd,msg,wParam,lParam);
 			}
 			case WM_CLOSE:
@@ -70,7 +71,7 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 		"RenderingWindow",
 		"Hello triangle",
 		WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT,CW_USEDEFAULT,windowSize.width,windowSize.height,
+		CW_USEDEFAULT,CW_USEDEFAULT,_windowSize.width,_windowSize.height,
 		NULL,NULL,wc.hInstance,this);
 	if(window==NULL) {
 		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
@@ -83,7 +84,6 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	// create surface
 	_instance=&instance;
 	vkCreateWin32SurfaceKHR=_instance->getProcAddr<PFN_vkCreateWin32SurfaceKHR>("vkCreateWin32SurfaceKHR");
-	vkDestroySurfaceKHR=_instance->getProcAddr<PFN_vkDestroySurfaceKHR>("vkDestroySurfaceKHR");
 	_surface=(*_instance)->createWin32SurfaceKHR(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window),nullptr,*this);
 
 #else
@@ -96,10 +96,10 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	// create window
 	int blackColor=BlackPixel(display,DefaultScreen(display));
 	Screen* screen=XDefaultScreenOfDisplay(display);
-	windowSize.setWidth(XWidthOfScreen(screen)/2);
-	windowSize.setHeight(XHeightOfScreen(screen)/2);
-	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,windowSize.width,
-	                           windowSize.height,0,blackColor,blackColor);
+	_windowSize.setWidth(XWidthOfScreen(screen)/2);
+	_windowSize.setHeight(XHeightOfScreen(screen)/2);
+	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,_windowSize.width,
+	                           _windowSize.height,0,blackColor,blackColor);
 	XSetStandardProperties(display,window,"Hello triangle",NULL,None,NULL,0,NULL);
 	XSelectInput(display,window,StructureNotifyMask);
 	wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
@@ -109,15 +109,147 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 	// create surface
 	_instance=&instance;
 	vkCreateXlibSurfaceKHR=_instance->getProcAddr<PFN_vkCreateXlibSurfaceKHR>("vkCreateXlibSurfaceKHR");
-	vkDestroySurfaceKHR=_instance->getProcAddr<PFN_vkDestroySurfaceKHR>("vkDestroySurfaceKHR");
 	_surface=(*_instance)->createXlibSurfaceKHR(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window),nullptr,*this);
 
 #endif
+
+	// initialize instance-level function pointers
+	vkDestroySurfaceKHR=_instance->getProcAddr<PFN_vkDestroySurfaceKHR>("vkDestroySurfaceKHR");
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR=_instance->getProcAddr<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+	vkGetPhysicalDeviceSurfacePresentModesKHR=_instance->getProcAddr<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>("vkGetPhysicalDeviceSurfacePresentModesKHR");
+}
+
+
+void CadUI::Window::setup(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,
+                          vk::SurfaceFormatKHR surfaceFormat,uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,vk::PresentModeKHR presentMode)
+{
+	// initialize device-level function pointers
+	_physicalDevice=physicalDevice;
+	_device=&device;
+	_surfaceFormat=surfaceFormat;
+	_graphicsQueueFamily=graphicsQueueFamily;
+	_presentationQueueFamily=presentationQueueFamily;
+	_presentMode=presentMode;
+	vkCreateSwapchainKHR=_device->getProcAddr<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
+	vkDestroySwapchainKHR=_device->getProcAddr<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
+}
+
+
+bool CadUI::Window::processEvents()
+{
+	if(!_physicalDevice)
+		throw std::runtime_error("CadUI::Window::processMessages() called without proper call to Window::setup().");
+
+#ifdef _WIN32
+
+	// process messages
+	MSG msg;
+	while(PeekMessage(&msg,NULL,0,0,PM_REMOVE)>0) {
+		if(msg.message==WM_QUIT)
+			return false;
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+
+#else
+
+	// process messages
+	XEvent e;
+	while(XPending(display)>0) {
+		XNextEvent(display,&e);
+		if(e.type==ConfigureNotify && e.xconfigure.window==window) {
+			vk::Extent2D newSize(e.xconfigure.width,e.xconfigure.height);
+			if(newSize!=_windowSize) {
+				_needResize=true;
+				_windowSize=newSize;
+			}
+			continue;
+		}
+		if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==wmDeleteMessage)
+			return false;
+	}
+
+#endif
+
+	return true;
+}
+
+
+bool CadUI::Window::updateSize()
+{
+	// recreate swapchain if necessary
+	if(_needResize==false)
+		return true;
+
+	// recreate only upon surface extent change
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this));
+	if(surfaceCapabilities.currentExtent!=_currentSurfaceExtent) {
+
+		// avoid 0,0 surface extent as creation of swapchain would fail
+		// (0,0 is returned on some platforms (particularly Windows) when window is minimized)
+		if(surfaceCapabilities.currentExtent.width==0 || surfaceCapabilities.currentExtent.height==0)
+			return false;
+
+		// new _currentSurfaceExtent
+		_currentSurfaceExtent=
+			(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
+				?surfaceCapabilities.currentExtent
+				:vk::Extent2D{max(min(_windowSize.width,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
+				              max(min(_windowSize.height,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
+
+		// recreate swapchain
+		recreateSwapchain();
+	}
+
+	_needResize=false;
+	return true;
+}
+
+
+void CadUI::Window::recreateSwapchain()
+{
+	// create new swapchain
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities=_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this);
+	vk::SwapchainKHR oldSwapchain=_swapchain;
+	_swapchain=
+		(*_device)->createSwapchainKHR(
+			vk::SwapchainCreateInfoKHR(
+				vk::SwapchainCreateFlagsKHR(),   // flags
+				_surface,                        // surface
+				surfaceCapabilities.maxImageCount==0  // minImageCount
+					?surfaceCapabilities.minImageCount+1
+					:min(surfaceCapabilities.minImageCount+1,surfaceCapabilities.maxImageCount),
+				_surfaceFormat.format,           // imageFormat
+				_surfaceFormat.colorSpace,       // imageColorSpace
+				_currentSurfaceExtent,           // imageExtent
+				1,  // imageArrayLayers
+				vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+				(_graphicsQueueFamily==_presentationQueueFamily)?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
+				(_graphicsQueueFamily==_presentationQueueFamily)?uint32_t(0):uint32_t(2),  // queueFamilyIndexCount
+				(_graphicsQueueFamily==_presentationQueueFamily)?nullptr:array<uint32_t,2>{_graphicsQueueFamily,_presentationQueueFamily}.data(),  // pQueueFamilyIndices
+				surfaceCapabilities.currentTransform,    // preTransform
+				vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+				_presentMode,  // presentMode
+				VK_TRUE,       // clipped
+				oldSwapchain   // oldSwapchain
+			),
+			nullptr,
+			*this
+		);
+
+	// destroy old swapchain
+	if(oldSwapchain)
+		(*_device)->destroy(oldSwapchain,nullptr,*this);
 }
 
 
 CadUI::Window::~Window()
 {
+	if(_swapchain) {
+		(*_device)->destroy(_swapchain,nullptr,*this);
+		_swapchain=nullptr;
+	}
 	if(_surface) {
 		(*_instance)->destroy(_surface,nullptr,*this);
 		_surface=nullptr;

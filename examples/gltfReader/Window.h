@@ -16,6 +16,7 @@ typedef VkResult (VKAPI_PTR *PFN_vkCreateXlibSurfaceKHR)(VkInstance instance, co
 typedef VkResult (VKAPI_PTR *PFN_vkCreateWin32SurfaceKHR)(VkInstance instance, const VkWin32SurfaceCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSurfaceKHR* pSurface);
 
 namespace CadR {
+	class VulkanDevice;
 	class VulkanInstance;
 }
 
@@ -31,18 +32,32 @@ protected:
 	::Window window=0;
 	Atom wmDeleteMessage;
 #endif
-	vk::Extent2D currentSurfaceExtent = vk::Extent2D(0,0);
-	vk::Extent2D windowSize;
-	bool needResize=true;
+	vk::Extent2D _currentSurfaceExtent = vk::Extent2D(0,0);
+	vk::Extent2D _windowSize;
+	bool _needResize = true;
 
 	CadR::VulkanInstance* _instance;
+	CadR::VulkanDevice* _device;
+	vk::PhysicalDevice _physicalDevice;
+	vk::SurfaceFormatKHR _surfaceFormat;
+	uint32_t _graphicsQueueFamily;
+	uint32_t _presentationQueueFamily;
+	vk::PresentModeKHR _presentMode;
 	vk::SurfaceKHR _surface;
+	vk::SwapchainKHR _swapchain;
 
 public:
 
 	~Window();
 	Window(CadR::VulkanInstance& instance);
 	void init(CadR::VulkanInstance& instance);
+	void setup(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,vk::SurfaceFormatKHR surfaceFormat,
+	           uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
+	           vk::PresentModeKHR presentMode=vk::PresentModeKHR::eFifo); // eFifo is guaranteed to be supported everywhere
+	bool processEvents();
+	bool updateSize();
+
+	void recreateSwapchain();
 
 	vk::SurfaceKHR surface() const;
 
@@ -52,6 +67,10 @@ public:
 	PFN_vkCreateXlibSurfaceKHR vkCreateXlibSurfaceKHR;
 #endif
 	PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR;
+	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
+	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
+	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
 
 };
 

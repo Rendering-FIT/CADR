@@ -63,7 +63,7 @@ int main(int argc,char** argv) {
 		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
 				vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
 		CadR::VulkanDevice vulkanDevice(vulkanInstance,deviceAndQueueFamilies,
-		                                nullptr,nullptr,nullptr);
+		                                nullptr,"VK_KHR_swapchain",nullptr);
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
 		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
 		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
@@ -96,6 +96,18 @@ int main(int argc,char** argv) {
 			}
 			throw std::runtime_error("No suitable depth buffer format.");
 		}(physicalDevice,vulkanInstance);
+
+		// choose presentation mode
+		vk::PresentModeKHR presentMode=
+			[](vector<vk::PresentModeKHR>&& modes){  // presentMode
+					return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
+						?vk::PresentModeKHR::eMailbox
+						:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
+				}(physicalDevice.getSurfacePresentModesKHR(window.surface(),window));
+
+		// setup window
+		window.setup(physicalDevice,vulkanDevice,chosenSurfaceFormat,graphicsQueueFamily,
+		             presentationQueueFamily,presentMode);
 
 		// render pass
 		vk::UniqueHandle<vk::RenderPass,CadR::VulkanDevice> renderPass=
@@ -268,9 +280,14 @@ int main(int argc,char** argv) {
 		auto m=make_unique<CadR::Mesh>(CadR::AttribConfig{12},count,count,0);
 		m->uploadAttrib(0,data);
 		renderer.executeCopyOperations();
-		//auto a=make_unique<cadR::AttribStorage>();
-		//auto p=make_unique<CadR::PrimitiveSet>();
 
+		// main loop
+		while(window.processEvents()) {
+			if(!window.updateSize())
+				continue;
+
+			// render
+		}
 
 	// catch exceptions
 	} catch(vk::Error &e) {
