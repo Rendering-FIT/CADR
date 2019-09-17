@@ -106,8 +106,8 @@ int main(int argc,char** argv) {
 				}(physicalDevice.getSurfacePresentModesKHR(window.surface(),window));
 
 		// setup window
-		window.setup(physicalDevice,vulkanDevice,chosenSurfaceFormat,graphicsQueueFamily,
-		             presentationQueueFamily,presentMode);
+		window.initVulkan(physicalDevice,vulkanDevice,chosenSurfaceFormat,graphicsQueueFamily,
+		                  presentationQueueFamily,presentMode);
 
 		// render pass
 		vk::UniqueHandle<vk::RenderPass,CadR::VulkanDevice> renderPass=

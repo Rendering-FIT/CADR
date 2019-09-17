@@ -12,10 +12,12 @@ class VulkanInstance;
 class CADR_EXPORT VulkanDevice final {
 protected:
 	vk::Device _device;
+	std::vector<std::tuple<void(VulkanDevice::*)(),void*>> _cleanUpHandlers;
 public:
 
 	VulkanDevice();
 	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
+	VulkanDevice(VulkanDevice&& vd) noexcept;
 	VulkanDevice(VulkanInstance& instance,
 	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
@@ -23,16 +25,20 @@ public:
 	             const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	~VulkanDevice();
 
+	VulkanDevice& operator=(VulkanDevice&& rhs) noexcept;
+
 	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
 	void init(VulkanInstance& instance,
 	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
-	void reset();
+	void cleanUp();
 
-	VulkanDevice(VulkanDevice&& vd) noexcept;
-	VulkanDevice& operator=(VulkanDevice&& rhs) noexcept;
+	template<typename T>
+	void addCleanUpHandler(void(T::*handler)(),T* obj)  { _cleanUpHandlers.emplace_back(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj)); }
+	template<typename T>
+	void removeCleanUpHandler(void(T::*handler)(),T* obj)  { auto it=std::find(_cleanUpHandlers.rbegin(),_cleanUpHandlers.rend(),std::tuple<void(VulkanDevice::*)(),void*>(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj))); if(it!=_cleanUpHandlers.rend()) _cleanUpHandlers.erase(it.base()); }
 
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;
@@ -81,7 +87,7 @@ private:
 // inline methods
 inline VulkanDevice::VulkanDevice()  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { init(instance,physicalDevice,createInfo); }
-inline VulkanDevice::~VulkanDevice()  { reset(); }
+inline VulkanDevice::~VulkanDevice()  { cleanUp(); }
 
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 		const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)

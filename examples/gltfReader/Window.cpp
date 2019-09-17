@@ -11,8 +11,56 @@ using namespace std;
 using namespace CadUI;
 
 
-void CadUI::Window::init(CadR::VulkanInstance& instance)
+CadUI::Window::Window(Window&& other)
+	: Window(other)
 {
+#ifdef _WIN32
+	other.window=nullptr;
+#else
+	other.display=nullptr;
+	other.window=0;
+#endif
+	other._instance=nullptr;
+	other._surface=nullptr;
+	other._swapchain=nullptr;
+	other._physicalDevice=nullptr;
+	other._device=nullptr;
+}
+
+
+CadUI::Window::~Window()
+{
+	destroy();
+}
+
+
+CadUI::Window& CadUI::Window::operator=(CadUI::Window&& rhs)
+{
+	*this=rhs;
+
+#ifdef _WIN32
+	rhs.window=nullptr;
+#else
+	rhs.display=nullptr;
+	rhs.window=0;
+#endif
+	rhs._instance=nullptr;
+	rhs._surface=nullptr;
+	rhs._swapchain=nullptr;
+	rhs._physicalDevice=nullptr;
+	rhs._device=nullptr;
+
+	return *this;
+}
+
+
+void CadUI::Window::create(CadR::VulkanInstance& instance)
+{
+	if(_instance==&instance)
+		return;
+	if(_instance)
+		destroy();
+
 #ifdef _WIN32
 
 	// initial window size
@@ -120,10 +168,39 @@ void CadUI::Window::init(CadR::VulkanInstance& instance)
 }
 
 
-void CadUI::Window::setup(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,
-                          vk::SurfaceFormatKHR surfaceFormat,uint32_t graphicsQueueFamily,
-                          uint32_t presentationQueueFamily,vk::PresentModeKHR presentMode)
+void CadUI::Window::destroy()
 {
+	cleanUpVulkan();
+
+	if(_surface) {
+		(*_instance)->destroy(_surface,nullptr,*this);
+		_surface=nullptr;
+	}
+	_instance=nullptr;
+
+#ifdef _WIN32
+	if(window) {
+		DestroyWindow(window);
+		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
+		window=nullptr;
+	}
+#else
+	if(window)  { XDestroyWindow(display,window); window=0; }
+	if(display)  { XCloseDisplay(display); display=nullptr; }
+#endif
+}
+
+
+void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,
+                               vk::SurfaceFormatKHR surfaceFormat,uint32_t graphicsQueueFamily,
+                               uint32_t presentationQueueFamily,vk::PresentModeKHR presentMode)
+{
+	if(_device)
+		cleanUpVulkan();
+
+	// register cleanUp stuff
+	device.addCleanUpHandler(&Window::cleanUpVulkan,this);
+
 	// initialize device-level function pointers
 	_physicalDevice=physicalDevice;
 	_device=&device;
@@ -136,10 +213,26 @@ void CadUI::Window::setup(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& 
 }
 
 
+void CadUI::Window::cleanUpVulkan()
+{
+	// unregister cleanUp stuff
+	_device->removeCleanUpHandler(&Window::cleanUpVulkan,this);
+
+	// clean up all device-level Vulkan stuff
+	if(_swapchain) {
+		(*_device)->destroy(_swapchain,nullptr,*this);
+		_swapchain=nullptr;
+	}
+
+	_physicalDevice=nullptr;
+	_device=nullptr;
+}
+
+
 bool CadUI::Window::processEvents()
 {
-	if(!_physicalDevice)
-		throw std::runtime_error("CadUI::Window::processMessages() called without proper call to Window::setup().");
+	if(!_device)
+		throw std::runtime_error("CadUI::Window::processEvents() called without proper call to Window::initVulkan().");
 
 #ifdef _WIN32
 
@@ -181,6 +274,10 @@ bool CadUI::Window::updateSize()
 	// recreate swapchain if necessary
 	if(_needResize==false)
 		return true;
+
+	// check if proper initialization took place
+	if(!_device)
+		throw std::runtime_error("CadUI::Window::updateSize() called without proper call to Window::initVulkan().");
 
 	// recreate only upon surface extent change
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this));
@@ -241,27 +338,4 @@ void CadUI::Window::recreateSwapchain()
 	// destroy old swapchain
 	if(oldSwapchain)
 		(*_device)->destroy(oldSwapchain,nullptr,*this);
-}
-
-
-CadUI::Window::~Window()
-{
-	if(_swapchain) {
-		(*_device)->destroy(_swapchain,nullptr,*this);
-		_swapchain=nullptr;
-	}
-	if(_surface) {
-		(*_instance)->destroy(_surface,nullptr,*this);
-		_surface=nullptr;
-	}
-
-#ifdef _WIN32
-	if(window) {
-		DestroyWindow(window);
-		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
-	}
-#else
-	if(window)  XDestroyWindow(display,window);
-	if(display)  XCloseDisplay(display);
-#endif
 }

@@ -1,5 +1,6 @@
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
+#include <functional>
 
 using namespace CadR;
 
@@ -7,7 +8,7 @@ using namespace CadR;
 void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)
 {
 	if(_device)
-		reset();
+		cleanUp();
 
 	_device=physicalDevice.createDevice(createInfo,nullptr,instance);
 	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
@@ -44,7 +45,7 @@ void VulkanDevice::init(VulkanInstance& instance,
                         const vk::PhysicalDeviceFeatures* enabledFeatures)
 {
 	if(_device)
-		reset();
+		cleanUp();
 	if(!std::get<0>(physicalDeviceAndQueueFamilies))
 		return;
 
@@ -76,13 +77,21 @@ void VulkanDevice::init(VulkanInstance& instance,
 }
 
 
-void VulkanDevice::reset()
+void VulkanDevice::cleanUp()
 {
 	if(_device) {
+
+		// invoke cleanUp handlers
+		auto handlers=_cleanUpHandlers;
+		for(auto it=handlers.rbegin(); it!=handlers.rend(); it++)
+			std::invoke(std::get<0>(*it),reinterpret_cast<VulkanDevice*>(std::get<1>(*it)));
+
+		// destroy device
 		_device.destroy(nullptr,*this);
 		_device=nullptr;
 		vkGetDeviceProcAddr=nullptr;
 		vkDestroyDevice=nullptr;
+
 	}
 }
 
@@ -99,7 +108,7 @@ VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
 VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
 {
 	if(_device)
-		reset();
+		cleanUp();
 
 	*this=other;
 	other._device=nullptr;

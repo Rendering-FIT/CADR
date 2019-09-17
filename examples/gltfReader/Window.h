@@ -48,12 +48,18 @@ protected:
 
 public:
 
-	~Window();
+	Window() = delete;
 	Window(CadR::VulkanInstance& instance);
-	void init(CadR::VulkanInstance& instance);
-	void setup(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,vk::SurfaceFormatKHR surfaceFormat,
+	Window(Window&& other);
+	~Window();
+
+	Window& operator=(Window&& rhs);
+
+	void initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,vk::SurfaceFormatKHR surfaceFormat,
 	           uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
 	           vk::PresentModeKHR presentMode=vk::PresentModeKHR::eFifo); // eFifo is guaranteed to be supported everywhere
+	void cleanUpVulkan();
+
 	bool processEvents();
 	bool updateSize();
 
@@ -72,11 +78,16 @@ public:
 	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
 	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
 
+protected:
+	Window(const Window& other) = default;  ///< Private copy contructor. Object copies not allowed. Only internal use.
+	Window& operator=(const Window&) = default;  ///< Private copy assignment. Object copies not allowed. Only internal use.
+	void create(CadR::VulkanInstance& instance);
+	void destroy();
 };
 
 
 // inline methods
-inline Window::Window(CadR::VulkanInstance& instance)  { init(instance); }
+inline Window::Window(CadR::VulkanInstance& instance) : _instance(nullptr), _device(nullptr)  { create(instance); }
 inline vk::SurfaceKHR Window::surface() const  { return _surface; }
 
 
