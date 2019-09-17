@@ -310,9 +310,15 @@ bool CadUI::Window::updateSize()
 
 void CadUI::Window::recreateSwapchain()
 {
+	// save old swapchain
+	auto oldSwapchain=
+		vk::UniqueHandle<vk::SwapchainKHR,CadUI::Window>{
+			_swapchain,  // value
+			vk::ObjectDestroy<vk::Device,CadUI::Window>(*_device,nullptr,*this)  // deleter
+		};
+
 	// create new swapchain
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities=_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this);
-	vk::SwapchainKHR oldSwapchain=_swapchain;
 	_swapchain=
 		(*_device)->createSwapchainKHR(
 			vk::SwapchainCreateInfoKHR(
@@ -333,13 +339,12 @@ void CadUI::Window::recreateSwapchain()
 				vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 				_presentMode,  // presentMode
 				VK_TRUE,       // clipped
-				oldSwapchain   // oldSwapchain
+				oldSwapchain.get()  // oldSwapchain
 			),
 			nullptr,
 			*this
 		);
 
 	// destroy old swapchain
-	if(oldSwapchain)
-		(*_device)->destroy(oldSwapchain,nullptr,*this);
+	oldSwapchain.reset();
 }
