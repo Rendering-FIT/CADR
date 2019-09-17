@@ -198,9 +198,6 @@ void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDev
 	if(_device)
 		cleanUpVulkan();
 
-	// register cleanUp stuff
-	device.addCleanUpHandler(&Window::cleanUpVulkan,this);
-
 	// initialize device-level function pointers
 	_physicalDevice=physicalDevice;
 	_device=&device;
@@ -210,12 +207,19 @@ void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDev
 	_presentMode=presentMode;
 	vkCreateSwapchainKHR=_device->getProcAddr<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
 	vkDestroySwapchainKHR=_device->getProcAddr<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
+
+	// register cleanUp handler
+	_device->addCleanUpHandler(&Window::cleanUpVulkan,this);
 }
 
 
 void CadUI::Window::cleanUpVulkan()
 {
-	// unregister cleanUp stuff
+	// do not do anything if Window::initVulkan was not called
+	if(!_device)
+		return;
+
+	// unregister cleanUp handler
 	_device->removeCleanUpHandler(&Window::cleanUpVulkan,this);
 
 	// clean up all device-level Vulkan stuff

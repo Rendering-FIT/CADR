@@ -38,7 +38,7 @@ public:
 	template<typename T>
 	void addCleanUpHandler(void(T::*handler)(),T* obj)  { _cleanUpHandlers.emplace_back(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj)); }
 	template<typename T>
-	void removeCleanUpHandler(void(T::*handler)(),T* obj)  { auto it=std::find(_cleanUpHandlers.rbegin(),_cleanUpHandlers.rend(),std::tuple<void(VulkanDevice::*)(),void*>(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj))); if(it!=_cleanUpHandlers.rend()) _cleanUpHandlers.erase(it.base()); }
+	void removeCleanUpHandler(void(T::*handler)(),T* obj)  { auto it=std::find(_cleanUpHandlers.rbegin(),_cleanUpHandlers.rend(),std::tuple<void(VulkanDevice::*)(),void*>(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj))); if(it!=_cleanUpHandlers.rend()) _cleanUpHandlers.erase((++it).base()); }
 
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;
