@@ -193,7 +193,8 @@ void CadUI::Window::destroy()
 
 void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDevice& device,
                                vk::SurfaceFormatKHR surfaceFormat,uint32_t graphicsQueueFamily,
-                               uint32_t presentationQueueFamily,vk::PresentModeKHR presentMode)
+                               uint32_t presentationQueueFamily,vk::RenderPass renderPass,
+                               vk::PresentModeKHR presentMode)
 {
 	if(_device)
 		cleanUpVulkan();
@@ -204,9 +205,11 @@ void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDev
 	_surfaceFormat=surfaceFormat;
 	_graphicsQueueFamily=graphicsQueueFamily;
 	_presentationQueueFamily=presentationQueueFamily;
+	_renderPass=renderPass;
 	_presentMode=presentMode;
 	vkCreateSwapchainKHR=_device->getProcAddr<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
 	vkDestroySwapchainKHR=_device->getProcAddr<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
+	vkGetSwapchainImagesKHR=_device->getProcAddr<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
 
 	// register cleanUp handler
 	_device->addCleanUpHandler(&Window::cleanUpVulkan,this);
@@ -223,6 +226,11 @@ void CadUI::Window::cleanUpVulkan()
 	_device->removeCleanUpHandler(&Window::cleanUpVulkan,this);
 
 	// clean up all device-level Vulkan stuff
+	if(_framebuffers.size()>0) {
+		for(auto f:_framebuffers)
+			(*_device)->destroy(f,nullptr,*_device);
+		_framebuffers.clear();
+	}
 	if(_swapchain) {
 		(*_device)->destroy(_swapchain,nullptr,*this);
 		_swapchain=nullptr;
@@ -316,6 +324,14 @@ void CadUI::Window::recreateSwapchain()
 			_swapchain,  // value
 			vk::ObjectDestroy<vk::Device,CadUI::Window>(*_device,nullptr,*this)  // deleter
 		};
+	_swapchain=nullptr;
+
+	// clear framebuffers
+	if(_framebuffers.size()>0) {
+		for(auto f:_framebuffers)
+			(*_device)->destroy(f,nullptr,*_device);
+		_framebuffers.clear();
+	}
 
 	// create new swapchain
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities=_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this);
@@ -341,10 +357,58 @@ void CadUI::Window::recreateSwapchain()
 				VK_TRUE,       // clipped
 				oldSwapchain.get()  // oldSwapchain
 			),
-			nullptr,
-			*this
+			nullptr,  // allocator
+			*this     // dispatch
 		);
 
 	// destroy old swapchain
 	oldSwapchain.reset();
+
+	// swapchain images and image views
+	vector<vk::Image> swapchainImages=(*_device)->getSwapchainImagesKHR(_swapchain,*this);
+	vector<vk::UniqueHandle<vk::ImageView,CadR::VulkanDevice>> swapchainImageViews;
+	swapchainImageViews.reserve(swapchainImages.size());
+	for(vk::Image image:swapchainImages)
+		swapchainImageViews.emplace_back(
+			(*_device)->createImageViewUnique(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					image,                       // image
+					vk::ImageViewType::e2D,      // viewType
+					_surfaceFormat.format,       // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				),
+				nullptr,  // allocator
+				*_device  // dispatch
+			)
+		);
+
+	// framebuffers
+	_framebuffers.reserve(swapchainImages.size());
+	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+		_framebuffers.emplace_back(
+			(*_device)->createFramebuffer(
+				vk::FramebufferCreateInfo(
+					vk::FramebufferCreateFlags(),   // flags
+					_renderPass,                    // renderPass
+					1,  // attachmentCount
+					&swapchainImageViews[i].get(),  // pAttachments
+					_currentSurfaceExtent.width,    // width
+					_currentSurfaceExtent.height,   // height
+					1  // layers
+				),
+				nullptr,  // allocator
+				*_device  // dispatch
+			)
+		);
+
+	// call resize callbacks
+	resizeCallbacks.invoke();
 }

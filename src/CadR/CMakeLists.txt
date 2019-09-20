@@ -19,6 +19,7 @@ set(CADR_PUBLIC_HEADERS
     AttribStorage.h
     BufferData.h
     CadR.h
+    CallbackList.h
     Export.h
     Mesh.h
     PrimitiveSet.h

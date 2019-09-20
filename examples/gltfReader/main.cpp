@@ -105,10 +105,6 @@ int main(int argc,char** argv) {
 						:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
 				}(physicalDevice.getSurfacePresentModesKHR(window.surface(),window));
 
-		// setup window
-		window.initVulkan(physicalDevice,vulkanDevice,chosenSurfaceFormat,graphicsQueueFamily,
-		                  presentationQueueFamily,presentMode);
-
 		// render pass
 		vk::UniqueHandle<vk::RenderPass,CadR::VulkanDevice> renderPass=
 			vulkanDevice->createRenderPassUnique(
@@ -171,6 +167,10 @@ int main(int argc,char** argv) {
 				),
 				nullptr,vulkanDevice
 			);
+
+		// setup window
+		window.initVulkan(physicalDevice,vulkanDevice,chosenSurfaceFormat,graphicsQueueFamily,
+		                  presentationQueueFamily,renderPass.get(),presentMode);
 
 		// parse json
 		cout<<"Processing file "<<filePath<<"..."<<endl;
@@ -280,6 +280,14 @@ int main(int argc,char** argv) {
 		auto m=make_unique<CadR::Mesh>(CadR::AttribConfig{12},count,count,0);
 		m->uploadAttrib(0,data);
 		renderer.executeCopyOperations();
+
+		// resize callback
+		window.resizeCallbacks.append(
+				[]() {
+					cout<<"Resize happened."<<endl;
+				},
+				nullptr
+			);
 
 		// main loop
 		while(window.processEvents()) {
