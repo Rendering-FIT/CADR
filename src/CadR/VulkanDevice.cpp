@@ -86,9 +86,7 @@ void VulkanDevice::cleanUp()
 	if(_device) {
 
 		// invoke cleanUp handlers
-		auto handlers=_cleanUpHandlers;
-		for(auto it=handlers.rbegin(); it!=handlers.rend(); it++)
-			std::invoke(std::get<0>(*it),reinterpret_cast<VulkanDevice*>(std::get<1>(*it)));
+		cleanUpCallbacks.invoke();
 
 		// destroy device
 		_device.destroy(nullptr,*this);

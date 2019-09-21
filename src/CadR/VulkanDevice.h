@@ -2,6 +2,7 @@
 
 #include <tuple>
 #include <vulkan/vulkan.hpp>
+#include <CadR/CallbackList.h>
 #include <CadR/Export.h>
 
 namespace CadR {
@@ -12,7 +13,6 @@ class VulkanInstance;
 class CADR_EXPORT VulkanDevice final {
 protected:
 	vk::Device _device;
-	std::vector<std::tuple<void(VulkanDevice::*)(),void*>> _cleanUpHandlers;
 public:
 
 	VulkanDevice();
@@ -35,10 +35,7 @@ public:
 	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	void cleanUp();
 
-	template<typename T>
-	void addCleanUpHandler(void(T::*handler)(),T* obj)  { _cleanUpHandlers.emplace_back(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj)); }
-	template<typename T>
-	void removeCleanUpHandler(void(T::*handler)(),T* obj)  { auto it=std::find(_cleanUpHandlers.rbegin(),_cleanUpHandlers.rend(),std::tuple<void(VulkanDevice::*)(),void*>(reinterpret_cast<void(VulkanDevice::*)()>(handler),reinterpret_cast<void*>(obj))); if(it!=_cleanUpHandlers.rend()) _cleanUpHandlers.erase((++it).base()); }
+	CallbackList<void()> cleanUpCallbacks;
 
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;

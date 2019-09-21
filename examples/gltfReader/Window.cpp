@@ -212,7 +212,7 @@ void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDev
 	vkGetSwapchainImagesKHR=_device->getProcAddr<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
 
 	// register cleanUp handler
-	_device->addCleanUpHandler(&Window::cleanUpVulkan,this);
+	_device->cleanUpCallbacks.append(std::bind(&Window::cleanUpVulkan,this),this);
 }
 
 
@@ -223,7 +223,7 @@ void CadUI::Window::cleanUpVulkan()
 		return;
 
 	// unregister cleanUp handler
-	_device->removeCleanUpHandler(&Window::cleanUpVulkan,this);
+	_device->cleanUpCallbacks.remove(std::bind(&Window::cleanUpVulkan,this),this);
 
 	// clean up all device-level Vulkan stuff
 	if(_framebuffers.size()>0) {
