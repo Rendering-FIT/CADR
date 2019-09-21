@@ -75,17 +75,17 @@ int main(int argc,char** argv) {
 		vk::Queue presentationQueue=vulkanDevice->getQueue(presentationQueueFamily,0,vulkanDevice);
 
 		// choose surface formats
-		vk::SurfaceFormatKHR chosenSurfaceFormat;
+		vk::SurfaceFormatKHR surfaceFormat;
 		{
-			vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(window.surface(),vulkanInstance);
+			vector<vk::SurfaceFormatKHR> sfList=physicalDevice.getSurfaceFormatsKHR(window.surface(),vulkanInstance);
 			const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
-			chosenSurfaceFormat=
-				surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
+			surfaceFormat=
+				sfList.size()==1&&sfList[0].format==vk::Format::eUndefined
 					?wantedSurfaceFormat
-					:std::find(surfaceFormats.begin(),surfaceFormats.end(),
-					           wantedSurfaceFormat)!=surfaceFormats.end()
+					:std::find(sfList.begin(),sfList.end(),
+					           wantedSurfaceFormat)!=sfList.end()
 						           ?wantedSurfaceFormat
-						           :surfaceFormats[0];
+						           :sfList[0];
 		}
 		vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
 			for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
@@ -110,11 +110,11 @@ int main(int argc,char** argv) {
 			vulkanDevice->createRenderPassUnique(
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
-					2,                            // attachmentCount
-					array<const vk::AttachmentDescription,2>{  // pAttachments
+					1,                            // attachmentCount
+					array<const vk::AttachmentDescription,1>{  // pAttachments
 						vk::AttachmentDescription{  // color attachment
 							vk::AttachmentDescriptionFlags(),  // flags
-							chosenSurfaceFormat.format,        // format
+							surfaceFormat.format,              // format
 							vk::SampleCountFlagBits::e1,       // samples
 							vk::AttachmentLoadOp::eClear,      // loadOp
 							vk::AttachmentStoreOp::eStore,     // storeOp
@@ -122,7 +122,7 @@ int main(int argc,char** argv) {
 							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 							vk::ImageLayout::eUndefined,       // initialLayout
 							vk::ImageLayout::ePresentSrcKHR    // finalLayout
-						},
+						}/*,
 						vk::AttachmentDescription{  // depth attachment
 							vk::AttachmentDescriptionFlags(),  // flags
 							depthFormat,                       // format
@@ -133,7 +133,7 @@ int main(int argc,char** argv) {
 							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 							vk::ImageLayout::eUndefined,       // initialLayout
 							vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
-						}
+						}*/
 					}.data(),
 					1,  // subpassCount
 					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
@@ -147,10 +147,10 @@ int main(int argc,char** argv) {
 							vk::ImageLayout::eColorAttachmentOptimal  // layout
 						),
 						nullptr,  // pResolveAttachments
-						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
+						/*&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
 							1,  // attachment
 							vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
-						),
+						)*/nullptr,
 						0,        // preserveAttachmentCount
 						nullptr   // pPreserveAttachments
 					),
@@ -169,7 +169,7 @@ int main(int argc,char** argv) {
 			);
 
 		// setup window
-		window.initVulkan(physicalDevice,vulkanDevice,chosenSurfaceFormat,graphicsQueueFamily,
+		window.initVulkan(physicalDevice,vulkanDevice,surfaceFormat,graphicsQueueFamily,
 		                  presentationQueueFamily,renderPass.get(),presentMode);
 
 		// parse json
@@ -270,10 +270,8 @@ int main(int argc,char** argv) {
 		b.exceptions(ifstream::badbit|ifstream::failbit);
 
 		// read buffer file
-		//CadR::BufferData data(count*12);
 		vector<uint8_t> data(count*12);
 		b.seekg(bufferViewOffset+accessorOffset);
-		//b.read(data.get<istream::char_type>(),data.size);
 		b.read(reinterpret_cast<istream::char_type*>(data.data()),data.size());
 		b.close();
 
