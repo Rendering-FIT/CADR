@@ -210,6 +210,8 @@ void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDev
 	vkCreateSwapchainKHR=_device->getProcAddr<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
 	vkDestroySwapchainKHR=_device->getProcAddr<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
 	vkGetSwapchainImagesKHR=_device->getProcAddr<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
+	vkAcquireNextImageKHR=_device->getProcAddr<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
+	vkQueuePresentKHR=_device->getProcAddr<PFN_vkQueuePresentKHR>("vkQueuePresentKHR");
 
 	// register cleanUp handler
 	_device->cleanUpCallbacks.append(std::bind(&Window::cleanUpVulkan,this),this);
@@ -226,6 +228,11 @@ void CadUI::Window::cleanUpVulkan()
 	_device->cleanUpCallbacks.remove(std::bind(&Window::cleanUpVulkan,this),this);
 
 	// clean up all device-level Vulkan stuff
+	if(_swapchainImageViews.size()>0) {
+		for(auto v:_swapchainImageViews)
+			(*_device)->destroy(v,nullptr,*_device);
+		_swapchainImageViews.clear();
+	}
 	if(_framebuffers.size()>0) {
 		for(auto f:_framebuffers)
 			(*_device)->destroy(f,nullptr,*_device);
@@ -284,7 +291,7 @@ bool CadUI::Window::processEvents()
 bool CadUI::Window::updateSize()
 {
 	// recreate swapchain if necessary
-	if(_needResize==false)
+	if(!_needResize)
 		return true;
 
 	// check if proper initialization took place
@@ -293,22 +300,15 @@ bool CadUI::Window::updateSize()
 
 	// recreate only upon surface extent change
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this));
-	if(surfaceCapabilities.currentExtent!=_currentSurfaceExtent) {
+	if(surfaceCapabilities.currentExtent!=_surfaceExtent) {
 
 		// avoid 0,0 surface extent as creation of swapchain would fail
 		// (0,0 is returned on some platforms (particularly Windows) when window is minimized)
 		if(surfaceCapabilities.currentExtent.width==0 || surfaceCapabilities.currentExtent.height==0)
 			return false;
 
-		// new _currentSurfaceExtent
-		_currentSurfaceExtent=
-			(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
-				?surfaceCapabilities.currentExtent
-				:vk::Extent2D{max(min(_windowSize.width,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
-				              max(min(_windowSize.height,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};
-
 		// recreate swapchain
-		recreateSwapchain();
+		recreateSwapchain(surfaceCapabilities);
 	}
 
 	_needResize=false;
@@ -318,6 +318,19 @@ bool CadUI::Window::updateSize()
 
 void CadUI::Window::recreateSwapchain()
 {
+	recreateSwapchain(_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this));
+}
+
+
+void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities)
+{
+	// set new surface extent
+	_surfaceExtent=
+		(surfaceCapabilities.currentExtent.width==std::numeric_limits<uint32_t>::max())
+			?vk::Extent2D{std::clamp(_windowSize.width ,surfaceCapabilities.minImageExtent.width ,surfaceCapabilities.maxImageExtent.width),
+			              std::clamp(_windowSize.height,surfaceCapabilities.minImageExtent.height,surfaceCapabilities.maxImageExtent.height)}
+			:surfaceCapabilities.currentExtent;
+
 	// save old swapchain
 	auto oldSwapchain=
 		vk::UniqueHandle<vk::SwapchainKHR,CadUI::Window>{
@@ -326,27 +339,19 @@ void CadUI::Window::recreateSwapchain()
 		};
 	_swapchain=nullptr;
 
-	// clear framebuffers
-	if(_framebuffers.size()>0) {
-		for(auto f:_framebuffers)
-			(*_device)->destroy(f,nullptr,*_device);
-		_framebuffers.clear();
-	}
-
 	// create new swapchain
-	vk::SurfaceCapabilitiesKHR surfaceCapabilities=_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this);
 	_swapchain=
 		(*_device)->createSwapchainKHR(
 			vk::SwapchainCreateInfoKHR(
-				vk::SwapchainCreateFlagsKHR(),   // flags
-				_surface,                        // surface
+				vk::SwapchainCreateFlagsKHR(),  // flags
+				_surface,                       // surface
 				surfaceCapabilities.maxImageCount==0  // minImageCount
 					?surfaceCapabilities.minImageCount+1
 					:min(surfaceCapabilities.minImageCount+1,surfaceCapabilities.maxImageCount),
-				_surfaceFormat.format,           // imageFormat
-				_surfaceFormat.colorSpace,       // imageColorSpace
-				_currentSurfaceExtent,           // imageExtent
-				1,  // imageArrayLayers
+				_surfaceFormat.format,          // imageFormat
+				_surfaceFormat.colorSpace,      // imageColorSpace
+				_surfaceExtent,                 // imageExtent
+				1,                              // imageArrayLayers
 				vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 				(_graphicsQueueFamily==_presentationQueueFamily)?vk::SharingMode::eExclusive:vk::SharingMode::eConcurrent, // imageSharingMode
 				(_graphicsQueueFamily==_presentationQueueFamily)?uint32_t(0):uint32_t(2),  // queueFamilyIndexCount
@@ -364,13 +369,24 @@ void CadUI::Window::recreateSwapchain()
 	// destroy old swapchain
 	oldSwapchain.reset();
 
+	// clear various Vulkan objects
+	if(_framebuffers.size()>0) {
+		for(auto f:_framebuffers)
+			(*_device)->destroy(f,nullptr,*_device);
+		_framebuffers.clear();
+	}
+	if(_swapchainImageViews.size()>0) {
+		for(auto v:_swapchainImageViews)
+			(*_device)->destroy(v,nullptr,*_device);
+		_swapchainImageViews.clear();
+	}
+
 	// swapchain images and image views
 	vector<vk::Image> swapchainImages=(*_device)->getSwapchainImagesKHR(_swapchain,*this);
-	vector<vk::UniqueHandle<vk::ImageView,CadR::VulkanDevice>> swapchainImageViews;
-	swapchainImageViews.reserve(swapchainImages.size());
+	_swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image:swapchainImages)
-		swapchainImageViews.emplace_back(
-			(*_device)->createImageViewUnique(
+		_swapchainImageViews.emplace_back(
+			(*_device)->createImageView(
 				vk::ImageViewCreateInfo(
 					vk::ImageViewCreateFlags(),  // flags
 					image,                       // image
@@ -399,9 +415,9 @@ void CadUI::Window::recreateSwapchain()
 					vk::FramebufferCreateFlags(),   // flags
 					_renderPass,                    // renderPass
 					1,  // attachmentCount
-					&swapchainImageViews[i].get(),  // pAttachments
-					_currentSurfaceExtent.width,    // width
-					_currentSurfaceExtent.height,   // height
+					&_swapchainImageViews[i],       // pAttachments
+					_surfaceExtent.width,           // width
+					_surfaceExtent.height,          // height
 					1  // layers
 				),
 				nullptr,  // allocator
@@ -411,4 +427,43 @@ void CadUI::Window::recreateSwapchain()
 
 	// call resize callbacks
 	resizeCallbacks.invoke();
+}
+
+
+tuple<uint32_t,bool> CadUI::Window::acquireNextImage(vk::Semaphore semaphoreToSignal,vk::Fence fenceToSignal)
+{
+	uint32_t imageIndex;
+	vk::Result r=
+		(*_device)->acquireNextImageKHR(
+			_swapchain,                       // swapchain
+			numeric_limits<uint64_t>::max(),  // timeout
+			semaphoreToSignal,                // semaphore to signal
+			fenceToSignal,                    // fence to signal
+			&imageIndex,                      // pImageIndex
+			*this                             // dispatch
+		);
+	if(r!=vk::Result::eSuccess) {
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { _needResize=true; return {0,false}; }
+		vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
+	}
+	return {imageIndex,true};
+}
+
+
+bool CadUI::Window::present(vk::Queue presentationQueue,vk::Semaphore semaphoreToWait,uint32_t imageIndex)
+{
+	vk::Result r=
+		presentationQueue.presentKHR(
+			&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(
+				1,&semaphoreToWait,         // waitSemaphoreCount+pWaitSemaphores
+				1,&_swapchain,&imageIndex,  // swapchainCount+pSwapchains+pImageIndices
+				nullptr                     // pResults
+			),
+			*this  // dispatch
+		);
+	if(r!=vk::Result::eSuccess) {
+		if(r==vk::Result::eErrorOutOfDateKHR||r==vk::Result::eSuboptimalKHR) { _needResize=true; return false; }
+		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Queue::presentKHR");
+	}
+	return true;
 }

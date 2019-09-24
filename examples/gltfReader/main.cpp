@@ -279,10 +279,82 @@ int main(int argc,char** argv) {
 		m->uploadAttrib(0,data);
 		renderer.executeCopyOperations();
 
+		// command buffers and semaphores
+		vk::UniqueHandle<vk::CommandPool,CadR::VulkanDevice> commandPool;
+		vector<vk::CommandBuffer> commandBuffers;
+		auto imageAvailableSemaphore=
+			vulkanDevice->createSemaphoreUnique(
+				vk::SemaphoreCreateInfo(
+					vk::SemaphoreCreateFlags()  // flags
+				),
+				nullptr,  // allocator
+				vulkanDevice  // dispatch
+			);
+		auto renderingFinishedSemaphore=
+			vulkanDevice->createSemaphoreUnique(
+				vk::SemaphoreCreateInfo(
+					vk::SemaphoreCreateFlags()  // flags
+				),
+				nullptr,  // allocator
+				vulkanDevice  // dispatch
+			);
+
 		// resize callback
 		window.resizeCallbacks.append(
-				[]() {
+				[&vulkanDevice,&window,&commandPool,&commandBuffers,graphicsQueueFamily]() {
 					cout<<"Resize happened."<<endl;
+
+					// recreate command pool
+					commandPool=
+						vulkanDevice->createCommandPoolUnique(
+							vk::CommandPoolCreateInfo(
+								vk::CommandPoolCreateFlags(),  // flags
+								graphicsQueueFamily  // queueFamilyIndex
+							),
+							nullptr,  // allocator
+							vulkanDevice  // dispatch
+						);
+
+					// recreate command buffers
+					// (we do not need command buffers to be properly freed as they are freed during command pool re-creation)
+					commandBuffers.clear();
+					commandBuffers=
+						vulkanDevice->allocateCommandBuffers(
+							vk::CommandBufferAllocateInfo(
+								commandPool.get(),                 // commandPool
+								vk::CommandBufferLevel::ePrimary,  // level
+								window.imageCount()                // commandBufferCount
+							),
+							vulkanDevice  // dispatch
+						);
+
+					// record command buffers
+					for(size_t i=0,c=window.imageCount(); i<c; i++) {
+						vk::CommandBuffer& cb=commandBuffers[i];
+						cb.begin(
+							vk::CommandBufferBeginInfo(
+								vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+								nullptr  // pInheritanceInfo
+							),
+							vulkanDevice  // dispatch
+						);
+						cb.beginRenderPass(
+							vk::RenderPassBeginInfo(
+								window.renderPass(),       // renderPass
+								window.framebuffers()[i],  // framebuffer
+								vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
+								1,                         // clearValueCount
+								&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
+							),
+							vk::SubpassContents::eInline,  // contents
+							vulkanDevice  // dispatch
+						);
+						//cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
+						//cb.draw(3,1,0,0);  // draw single triangle
+						cb.endRenderPass(vulkanDevice);
+						cb.end(vulkanDevice);
+					}
+
 				},
 				nullptr
 			);
@@ -293,7 +365,27 @@ int main(int argc,char** argv) {
 				continue;
 
 			// render
+			auto [imageIndex,success]=window.acquireNextImage(imageAvailableSemaphore.get());
+			if(!success)
+				continue;
+			graphicsQueue.submit(
+				vk::SubmitInfo(
+					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
+					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+					1,&commandBuffers[imageIndex],       // commandBufferCount+pCommandBuffers
+					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
+				),
+				vk::Fence(nullptr),  // fence
+				vulkanDevice  // dispatch
+			);
+			window.present(presentationQueue,renderingFinishedSemaphore.get(),imageIndex);
+
+			// wait for rendering to complete
+			presentationQueue.waitIdle(vulkanDevice);
 		}
+
+		// finish all pending work on device
+		vulkanDevice->waitIdle(vulkanDevice);
 
 	// catch exceptions
 	} catch(vk::Error &e) {
