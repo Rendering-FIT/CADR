@@ -115,7 +115,13 @@ int main(int,char**)
 				pd.createDevice(
 					vk::DeviceCreateInfo(
 						vk::DeviceCreateFlags(),  // flags
-						0,nullptr,  // no queues
+						1,  // at least one queue is mandatory
+						&(const vk::DeviceQueueCreateInfo&)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
+							vk::DeviceQueueCreateFlags(),  // flags
+							0,  // queueFamilyIndex
+							1,  // queueCount
+							&(const float&)1.f,  // pQueuePriorities
+						},
 						0,nullptr,  // no layers
 						0,nullptr,  // no enabled extensions
 						nullptr  // enabled features
