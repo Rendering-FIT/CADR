@@ -17,12 +17,29 @@ using namespace std;
 string getLibraryOfAddr(void* addr)
 {
 #ifdef _WIN32
+
+	// get module handle of belonging to address
 	HMODULE handle;
-	GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-	                   reinterpret_cast<LPCSTR>(addr),&handle);
-	WCHAR path[MAX_PATH];
-	GetModuleFileNameW(handle,path,MAX_PATH);
-	return wstring_convert<codecvt_utf8<wchar_t>>().to_bytes(path);
+	BOOL b=GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+	                          reinterpret_cast<LPCSTR>(addr),&handle);
+	if(b==0||handle==nullptr)
+		throw std::runtime_error("Function GetModuleHandleExA() failed.");
+
+	// get module path
+	WCHAR wpath[MAX_PATH];
+	DWORD r=GetModuleFileNameW(handle,wpath,MAX_PATH);
+	if(r==0||r==MAX_PATH)
+		throw std::runtime_error("Function GetModuleFileNameW() failed.");
+
+	// convert to utf-8
+	char path[MAX_PATH];
+	int l=WideCharToMultiByte(CP_UTF8,0,wpath,-1,path,MAX_PATH,NULL,NULL);
+	if(l==0)
+		throw std::runtime_error("Function WideCharToMultiByte() failed.");
+
+	// return string
+	return string(path,l);
+
 #else
 	Dl_info dlInfo;
 	dladdr(addr,&dlInfo);
@@ -51,7 +68,7 @@ int main(int,char**)
 
 		// function pointers available without vk::Instance
 #ifdef _WIN32
-		vkFuncs.vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(GetProcAddress(nullptr,"vkGetInstanceProcAddr"));
+		vkFuncs.vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(GetProcAddress(GetModuleHandle("vulkan-1.dll"),"vkGetInstanceProcAddr"));
 #else
 		vkFuncs.vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(dlsym(nullptr,"vkGetInstanceProcAddr"));
 #endif

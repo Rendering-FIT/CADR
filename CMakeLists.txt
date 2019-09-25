@@ -24,6 +24,9 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # MSVC
 if(MSVC)
 
+	# enable C++17
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
+
 	# enable exceptions
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
 
