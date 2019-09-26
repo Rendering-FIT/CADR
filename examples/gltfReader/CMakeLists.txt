@@ -17,6 +17,12 @@ set(APP_INCLUDES
     Window.h
    )
 
+set(APP_SHADERS
+    shaders/coordinates.vert
+    shaders/unspecifiedMaterial.frag
+   )
+
+add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
 add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 
 # dependencies

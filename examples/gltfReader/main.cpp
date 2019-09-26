@@ -9,7 +9,7 @@
 #include <nlohmann/json.hpp>
 #if _WIN32
 #include <filesystem>
-#else
+#else // gcc 7.4.0 (Ubuntu 18.04) does support path only as experimental
 #include <experimental/filesystem>
 using namespace std::experimental;
 #endif
@@ -22,6 +22,14 @@ using namespace std;
 using json=nlohmann::json;
 
 typedef logic_error gltfError;
+
+// shader code in SPIR-V binary
+static const uint32_t coordinateShaderSpirv[]={
+#include "shaders/coordinates.vert.spv"
+};
+static const uint32_t unspecifiedMaterialShaderSpirv[]={
+#include "shaders/unspecifiedMaterial.frag.spv"
+};
 
 
 template<typename T,typename Map,typename Key>
@@ -66,17 +74,17 @@ int main(int argc,char** argv) {
 		CadUI::Window window(vulkanInstance);
 		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
 				vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
-		CadR::VulkanDevice vulkanDevice(vulkanInstance,deviceAndQueueFamilies,
-		                                nullptr,"VK_KHR_swapchain",nullptr);
+		CadR::VulkanDevice device(vulkanInstance,deviceAndQueueFamilies,
+		                          nullptr,"VK_KHR_swapchain",nullptr);
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
 		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
 		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
-		CadR::Renderer renderer(&vulkanDevice,&vulkanInstance,physicalDevice,graphicsQueueFamily);
+		CadR::Renderer renderer(&device,&vulkanInstance,physicalDevice,graphicsQueueFamily);
 		CadR::Renderer::set(&renderer);
 
 		// get queues
-		vk::Queue graphicsQueue=vulkanDevice->getQueue(graphicsQueueFamily,0,vulkanDevice);
-		vk::Queue presentationQueue=vulkanDevice->getQueue(presentationQueueFamily,0,vulkanDevice);
+		vk::Queue graphicsQueue=device->getQueue(graphicsQueueFamily,0,device);
+		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0,device);
 
 		// choose surface formats
 		vk::SurfaceFormatKHR surfaceFormat;
@@ -111,7 +119,7 @@ int main(int argc,char** argv) {
 
 		// render pass
 		vk::UniqueHandle<vk::RenderPass,CadR::VulkanDevice> renderPass=
-			vulkanDevice->createRenderPassUnique(
+			device->createRenderPassUnique(
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
 					1,                            // attachmentCount
@@ -169,11 +177,11 @@ int main(int argc,char** argv) {
 						vk::DependencyFlags()  // dependencyFlags
 					)
 				),
-				nullptr,vulkanDevice
+				nullptr,device
 			);
 
 		// setup window
-		window.initVulkan(physicalDevice,vulkanDevice,surfaceFormat,graphicsQueueFamily,
+		window.initVulkan(physicalDevice,device,surfaceFormat,graphicsQueueFamily,
 		                  presentationQueueFamily,renderPass.get(),presentMode);
 
 		// parse json
@@ -283,54 +291,218 @@ int main(int argc,char** argv) {
 		m->uploadAttrib(0,data);
 		renderer.executeCopyOperations();
 
-		// command buffers and semaphores
+		// shaders
+		auto coordinateShader=
+			device->createShaderModuleUnique(
+				vk::ShaderModuleCreateInfo(
+					vk::ShaderModuleCreateFlags(),  // flags
+					sizeof(coordinateShaderSpirv),  // codeSize
+					coordinateShaderSpirv  // pCode
+				),
+				nullptr,  // allocator
+				device  // dispatch
+			);
+		auto unknownMaterialShader=
+			device->createShaderModuleUnique(
+				vk::ShaderModuleCreateInfo(
+					vk::ShaderModuleCreateFlags(),  // flags
+					sizeof(unspecifiedMaterialShaderSpirv),  // codeSize
+					unspecifiedMaterialShaderSpirv  // pCode
+				),
+				nullptr,  // allocator
+				device  // dispatch
+			);
+
+		// command buffers and pipelines
 		vk::UniqueHandle<vk::CommandPool,CadR::VulkanDevice> commandPool;
 		vector<vk::CommandBuffer> commandBuffers;
-		auto imageAvailableSemaphore=
-			vulkanDevice->createSemaphoreUnique(
-				vk::SemaphoreCreateInfo(
-					vk::SemaphoreCreateFlags()  // flags
+		auto pipelineCache=
+			device->createPipelineCacheUnique(
+				vk::PipelineCacheCreateInfo(
+					vk::PipelineCacheCreateFlags(),  // flags
+					0,       // initialDataSize
+					nullptr  // pInitialData
 				),
 				nullptr,  // allocator
-				vulkanDevice  // dispatch
+				device  // dispatch
 			);
-		auto renderingFinishedSemaphore=
-			vulkanDevice->createSemaphoreUnique(
-				vk::SemaphoreCreateInfo(
-					vk::SemaphoreCreateFlags()  // flags
-				),
+		auto pipelineLayout=
+			device->createPipelineLayoutUnique(
+				vk::PipelineLayoutCreateInfo{
+					vk::PipelineLayoutCreateFlags(),  // flags
+					0,       // setLayoutCount
+					nullptr, // pSetLayouts
+					0,       // pushConstantRangeCount
+					nullptr  // pPushConstantRanges
+				},
 				nullptr,  // allocator
-				vulkanDevice  // dispatch
+				device  // dispatch
 			);
+		vk::UniqueHandle<vk::Pipeline,CadR::VulkanDevice> coordinatePipeline;
 
 		// resize callback
 		window.resizeCallbacks.append(
-				[&vulkanDevice,&window,&commandPool,&commandBuffers,graphicsQueueFamily]() {
+				[&device,&window,&commandPool,&commandBuffers,graphicsQueueFamily,
+				 &coordinateShader,&unknownMaterialShader,
+				 &pipelineCache,&pipelineLayout,&coordinatePipeline]() {
+
 					cout<<"Resize happened."<<endl;
 
 					// recreate command pool
 					commandPool=
-						vulkanDevice->createCommandPoolUnique(
+						device->createCommandPoolUnique(
 							vk::CommandPoolCreateInfo(
 								vk::CommandPoolCreateFlags(),  // flags
 								graphicsQueueFamily  // queueFamilyIndex
 							),
 							nullptr,  // allocator
-							vulkanDevice  // dispatch
+							device  // dispatch
 						);
 
 					// recreate command buffers
 					// (we do not need command buffers to be properly freed as they are freed during command pool re-creation)
 					commandBuffers.clear();
 					commandBuffers=
-						vulkanDevice->allocateCommandBuffers(
+						device->allocateCommandBuffers(
 							vk::CommandBufferAllocateInfo(
 								commandPool.get(),                 // commandPool
 								vk::CommandBufferLevel::ePrimary,  // level
 								window.imageCount()                // commandBufferCount
 							),
-							vulkanDevice  // dispatch
+							device  // dispatch
 						);
+
+					// coordinate pipeline
+				#if 0
+					coordinatePipeline=
+						device->createGraphicsPipelineUnique(
+							pipelineCache.get(),
+							vk::GraphicsPipelineCreateInfo(
+								vk::PipelineCreateFlags(),  // flags
+								2,  // stageCount
+								array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+									vk::PipelineShaderStageCreateInfo{
+										vk::PipelineShaderStageCreateFlags(),  // flags
+										vk::ShaderStageFlagBits::eVertex,      // stage
+										coordinateShader.get(),  // module
+										"main",  // pName
+										nullptr  // pSpecializationInfo
+									},
+									vk::PipelineShaderStageCreateInfo{
+										vk::PipelineShaderStageCreateFlags(),  // flags
+										vk::ShaderStageFlagBits::eFragment,    // stage
+										unknownMaterialShader.get(),  // module
+										"main",  // pName
+										nullptr  // pSpecializationInfo
+									}
+								}.data(),
+								&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+									vk::PipelineVertexInputStateCreateFlags(),  // flags
+									0,//2,        // vertexBindingDescriptionCount
+									nullptr,/*array<const vk::VertexInputBindingDescription,2>{  // pVertexBindingDescriptions
+										vk::VertexInputBindingDescription(
+											0,  // binding
+											4*sizeof(float),  // stride
+											vk::VertexInputRate::eVertex  // inputRate
+										),
+										vk::VertexInputBindingDescription(
+											1,  // binding
+											4,  // stride
+											vk::VertexInputRate::eVertex  // inputRate
+										)
+									}.data(),*/
+									0,//2,        // vertexAttributeDescriptionCount
+									nullptr,/*array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+										vk::VertexInputAttributeDescription(
+											0,  // location
+											0,  // binding
+											vk::Format::eR32G32B32A32Sfloat,  // format
+											0   // offset
+										),
+										vk::VertexInputAttributeDescription(
+											1,  // location
+											1,  // binding
+											vk::Format::eR8G8B8A8Unorm,  // format
+											0   // offset
+										)
+									}.data()*/
+								},
+								&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+									vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+									vk::PrimitiveTopology::eTriangleList,  // topology
+									VK_FALSE  // primitiveRestartEnable
+								},
+								nullptr, // pTessellationState
+								&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+									vk::PipelineViewportStateCreateFlags(),  // flags
+									1,  // viewportCount
+									&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(window.surfaceExtent().width),float(window.surfaceExtent().height),0.f,1.f),  // pViewports
+									1,  // scissorCount
+									&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent())  // pScissors
+								},
+								&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+									vk::PipelineRasterizationStateCreateFlags(),  // flags
+									VK_FALSE,  // depthClampEnable
+									VK_FALSE,  // rasterizerDiscardEnable
+									vk::PolygonMode::eFill,  // polygonMode
+									vk::CullModeFlagBits::eNone,  // cullMode
+									vk::FrontFace::eCounterClockwise,  // frontFace
+									VK_FALSE,  // depthBiasEnable
+									0.f,  // depthBiasConstantFactor
+									0.f,  // depthBiasClamp
+									0.f,  // depthBiasSlopeFactor
+									1.f   // lineWidth
+								},
+								&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+									vk::PipelineMultisampleStateCreateFlags(),  // flags
+									vk::SampleCountFlagBits::e1,  // rasterizationSamples
+									VK_FALSE,  // sampleShadingEnable
+									0.f,       // minSampleShading
+									nullptr,   // pSampleMask
+									VK_FALSE,  // alphaToCoverageEnable
+									VK_FALSE   // alphaToOneEnable
+								},
+								&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
+									vk::PipelineDepthStencilStateCreateFlags(),  // flags
+									VK_TRUE,  // depthTestEnable
+									VK_TRUE,  // depthWriteEnable
+									vk::CompareOp::eLess,  // depthCompareOp
+									VK_FALSE,  // depthBoundsTestEnable
+									VK_FALSE,  // stencilTestEnable
+									vk::StencilOpState(),  // front
+									vk::StencilOpState(),  // back
+									0.f,  // minDepthBounds
+									0.f   // maxDepthBounds
+								},
+								&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+									vk::PipelineColorBlendStateCreateFlags(),  // flags
+									VK_FALSE,  // logicOpEnable
+									vk::LogicOp::eClear,  // logicOp
+									1,  // attachmentCount
+									&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
+										VK_FALSE,  // blendEnable
+										vk::BlendFactor::eZero,  // srcColorBlendFactor
+										vk::BlendFactor::eZero,  // dstColorBlendFactor
+										vk::BlendOp::eAdd,       // colorBlendOp
+										vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+										vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+										vk::BlendOp::eAdd,       // alphaBlendOp
+										vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+											vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+									},
+									array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+								},
+								nullptr,  // pDynamicState
+								pipelineLayout.get(),  // layout
+								window.renderPass(),  // renderPass
+								0,  // subpass
+								vk::Pipeline(nullptr),  // basePipelineHandle
+								-1 // basePipelineIndex
+							),
+							nullptr,  // allocator
+							device  // dispatch
+						);
+				#endif
 
 					// record command buffers
 					for(size_t i=0,c=window.imageCount(); i<c; i++) {
@@ -340,7 +512,7 @@ int main(int argc,char** argv) {
 								vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
 								nullptr  // pInheritanceInfo
 							),
-							vulkanDevice  // dispatch
+							device  // dispatch
 						);
 						cb.beginRenderPass(
 							vk::RenderPassBeginInfo(
@@ -351,16 +523,34 @@ int main(int argc,char** argv) {
 								&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
 							),
 							vk::SubpassContents::eInline,  // contents
-							vulkanDevice  // dispatch
+							device  // dispatch
 						);
 						//cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
 						//cb.draw(3,1,0,0);  // draw single triangle
-						cb.endRenderPass(vulkanDevice);
-						cb.end(vulkanDevice);
+						cb.endRenderPass(device);
+						cb.end(device);
 					}
 
 				},
 				nullptr
+			);
+
+		// semaphores
+		auto imageAvailableSemaphore=
+			device->createSemaphoreUnique(
+				vk::SemaphoreCreateInfo(
+					vk::SemaphoreCreateFlags()  // flags
+				),
+				nullptr,  // allocator
+				device  // dispatch
+			);
+		auto renderingFinishedSemaphore=
+			device->createSemaphoreUnique(
+				vk::SemaphoreCreateInfo(
+					vk::SemaphoreCreateFlags()  // flags
+				),
+				nullptr,  // allocator
+				device  // dispatch
 			);
 
 		// main loop
@@ -380,16 +570,16 @@ int main(int argc,char** argv) {
 					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
 				),
 				vk::Fence(nullptr),  // fence
-				vulkanDevice  // dispatch
+				device  // dispatch
 			);
 			window.present(presentationQueue,renderingFinishedSemaphore.get(),imageIndex);
 
 			// wait for rendering to complete
-			presentationQueue.waitIdle(vulkanDevice);
+			presentationQueue.waitIdle(device);
 		}
 
 		// finish all pending work on device
-		vulkanDevice->waitIdle(vulkanDevice);
+		device->waitIdle(device);
 
 	// catch exceptions
 	} catch(vk::Error &e) {

@@ -146,6 +146,10 @@ macro(add_shaders nameList depsList)
 		set(glslangValidator "${CMAKE_SOURCE_DIR}/3rdParty/bin/glslangValidator.exe")
 	endif()
 	foreach(name ${nameList})
+		get_filename_component(directory ${name} DIRECTORY)
+		if(directory)
+			file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${directory}")
+		endif()
 		add_custom_command(COMMENT "Converting ${name} to spir-v..."
 		                   MAIN_DEPENDENCY ${name}
 		                   OUTPUT ${name}.spv

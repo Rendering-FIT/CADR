@@ -68,6 +68,14 @@ public:
 	PFN_vkDestroyImageView vkDestroyImageView;
 	PFN_vkCreateFramebuffer vkCreateFramebuffer;
 	PFN_vkDestroyFramebuffer vkDestroyFramebuffer;
+	PFN_vkCreateShaderModule vkCreateShaderModule;
+	PFN_vkDestroyShaderModule vkDestroyShaderModule;
+	PFN_vkCreatePipelineCache vkCreatePipelineCache;
+	PFN_vkDestroyPipelineCache vkDestroyPipelineCache;
+	PFN_vkCreatePipelineLayout vkCreatePipelineLayout;
+	PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout;
+	PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines;
+	PFN_vkDestroyPipeline vkDestroyPipeline;
 	PFN_vkCreateSemaphore vkCreateSemaphore;
 	PFN_vkDestroySemaphore vkDestroySemaphore;
 	PFN_vkCreateCommandPool vkCreateCommandPool;
