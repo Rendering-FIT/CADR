@@ -48,6 +48,8 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkCmdCopyBuffer      =getProcAddr<PFN_vkCmdCopyBuffer      >("vkCmdCopyBuffer");
 	vkCreateFence        =getProcAddr<PFN_vkCreateFence        >("vkCreateFence");
 	vkDestroyFence       =getProcAddr<PFN_vkDestroyFence       >("vkDestroyFence");
+	vkCmdBindPipeline    =getProcAddr<PFN_vkCmdBindPipeline    >("vkCmdBindPipeline");
+	vkCmdDraw            =getProcAddr<PFN_vkCmdDraw            >("vkCmdDraw");
 	vkQueueSubmit        =getProcAddr<PFN_vkQueueSubmit        >("vkQueueSubmit");
 	vkWaitForFences      =getProcAddr<PFN_vkWaitForFences      >("vkWaitForFences");
 	vkQueueWaitIdle      =getProcAddr<PFN_vkQueueWaitIdle      >("vkQueueWaitIdle");

@@ -373,7 +373,6 @@ int main(int argc,char** argv) {
 						);
 
 					// coordinate pipeline
-				#if 0
 					coordinatePipeline=
 						device->createGraphicsPipelineUnique(
 							pipelineCache.get(),
@@ -502,7 +501,6 @@ int main(int argc,char** argv) {
 							nullptr,  // allocator
 							device  // dispatch
 						);
-				#endif
 
 					// record command buffers
 					for(size_t i=0,c=window.imageCount(); i<c; i++) {
@@ -525,8 +523,8 @@ int main(int argc,char** argv) {
 							vk::SubpassContents::eInline,  // contents
 							device  // dispatch
 						);
-						//cb.bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
-						//cb.draw(3,1,0,0);  // draw single triangle
+						cb.bindPipeline(vk::PipelineBindPoint::eGraphics,coordinatePipeline.get(),device);  // bind pipeline
+						cb.draw(3,1,0,0,device);  // draw single triangle
 						cb.endRenderPass(device);
 						cb.end(device);
 					}

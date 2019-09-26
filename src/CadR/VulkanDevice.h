@@ -88,6 +88,8 @@ public:
 	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
 	PFN_vkCreateFence vkCreateFence;
 	PFN_vkDestroyFence vkDestroyFence;
+	PFN_vkCmdBindPipeline vkCmdBindPipeline;
+	PFN_vkCmdDraw vkCmdDraw;
 	PFN_vkQueueSubmit vkQueueSubmit;
 	PFN_vkWaitForFences vkWaitForFences;
 	PFN_vkQueueWaitIdle vkQueueWaitIdle;
