@@ -118,7 +118,7 @@ int main(int argc,char** argv) {
 				}(physicalDevice.getSurfacePresentModesKHR(window.surface(),window));
 
 		// render pass
-		vk::UniqueHandle<vk::RenderPass,CadR::VulkanDevice> renderPass=
+		auto renderPass=
 			device->createRenderPassUnique(
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
@@ -287,7 +287,13 @@ int main(int argc,char** argv) {
 		b.read(reinterpret_cast<istream::char_type*>(data.data()),data.size());
 		b.close();
 
-		auto m=make_unique<CadR::Mesh>(CadR::AttribConfig{12},count,count,0);
+		auto m=
+			make_unique<CadR::Mesh>(
+				CadR::AttribConfig{12},  // attribConfig
+				count,  // numVertices
+				count,  // numIndices
+				0  // numDrawCommands
+			);
 		m->uploadAttrib(0,data);
 		renderer.executeCopyOperations();
 
@@ -344,7 +350,7 @@ int main(int argc,char** argv) {
 		window.resizeCallbacks.append(
 				[&device,&window,&commandPool,&commandBuffers,graphicsQueueFamily,
 				 &coordinateShader,&unknownMaterialShader,
-				 &pipelineCache,&pipelineLayout,&coordinatePipeline]() {
+				 &pipelineCache,&pipelineLayout,&coordinatePipeline,&m]() {
 
 					cout<<"Resize happened."<<endl;
 
@@ -397,34 +403,23 @@ int main(int argc,char** argv) {
 								}.data(),
 								&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
 									vk::PipelineVertexInputStateCreateFlags(),  // flags
-									0,//2,        // vertexBindingDescriptionCount
-									nullptr,/*array<const vk::VertexInputBindingDescription,2>{  // pVertexBindingDescriptions
+									1,        // vertexBindingDescriptionCount
+									array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
 										vk::VertexInputBindingDescription(
 											0,  // binding
-											4*sizeof(float),  // stride
+											3*sizeof(float),  // stride
 											vk::VertexInputRate::eVertex  // inputRate
 										),
-										vk::VertexInputBindingDescription(
-											1,  // binding
-											4,  // stride
-											vk::VertexInputRate::eVertex  // inputRate
-										)
-									}.data(),*/
-									0,//2,        // vertexAttributeDescriptionCount
-									nullptr,/*array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+									}.data(),
+									1,        // vertexAttributeDescriptionCount
+									array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
 										vk::VertexInputAttributeDescription(
 											0,  // location
 											0,  // binding
-											vk::Format::eR32G32B32A32Sfloat,  // format
+											vk::Format::eR32G32B32Sfloat,  // format
 											0   // offset
 										),
-										vk::VertexInputAttributeDescription(
-											1,  // location
-											1,  // binding
-											vk::Format::eR8G8B8A8Unorm,  // format
-											0   // offset
-										)
-									}.data()*/
+									}.data()
 								},
 								&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 									vk::PipelineInputAssemblyStateCreateFlags(),  // flags
@@ -523,8 +518,15 @@ int main(int argc,char** argv) {
 							vk::SubpassContents::eInline,  // contents
 							device  // dispatch
 						);
-						cb.bindPipeline(vk::PipelineBindPoint::eGraphics,coordinatePipeline.get(),device);  // bind pipeline
-						cb.draw(3,1,0,0,device);  // draw single triangle
+						cb.bindPipeline(vk::PipelineBindPoint::eGraphics,coordinatePipeline.get(),device);
+						cb.bindVertexBuffers(
+							0,  // firstBinding
+							1,  // bindingCount
+							m->attribStorage()->bufferList().data(),  // pBuffers
+							array<const vk::DeviceSize,1>{0}.data(),  // pOffsets
+							device  // dispatch
+						);
+						cb.draw(3,1,0,0,device);  // draw a single triangle
 						cb.endRenderPass(device);
 						cb.end(device);
 					}
