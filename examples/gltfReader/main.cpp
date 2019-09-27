@@ -43,6 +43,110 @@ T mapGetWithDefault(const Map& m,const Key& k,T d)
 }
 
 
+uint32_t getStride(int componentType,const string& type)
+{
+	uint32_t componentSize;
+	switch(componentType) {
+	case 5120:                          // BYTE
+	case 5121: componentSize=1; break;  // UNSIGNED_BYTE
+	case 5122:                          // SHORT
+	case 5123: componentSize=2; break;  // UNSIGNED_SHORT
+	case 5125:                          // UNSIGNED_INT
+	case 5126: componentSize=4; break;  // FLOAT
+	default: throw gltfError("Invalid accessor's componentType value.");
+	}
+	if(type=="VEC3")  return 3*componentSize;
+	else if(type=="VEC4")  return 4*componentSize;
+	else if(type=="VEC2")  return 2*componentSize;
+	else if(type=="SCALAR")  return componentSize;
+	else if(type=="MAT4")  return 16*componentSize;
+	else if(type=="MAT3")  return 9*componentSize;
+	else if(type=="MAT2")  return 4*componentSize;
+	else throw gltfError("Invalid accessor's type.");
+}
+
+
+vk::Format getFormat(int componentType,const string& type,bool normalize,bool wantInt=false)
+{
+	if(componentType>=5127)
+		throw gltfError("Invalid accessor's componentType.");
+
+	// FLOAT component type
+	if(componentType==5126) { 
+		if(normalize)
+			throw gltfError("Normalize set while accessor's componentType is FLOAT (5126).");
+		if(wantInt)
+			throw gltfError("Integer format asked while accessor's componentType is FLOAT (5126).");
+		if(type=="VEC3")       return vk::Format::eR32G32B32Sfloat;
+		else if(type=="VEC4")  return vk::Format::eR32G32B32A32Sfloat;
+		else if(type=="VEC2")  return vk::Format::eR32G32Sfloat;
+		else if(type=="SCALAR")  return vk::Format::eR32Sfloat;
+		else if(type=="MAT4")  return vk::Format::eR32G32B32A32Sfloat;
+		else if(type=="MAT3")  return vk::Format::eR32G32B32Sfloat;
+		else if(type=="MAT2")  return vk::Format::eR32G32Sfloat;
+		else throw gltfError("Invalid accessor's type.");
+	}
+
+	// UNSIGNED_INT component type
+	else if(componentType==5125) {
+		if(normalize)
+			throw gltfError("Normalize set while accessor's componentType is FLOAT (5126).");
+		if(wantInt)
+			throw gltfError("Integer format asked while accessor's componentType is FLOAT (5126).");
+		if(type=="VEC3")       return vk::Format::eR32G32B32Uint;
+		else if(type=="VEC4")  return vk::Format::eR32G32B32A32Uint;
+		else if(type=="VEC2")  return vk::Format::eR32G32Uint;
+		else if(type=="SCALAR")  return vk::Format::eR32Uint;
+		else if(type=="MAT4")  return vk::Format::eR32G32B32A32Uint;
+		else if(type=="MAT3")  return vk::Format::eR32G32B32Uint;
+		else if(type=="MAT2")  return vk::Format::eR32G32Uint;
+		else throw gltfError("Invalid accessor's type.");
+	}
+
+	else if(componentType==5124)
+		throw gltfError("Invalid componentType. INT is not valid value for glTF 2.0.");
+
+	// SHORT and UNSIGNED_SHORT component type
+	else if(componentType>=5122) {
+		int base;
+		if(type=="VEC3")       base=84;  // VK_FORMAT_R16G16B16_UNORM
+		else if(type=="VEC4")  base=91;  // VK_FORMAT_R16G16B16A16_UNORM
+		else if(type=="VEC2")  base=77;  // VK_FORMAT_R16G16_UNORM
+		else if(type=="SCALAR")  base=70;  // VK_FORMAT_R16_UNORM
+		else if(type=="MAT4")  base=91;
+		else if(type=="MAT3")  base=84;
+		else if(type=="MAT2")  base=77;
+		else throw gltfError("Invalid accessor's type.");
+		if(componentType==5122)  // signed SHORT
+			base+=1;  // VK_FORMAT_R16*_S*
+		if(wantInt)    return vk::Format(base+4);  // VK_FORMAT_R16*_[U|S]INT
+		if(normalize)  return vk::Format(base);    // VK_FORMAT_R16*_[U|S]NORM
+		else           return vk::Format(base+2);  // VK_FORMAT_R16*_[U|S]SCALED
+	}
+
+	// BYTE and UNSIGNED_BYTE component type
+	else if(componentType>=5120) {
+	int base;
+		if(type=="VEC3")       base=23;  // VK_FORMAT_R8G8B8_UNORM
+		else if(type=="VEC4")  base=37;  // VK_FORMAT_R8G8B8A8_UNORM
+		else if(type=="VEC2")  base=16;  // VK_FORMAT_R8G8_UNORM
+		else if(type=="SCALAR")  base=9;  // VK_FORMAT_R8_UNORM
+		else if(type=="MAT4")  base=37;
+		else if(type=="MAT3")  base=23;
+		else if(type=="MAT2")  base=16;
+		else throw gltfError("Invalid accessor's type.");
+		if(componentType==5120)  // signed BYTE
+			base+=1;  // VK_FORMAT_R8*_S*
+		if(wantInt)    return vk::Format(base+4);  // VK_FORMAT_R16*_[U|S]INT
+		if(normalize)  return vk::Format(base);    // VK_FORMAT_R16*_[U|S]NORM
+		else           return vk::Format(base+2);  // VK_FORMAT_R16*_[U|S]SCALED
+	}
+
+	// componentType bellow 5120
+	throw gltfError("Invalid accessor's componentType.");
+	return vk::Format(0);
+}
+
 
 int main(int argc,char** argv) {
 
@@ -350,7 +454,9 @@ int main(int argc,char** argv) {
 		window.resizeCallbacks.append(
 				[&device,&window,&commandPool,&commandBuffers,graphicsQueueFamily,
 				 &coordinateShader,&unknownMaterialShader,
-				 &pipelineCache,&pipelineLayout,&coordinatePipeline,&m]() {
+				 &pipelineCache,&pipelineLayout,&coordinatePipeline,
+				 &m,stride=getStride(componentType,type),
+				 coordinateFormat=getFormat(componentType,type,normalized,false)]() {
 
 					cout<<"Resize happened."<<endl;
 
@@ -407,7 +513,7 @@ int main(int argc,char** argv) {
 									array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
 										vk::VertexInputBindingDescription(
 											0,  // binding
-											3*sizeof(float),  // stride
+											stride,  // stride
 											vk::VertexInputRate::eVertex  // inputRate
 										),
 									}.data(),
@@ -416,7 +522,7 @@ int main(int argc,char** argv) {
 										vk::VertexInputAttributeDescription(
 											0,  // location
 											0,  // binding
-											vk::Format::eR32G32B32Sfloat,  // format
+											coordinateFormat,  // format
 											0   // offset
 										),
 									}.data()
