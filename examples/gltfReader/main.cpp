@@ -88,21 +88,10 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 	}
 
 	// UNSIGNED_INT component type
-	else if(componentType==5125) {
-		if(normalize)
-			throw gltfError("Normalize set while accessor's componentType is FLOAT (5126).");
-		if(wantInt)
-			throw gltfError("Integer format asked while accessor's componentType is FLOAT (5126).");
-		if(type=="VEC3")       return vk::Format::eR32G32B32Uint;
-		else if(type=="VEC4")  return vk::Format::eR32G32B32A32Uint;
-		else if(type=="VEC2")  return vk::Format::eR32G32Uint;
-		else if(type=="SCALAR")  return vk::Format::eR32Uint;
-		else if(type=="MAT4")  return vk::Format::eR32G32B32A32Uint;
-		else if(type=="MAT3")  return vk::Format::eR32G32B32Uint;
-		else if(type=="MAT2")  return vk::Format::eR32G32Uint;
-		else throw gltfError("Invalid accessor's type.");
-	}
+	else if(componentType==5125)
+		throw gltfError("UNSIGNED_INT componentType shall be used only for accessors containing indices. No attribute format is supported.");
 
+	// INT component type
 	else if(componentType==5124)
 		throw gltfError("Invalid componentType. INT is not valid value for glTF 2.0.");
 
