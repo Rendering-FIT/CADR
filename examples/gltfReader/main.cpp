@@ -192,7 +192,7 @@ int main(int argc,char** argv) {
 						           ?wantedSurfaceFormat
 						           :sfList[0];
 		}
-		vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
+		/*vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
 			for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
 				vk::FormatProperties p=physicalDevice.getFormatProperties(f,vulkanInstance);
 				if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
@@ -200,7 +200,7 @@ int main(int argc,char** argv) {
 				}
 			}
 			throw std::runtime_error("No suitable depth buffer format.");
-		}(physicalDevice,vulkanInstance);
+		}(physicalDevice,vulkanInstance);*/
 
 		// choose presentation mode
 		vk::PresentModeKHR presentMode=
@@ -325,69 +325,105 @@ int main(int argc,char** argv) {
 		if(mode!=4)
 			throw gltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
 
-		// accessor
-		if(attributes.find("POSITION")==attributes.end() || attributes.size()!=1)
+		// accessors
+		CadR::AttribSizeList attribSizeList;
+		vector<vk::Format> attribFormatList;
+		vector<tuple<filesystem::path,size_t,size_t>> fileUriOffsetAndSize;
+		if(attributes.find("POSITION")==attributes.end())
 			throw gltfError("Unsupported attribute configuration.");
-		size_t positionAccessorIndex=attributes["POSITION"];
-		auto positionAccessor=accessors.at(positionAccessorIndex);
-		if(positionAccessor.find("bufferView")==positionAccessor.end())
-			throw gltfError("Unsupported functionality: Omitted bufferView.");
-		size_t bufferViewIndex=positionAccessor["bufferView"];
-		size_t accessorOffset=mapGetWithDefault(positionAccessor,"byteOffset",0);
-		int componentType=positionAccessor["componentType"];
-		if(componentType!=5126) // float
-			throw gltfError("Invalid component type. Must be float.");
-		bool normalized=mapGetWithDefault(positionAccessor,"normalized",false);
-		size_t count=positionAccessor["count"];
-		if(count==0)
-			throw gltfError("Attribute count in accessor is 0.");
-		string type=positionAccessor["type"];
-		if(type!="VEC3")
-			throw gltfError("Invalid attribute type. Must be VEC3.");
-		if(positionAccessor.find("sparse")!=positionAccessor.end())
-			throw gltfError("Unsupported functionality: Property sparse.");
+		unsigned i=0;
+		for(string name : {"POSITION","NORMAL","COLOR_0","TEXCOORD_0"}) {
+			if(attributes.find(name)==attributes.end())
+				continue;
+			else
+				i++;
 
-		// bufferView
-		auto bufferView=bufferViews.at(bufferViewIndex);
-		size_t bufferIndex=bufferView["buffer"];
-		size_t bufferViewOffset=mapGetWithDefault(bufferView,"byteOffset",0);
-		size_t bufferViewLength=bufferView["byteLength"];
-		size_t stride=mapGetWithDefault(bufferView,"byteStride",0);
-		if(stride!=0)
-			throw gltfError("Unsupported functionality: Stride not zero.");
+			// accessor
+			auto a=accessors.at(size_t(attributes[name]));
+			if(a.find("bufferView")==a.end())
+				throw gltfError("Unsupported functionality: Omitted bufferView.");
+			size_t bufferViewIndex=a["bufferView"];
+			size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
+			int componentType=a["componentType"];
+			if(componentType!=5126 && (name=="POSITION" || name=="NORMAL")) // float for POSITION and NORMAL attribute
+				throw gltfError("Invalid component type. Must be float.");
+			if(componentType==5125) // no UNSIGNED_INT
+				throw gltfError("Invalid component type.");
+			bool normalized=mapGetWithDefault(a,"normalized",false);
+			size_t count=a["count"];
+			if(count==0)
+				throw gltfError("Attribute count in accessor is 0.");
+			string type=a["type"];
+			if(type!="VEC3" && (name=="POSITION" || name=="NORMAL"))
+				throw gltfError("Invalid attribute type. Must be VEC3.");
+			if(a.find("sparse")!=a.end())
+				throw gltfError("Unsupported functionality: Property sparse.");
 
-		// buffer
-		auto buffer=buffers.at(bufferIndex);
-		filesystem::path bufferUri=mapGetWithDefault<string>(buffer,"uri","");
-		size_t bufferLength=buffer["byteLength"];
+			// bufferView
+			auto bv=bufferViews.at(bufferViewIndex);
+			size_t bufferIndex=bv["buffer"];
+			size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
+			//size_t bufferViewLength=bv["byteLength"];
+			size_t stride=mapGetWithDefault(bv,"byteStride",0);
+			if(stride!=0)
+				throw gltfError("Unsupported functionality: Stride not zero.");
 
-		// open buffer file
-		filesystem::path bufferPath=
-			bufferUri.is_absolute()
-				?bufferUri
-				:filePath.parent_path()/bufferUri;
-		cout<<"Opening buffer "<<bufferPath<<"..."<<endl;
-		ifstream b(bufferPath);
-		if(!b.is_open()) {
-			cout<<"Can not open file "<<bufferPath<<"."<<endl;
-			return 1;
+			// buffer
+			auto b=buffers.at(bufferIndex);
+			filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
+			//size_t bufferLength=b["byteLength"];
+
+			// attribConfig
+			uint32_t attribSize=getStride(componentType,type);
+			attribSizeList.push_back(attribSize);
+
+			// attribFormatList
+			attribFormatList.push_back(getFormat(componentType,type,normalized,false));
+
+			// file info
+			fileUriOffsetAndSize.emplace_back(
+				bufferUri.is_absolute()  // file path
+					?bufferUri
+					:filePath.parent_path()/bufferUri,
+				bufferViewOffset+accessorOffset,  // file offset
+				count*attribSize  // data size
+			);
 		}
-		b.exceptions(ifstream::badbit|ifstream::failbit);
+		if(i!=unsigned(attributes.size()))
+			throw gltfError("Unsupported attributes.");
 
-		// read buffer file
-		vector<uint8_t> data(count*12);
-		b.seekg(bufferViewOffset+accessorOffset);
-		b.read(reinterpret_cast<istream::char_type*>(data.data()),data.size());
-		b.close();
-
+		// create Mesh
+		size_t numVertices=std::get<2>(fileUriOffsetAndSize[0])/attribSizeList[0];
 		auto m=
 			make_unique<CadR::Mesh>(
-				CadR::AttribConfig{12},  // attribConfig
-				count,  // numVertices
-				count,  // numIndices
+				attribSizeList,  // attribSizeList
+				numVertices,  // numVertices
+				0,  // numIndices
 				0  // numDrawCommands
 			);
-		m->uploadAttrib(0,data);
+
+		// read Mesh buffers
+		i=0;
+		for(auto& uss:fileUriOffsetAndSize) {
+
+			// open buffer file
+			filesystem::path bufferPath=std::get<0>(uss);
+			cout<<"Opening buffer "<<bufferPath<<"..."<<endl;
+			ifstream f(bufferPath);
+			if(!f.is_open()) {
+				cout<<"Can not open file "<<bufferPath<<"."<<endl;
+				return 1;
+			}
+			f.exceptions(ifstream::badbit|ifstream::failbit);
+
+			// read buffer file
+			CadR::StagingBuffer sb=m->createStagingBuffer(i);
+			size_t offset=std::get<1>(uss);
+			f.seekg(offset);
+			f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
+			f.close();
+			sb.submit();
+		}
 		renderer.executeCopyOperations();
 
 		// shaders
@@ -444,8 +480,7 @@ int main(int argc,char** argv) {
 				[&device,&window,&commandPool,&commandBuffers,graphicsQueueFamily,
 				 &coordinateShader,&unknownMaterialShader,
 				 &pipelineCache,&pipelineLayout,&coordinatePipeline,
-				 &m,stride=getStride(componentType,type),
-				 coordinateFormat=getFormat(componentType,type,normalized,false)]() {
+				 &m,&attribSizeList,&attribFormatList]() {
 
 					cout<<"Resize happened."<<endl;
 
@@ -502,7 +537,7 @@ int main(int argc,char** argv) {
 									array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
 										vk::VertexInputBindingDescription(
 											0,  // binding
-											stride,  // stride
+											attribSizeList[0],  // stride
 											vk::VertexInputRate::eVertex  // inputRate
 										),
 									}.data(),
@@ -511,7 +546,7 @@ int main(int argc,char** argv) {
 										vk::VertexInputAttributeDescription(
 											0,  // location
 											0,  // binding
-											coordinateFormat,  // format
+											attribFormatList[0],  // format
 											0   // offset
 										),
 									}.data()
