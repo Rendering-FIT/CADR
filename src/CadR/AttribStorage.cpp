@@ -11,9 +11,9 @@ using namespace CadR;
 
 
 
-AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig)
+AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSizeList)
 	: _allocationManager(1024,0)  // zero capacity, zero-sized object on index 0
-	, _attribConfig(attribConfig)
+	, _attribSizeList(attribSizeList)
 	, _renderer(renderer)
 {
 #if 0
@@ -28,8 +28,8 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribConfig& attribConfig
 	bufferInfo.queueFamilyIndexCount=0;
 	bufferInfo.pQueueFamilyIndices=nullptr;
 	VulkanDevice* device=_renderer->device();
-	_bufferList.reserve(_attribConfig.numAttribs());
-	for(uint8_t size : _attribConfig.sizeList()) {
+	_bufferList.reserve(_attribSizeList.size());
+	for(uint8_t size : _attribSizeList) {
 
 		// create buffer
 		vk::Buffer b;
@@ -235,7 +235,7 @@ StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex)
 		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
 
 	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
-	const unsigned s=_attribConfig[attribIndex];
+	const unsigned s=_attribSizeList[attribIndex];
 	return StagingBuffer(
 			_bufferList[attribIndex],  // dstBuffer
 			a.startIndex*s,  // dstOffset
@@ -254,7 +254,7 @@ StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex,si
 	if(firstVertex+numVertices>a.numItems)
 		throw std::out_of_range("AttribStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Mesh preallocated space.");
 
-	const unsigned s=_attribConfig[attribIndex];
+	const unsigned s=_attribSizeList[attribIndex];
 	return StagingBuffer(
 			_bufferList[attribIndex],  // dstBuffer
 			(a.startIndex+firstVertex)*s,  // dstOffset
@@ -272,7 +272,7 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m)
 
 	for(size_t i=0,e=_bufferList.size(); i<e; i++) {
 		vk::Buffer b=_bufferList[i];
-		const unsigned s=_attribConfig[i];
+		const unsigned s=_attribSizeList[i];
 		v.emplace_back(
 				b,  // dstBuffer
 				a.startIndex*s,  // dstOffset
@@ -292,7 +292,7 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t firstVe
 
 	for(size_t i=0,e=_bufferList.size(); i<e; i++) {
 		vk::Buffer b=_bufferList[i];
-		const unsigned s=_attribConfig[i];
+		const unsigned s=_attribSizeList[i];
 		v.emplace_back(
 				b,  // dstBuffer
 				(a.startIndex+firstVertex)*s,  // dstOffset
@@ -311,7 +311,7 @@ void AttribStorage::uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<
 		throw std::out_of_range("AttribStorage::uploadAttrib() called with invalid attribIndex.");
 
 	// create StagingBuffer and submit it
-	size_t numVertices=attribData.size()/_attribConfig[attribIndex];
+	size_t numVertices=attribData.size()/_attribSizeList[attribIndex];
 	StagingBuffer sb(createStagingBuffer(m,attribIndex,firstVertex,numVertices));
 	memcpy(sb.data(),attribData.data(),attribData.size());
 	sb.submit();
@@ -325,9 +325,9 @@ void AttribStorage::uploadAttribs(Mesh& m,const vector<vector<uint8_t>>& vertexD
 		throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
 	if(vertexData.size()==0)
 		return;
-	size_t numVertices=vertexData[0].size()/_attribConfig[0];
+	size_t numVertices=vertexData[0].size()/_attribSizeList[0];
 	for(size_t i=1,e=vertexData.size(); i<e; i++)
-		if(vertexData[i].size()!=numVertices*_attribConfig[i])
+		if(vertexData[i].size()!=numVertices*_attribSizeList[i])
 			throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
 
 	// create StagingBuffers and submit them

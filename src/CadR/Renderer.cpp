@@ -17,7 +17,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _indexAllocationManager(0,0)  // zero capacity, zero-sized object on index 0
 {
-	_attribStorages[AttribConfig()].emplace_back(this,AttribConfig()); // create empty AttribStorage for empty AttribConfig
+	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
 	_graphicsQueue=(*_device)->getQueue(_graphicsQueueFamily,0,*_device);
 	_memoryProperties=physicalDevice.getMemoryProperties(*instance);
@@ -65,11 +65,11 @@ Renderer::~Renderer()
 }
 
 
-AttribStorage* Renderer::getOrCreateAttribStorage(const AttribConfig& ac)
+AttribStorage* Renderer::getOrCreateAttribStorage(const AttribSizeList& attribSizeList)
 {
-	std::list<AttribStorage>& attribStorageList=_attribStorages[ac];
+	std::list<AttribStorage>& attribStorageList=_attribStorages[attribSizeList];
 	if(attribStorageList.empty())
-		attribStorageList.emplace_front(AttribStorage(this,ac));
+		attribStorageList.emplace_front(AttribStorage(this,attribSizeList));
 	return &attribStorageList.front();
 }
 

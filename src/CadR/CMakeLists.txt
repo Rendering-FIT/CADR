@@ -15,7 +15,7 @@ endif()
 # public headers
 set(CADR_PUBLIC_HEADERS
     AllocationManagers.h
-    AttribConfig.h
+    AttribSizeList.h
     AttribStorage.h
     BufferData.h
     CadR.h

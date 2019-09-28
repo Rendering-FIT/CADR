@@ -5,7 +5,7 @@
 
 namespace CadR {
 
-class AttribConfig;
+class AttribSizeList;
 class AttribStorage;
 class Renderer;
 class StagingBuffer;
@@ -36,10 +36,10 @@ protected:
 public:
 
 	Mesh();  ///< Default constructor. Object is largely uninitialized, valid() returns false and attribStorage() nullptr. Call init() before using the object.
-	Mesh(const AttribConfig& ac,size_t numVertices,
+	Mesh(const AttribSizeList& attribSizeList,size_t numVertices,
 	     size_t numIndices,size_t numDrawCommands);  ///< Constructs the object by parameters.
 	Mesh(Renderer* r);  ///< Constructs the object by parameters.
-	Mesh(Renderer* r,const AttribConfig& ac,size_t numVertices,
+	Mesh(Renderer* r,const AttribSizeList& attribSizeList,size_t numVertices,
 	     size_t numIndices,size_t numDrawCommands);  ///< Constructs the object by parameters.
 	Mesh(const Mesh&) = delete;  ///< No copy constructor. Only move contructors are allowed.
 	Mesh(Mesh&& m);  ///< Move constructor.
@@ -65,13 +65,13 @@ public:
 	//?inline DrawCommandList& drawCommandList();
 #endif
 
-	void allocData(const AttribConfig& ac,size_t numVertices,
+	void allocData(const AttribSizeList& attribSizeList,size_t numVertices,
 	               size_t numIndices,size_t numDrawCommands);
 	void allocData(size_t numVertices,size_t numIndices,size_t numDrawCommands);
 	void reallocData(size_t numVertices,size_t numIndices,size_t numDrawCommands);
 	void freeData();
 
-	void allocAttribs(const AttribConfig& ac,size_t num);
+	void allocAttribs(const AttribSizeList& attribSizeList,size_t num);
 	void allocAttribs(size_t numVertices);
 	void reallocAttribs(size_t numVertices);
 	void freeAttribs();
@@ -140,9 +140,9 @@ public:
 namespace CadR {
 
 inline Mesh::Mesh() : _attribStorage(Renderer::get()->emptyStorage())  {}
-inline Mesh::Mesh(const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands) : _attribStorage(Renderer::get()->emptyStorage())  { allocData(ac,numVertices,numIndices,numDrawCommands); }
+inline Mesh::Mesh(const AttribSizeList& attribSizeList,size_t numVertices,size_t numIndices,size_t numDrawCommands) : _attribStorage(Renderer::get()->emptyStorage())  { allocData(attribSizeList,numVertices,numIndices,numDrawCommands); }
 inline Mesh::Mesh(Renderer* r) : _attribStorage(r->emptyStorage())  {}
-inline Mesh::Mesh(Renderer* r,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands) : _attribStorage(r->emptyStorage())  { allocData(ac,numVertices,numIndices,numDrawCommands); }
+inline Mesh::Mesh(Renderer* r,const AttribSizeList& attribSizeList,size_t numVertices,size_t numIndices,size_t numDrawCommands) : _attribStorage(r->emptyStorage())  { allocData(attribSizeList,numVertices,numIndices,numDrawCommands); }
 #if 0
 inline Mesh::Mesh(Mesh&& m) : _attribStorage(m._attribStorage), _verticesDataId(m._verticesDataId), _indicesDataId(m._indicesDataId), _drawCommandDataId(m._drawCommandDataId), _drawCommandList(std::move(m._drawCommandList))  { m._attribStorage=nullptr; }
 inline Mesh& Mesh::operator=(Mesh&& m)  { _attribStorage=d._attribStorage; _verticesDataId=d._verticesDataId; _indicesDataId=d._indicesDataId; _drawCommandDataId=d._drawCommandDataId; _drawCommandList=std::move(d._drawCommandList); d._attribStorage=nullptr; return *this; }
@@ -161,12 +161,12 @@ inline bool Drawable::valid() const  { return _attribStorage!=nullptr; }
 inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
 #endif
 
-inline void Mesh::allocData(const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t /*numPrimitiveSets*/)  { allocAttribs(ac,numVertices); allocIndices(numIndices); }
+inline void Mesh::allocData(const AttribSizeList& attribSizeList,size_t numVertices,size_t numIndices,size_t /*numPrimitiveSets*/)  { allocAttribs(attribSizeList,numVertices); allocIndices(numIndices); }
 inline void Mesh::allocData(size_t numVertices,size_t numIndices,size_t /*numPrimitiveSets*/)  { allocAttribs(numVertices); allocIndices(numIndices); }
 inline void Mesh::reallocData(size_t numVertices,size_t numIndices,size_t /*numPrimitiveSets*/)  { reallocAttribs(numVertices); reallocIndices(numIndices); }
 inline void Mesh::freeData()  { freeAttribs(); freeIndices(); }
 
-inline void Mesh::allocAttribs(const AttribConfig& ac,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(ac); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
+inline void Mesh::allocAttribs(const AttribSizeList& attribSizeList,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(attribSizeList); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
 inline void Mesh::allocAttribs(size_t num)  { freeAttribs(); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
 inline void Mesh::reallocAttribs(size_t /*num*/)  { /* FIXME: not implemented yet */ }
 inline void Mesh::freeAttribs()  { if(_attribDataID==0) return; _attribStorage->allocationManager().free(_attribDataID); _attribDataID=0; }

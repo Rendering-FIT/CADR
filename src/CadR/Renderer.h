@@ -9,7 +9,7 @@
 
 namespace CadR {
 
-class AttribConfig;
+class AttribSizeList;
 class AttribStorage;
 class Mesh;
 class StagingBuffer;
@@ -24,7 +24,7 @@ private:
 	uint32_t _graphicsQueueFamily;
 	vk::Queue _graphicsQueue;
 
-	std::map<AttribConfig,std::list<AttribStorage>> _attribStorages;
+	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
 	vk::Buffer _indexBuffer;
 	vk::Buffer _primitiveSetBuffer;
@@ -51,8 +51,8 @@ public:
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 
-	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribConfig& ac);
-	CADR_EXPORT std::map<AttribConfig,std::list<AttribStorage>>& getAttribStorages();
+	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
+	CADR_EXPORT std::map<AttribSizeList,std::list<AttribStorage>>& getAttribStorages();
 	CADR_EXPORT const AttribStorage* emptyStorage() const;
 	CADR_EXPORT AttribStorage* emptyStorage();
 
@@ -81,7 +81,7 @@ inline Renderer* Renderer::get()  { return _instance; }
 inline void Renderer::set(Renderer* r)  { _instance=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
-inline std::map<AttribConfig,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
+inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }
 inline const ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id) const  { return _indexAllocationManager[id]; }

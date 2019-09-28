@@ -2,7 +2,7 @@
 
 #include <vulkan/vulkan.hpp>
 #include <CadR/Export.h>
-#include <CadR/AttribConfig.h>
+#include <CadR/AttribSizeList.h>
 #include <CadR/AllocationManagers.h>
 
 namespace CadR {
@@ -22,7 +22,7 @@ class CADR_EXPORT AttribStorage final {
 protected:
 
 	ArrayAllocationManager<Mesh> _allocationManager;  ///< Allocation manager for attribute data.
-	AttribConfig _attribConfig;  ///< Configuration and formats of OpenGL attributes stored in this AttribStorage.
+	AttribSizeList _attribSizeList;  ///< List of the attribute sizes of the single vertex. All vertices stored in this AttribStorage use the same attribute sizes.
 	Renderer* _renderer;  ///< Rendering context associated with the AttribStorage.
 
 	std::vector<vk::Buffer> _bufferList;
@@ -31,7 +31,7 @@ protected:
 public:
 
 	AttribStorage() = delete;
-	AttribStorage(Renderer* r,const AttribConfig& c);
+	AttribStorage(Renderer* r,const AttribSizeList& attribSizeList);
 	~AttribStorage();
 
 	AttribStorage(const AttribStorage&) = delete;
@@ -55,7 +55,7 @@ public:
 	const ArrayAllocationManager<Mesh>& allocationManager() const;  ///< Returns the allocation manager.
 	ArrayAllocationManager<Mesh>& allocationManager();  ///< Returns the allocation manager.
 
-	const AttribConfig& attribConfig() const;
+	const AttribSizeList& attribSizeList() const;
 	Renderer* renderer() const;
 
 	const std::vector<vk::Buffer>& bufferList() const;
@@ -85,7 +85,7 @@ inline const ArrayAllocation<Mesh>& AttribStorage::attribAllocation(unsigned id)
 inline ArrayAllocation<Mesh>& AttribStorage::attribAllocation(unsigned id)  { return _allocationManager[id]; }
 inline const ArrayAllocationManager<Mesh>& AttribStorage::allocationManager() const  { return _allocationManager; }
 inline ArrayAllocationManager<Mesh>& AttribStorage::allocationManager()  { return _allocationManager; }
-inline const AttribConfig& AttribStorage::attribConfig() const  { return _attribConfig; }
+inline const AttribSizeList& AttribStorage::attribSizeList() const  { return _attribSizeList; }
 inline Renderer* AttribStorage::renderer() const  { return _renderer; }
 inline const std::vector<vk::Buffer>& AttribStorage::bufferList() const  { return _bufferList; }
 inline const std::vector<vk::DeviceMemory>& AttribStorage::memoryList() const  { return _memoryList; }
