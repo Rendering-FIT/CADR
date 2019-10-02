@@ -56,7 +56,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			),
 			nullptr,*_device
 		);
-	_uploadCommandBuffer=
+	_uploadingCommandBuffer=
 		(*device)->allocateCommandBuffers(
 			vk::CommandBufferAllocateInfo(
 				_commandPoolTransient,             // commandPool
@@ -65,7 +65,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			),
 			*_device
 		)[0];
-	_uploadCommandBuffer.begin(
+	_uploadingCommandBuffer.begin(
 		vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 			nullptr  // pInheritanceInfo
@@ -80,7 +80,7 @@ Renderer::~Renderer()
 {
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
 
-	_uploadCommandBuffer.end(*_device);
+	_uploadingCommandBuffer.end(*_device);
 	(*_device)->destroy(_commandPoolTransient,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
 	purgeObjectsToDeleteAfterCopyOperation();
 
@@ -122,8 +122,8 @@ vk::DeviceMemory Renderer::allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFl
 
 void Renderer::scheduleCopyOperation(StagingBuffer& sb)
 {
-	_uploadCommandBuffer.copyBuffer(sb._stgBuffer,sb._dstBuffer,1,
-	                                &(const vk::BufferCopy&)vk::BufferCopy(0,sb._dstOffset,sb._size),*_device);
+	_uploadingCommandBuffer.copyBuffer(sb._stgBuffer,sb._dstBuffer,1,
+	                                   &(const vk::BufferCopy&)vk::BufferCopy(0,sb._dstOffset,sb._size),*_device);
 	_objectsToDeleteAfterCopyOperation.emplace_back(sb._stgBuffer,sb._stgMemory);
 	sb._stgBuffer=nullptr;
 	sb._stgMemory=nullptr;
@@ -133,15 +133,15 @@ void Renderer::scheduleCopyOperation(StagingBuffer& sb)
 void Renderer::executeCopyOperations()
 {
 	// end recording
-	_uploadCommandBuffer.end(*_device);
+	_uploadingCommandBuffer.end(*_device);
 
 	// submit command buffer
 	auto fence=(*_device)->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()},nullptr,*_device);
 	_graphicsQueue.submit(
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
-			0,nullptr,nullptr,        // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
-			1,&_uploadCommandBuffer,  // commandBufferCount,pCommandBuffers
-			0,nullptr                 // signalSemaphoreCount,pSignalSemaphores
+			0,nullptr,nullptr,           // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
+			1,&_uploadingCommandBuffer,  // commandBufferCount,pCommandBuffers
+			0,nullptr                    // signalSemaphoreCount,pSignalSemaphores
 		),
 		fence.get(),  // fence
 		*_device      // dispatch
@@ -160,7 +160,7 @@ void Renderer::executeCopyOperations()
 	purgeObjectsToDeleteAfterCopyOperation();
 
 	// start new recoding
-	_uploadCommandBuffer.begin(
+	_uploadingCommandBuffer.begin(
 		vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 			nullptr  // pInheritanceInfo

@@ -34,7 +34,7 @@ private:
 
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
 	vk::CommandPool _commandPoolTransient;
-	vk::CommandBuffer _uploadCommandBuffer;
+	vk::CommandBuffer _uploadingCommandBuffer;
 	std::list<std::tuple<vk::Buffer,vk::DeviceMemory>> _objectsToDeleteAfterCopyOperation;
 
 	static Renderer* _instance;
@@ -58,7 +58,7 @@ public:
 	CADR_EXPORT AttribStorage* emptyStorage();
 
 	CADR_EXPORT vk::DeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags);
-	CADR_EXPORT vk::CommandBuffer uploadCommandBuffer() const;
+	CADR_EXPORT vk::CommandBuffer uploadingCommandBuffer() const;
 	CADR_EXPORT void scheduleCopyOperation(StagingBuffer& stagingBuffer);
 	CADR_EXPORT void executeCopyOperations();
 
@@ -93,7 +93,7 @@ inline const ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager() co
 inline ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
 inline const ItemAllocationManager& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
 inline ItemAllocationManager& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
-inline vk::CommandBuffer Renderer::uploadCommandBuffer() const  { return _uploadCommandBuffer; }
+inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
 
 
 }
