@@ -27,6 +27,7 @@ private:
 	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
 	vk::Buffer _indexBuffer;
+   vk::DeviceMemory _indexBufferMemory;
 	vk::Buffer _primitiveSetBuffer;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ItemAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
@@ -61,12 +62,14 @@ public:
 	CADR_EXPORT void scheduleCopyOperation(StagingBuffer& stagingBuffer);
 	CADR_EXPORT void executeCopyOperations();
 
-	CADR_EXPORT void uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
-
 	CADR_EXPORT const ArrayAllocation<Mesh>& indexAllocation(unsigned id) const;  ///< Returns index allocation for particular id.
 	CADR_EXPORT ArrayAllocation<Mesh>& indexAllocation(unsigned id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
 	CADR_EXPORT const ArrayAllocationManager<Mesh>& indexAllocationManager() const;
 	CADR_EXPORT ArrayAllocationManager<Mesh>& indexAllocationManager();
+
+	CADR_EXPORT void uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Mesh& m);
+	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Mesh& m,size_t firstIndex,size_t numIndices);
 
 	CADR_EXPORT const ItemAllocationManager& primitiveSetAllocationManager() const;
 	CADR_EXPORT ItemAllocationManager& primitiveSetAllocationManager();

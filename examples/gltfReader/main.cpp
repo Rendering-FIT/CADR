@@ -319,24 +319,31 @@ int main(int argc,char** argv) {
 
 		// primitive data
 		auto attributes=primitive["attributes"];
-		if(primitive.find("indices")!=primitive.end())
-			throw gltfError("Unsupported functionality: indices.");
 		auto mode=mapGetWithDefault(primitive,"mode",4);
 		if(mode!=4)
 			throw gltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
 
-		// accessors
+		// numVertices
+		size_t numVertices;
+		if(auto it=attributes.find("POSITION"); it==attributes.end())
+			throw gltfError("Unsupported attribute configuration.");
+		else
+			numVertices=accessors.at(size_t(*it))["count"];
+		if(numVertices==0)
+			throw gltfError("Number of vertices inside primitive is 0.");
+
+		// attributes
 		CadR::AttribSizeList attribSizeList;
 		vector<vk::Format> attribFormatList;
-		vector<tuple<filesystem::path,size_t,size_t>> fileUriOffsetAndSize;
-		if(attributes.find("POSITION")==attributes.end())
-			throw gltfError("Unsupported attribute configuration.");
-		unsigned i=0;
+		vector<tuple<filesystem::path,size_t>> attribUriAndOffsetList;
+		unsigned numProcessedAttributes=0;
 		for(string name : {"POSITION","NORMAL","COLOR_0","TEXCOORD_0"}) {
+
+			// process only known attributes
 			if(attributes.find(name)==attributes.end())
 				continue;
 			else
-				i++;
+				numProcessedAttributes++;
 
 			// accessor
 			auto a=accessors.at(size_t(attributes[name]));
@@ -350,9 +357,8 @@ int main(int argc,char** argv) {
 			if(componentType==5125) // no UNSIGNED_INT
 				throw gltfError("Invalid component type.");
 			bool normalized=mapGetWithDefault(a,"normalized",false);
-			size_t count=a["count"];
-			if(count==0)
-				throw gltfError("Attribute count in accessor is 0.");
+			if(a["count"]!=numVertices)
+				throw gltfError("Attribute count does not match number of vertices inside the primitive.");
 			string type=a["type"];
 			if(type!="VEC3" && (name=="POSITION" || name=="NORMAL"))
 				throw gltfError("Invalid attribute type. Must be VEC3.");
@@ -381,33 +387,78 @@ int main(int argc,char** argv) {
 			attribFormatList.push_back(getFormat(componentType,type,normalized,false));
 
 			// file info
-			fileUriOffsetAndSize.emplace_back(
+			attribUriAndOffsetList.emplace_back(
 				bufferUri.is_absolute()  // file path
 					?bufferUri
 					:filePath.parent_path()/bufferUri,
-				bufferViewOffset+accessorOffset,  // file offset
-				count*attribSize  // data size
+				bufferViewOffset+accessorOffset  // file offset
 			);
 		}
-		if(i!=unsigned(attributes.size()))
-			throw gltfError("Unsupported attributes.");
+		if(numProcessedAttributes!=attributes.size())
+			throw gltfError("Unsupported attribute(s).");
+
+		// indices
+		filesystem::path indicesFileUri;
+		size_t indicesFileOffset;
+		size_t numIndices;
+		int indicesComponentType;
+		if(auto it=primitive.find("indices"); it!=primitive.end()) {
+			size_t indicesAccessorIndex=*it;
+
+			// accessor
+			auto a=accessors.at(indicesAccessorIndex);
+			if(a.find("bufferView")==a.end())
+				throw gltfError("Unsupported functionality: Omitted bufferView for indices.");
+			size_t bufferViewIndex=a["bufferView"];
+			size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
+			indicesComponentType=a["componentType"];
+			if(indicesComponentType!=5125 && indicesComponentType!=5123 && indicesComponentType!=5121)
+				throw gltfError("Invalid component type for Indices. It must be UNSIGNED_INT, UNSIGNED_SHORT or UNSIGNED_BYTE.");
+			numIndices=a["count"];
+			if(numIndices==0)
+				throw gltfError("Indices count in accessor is 0.");
+			string type=a["type"];
+			if(type!="SCALAR")
+				throw gltfError("Invalid attribute type for Indices. Must be SCALAR.");
+			if(a.find("sparse")!=a.end())
+				throw gltfError("Unsupported functionality: Property sparse for Indices.");
+
+			// bufferView
+			auto bv=bufferViews.at(bufferViewIndex);
+			size_t bufferIndex=bv["buffer"];
+			size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
+			//size_t bufferViewLength=bv["byteLength"];
+
+			// buffer
+			auto b=buffers.at(bufferIndex);
+			filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
+			//size_t bufferLength=b["byteLength"];
+
+			indicesFileUri=
+				bufferUri.is_absolute()
+					?bufferUri
+					:filePath.parent_path()/bufferUri;
+			indicesFileOffset=bufferViewOffset+accessorOffset;
+		}
+		else {
+			numIndices=numVertices;
+		}
 
 		// create Mesh
-		size_t numVertices=std::get<2>(fileUriOffsetAndSize[0])/attribSizeList[0];
 		auto m=
 			make_unique<CadR::Mesh>(
 				attribSizeList,  // attribSizeList
 				numVertices,  // numVertices
-				0,  // numIndices
+				numIndices,  // numIndices
 				0  // numDrawCommands
 			);
 
 		// read Mesh buffers
-		i=0;
-		for(auto& uss:fileUriOffsetAndSize) {
+		unsigned i=0;
+		for(auto& uriAndOffset:attribUriAndOffsetList) {
 
 			// open buffer file
-			filesystem::path bufferPath=std::get<0>(uss);
+			const filesystem::path& bufferPath=std::get<0>(uriAndOffset);
 			cout<<"Opening buffer "<<bufferPath<<"..."<<endl;
 			ifstream f(bufferPath);
 			if(!f.is_open()) {
@@ -418,10 +469,52 @@ int main(int argc,char** argv) {
 
 			// read buffer file
 			CadR::StagingBuffer sb=m->createStagingBuffer(i);
-			size_t offset=std::get<1>(uss);
-			f.seekg(offset);
+			f.seekg(std::get<1>(uriAndOffset));
 			f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
 			f.close();
+			sb.submit();
+			i++;
+		}
+		if(!indicesFileUri.empty()) {
+
+			// open buffer file
+			cout<<"Opening buffer "<<indicesFileUri<<"..."<<endl;
+			ifstream f(indicesFileUri);
+			if(!f.is_open()) {
+				cout<<"Can not open file "<<indicesFileUri<<"."<<endl;
+				return 1;
+			}
+			f.exceptions(ifstream::badbit|ifstream::failbit);
+
+			// read buffer file
+			CadR::StagingBuffer sb=m->createIndexStagingBuffer();
+			f.seekg(indicesFileOffset);
+			if(indicesComponentType==5125)  // UNSIGNED_INT
+				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
+			else if(indicesComponentType==5123) {  // UNSIGNED_SHORT
+				unique_ptr<uint16_t[]> tmp(new uint16_t[numIndices]);
+				f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint16_t));
+				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
+				for(size_t i=0; i<numIndices; i++)
+					b[i]=tmp[i];
+			}
+			else if(indicesComponentType==5121) {  // UNSIGNED_BYTE
+				unique_ptr<uint8_t[]> tmp(new uint8_t[numIndices]);
+				f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint8_t));
+				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
+				for(size_t i=0; i<numIndices; i++)
+					b[i]=tmp[i];
+			}
+			f.close();
+			sb.submit();
+		}
+		else {
+
+			// generate indices
+			CadR::StagingBuffer sb=m->createIndexStagingBuffer();
+			uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
+			for(size_t i=0; i<numIndices; i++)
+				b[i]=i;
 			sb.submit();
 		}
 		renderer.executeCopyOperations();
@@ -649,6 +742,12 @@ int main(int argc,char** argv) {
 							device  // dispatch
 						);
 						cb.bindPipeline(vk::PipelineBindPoint::eGraphics,coordinatePipeline.get(),device);
+						cb.bindIndexBuffer(
+							m->renderer()->indexBuffer(),  // buffer
+							0,  // offset
+							vk::IndexType::eUint32,  // indexType
+							device  // dispatch
+						);
 						cb.bindVertexBuffers(
 							0,  // firstBinding
 							1,  // bindingCount
@@ -656,7 +755,7 @@ int main(int argc,char** argv) {
 							array<const vk::DeviceSize,1>{0}.data(),  // pOffsets
 							device  // dispatch
 						);
-						cb.draw(3,1,0,0,device);  // draw a single triangle
+						cb.drawIndexed(3,1,0,0,0,device);  // draw a single triangle
 						cb.endRenderPass(device);
 						cb.end(device);
 					}

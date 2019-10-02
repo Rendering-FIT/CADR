@@ -98,6 +98,9 @@ public:
 	StagingBuffer createStagingBuffer(unsigned attribIndex,size_t dstIndex,size_t numItems);
 	std::vector<StagingBuffer> createStagingBuffers();
 	std::vector<StagingBuffer> createStagingBuffers(size_t dstIndex,size_t numItems);
+	void uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+	StagingBuffer createIndexStagingBuffer();
+	StagingBuffer createIndexStagingBuffer(size_t firstIndex,size_t numIndices);
 
 #if 0
 	inline void uploadDrawCommands(const std::vector<DrawCommand>&& drawCommands,
@@ -166,12 +169,12 @@ inline void Mesh::allocData(size_t numVertices,size_t numIndices,size_t /*numPri
 inline void Mesh::reallocData(size_t numVertices,size_t numIndices,size_t /*numPrimitiveSets*/)  { reallocAttribs(numVertices); reallocIndices(numIndices); }
 inline void Mesh::freeData()  { freeAttribs(); freeIndices(); }
 
-inline void Mesh::allocAttribs(const AttribSizeList& attribSizeList,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(attribSizeList); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
+inline void Mesh::allocAttribs(const AttribSizeList& attribSizeList,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(attribSizeList); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); if(_attribDataID==0) throw std::runtime_error("Mesh: Failed to allocate attribute data."); }
 inline void Mesh::allocAttribs(size_t num)  { freeAttribs(); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
 inline void Mesh::reallocAttribs(size_t /*num*/)  { /* FIXME: not implemented yet */ }
 inline void Mesh::freeAttribs()  { if(_attribDataID==0) return; _attribStorage->allocationManager().free(_attribDataID); _attribDataID=0; }
 
-inline void Mesh::allocIndices(size_t num)  { freeIndices(); _indexDataID=renderer()->indexAllocationManager().alloc(unsigned(num),this); }
+inline void Mesh::allocIndices(size_t num)  { freeIndices(); _indexDataID=renderer()->indexAllocationManager().alloc(unsigned(num),this); if(_indexDataID==0) throw std::runtime_error("Mesh: Failed to allocate index data."); }
 inline void Mesh::reallocIndices(size_t /*num*/)  { /* FIXME: not implemented yet */ }
 inline void Mesh::freeIndices()  { if(_indexDataID==0) return; renderer()->indexAllocationManager().free(_indexDataID); _indexDataID=0; }
 
@@ -192,5 +195,9 @@ inline StagingBuffer Mesh::createStagingBuffer(unsigned attribIndex)  { return _
 inline StagingBuffer Mesh::createStagingBuffer(unsigned attribIndex,size_t dstIndex,size_t numItems)  { return _attribStorage->createStagingBuffer(*this,attribIndex,dstIndex,numItems); }
 inline std::vector<StagingBuffer> Mesh::createStagingBuffers()  { return _attribStorage->createStagingBuffers(*this); }
 inline std::vector<StagingBuffer> Mesh::createStagingBuffers(size_t dstIndex,size_t numItems)  { return _attribStorage->createStagingBuffers(*this,dstIndex,numItems); }
+
+inline void Mesh::uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex)  { renderer()->uploadIndices(*this,std::move(indexData),dstIndex); }
+inline StagingBuffer Mesh::createIndexStagingBuffer()  { return renderer()->createIndexStagingBuffer(*this); }
+inline StagingBuffer Mesh::createIndexStagingBuffer(size_t firstIndex,size_t numIndices)  { return renderer()->createIndexStagingBuffer(*this,firstIndex,numIndices); }
 
 }

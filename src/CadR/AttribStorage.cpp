@@ -12,7 +12,7 @@ using namespace CadR;
 
 
 AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSizeList)
-	: _allocationManager(1024,0)  // zero capacity, zero-sized object on index 0
+	: _allocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _attribSizeList(attribSizeList)
 	, _renderer(renderer)
 {
@@ -20,7 +20,7 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSize
 	//_renderer->onAttribStorageInit(this);
 #endif
 
-	// create buffers
+	// attribute buffers
 	vk::BufferCreateInfo bufferInfo;
 	bufferInfo.flags=vk::BufferCreateFlags();
 	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst;

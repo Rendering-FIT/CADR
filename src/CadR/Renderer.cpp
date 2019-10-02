@@ -15,12 +15,36 @@ Renderer* Renderer::_instance = nullptr;
 Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDevice physicalDevice,uint32_t graphicsQueueFamily)
 	: _device(device)
 	, _graphicsQueueFamily(graphicsQueueFamily)
-	, _indexAllocationManager(0,0)  // zero capacity, zero-sized object on index 0
+	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
 	_graphicsQueue=(*_device)->getQueue(_graphicsQueueFamily,0,*_device);
 	_memoryProperties=physicalDevice.getMemoryProperties(*instance);
+
+	// index buffer
+	_indexBuffer=
+		(*_device)->createBuffer(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				1024*sizeof(uint32_t),        // size
+				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
+	// index buffer memory
+	_indexBufferMemory=allocateMemory(_indexBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+	(*_device)->bindBufferMemory(
+			_indexBuffer,  // buffer
+			_indexBufferMemory,  // memory
+			0,  // memoryOffset
+			*_device  // dispatch
+		);
 
 	// submitNowCommandBuffer
 	// that will be submitted at the end of this function
@@ -59,6 +83,10 @@ Renderer::~Renderer()
 	_uploadCommandBuffer.end(*_device);
 	(*_device)->destroy(_commandPoolTransient,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
 	purgeObjectsToDeleteAfterCopyOperation();
+
+	// index buffer
+	(*_device)->destroy(_indexBuffer,nullptr,*_device);
+	(*_device)->freeMemory(_indexBufferMemory,nullptr,*_device);
 
 	if(_instance==this)
 		_instance=nullptr;
@@ -149,4 +177,37 @@ void Renderer::purgeObjectsToDeleteAfterCopyOperation()
 		(*_device)->freeMemory(std::get<1>(item),nullptr,*_device);
 	}
 	_objectsToDeleteAfterCopyOperation.clear();
+}
+
+
+StagingBuffer Renderer::createIndexStagingBuffer(Mesh& m)
+{
+	const ArrayAllocation<Mesh>& a=indexAllocation(m.indexDataID());
+	return StagingBuffer(
+			_indexBuffer,  // dstBuffer
+			a.startIndex*sizeof(uint32_t),  // dstOffset
+			a.numItems*sizeof(uint32_t),  // size
+			this  // renderer
+		);
+}
+
+
+StagingBuffer Renderer::createIndexStagingBuffer(Mesh& m,size_t firstIndex,size_t numIndices)
+{
+	const ArrayAllocation<Mesh>& a=indexAllocation(m.indexDataID());
+	return StagingBuffer(
+			_indexBuffer,  // dstBuffer
+			(a.startIndex+firstIndex)*sizeof(uint32_t),  // dstOffset
+			numIndices*sizeof(uint32_t),  // size
+			this  // renderer
+		);
+}
+
+
+void Renderer::uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex)
+{
+	// create StagingBuffer and submit it
+	StagingBuffer sb(createIndexStagingBuffer(m,dstIndex,indexData.size()));
+	memcpy(sb.data(),indexData.data(),indexData.size()*sizeof(uint32_t));
+	sb.submit();
 }

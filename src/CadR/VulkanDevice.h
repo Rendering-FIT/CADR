@@ -89,7 +89,9 @@ public:
 	PFN_vkCreateFence vkCreateFence;
 	PFN_vkDestroyFence vkDestroyFence;
 	PFN_vkCmdBindPipeline vkCmdBindPipeline;
+	PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer;
 	PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers;
+	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 	PFN_vkCmdDraw vkCmdDraw;
 	PFN_vkQueueSubmit vkQueueSubmit;
 	PFN_vkWaitForFences vkWaitForFences;
