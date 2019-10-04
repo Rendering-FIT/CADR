@@ -1277,8 +1277,7 @@ static void init(size_t deviceIndex)
 	enabledFeatures.setGeometryShader(physicalFeatures.geometryShader);
 	enabledFeatures.setShaderFloat64(physicalFeatures.shaderFloat64);
 
-	// number of triangles
-	// (reduce the number on integrated graphics as it may easily run out of memory)
+	// GPU memory and sparse props
 	size_t gpuMemory=0;
 	{
 		vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
@@ -1288,7 +1287,17 @@ static void init(size_t deviceIndex)
 				break;
 			}
 	}
-	cout<<"GPU memory: "<<gpuMemory/1024/1024/1024<<"GiB"<<endl;
+	cout<<"GPU memory:  "<<gpuMemory/1024/1024/1024<<" GiB"<<endl;
+	cout<<"Sparse address space:  0x"<<std::hex<<physicalDevice.getProperties().limits.sparseAddressSpaceSize<<std::dec<<
+	      " ("<<physicalDevice.getProperties().limits.sparseAddressSpaceSize/1024/1024/1024<<" GiB)"<<endl;
+	cout<<"Sparse binding:             "<<physicalFeatures.sparseBinding<<endl;
+	cout<<"Sparse residency buffer:    "<<physicalFeatures.sparseResidencyBuffer<<endl;
+	cout<<"Sparse residency image2D:   "<<physicalFeatures.sparseResidencyImage2D<<endl;
+	cout<<"Sparse residency 4samples:  "<<physicalFeatures.sparseResidency4Samples<<endl;
+	cout<<"Sparse residency aliased:   "<<physicalFeatures.sparseResidencyAliased<<endl;
+
+	// number of triangles
+	// (reduce the number on integrated graphics as it may easily run out of memory)
 	if(gpuMemory>=2.8*1024*1024*1024)
 		numTriangles=numTrianglesStandard;
 	else if(gpuMemory>=1.4*1024*1024*1024)
@@ -6716,8 +6725,8 @@ static void recreateSwapchainAndPipeline()
 		physicalDevice.getQueueFamilyProperties()[graphicsQueueFamily].timestampValidBits;
 	timestampPeriod_ns=
 		physicalDevice.getProperties().limits.timestampPeriod;
-	cout<<"Timestamp number of bits: "<<timestampValidBits<<endl;
-	cout<<"Timestamp period: "<<timestampPeriod_ns<<"ns"<<endl;
+	cout<<"Timestamp number of bits:  "<<timestampValidBits<<endl;
+	cout<<"Timestamp period:          "<<timestampPeriod_ns<<" ns"<<endl;
 	if(timestampValidBits==0)
 		throw runtime_error("Timestamps are not supported.");
 
