@@ -1,6 +1,7 @@
 #include <CadR/BufferData.h>
 #include <CadR/CadR.h>
 #include <CadR/Mesh.h>
+#include <CadR/PrimitiveSet.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
@@ -450,7 +451,7 @@ int main(int argc,char** argv) {
 				attribSizeList,  // attribSizeList
 				numVertices,  // numVertices
 				numIndices,  // numIndices
-				0  // numDrawCommands
+				1  // numPrimitiveSets
 			);
 
 		// read Mesh buffers
@@ -475,6 +476,8 @@ int main(int argc,char** argv) {
 			sb.submit();
 			i++;
 		}
+
+		// read indices (or generate them)
 		if(!indicesFileUri.empty()) {
 
 			// open buffer file
@@ -517,6 +520,14 @@ int main(int argc,char** argv) {
 				b[i]=i;
 			sb.submit();
 		}
+
+		// generate one PrimitiveSet
+		CadR::StagingBuffer sb=m->createPrimitiveSetStagingBuffer();
+		CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
+		b[0]=CadR::PrimitiveSetGpuData(numIndices,0,0,0);
+		sb.submit();
+
+		// upload all staging buffers
 		renderer.executeCopyOperations();
 
 		// shaders

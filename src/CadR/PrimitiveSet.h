@@ -8,18 +8,19 @@
 namespace CadR {
 
 
-/** PrimitiveSetGpuData are PrimitiveSet data that are stored
- *  in gpu buffers (usually Renderer::primitiveSetStorage())
- *  and processed by compute shader to produce
- *  indirect rendering buffer content.
+/** PrimitiveSetGpuData are stored in gpu buffers (usually Renderer::primitiveSetBuffer())
+ *  and processed by compute shader to produce indirect rendering buffer content.
  */
 struct PrimitiveSetGpuData {
-	unsigned count;         ///< Number of vertices of the primitive set.
-	unsigned first;         ///< Index into the index buffer where the first index of the primitive set is stored.
-	unsigned vertexOffset;  ///< Offset of the start of the allocated block of vertices or indices within AttribStorage. Thus, the real start index is first+vertexOffset. The value is computed and updated automatically.
+	uint32_t count;         ///< Number of vertex indices used for the primitive set rendering.
+	uint32_t first;         ///< Index into the index buffer where the first index of the primitive set is stored.
+	uint32_t vertexOffset;  ///< Offset of the start of the allocated block of vertices within AttribStorage. The value is computed and updated automatically by CadR.
+	uint32_t userData;
 
 	inline PrimitiveSetGpuData()  {}
-	constexpr inline PrimitiveSetGpuData(unsigned count,unsigned first);
+	inline PrimitiveSetGpuData(uint32_t count,uint32_t first);
+	inline PrimitiveSetGpuData(uint32_t count,uint32_t first,uint32_t userData);
+	constexpr inline PrimitiveSetGpuData(uint32_t count,uint32_t first,uint32_t vertexOffset,uint32_t userData);
 	constexpr inline PrimitiveSetGpuData(const PrimitiveSetGpuData&) = default;
 };
 
@@ -64,8 +65,12 @@ typedef std::vector<PrimitiveSet> PrimitiveSetList;
 
 
 // inline methods
-constexpr inline PrimitiveSetGpuData::PrimitiveSetGpuData(unsigned count_,unsigned first_)
-	: count(count_), first(first_), vertexOffset(0)  {}
+inline PrimitiveSetGpuData::PrimitiveSetGpuData(uint32_t count_,uint32_t first_)
+	: count(count_), first(first_)  {}
+inline PrimitiveSetGpuData::PrimitiveSetGpuData(uint32_t count_,uint32_t first_,uint32_t userData_)
+	: count(count_), first(first_), userData(userData_)  {}
+constexpr inline PrimitiveSetGpuData::PrimitiveSetGpuData(uint32_t count_,uint32_t first_,uint32_t vertexOffset_,uint32_t userData_)
+	: count(count_), first(first_), vertexOffset(vertexOffset_), userData(userData_)  {}
 constexpr inline vk::PrimitiveTopology PrimitiveSet::topology() const  { return vk::PrimitiveTopology((data>>28)&0x0000000f); } // returns bits 28..31
 constexpr inline unsigned PrimitiveSet::offset4() const  { return data&0x0fffffff; } // returns bits 0..27
 inline void PrimitiveSet::setTopology(vk::PrimitiveTopology value)  { assert(unsigned(value)<=0xf); data=(data&0x0fffffff)|(unsigned(value)<<28); } // set bits 28..31

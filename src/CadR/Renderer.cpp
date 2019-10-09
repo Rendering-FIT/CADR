@@ -1,6 +1,7 @@
 #include <CadR/Renderer.h>
 #include <CadR/AttribStorage.h>
 #include <CadR/AllocationManagers.h>
+#include <CadR/PrimitiveSet.h>
 #include <CadR/StagingBuffer.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
@@ -16,6 +17,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	: _device(device)
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
@@ -42,6 +44,30 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	(*_device)->bindBufferMemory(
 			_indexBuffer,  // buffer
 			_indexBufferMemory,  // memory
+			0,  // memoryOffset
+			*_device  // dispatch
+		);
+
+	// primitiveSet buffer
+	_primitiveSetBuffer=
+		(*_device)->createBuffer(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				128*sizeof(PrimitiveSetGpuData),  // size
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
+	// primitiveSet buffer memory
+	_primitiveSetBufferMemory=allocateMemory(_primitiveSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+	(*_device)->bindBufferMemory(
+			_primitiveSetBuffer,  // buffer
+			_primitiveSetBufferMemory,  // memory
 			0,  // memoryOffset
 			*_device  // dispatch
 		);
@@ -80,13 +106,16 @@ Renderer::~Renderer()
 {
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
 
+	// clean up uploading operations
 	_uploadingCommandBuffer.end(*_device);
 	(*_device)->destroy(_commandPoolTransient,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
 	purgeObjectsToDeleteAfterCopyOperation();
 
-	// index buffer
+	// destroy buffers
 	(*_device)->destroy(_indexBuffer,nullptr,*_device);
 	(*_device)->freeMemory(_indexBufferMemory,nullptr,*_device);
+	(*_device)->destroy(_primitiveSetBuffer,nullptr,*_device);
+	(*_device)->freeMemory(_primitiveSetBufferMemory,nullptr,*_device);
 
 	if(_instance==this)
 		_instance=nullptr;
@@ -209,5 +238,38 @@ void Renderer::uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t ds
 	// create StagingBuffer and submit it
 	StagingBuffer sb(createIndexStagingBuffer(m,dstIndex,indexData.size()));
 	memcpy(sb.data(),indexData.data(),indexData.size()*sizeof(uint32_t));
+	sb.submit();
+}
+
+
+StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Mesh& m)
+{
+	const ArrayAllocation<Mesh>& a=primitiveSetAllocation(m.primitiveSetDataID());
+	return StagingBuffer(
+			_primitiveSetBuffer,  // dstBuffer
+			a.startIndex*sizeof(PrimitiveSetGpuData),  // dstOffset
+			a.numItems*sizeof(PrimitiveSetGpuData),  // size
+			this  // renderer
+		);
+}
+
+
+StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Mesh& m,size_t firstPrimitiveSet,size_t numPrimitiveSets)
+{
+	const ArrayAllocation<Mesh>& a=primitiveSetAllocation(m.primitiveSetDataID());
+	return StagingBuffer(
+			_primitiveSetBuffer,  // dstBuffer
+			(a.startIndex+firstPrimitiveSet)*sizeof(PrimitiveSetGpuData),  // dstOffset
+			numPrimitiveSets*sizeof(PrimitiveSetGpuData),  // size
+			this  // renderer
+		);
+}
+
+
+void Renderer::uploadPrimitiveSets(Mesh& m,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)
+{
+	// create StagingBuffer and submit it
+	StagingBuffer sb(createPrimitiveSetStagingBuffer(m,dstPrimitiveSet,primitiveSetData.size()));
+	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));
 	sb.submit();
 }

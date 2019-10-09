@@ -15,6 +15,7 @@ class Mesh;
 class StagingBuffer;
 class VulkanDevice;
 class VulkanInstance;
+struct PrimitiveSetGpuData;
 
 
 class Renderer final {
@@ -27,10 +28,11 @@ private:
 	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
 	vk::Buffer _indexBuffer;
-   vk::DeviceMemory _indexBufferMemory;
+	vk::DeviceMemory _indexBufferMemory;
 	vk::Buffer _primitiveSetBuffer;
+	vk::DeviceMemory _primitiveSetBufferMemory;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
-	ItemAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
+	ArrayAllocationManager<Mesh> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
 
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
 	vk::CommandPool _commandPoolTransient;
@@ -51,6 +53,7 @@ public:
 
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT vk::Buffer indexBuffer() const;
+	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
 
 	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
 	CADR_EXPORT std::map<AttribSizeList,std::list<AttribStorage>>& getAttribStorages();
@@ -71,8 +74,14 @@ public:
 	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Mesh& m);
 	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Mesh& m,size_t firstIndex,size_t numIndices);
 
-	CADR_EXPORT const ItemAllocationManager& primitiveSetAllocationManager() const;
-	CADR_EXPORT ItemAllocationManager& primitiveSetAllocationManager();
+	CADR_EXPORT const ArrayAllocation<Mesh>& primitiveSetAllocation(unsigned id) const;  ///< Returns primitiveSet allocation for particular id.
+	CADR_EXPORT ArrayAllocation<Mesh>& primitiveSetAllocation(unsigned id);   ///< Returns primitiveSet allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocationManager<Mesh>& primitiveSetAllocationManager() const;
+	CADR_EXPORT ArrayAllocationManager<Mesh>& primitiveSetAllocationManager();
+
+	CADR_EXPORT void uploadPrimitiveSets(Mesh& m,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet=0);
+	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Mesh& m);
+	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Mesh& m,size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
 protected:
 	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
@@ -84,6 +93,7 @@ inline Renderer* Renderer::get()  { return _instance; }
 inline void Renderer::set(Renderer* r)  { _instance=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
+inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
 inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }
@@ -91,50 +101,16 @@ inline const ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id) const
 inline ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id)  { return _indexAllocationManager[id]; }
 inline const ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }
 inline ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
-inline const ItemAllocationManager& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
-inline ItemAllocationManager& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
+inline const ArrayAllocation<Mesh>& Renderer::primitiveSetAllocation(unsigned id) const  { return _primitiveSetAllocationManager[id]; }
+inline ArrayAllocation<Mesh>& Renderer::primitiveSetAllocation(unsigned id)  { return _primitiveSetAllocationManager[id]; }
+inline const ArrayAllocationManager<Mesh>& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
+inline ArrayAllocationManager<Mesh>& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
 inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
 
 
 }
 
 #if 0
-// some includes need to be placed before GE_RG_RENDERING_CONTEXT_H define
-// to prevent problems of circular includes
-#include <geRG/AttribConfig.h>
-#include <geRG/MatrixList.h>
-#include <geRG/Mesh.h>
-
-#ifndef GE_RG_RENDERING_CONTEXT_H
-#define GE_RG_RENDERING_CONTEXT_H
-
-#include <memory>
-#include <geRG/Export.h>
-#include <geRG/AllocationManagers.h>
-#include <geRG/Basics.h>
-#include <geRG/BufferStorage.h>
-#include <geRG/Drawable.h>
-#include <geRG/DrawCommand.h>
-#include <geRG/Primitive.h>
-#include <geRG/ProgressStamp.h>
-#include <geRG/StateSet.h>
-#include <geRG/StateSetManager.h>
-#include <geGL/OpenGLContext.h>
-#include <geCore/InitAndFinalize.h>
-
-namespace ge
-{
-   namespace gl
-   {
-      class Buffer;
-      class Program;
-      class Texture;
-   }
-   namespace rg
-   {
-      class Transformation;
-
-
       class DrawCommandStorage : public BufferStorage<DrawCommandAllocationManager, // derived from ItemAllocationManager
             DrawCommandGpuData> {
       public:
@@ -362,73 +338,4 @@ namespace ge
       inline RenderingContext::MappedBufferAccess& operator-=(RenderingContext::MappedBufferAccess &a,RenderingContext::MappedBufferAccess b);
    }
 }
-
-
-
-// inline methods
-
-namespace ge
-{
-   namespace rg
-   {
-      inline const std::shared_ptr<MatrixList>& RenderingContext::emptyMatrixList() const
-      { if(_emptyMatrixList==nullptr) const_cast<RenderingContext*>(this)->_emptyMatrixList=std::make_shared<MatrixList>(0,0,0); return _emptyMatrixList; }
-      inline const RenderingContext::AttribConfigInstances& RenderingContext::attribConfigInstances()  { return _attribConfigInstances; }
-      inline AttribConfig RenderingContext::getAttribConfig(const std::vector<AttribType>& attribTypes,bool ebo)
-      { return getAttribConfig(attribTypes,ebo,AttribConfig::getId(attribTypes,ebo)); }
-      inline AttribConfig RenderingContext::getAttribConfig(const std::vector<AttribType>& attribTypes,bool ebo,AttribConfigId id)
-      { return getAttribConfig(AttribConfig::Configuration(attribTypes,ebo,id)); }
-      inline bool RenderingContext::getUseARBShaderDrawParameters() const  { return _useARBShaderDrawParameters; }
-      inline unsigned RenderingContext::numAttribStorages() const  { return _numAttribStorages; }
-      inline unsigned RenderingContext::defaultAttribStorageVertexCapacity() const  { return _defaultAttribStorageVertexCapacity; }
-      inline unsigned RenderingContext::defaultAttribStorageIndexCapacity() const  { return _defaultAttribStorageIndexCapacity; }
-      inline void RenderingContext::setDefaultAttribStorageVertexCapacity(unsigned capacity)  { _defaultAttribStorageVertexCapacity=capacity; }
-      inline void RenderingContext::setDefaultAttribStorageIndexCapacity(unsigned capacity)  { _defaultAttribStorageIndexCapacity=capacity; }
-      inline PrimitiveStorage* RenderingContext::primitiveStorage() const  { return &_primitiveStorage; }
-      inline DrawCommandStorage* RenderingContext::drawCommandStorage() const  { return &_drawCommandStorage; }
-      inline MatrixStorage* RenderingContext::matrixStorage() const  { return &_matrixStorage; }
-      inline ListControlStorage* RenderingContext::matrixListControlStorage() const  { return &_matrixListControlStorage; }
-      inline StateSetStorage* RenderingContext::stateSetStorage() const  { return &_stateSetStorage; }
-      inline const std::shared_ptr<ge::gl::Buffer>& RenderingContext::drawIndirectBuffer()  { return _drawIndirectBuffer; }
-      inline float* RenderingContext::cpuTransformationBuffer()  { return _cpuTransformationBuffer; }
-      inline unsigned* RenderingContext::transformationAllocation(unsigned id) const  { return _transformationAllocationManager[id]; }
-      inline ItemAllocationManager& RenderingContext::transformationAllocationManager()  { return _transformationAllocationManager; }
-      inline const ItemAllocationManager& RenderingContext::transformationAllocationManager() const  { return _transformationAllocationManager; }
-      inline void RenderingContext::freeVertexData(Mesh &mesh)  { if(mesh.attribStorage()) mesh.attribStorage()->freeData(mesh); }
-      inline void RenderingContext::setAndUploadPrimitives(ge::rg::Mesh& mesh,ge::rg::PrimitiveGpuData* nonConstBufferData,const unsigned* modesAndOffsets4,unsigned numPrimitives)
-      { setAndUploadPrimitives(mesh,nonConstBufferData,generatePrimitiveList(modesAndOffsets4,numPrimitives).data(),numPrimitives); }
-      inline void RenderingContext::clearPrimitives(Mesh &mesh)  { setNumPrimitives(mesh,0); }
-      inline DrawableId RenderingContext::createDrawable(Mesh &mesh,MatrixList *matrixList,StateSet *stateSet)
-      { return createDrawable(mesh,nullptr,0,matrixList,stateSet); }
-      inline RenderingContext::TransformationGraphList& RenderingContext::transformationGraphs()  { return _transformationGraphs; }
-      inline const RenderingContext::TransformationGraphList& RenderingContext::transformationGraphs() const  { return _transformationGraphs; }
-      inline unsigned RenderingContext::bufferPosition() const  { return _bufferPosition; }
-      inline void RenderingContext::setBufferPosition(unsigned pos)  { _bufferPosition=pos; }
-      inline ProgressStamp RenderingContext::progressStamp() const  { return _progressStamp; }
-      inline void RenderingContext::incrementProgressStamp()  { ++_progressStamp; }
-      inline const std::shared_ptr<RenderingContext>& RenderingContext::current()
-      { return NoExport::_currentContext.get(); }
-
-      inline std::shared_ptr<StateSet> RenderingContext::getOrCreateStateSet(const StateSetManager::GLState* state)
-      { return _stateSetManager->getOrCreateStateSet(state); }
-      inline std::shared_ptr<StateSet> RenderingContext::findStateSet(const StateSetManager::GLState* state)
-      { return _stateSetManager->findStateSet(state); }
-      inline StateSetManager::GLState* RenderingContext::createGLState()  { return _stateSetManager->createGLState(); }
-      inline const std::shared_ptr<StateSetManager>& RenderingContext::stateSetManager()  { return _stateSetManager; }
-
-      inline void RenderingContext::addCacheTexture(const std::string &path,const std::shared_ptr<ge::gl::Texture>& texture)  { _textureCache[path]=texture; }
-
-      inline RenderingContext::MappedBufferAccess& operator|=(RenderingContext::MappedBufferAccess &a,RenderingContext::MappedBufferAccess b)
-      { (uint8_t&)a|=(uint8_t)b; return a; }
-      inline RenderingContext::MappedBufferAccess& operator&=(RenderingContext::MappedBufferAccess &a,RenderingContext::MappedBufferAccess b)
-      { (uint8_t&)a&=(uint8_t)b; return a; }
-      inline RenderingContext::MappedBufferAccess& operator+=(RenderingContext::MappedBufferAccess &a,RenderingContext::MappedBufferAccess b)
-      { (uint8_t&)a|=(uint8_t)b; return a; }
-      inline RenderingContext::MappedBufferAccess& operator-=(RenderingContext::MappedBufferAccess &a,RenderingContext::MappedBufferAccess b)
-      { (uint8_t&)a&=(uint8_t)b; return a; }
-
-   }
-}
-
-#endif // GE_RG_RENDERING_CONTEXT_H
 #endif
