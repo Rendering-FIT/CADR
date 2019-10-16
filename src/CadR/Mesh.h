@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <CadR/Drawable.h>
 #include <CadR/Export.h>
 
 namespace CadR {
@@ -30,9 +31,7 @@ protected:
 	unsigned _attribDataID = 0;  ///< ID of vertex data allocation inside AttribStorage.
 	unsigned _indexDataID = 0;  ///< ID of index data allocation inside AttribStorage.
 	unsigned _primitiveSetDataID = 0;  ///< ID od DrawCommand data allocation.
-#if 0
-	DrawCommandList _drawCommandList;
-#endif
+	DrawableList _drawableList;
 
 public:
 
@@ -204,5 +203,6 @@ inline StagingBuffer Mesh::createIndexStagingBuffer(size_t firstIndex,size_t num
 inline void Mesh::uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)  { renderer()->uploadPrimitiveSets(*this,std::move(primitiveSetData),dstPrimitiveSet); }
 inline StagingBuffer Mesh::createPrimitiveSetStagingBuffer()  { return renderer()->createPrimitiveSetStagingBuffer(*this); }
 inline StagingBuffer Mesh::createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets)  { return renderer()->createPrimitiveSetStagingBuffer(*this,firstPrimitiveSet,numPrimitiveSets); }
+
 
 }

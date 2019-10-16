@@ -56,9 +56,10 @@ add_library(${LIB_NAME}
 
 # dependencies
 find_package(Vulkan REQUIRED)
+find_package(Boost REQUIRED)
 
 # target libraries
-target_link_libraries(${LIB_NAME} Vulkan::Headers)
+target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)
 if(UNIX)
 	target_link_libraries(${LIB_NAME} dl)
 endif()
