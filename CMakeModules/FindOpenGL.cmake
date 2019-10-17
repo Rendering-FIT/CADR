@@ -22,21 +22,17 @@ if(NOT OPENGL_GLEXT_INCLUDE_DIR)
 endif()
 
 
-# handle REQUIRED and QUIET flags
-if(${${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED})
-	list(APPEND flags REQUIRED)
-endif()
-if(${${CMAKE_FIND_PACKAGE_NAME}_FIND_QUIETLY})
-	list(APPEND flags QUIET)
-endif()
-
 # perform find_package on standard FindOpenGL.cmake
 # (to call standard FindOpenGL.cmake we have to set CMAKE_MODULE_PATH to empty string
 # otherwise this file would be called)
-set(SAVED_CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH})
-set(CMAKE_MODULE_PATH "")
-find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} ${flags})
-set(CMAKE_MODULE_PATH ${SAVED_CMAKE_MODULE_PATH})
+set(CMAKE_MODULE_PATH_SAVED ${CMAKE_MODULE_PATH})
+list(REMOVE_AT CMAKE_MODULE_PATH 0)
+if(${${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED})
+	find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} QUIET REQUIRED)
+else()
+	find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} QUIET)
+endif()
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH_SAVED})
 
 # append GL/glext.h to include directories of targets
 if(TARGET OpenGL::GL)
