@@ -444,6 +444,8 @@ int main(int argc,char** argv) {
 		else {
 			numIndices=numVertices;
 		}
+		if(numIndices>size_t(~uint32_t(0)))
+			throw gltfError("Too large primitive. Index out of 32-bit integer range.");
 
 		// create Mesh
 		auto m=
@@ -514,9 +516,11 @@ int main(int argc,char** argv) {
 		else {
 
 			// generate indices
+			if(numIndices>=size_t(~uint32_t(0)))
+				throw gltfError("Too large primitive. Index out of 32-bit integer range.");
 			CadR::StagingBuffer sb=m->createIndexStagingBuffer();
 			uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-			for(size_t i=0; i<numIndices; i++)
+			for(uint32_t i=0,e=uint32_t(numIndices); i<e; i++)
 				b[i]=i;
 			sb.submit();
 		}
@@ -524,7 +528,7 @@ int main(int argc,char** argv) {
 		// generate one PrimitiveSet
 		CadR::StagingBuffer sb=m->createPrimitiveSetStagingBuffer();
 		CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
-		b[0]=CadR::PrimitiveSetGpuData(numIndices,0,0,0);
+		b[0]=CadR::PrimitiveSetGpuData(uint32_t(numIndices),0,0,0);
 		sb.submit();
 
 		// upload all staging buffers
