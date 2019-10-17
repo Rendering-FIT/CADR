@@ -21,8 +21,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
 	# use 3rdParty dir
 	if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
-		message("Trying2")
-		set(ENV{BOOST_ROOT} "${THIRD_PARTY_DIR}/Boost/")
+		set(ENV{BOOSTROOT} "${THIRD_PARTY_DIR}/Boost/")
 		find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} MODULE QUIET)
 	endif()
 	set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH_SAVED})
@@ -31,4 +30,8 @@ endif()
 
 # message
 include(CADRMacros)
-cadr_report_find_status(${CMAKE_FIND_PACKAGE_NAME}::boost)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.15")
+	cadr_report_find_status(${CMAKE_FIND_PACKAGE_NAME}::headers)
+else()
+	cadr_report_find_status(${CMAKE_FIND_PACKAGE_NAME}::boost)
+endif()

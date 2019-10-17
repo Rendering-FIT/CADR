@@ -73,7 +73,7 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 		throw gltfError("Invalid accessor's componentType.");
 
 	// FLOAT component type
-	if(componentType==5126) { 
+	if(componentType==5126) {
 		if(normalize)
 			throw gltfError("Normalize set while accessor's componentType is FLOAT (5126).");
 		if(wantInt)
