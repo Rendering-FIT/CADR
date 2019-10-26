@@ -214,7 +214,7 @@ void CadUI::Window::initVulkan(vk::PhysicalDevice physicalDevice,CadR::VulkanDev
 	vkQueuePresentKHR=_device->getProcAddr<PFN_vkQueuePresentKHR>("vkQueuePresentKHR");
 
 	// register cleanUp handler
-	_device->cleanUpCallbacks.append(std::bind(&Window::cleanUpVulkan,this),this);
+	_device->cleanUpCallbacks.append(&Window::cleanUpVulkan,this);
 }
 
 
@@ -225,7 +225,7 @@ void CadUI::Window::cleanUpVulkan()
 		return;
 
 	// unregister cleanUp handler
-	_device->cleanUpCallbacks.remove(std::bind(&Window::cleanUpVulkan,this),this);
+	_device->cleanUpCallbacks.remove(&Window::cleanUpVulkan,this);
 
 	// clean up all device-level Vulkan stuff
 	if(_swapchainImageViews.size()>0) {
