@@ -81,6 +81,7 @@ public:
 	PFN_vkCreateCommandPool vkCreateCommandPool;
 	PFN_vkDestroyCommandPool vkDestroyCommandPool;
 	PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
+	PFN_vkFreeCommandBuffers vkFreeCommandBuffers;
 	PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
 	PFN_vkEndCommandBuffer vkEndCommandBuffer;
 	PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;

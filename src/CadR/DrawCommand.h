@@ -1,6 +1,7 @@
 #pragma once
 
 #include <CadR/Export.h>
+#include <cstdint>
 
 namespace CadR {
 
