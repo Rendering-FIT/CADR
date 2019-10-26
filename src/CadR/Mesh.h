@@ -11,6 +11,7 @@ class AttribStorage;
 class Renderer;
 class StagingBuffer;
 struct PrimitiveSetGpuData;
+template<typename Owner> struct ArrayAllocation;
 
 
 /** Mesh class represents geometry data that might be used for rendering.
@@ -35,36 +36,24 @@ protected:
 
 public:
 
-	Mesh();  ///< Default constructor. Object is largely uninitialized, valid() returns false and attribStorage() nullptr. Call init() before using the object.
+	Mesh();  ///< Default constructor. It does not allocate or reserve any memory. Renderer is initialized to use default Renderer returned by Renderer::get().
+	Mesh(Renderer* r);  ///< Constructs the object without allocating or reserving any memory.
 	Mesh(const AttribSizeList& attribSizeList,size_t numVertices,
-	     size_t numIndices,size_t numPrimitiveSets);  ///< Constructs the object by parameters.
-	Mesh(Renderer* r);  ///< Constructs the object by parameters.
+	     size_t numIndices,size_t numPrimitiveSets);  ///< Constructs the object and allocate memory. Mesh will use default Renderer returned by Renderer::get().
 	Mesh(Renderer* r,const AttribSizeList& attribSizeList,size_t numVertices,
-	     size_t numIndices,size_t numPrimitiveSets);  ///< Constructs the object by parameters.
+	     size_t numIndices,size_t numPrimitiveSets);  ///< Constructs the object and allocate memory.
 	Mesh(const Mesh&) = delete;  ///< No copy constructor. Only move contructors are allowed.
 	Mesh(Mesh&& m);  ///< Move constructor.
-	Mesh& operator=(const Mesh&) = delete;  ///< No assignment operator. Only move assignment is allowed.
-	Mesh& operator=(Mesh&& rhs);  ///< Move operator.
 	~Mesh();  ///< Destructor.
 
-#if 0
-	inline void init(Renderer *r,const AttribConfig& ac,size_t numVertices,
-	                 size_t numIndices,size_t numDrawCommands);
-	//?inline void set(AttribStorage* a,size_t vId,size_t iId,size_t dcId);
-#endif
+	Mesh& operator=(const Mesh&) = delete;  ///< No assignment operator. Only move assignment is allowed.
+	Mesh& operator=(Mesh&& rhs);  ///< Move operator.
 
 	AttribStorage* attribStorage() const;
 	Renderer* renderer() const;
 	unsigned attribDataID() const;
 	unsigned indexDataID() const;
 	unsigned primitiveSetDataID() const;
-
-#if 0
-	inline unsigned drawCommandDataId() const;
-	inline bool valid() const;
-	inline const DrawCommandList& drawCommandList() const;
-	//?inline DrawCommandList& drawCommandList();
-#endif
 
 	void allocData(const AttribSizeList& attribSizeList,size_t numVertices,
 	               size_t numIndices,size_t numPrimitiveSets);
@@ -88,6 +77,13 @@ public:
 	size_t numVertices() const;
 	size_t numIndices() const;
 	size_t numPrimitiveSets() const;
+
+	const ArrayAllocation<Mesh>& attribAllocation() const; ///< Returns the attribute allocation.
+	ArrayAllocation<Mesh>& attribAllocation();  ///< Returns the attribute allocation. Modify the returned data only with caution.
+	const ArrayAllocation<Mesh>& indexAllocation() const;  ///< Returns the index allocation.
+	ArrayAllocation<Mesh>& indexAllocation();   ///< Returns the index allocation. Modify the returned data only with caution.
+	const ArrayAllocation<Mesh>& primitiveSetAllocation() const;  ///< Returns the primitiveSet allocation.
+	ArrayAllocation<Mesh>& primitiveSetAllocation();   ///< Returns the primitiveSet allocation. Modify the returned data only with caution.
 
 	void uploadAttribs(const std::vector<std::vector<uint8_t>>& vertexData,size_t dstIndex=0);
 	void uploadAttrib(unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex=0);
@@ -148,10 +144,6 @@ inline Mesh::Mesh() : _attribStorage(Renderer::get()->emptyStorage())  {}
 inline Mesh::Mesh(const AttribSizeList& attribSizeList,size_t numVertices,size_t numIndices,size_t numPrimitiveSets) : _attribStorage(Renderer::get()->emptyStorage())  { allocData(attribSizeList,numVertices,numIndices,numPrimitiveSets); }
 inline Mesh::Mesh(Renderer* r) : _attribStorage(r->emptyStorage())  {}
 inline Mesh::Mesh(Renderer* r,const AttribSizeList& attribSizeList,size_t numVertices,size_t numIndices,size_t numPrimitiveSets) : _attribStorage(r->emptyStorage())  { allocData(attribSizeList,numVertices,numIndices,numPrimitiveSets); }
-#if 0
-inline Mesh::Mesh(Mesh&& m) : _attribStorage(m._attribStorage), _verticesDataId(m._verticesDataId), _indicesDataId(m._indicesDataId), _drawCommandDataId(m._drawCommandDataId), _drawCommandList(std::move(m._drawCommandList))  { m._attribStorage=nullptr; }
-inline Mesh& Mesh::operator=(Mesh&& m)  { _attribStorage=d._attribStorage; _verticesDataId=d._verticesDataId; _indicesDataId=d._indicesDataId; _drawCommandDataId=d._drawCommandDataId; _drawCommandList=std::move(d._drawCommandList); d._attribStorage=nullptr; return *this; }
-#endif
 inline Mesh::~Mesh()  { freeData(); }
 
 inline AttribStorage* Mesh::attribStorage() const  { return _attribStorage; }
@@ -159,13 +151,6 @@ inline Renderer* Mesh::renderer() const  { return _attribStorage->renderer(); }
 inline unsigned Mesh::attribDataID() const  { return _attribDataID; }
 inline unsigned Mesh::indexDataID() const  { return _indexDataID; }
 inline unsigned Mesh::primitiveSetDataID() const  { return _primitiveSetDataID; }
-
-#if 0
-inline void Drawable::init(Renderer *r,const AttribConfig& ac,size_t numVertices,size_t numIndices,size_t numDrawCommands)  { freeData(); r->allocDrawableData(this,ac,numVertices,numIndices,numDrawCommands); }
-inline unsigned Drawable::drawCommandDataId() const  { return _drawCommandDataId; }
-inline bool Drawable::valid() const  { return _attribStorage!=nullptr; }
-inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
-#endif
 
 inline void Mesh::allocData(const AttribSizeList& attribSizeList,size_t numVertices,size_t numIndices,size_t numPrimitiveSets)  { allocAttribs(attribSizeList,numVertices); allocIndices(numIndices); allocPrimitiveSets(numPrimitiveSets); }
 inline void Mesh::allocData(size_t numVertices,size_t numIndices,size_t numPrimitiveSets)  { allocAttribs(numVertices); allocIndices(numIndices); allocPrimitiveSets(numPrimitiveSets); }
@@ -175,19 +160,26 @@ inline void Mesh::freeData()  { freeAttribs(); freeIndices(); }
 inline void Mesh::allocAttribs(const AttribSizeList& attribSizeList,size_t num)  { freeAttribs(); _attribStorage=renderer()->getOrCreateAttribStorage(attribSizeList); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); if(_attribDataID==0) throw std::runtime_error("Mesh: Failed to allocate attribute data."); }
 inline void Mesh::allocAttribs(size_t num)  { freeAttribs(); _attribDataID=_attribStorage->allocationManager().alloc(unsigned(num),this); }
 inline void Mesh::reallocAttribs(size_t /*num*/)  { /* FIXME: not implemented yet */ }
-inline void Mesh::freeAttribs()  { if(_attribDataID==0) return; _attribStorage->allocationManager().free(_attribDataID); _attribDataID=0; }
+inline void Mesh::freeAttribs()  { _attribStorage->allocationManager().free(_attribDataID); _attribDataID=0; }
 
 inline void Mesh::allocIndices(size_t num)  { freeIndices(); _indexDataID=renderer()->indexAllocationManager().alloc(unsigned(num),this); if(_indexDataID==0) throw std::runtime_error("Mesh: Failed to allocate index data."); }
 inline void Mesh::reallocIndices(size_t /*num*/)  { /* FIXME: not implemented yet */ }
-inline void Mesh::freeIndices()  { if(_indexDataID==0) return; renderer()->indexAllocationManager().free(_indexDataID); _indexDataID=0; }
+inline void Mesh::freeIndices()  { renderer()->indexAllocationManager().free(_indexDataID); _indexDataID=0; }
 
 inline void Mesh::allocPrimitiveSets(size_t num)  { freePrimitiveSets(); _primitiveSetDataID=renderer()->primitiveSetAllocationManager().alloc(unsigned(num),this); if(_primitiveSetDataID==0) throw std::runtime_error("Mesh: Failed to allocate primitiveSet data."); }
 inline void Mesh::reallocPrimitiveSets(size_t /*num*/)  { /* FIXME: not implemented yet */ }
-inline void Mesh::freePrimitiveSets()  { if(_primitiveSetDataID==0) return; renderer()->primitiveSetAllocationManager().free(_primitiveSetDataID); _primitiveSetDataID=0; }
+inline void Mesh::freePrimitiveSets()  { renderer()->primitiveSetAllocationManager().free(_primitiveSetDataID); _primitiveSetDataID=0; }
 
 inline size_t Mesh::numVertices() const  { return size_t(_attribStorage->attribAllocation(_attribDataID).numItems); }
 inline size_t Mesh::numIndices() const  { return size_t(renderer()->indexAllocation(_indexDataID).numItems); }
 inline size_t Mesh::numPrimitiveSets() const  { return size_t(_attribStorage->renderer()->primitiveSetAllocation(_primitiveSetDataID).numItems); }
+
+inline const ArrayAllocation<Mesh>& Mesh::attribAllocation() const  { return _attribStorage->attribAllocation(_attribDataID); }
+inline ArrayAllocation<Mesh>& Mesh::attribAllocation()  { return _attribStorage->attribAllocation(_attribDataID); }
+inline const ArrayAllocation<Mesh>& Mesh::indexAllocation() const  { return renderer()->indexAllocation(_indexDataID); }
+inline ArrayAllocation<Mesh>& Mesh::indexAllocation()  { return renderer()->indexAllocation(_indexDataID); }
+inline const ArrayAllocation<Mesh>& Mesh::primitiveSetAllocation() const  { return renderer()->primitiveSetAllocation(_primitiveSetDataID); }
+inline ArrayAllocation<Mesh>& Mesh::primitiveSetAllocation()  { return renderer()->primitiveSetAllocation(_primitiveSetDataID); }
 
 inline void Mesh::uploadAttribs(const std::vector<std::vector<uint8_t>>& vertexData,size_t dstIndex)  { _attribStorage->uploadAttribs(*this,vertexData,dstIndex); }
 inline void Mesh::uploadAttrib(unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t dstIndex)  { _attribStorage->uploadAttrib(*this,attribIndex,attribData,dstIndex); }
@@ -203,6 +195,5 @@ inline StagingBuffer Mesh::createIndexStagingBuffer(size_t firstIndex,size_t num
 inline void Mesh::uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)  { renderer()->uploadPrimitiveSets(*this,std::move(primitiveSetData),dstPrimitiveSet); }
 inline StagingBuffer Mesh::createPrimitiveSetStagingBuffer()  { return renderer()->createPrimitiveSetStagingBuffer(*this); }
 inline StagingBuffer Mesh::createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets)  { return renderer()->createPrimitiveSetStagingBuffer(*this,firstPrimitiveSet,numPrimitiveSets); }
-
 
 }

@@ -33,9 +33,10 @@ private:
 	vk::DeviceMemory _primitiveSetBufferMemory;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager<Mesh> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
+	vk::CommandPool _stateSetCommandPool;
 
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
-	vk::CommandPool _commandPoolTransient;
+	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
 	std::list<std::tuple<vk::Buffer,vk::DeviceMemory>> _objectsToDeleteAfterCopyOperation;
 
@@ -54,6 +55,7 @@ public:
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
+	CADR_EXPORT vk::CommandPool stateSetCommandPool() const;
 
 	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
 	CADR_EXPORT std::map<AttribSizeList,std::list<AttribStorage>>& getAttribStorages();
@@ -94,6 +96,7 @@ inline void Renderer::set(Renderer* r)  { _instance=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
+inline vk::CommandPool Renderer::stateSetCommandPool() const  { return _stateSetCommandPool; }
 inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }

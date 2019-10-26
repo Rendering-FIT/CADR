@@ -72,9 +72,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			*_device  // dispatch
 		);
 
+	// command pool used by StateSets
+	_stateSetCommandPool=
+		(*_device)->createCommandPool(
+			vk::CommandPoolCreateInfo(
+				vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
+				_graphicsQueueFamily  // queueFamilyIndex
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
 	// submitNowCommandBuffer
 	// that will be submitted at the end of this function
-	_commandPoolTransient=
+	_transientCommandPool=
 		(*device)->createCommandPool(
 			vk::CommandPoolCreateInfo(
 				vk::CommandPoolCreateFlagBits::eTransient|vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
@@ -85,7 +96,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	_uploadingCommandBuffer=
 		(*device)->allocateCommandBuffers(
 			vk::CommandBufferAllocateInfo(
-				_commandPoolTransient,             // commandPool
+				_transientCommandPool,             // commandPool
 				vk::CommandBufferLevel::ePrimary,  // level
 				1                                  // commandBufferCount
 			),
@@ -106,9 +117,12 @@ Renderer::~Renderer()
 {
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
 
+	// destroy StateSet CommandPool
+	(*_device)->destroy(_stateSetCommandPool,nullptr,*_device);
+
 	// clean up uploading operations
 	_uploadingCommandBuffer.end(*_device);
-	(*_device)->destroy(_commandPoolTransient,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
+	(*_device)->destroy(_transientCommandPool,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
 	purgeObjectsToDeleteAfterCopyOperation();
 
 	// destroy buffers

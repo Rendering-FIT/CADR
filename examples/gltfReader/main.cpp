@@ -2,6 +2,7 @@
 #include <CadR/CadR.h>
 #include <CadR/Mesh.h>
 #include <CadR/PrimitiveSet.h>
+#include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
@@ -307,232 +308,10 @@ int main(int argc,char** argv) {
 		cout<<"   Meshes:  "<<meshes.size()<<endl;
 		cout<<endl;
 
-		// mesh
-		if(meshes.size()!=1)
-			throw gltfError("Only files with one mesh are supported for now.");
-		auto& mesh=meshes[0];
+		// pipelines
+		array<map<CadR::AttribSizeList,CadR::StateSet>,10> pipelineDB;
 
-		// primitive
-		auto primitives=mesh["primitives"];
-		if(primitives.size()!=1)
-			throw gltfError("Only meshes with one primitive are supported for now.");
-		auto primitive=primitives[0];
-
-		// primitive data
-		auto attributes=primitive["attributes"];
-		auto mode=mapGetWithDefault(primitive,"mode",4);
-		if(mode!=4)
-			throw gltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
-
-		// numVertices
-		size_t numVertices;
-		if(auto it=attributes.find("POSITION"); it==attributes.end())
-			throw gltfError("Unsupported attribute configuration.");
-		else
-			numVertices=accessors.at(size_t(*it))["count"];
-		if(numVertices==0)
-			throw gltfError("Number of vertices inside primitive is 0.");
-
-		// attributes
-		CadR::AttribSizeList attribSizeList;
-		vector<vk::Format> attribFormatList;
-		vector<tuple<filesystem::path,size_t>> attribUriAndOffsetList;
-		unsigned numProcessedAttributes=0;
-		for(string name : {"POSITION","NORMAL","COLOR_0","TEXCOORD_0"}) {
-
-			// process only known attributes
-			if(attributes.find(name)==attributes.end())
-				continue;
-			else
-				numProcessedAttributes++;
-
-			// accessor
-			auto a=accessors.at(size_t(attributes[name]));
-			if(a.find("bufferView")==a.end())
-				throw gltfError("Unsupported functionality: Omitted bufferView.");
-			size_t bufferViewIndex=a["bufferView"];
-			size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
-			int componentType=a["componentType"];
-			if(componentType!=5126 && (name=="POSITION" || name=="NORMAL")) // float for POSITION and NORMAL attribute
-				throw gltfError("Invalid component type. Must be float.");
-			if(componentType==5125) // no UNSIGNED_INT
-				throw gltfError("Invalid component type.");
-			bool normalized=mapGetWithDefault(a,"normalized",false);
-			if(a["count"]!=numVertices)
-				throw gltfError("Attribute count does not match number of vertices inside the primitive.");
-			string type=a["type"];
-			if(type!="VEC3" && (name=="POSITION" || name=="NORMAL"))
-				throw gltfError("Invalid attribute type. Must be VEC3.");
-			if(a.find("sparse")!=a.end())
-				throw gltfError("Unsupported functionality: Property sparse.");
-
-			// bufferView
-			auto bv=bufferViews.at(bufferViewIndex);
-			size_t bufferIndex=bv["buffer"];
-			size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
-			//size_t bufferViewLength=bv["byteLength"];
-			size_t stride=mapGetWithDefault(bv,"byteStride",0);
-			if(stride!=0)
-				throw gltfError("Unsupported functionality: Stride not zero.");
-
-			// buffer
-			auto b=buffers.at(bufferIndex);
-			filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
-			//size_t bufferLength=b["byteLength"];
-
-			// attribConfig
-			uint32_t attribSize=getStride(componentType,type);
-			attribSizeList.push_back(attribSize);
-
-			// attribFormatList
-			attribFormatList.push_back(getFormat(componentType,type,normalized,false));
-
-			// file info
-			attribUriAndOffsetList.emplace_back(
-				bufferUri.is_absolute()  // file path
-					?bufferUri
-					:filePath.parent_path()/bufferUri,
-				bufferViewOffset+accessorOffset  // file offset
-			);
-		}
-		if(numProcessedAttributes!=attributes.size())
-			throw gltfError("Unsupported attribute(s).");
-
-		// indices
-		filesystem::path indicesFileUri;
-		size_t indicesFileOffset;
-		size_t numIndices;
-		int indicesComponentType;
-		if(auto it=primitive.find("indices"); it!=primitive.end()) {
-			size_t indicesAccessorIndex=*it;
-
-			// accessor
-			auto a=accessors.at(indicesAccessorIndex);
-			if(a.find("bufferView")==a.end())
-				throw gltfError("Unsupported functionality: Omitted bufferView for indices.");
-			size_t bufferViewIndex=a["bufferView"];
-			size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
-			indicesComponentType=a["componentType"];
-			if(indicesComponentType!=5125 && indicesComponentType!=5123 && indicesComponentType!=5121)
-				throw gltfError("Invalid component type for Indices. It must be UNSIGNED_INT, UNSIGNED_SHORT or UNSIGNED_BYTE.");
-			numIndices=a["count"];
-			if(numIndices==0)
-				throw gltfError("Indices count in accessor is 0.");
-			string type=a["type"];
-			if(type!="SCALAR")
-				throw gltfError("Invalid attribute type for Indices. Must be SCALAR.");
-			if(a.find("sparse")!=a.end())
-				throw gltfError("Unsupported functionality: Property sparse for Indices.");
-
-			// bufferView
-			auto bv=bufferViews.at(bufferViewIndex);
-			size_t bufferIndex=bv["buffer"];
-			size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
-			//size_t bufferViewLength=bv["byteLength"];
-
-			// buffer
-			auto b=buffers.at(bufferIndex);
-			filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
-			//size_t bufferLength=b["byteLength"];
-
-			indicesFileUri=
-				bufferUri.is_absolute()
-					?bufferUri
-					:filePath.parent_path()/bufferUri;
-			indicesFileOffset=bufferViewOffset+accessorOffset;
-		}
-		else {
-			numIndices=numVertices;
-		}
-		if(numIndices>size_t(~uint32_t(0)))
-			throw gltfError("Too large primitive. Index out of 32-bit integer range.");
-
-		// create Mesh
-		auto m=
-			make_unique<CadR::Mesh>(
-				attribSizeList,  // attribSizeList
-				numVertices,  // numVertices
-				numIndices,  // numIndices
-				1  // numPrimitiveSets
-			);
-
-		// read Mesh buffers
-		unsigned i=0;
-		for(auto& uriAndOffset:attribUriAndOffsetList) {
-
-			// open buffer file
-			const filesystem::path& bufferPath=std::get<0>(uriAndOffset);
-			cout<<"Opening buffer "<<bufferPath<<"..."<<endl;
-			ifstream f(bufferPath);
-			if(!f.is_open()) {
-				cout<<"Can not open file "<<bufferPath<<"."<<endl;
-				return 1;
-			}
-			f.exceptions(ifstream::badbit|ifstream::failbit);
-
-			// read buffer file
-			CadR::StagingBuffer sb=m->createStagingBuffer(i);
-			f.seekg(std::get<1>(uriAndOffset));
-			f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
-			f.close();
-			sb.submit();
-			i++;
-		}
-
-		// read indices (or generate them)
-		if(!indicesFileUri.empty()) {
-
-			// open buffer file
-			cout<<"Opening buffer "<<indicesFileUri<<"..."<<endl;
-			ifstream f(indicesFileUri);
-			if(!f.is_open()) {
-				cout<<"Can not open file "<<indicesFileUri<<"."<<endl;
-				return 1;
-			}
-			f.exceptions(ifstream::badbit|ifstream::failbit);
-
-			// read buffer file
-			CadR::StagingBuffer sb=m->createIndexStagingBuffer();
-			f.seekg(indicesFileOffset);
-			if(indicesComponentType==5125)  // UNSIGNED_INT
-				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
-			else if(indicesComponentType==5123) {  // UNSIGNED_SHORT
-				unique_ptr<uint16_t[]> tmp(new uint16_t[numIndices]);
-				f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint16_t));
-				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-				for(size_t i=0; i<numIndices; i++)
-					b[i]=tmp[i];
-			}
-			else if(indicesComponentType==5121) {  // UNSIGNED_BYTE
-				unique_ptr<uint8_t[]> tmp(new uint8_t[numIndices]);
-				f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint8_t));
-				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-				for(size_t i=0; i<numIndices; i++)
-					b[i]=tmp[i];
-			}
-			f.close();
-			sb.submit();
-		}
-		else {
-
-			// generate indices
-			if(numIndices>=size_t(~uint32_t(0)))
-				throw gltfError("Too large primitive. Index out of 32-bit integer range.");
-			CadR::StagingBuffer sb=m->createIndexStagingBuffer();
-			uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-			for(uint32_t i=0,e=uint32_t(numIndices); i<e; i++)
-				b[i]=i;
-			sb.submit();
-		}
-
-		// generate one PrimitiveSet
-		CadR::StagingBuffer sb=m->createPrimitiveSetStagingBuffer();
-		CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
-		b[0]=CadR::PrimitiveSetGpuData(uint32_t(numIndices),0,0,0);
-		sb.submit();
-
-		// upload all staging buffers
-		renderer.executeCopyOperations();
+		vector<CadR::Mesh> meshDB;
 
 		// shaders
 		auto coordinateShader=
@@ -556,9 +335,7 @@ int main(int argc,char** argv) {
 				device  // dispatch
 			);
 
-		// command buffers and pipelines
-		vk::UniqueHandle<vk::CommandPool,CadR::VulkanDevice> commandPool;
-		vector<vk::CommandBuffer> commandBuffers;
+		// pipeline stuff
 		auto pipelineCache=
 			device->createPipelineCacheUnique(
 				vk::PipelineCacheCreateInfo(
@@ -581,203 +358,463 @@ int main(int argc,char** argv) {
 				nullptr,  // allocator
 				device  // dispatch
 			);
-		vk::UniqueHandle<vk::Pipeline,CadR::VulkanDevice> coordinatePipeline;
 
-		// resize callback
-		window.resizeCallbacks.append(
-				[&device,&window,&commandPool,&commandBuffers,graphicsQueueFamily,
-				 &coordinateShader,&unknownMaterialShader,
-				 &pipelineCache,&pipelineLayout,&coordinatePipeline,
-				 &m,&attribSizeList,&attribFormatList]() {
+		// mesh
+		if(meshes.size()!=1)
+			throw gltfError("Only files with one mesh are supported for now.");
+		auto& mesh=meshes[0];
 
-					cout<<"Resize happened."<<endl;
+		// primitive
+		auto primitives=mesh["primitives"];
+		for(auto primitive : primitives) {
 
-					// recreate command pool
-					commandPool=
-						device->createCommandPoolUnique(
-							vk::CommandPoolCreateInfo(
-								vk::CommandPoolCreateFlags(),  // flags
-								graphicsQueueFamily  // queueFamilyIndex
-							),
-							nullptr,  // allocator
-							device  // dispatch
-						);
+			// positionAccessorIndex
+			auto attributes=primitive["attributes"];
+			int positionAccessorIndex=mapGetWithDefault(attributes,"POSITION",-1);
 
-					// recreate command buffers
-					// (we do not need command buffers to be properly freed as they are freed during command pool re-creation)
-					commandBuffers.clear();
-					commandBuffers=
-						device->allocateCommandBuffers(
-							vk::CommandBufferAllocateInfo(
-								commandPool.get(),                 // commandPool
-								vk::CommandBufferLevel::ePrimary,  // level
-								window.imageCount()                // commandBufferCount
-							),
-							device  // dispatch
-						);
+			// skip primitives without POSITION attribute
+			if(positionAccessorIndex==-1)
+				continue;
 
-					// coordinate pipeline
-					coordinatePipeline=
-						device->createGraphicsPipelineUnique(
-							pipelineCache.get(),
-							vk::GraphicsPipelineCreateInfo(
-								vk::PipelineCreateFlags(),  // flags
-								2,  // stageCount
-								array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
-									vk::PipelineShaderStageCreateInfo{
-										vk::PipelineShaderStageCreateFlags(),  // flags
-										vk::ShaderStageFlagBits::eVertex,      // stage
-										coordinateShader.get(),  // module
-										"main",  // pName
-										nullptr  // pSpecializationInfo
-									},
-									vk::PipelineShaderStageCreateInfo{
-										vk::PipelineShaderStageCreateFlags(),  // flags
-										vk::ShaderStageFlagBits::eFragment,    // stage
-										unknownMaterialShader.get(),  // module
-										"main",  // pName
-										nullptr  // pSpecializationInfo
-									}
-								}.data(),
-								&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
-									vk::PipelineVertexInputStateCreateFlags(),  // flags
-									1,        // vertexBindingDescriptionCount
-									array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
-										vk::VertexInputBindingDescription(
-											0,  // binding
-											attribSizeList[0],  // stride
-											vk::VertexInputRate::eVertex  // inputRate
-										),
-									}.data(),
-									1,        // vertexAttributeDescriptionCount
-									array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
-										vk::VertexInputAttributeDescription(
-											0,  // location
-											0,  // binding
-											attribFormatList[0],  // format
-											0   // offset
-										),
-									}.data()
-								},
-								&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
-									vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-									vk::PrimitiveTopology::eTriangleList,  // topology
-									VK_FALSE  // primitiveRestartEnable
-								},
-								nullptr, // pTessellationState
-								&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
-									vk::PipelineViewportStateCreateFlags(),  // flags
-									1,  // viewportCount
-									&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(window.surfaceExtent().width),float(window.surfaceExtent().height),0.f,1.f),  // pViewports
-									1,  // scissorCount
-									&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent())  // pScissors
-								},
-								&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
-									vk::PipelineRasterizationStateCreateFlags(),  // flags
-									VK_FALSE,  // depthClampEnable
-									VK_FALSE,  // rasterizerDiscardEnable
-									vk::PolygonMode::eFill,  // polygonMode
-									vk::CullModeFlagBits::eNone,  // cullMode
-									vk::FrontFace::eCounterClockwise,  // frontFace
-									VK_FALSE,  // depthBiasEnable
-									0.f,  // depthBiasConstantFactor
-									0.f,  // depthBiasClamp
-									0.f,  // depthBiasSlopeFactor
-									1.f   // lineWidth
-								},
-								&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
-									vk::PipelineMultisampleStateCreateFlags(),  // flags
-									vk::SampleCountFlagBits::e1,  // rasterizationSamples
-									VK_FALSE,  // sampleShadingEnable
-									0.f,       // minSampleShading
-									nullptr,   // pSampleMask
-									VK_FALSE,  // alphaToCoverageEnable
-									VK_FALSE   // alphaToOneEnable
-								},
-								&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
-									vk::PipelineDepthStencilStateCreateFlags(),  // flags
-									VK_TRUE,  // depthTestEnable
-									VK_TRUE,  // depthWriteEnable
-									vk::CompareOp::eLess,  // depthCompareOp
-									VK_FALSE,  // depthBoundsTestEnable
-									VK_FALSE,  // stencilTestEnable
-									vk::StencilOpState(),  // front
-									vk::StencilOpState(),  // back
-									0.f,  // minDepthBounds
-									0.f   // maxDepthBounds
-								},
-								&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
-									vk::PipelineColorBlendStateCreateFlags(),  // flags
-									VK_FALSE,  // logicOpEnable
-									vk::LogicOp::eClear,  // logicOp
-									1,  // attachmentCount
-									&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
-										VK_FALSE,  // blendEnable
-										vk::BlendFactor::eZero,  // srcColorBlendFactor
-										vk::BlendFactor::eZero,  // dstColorBlendFactor
-										vk::BlendOp::eAdd,       // colorBlendOp
-										vk::BlendFactor::eZero,  // srcAlphaBlendFactor
-										vk::BlendFactor::eZero,  // dstAlphaBlendFactor
-										vk::BlendOp::eAdd,       // alphaBlendOp
-										vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
-											vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
-									},
-									array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-								},
-								nullptr,  // pDynamicState
-								pipelineLayout.get(),  // layout
-								window.renderPass(),  // renderPass
-								0,  // subpass
-								vk::Pipeline(nullptr),  // basePipelineHandle
-								-1 // basePipelineIndex
-							),
-							nullptr,  // allocator
-							device  // dispatch
-						);
+			// numVertices
+			size_t numVertices=accessors.at(positionAccessorIndex)["count"];
+			if(numVertices==0)  // skip empty primitives
+				continue;
 
-					// record command buffers
-					for(size_t i=0,c=window.imageCount(); i<c; i++) {
-						vk::CommandBuffer& cb=commandBuffers[i];
-						cb.begin(
-							vk::CommandBufferBeginInfo(
-								vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-								nullptr  // pInheritanceInfo
-							),
-							device  // dispatch
-						);
-						cb.beginRenderPass(
-							vk::RenderPassBeginInfo(
-								window.renderPass(),       // renderPass
-								window.framebuffers()[i],  // framebuffer
-								vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
-								1,                         // clearValueCount
-								&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
-							),
-							vk::SubpassContents::eInline,  // contents
-							device  // dispatch
-						);
-						cb.bindPipeline(vk::PipelineBindPoint::eGraphics,coordinatePipeline.get(),device);
-						cb.bindIndexBuffer(
-							m->renderer()->indexBuffer(),  // buffer
-							0,  // offset
-							vk::IndexType::eUint32,  // indexType
-							device  // dispatch
-						);
-						cb.bindVertexBuffers(
-							0,  // firstBinding
-							1,  // bindingCount
-							m->attribStorage()->bufferList().data(),  // pBuffers
-							array<const vk::DeviceSize,1>{0}.data(),  // pOffsets
-							device  // dispatch
-						);
-						cb.drawIndexed(3,1,0,0,0,device);  // draw a single triangle
-						cb.endRenderPass(device);
-						cb.end(device);
-					}
+			// accessor indices
+			//int normalAccessorIndex=mapGetWithDefault(attributes,"NORMAL",-1);
+			//int color0AccessorIndex=mapGetWithDefault(attributes,"COLOR_0",-1);
+			//int texCoord0AccessorIndex=mapGetWithDefault(attributes,"TEXCOORD_0",-1);
 
-				},
-				nullptr
-			);
+			// rendering mode
+			auto mode=mapGetWithDefault(primitive,"mode",4);
+			if(mode!=4)
+				throw gltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
+
+			// attributes
+			CadR::AttribSizeList attribSizeList;
+			CadR::AttribFormatList attribFormatList;
+			vector<tuple<filesystem::path,size_t>> attribUriAndOffsetList;
+			unsigned numProcessedAttributes=0;
+			for(string name : {"POSITION","NORMAL","COLOR_0","TEXCOORD_0"}) {
+
+				// process only known attributes
+				if(attributes.find(name)==attributes.end())
+					continue;
+				else
+					numProcessedAttributes++;
+
+				// accessor
+				auto a=accessors.at(size_t(attributes[name]));
+				if(a.find("bufferView")==a.end())
+					throw gltfError("Unsupported functionality: Omitted bufferView.");
+				size_t bufferViewIndex=a["bufferView"];
+				size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
+				int componentType=a["componentType"];
+				if(componentType!=5126 && (name=="POSITION" || name=="NORMAL")) // float for POSITION and NORMAL attribute
+					throw gltfError("Invalid component type. Must be float.");
+				if(componentType==5125) // no UNSIGNED_INT
+					throw gltfError("Invalid component type.");
+				bool normalized=mapGetWithDefault(a,"normalized",false);
+				if(a["count"]!=numVertices)
+					throw gltfError("Attribute count does not match number of vertices inside the primitive.");
+				string type=a["type"];
+				if(type!="VEC3" && (name=="POSITION" || name=="NORMAL"))
+					throw gltfError("Invalid attribute type. Must be VEC3.");
+				if(a.find("sparse")!=a.end())
+					throw gltfError("Unsupported functionality: Property sparse.");
+
+				// bufferView
+				auto bv=bufferViews.at(bufferViewIndex);
+				size_t bufferIndex=bv["buffer"];
+				size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
+				//size_t bufferViewLength=bv["byteLength"];
+				size_t stride=mapGetWithDefault(bv,"byteStride",0);
+				if(stride!=0)
+					throw gltfError("Unsupported functionality: Stride not zero.");
+
+				// buffer
+				auto b=buffers.at(bufferIndex);
+				filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
+				//size_t bufferLength=b["byteLength"];
+
+				// attribSizeList
+				uint32_t attribSize=getStride(componentType,type);
+				attribSizeList.push_back(attribSize);
+
+				// attribFormatList
+				attribFormatList.push_back(getFormat(componentType,type,normalized,false));
+
+				// file info
+				attribUriAndOffsetList.emplace_back(
+					bufferUri.is_absolute()  // file path
+						?bufferUri
+						:filePath.parent_path()/bufferUri,
+					bufferViewOffset+accessorOffset  // file offset
+				);
+			}
+			if(numProcessedAttributes!=attributes.size())
+				throw gltfError("Unsupported attribute(s).");
+
+			// indices
+			filesystem::path indicesFileUri;
+			size_t indicesFileOffset;
+			size_t numIndices;
+			int indicesComponentType;
+			if(auto it=primitive.find("indices"); it!=primitive.end()) {
+				size_t indicesAccessorIndex=*it;
+
+				// accessor
+				auto a=accessors.at(indicesAccessorIndex);
+				if(a.find("bufferView")==a.end())
+					throw gltfError("Unsupported functionality: Omitted bufferView for indices.");
+				size_t bufferViewIndex=a["bufferView"];
+				size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
+				indicesComponentType=a["componentType"];
+				if(indicesComponentType!=5125 && indicesComponentType!=5123 && indicesComponentType!=5121)
+					throw gltfError("Invalid component type for Indices. It must be UNSIGNED_INT, UNSIGNED_SHORT or UNSIGNED_BYTE.");
+				numIndices=a["count"];
+				if(numIndices==0)
+					throw gltfError("Indices count in accessor is 0.");
+				string type=a["type"];
+				if(type!="SCALAR")
+					throw gltfError("Invalid attribute type for Indices. Must be SCALAR.");
+				if(a.find("sparse")!=a.end())
+					throw gltfError("Unsupported functionality: Property sparse for Indices.");
+
+				// bufferView
+				auto bv=bufferViews.at(bufferViewIndex);
+				size_t bufferIndex=bv["buffer"];
+				size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
+				//size_t bufferViewLength=bv["byteLength"];
+
+				// buffer
+				auto b=buffers.at(bufferIndex);
+				filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
+				//size_t bufferLength=b["byteLength"];
+
+				indicesFileUri=
+					bufferUri.is_absolute()
+						?bufferUri
+						:filePath.parent_path()/bufferUri;
+				indicesFileOffset=bufferViewOffset+accessorOffset;
+			}
+			else {
+				numIndices=numVertices;
+			}
+			if(numIndices>size_t(~uint32_t(0)))
+				throw gltfError("Too large primitive. Index out of 32-bit integer range.");
+
+			// create Mesh
+			cout<<"Creating mesh"<<endl;
+			CadR::Mesh& m=
+				meshDB.emplace_back(
+					&renderer,  // renderer
+					attribSizeList,  // attribSizeList
+					numVertices,  // numVertices
+					numIndices,  // numIndices
+					1  // numPrimitiveSets
+				);
+
+			// read Mesh buffers
+			unsigned i=0;
+			for(auto& uriAndOffset:attribUriAndOffsetList) {
+
+				// open buffer file
+				const filesystem::path& bufferPath=std::get<0>(uriAndOffset);
+				cout<<"Opening buffer "<<bufferPath<<"..."<<endl;
+				ifstream f(bufferPath);
+				if(!f.is_open()) {
+					cout<<"Can not open file "<<bufferPath<<"."<<endl;
+					return 1;
+				}
+				f.exceptions(ifstream::badbit|ifstream::failbit);
+
+				// read buffer file
+				CadR::StagingBuffer sb=m.createStagingBuffer(i);
+				f.seekg(std::get<1>(uriAndOffset));
+				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
+				f.close();
+				sb.submit();
+				i++;
+			}
+
+			// read indices (or generate them)
+			if(!indicesFileUri.empty()) {
+
+				// open buffer file
+				cout<<"Opening buffer "<<indicesFileUri<<"..."<<endl;
+				ifstream f(indicesFileUri);
+				if(!f.is_open()) {
+					cout<<"Can not open file "<<indicesFileUri<<"."<<endl;
+					return 1;
+				}
+				f.exceptions(ifstream::badbit|ifstream::failbit);
+
+				// read buffer file
+				CadR::StagingBuffer sb=m.createIndexStagingBuffer();
+				f.seekg(indicesFileOffset);
+				if(indicesComponentType==5125)  // UNSIGNED_INT
+					f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
+				else if(indicesComponentType==5123) {  // UNSIGNED_SHORT
+					unique_ptr<uint16_t[]> tmp(new uint16_t[numIndices]);
+					f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint16_t));
+					uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
+					for(size_t i=0; i<numIndices; i++)
+						b[i]=tmp[i];
+				}
+				else if(indicesComponentType==5121) {  // UNSIGNED_BYTE
+					unique_ptr<uint8_t[]> tmp(new uint8_t[numIndices]);
+					f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint8_t));
+					uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
+					for(size_t i=0; i<numIndices; i++)
+						b[i]=tmp[i];
+				}
+				f.close();
+				sb.submit();
+			}
+			else {
+
+				// generate indices
+				if(numIndices>=size_t(~uint32_t(0)))
+					throw gltfError("Too large primitive. Index out of 32-bit integer range.");
+				CadR::StagingBuffer sb=m.createIndexStagingBuffer();
+				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
+				for(uint32_t i=0,e=uint32_t(numIndices); i<e; i++)
+					b[i]=i;
+				sb.submit();
+			}
+
+			// generate one PrimitiveSet
+			CadR::StagingBuffer sb=m.createPrimitiveSetStagingBuffer();
+			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
+			b[0]=CadR::PrimitiveSetGpuData(uint32_t(numIndices),0,0,0);
+			sb.submit();
+
+			// select pipeline
+			// (main distinction here is between fixed color materials (no lighting)
+			// and properly lit materials (all light computations))
+			size_t pipelineIndex;
+		#if 0
+			if(1)  // if material base color is black
+				// select fixed color pipeline
+				// (selection here is made between (1) unspecified per-vertex color (white is used),
+				// (2) per-vertex color, (3) emissive texture and (4) combination of emissive color and texture)
+				pipelineIndex=
+					(color0AccessorIndex   ==-1)?0x08:0x09;
+			else
+				// select lighting pipeline
+				pipelineIndex=
+					(texCoord0AccessorIndex==-1)?0:0x01 +
+					(color0AccessorIndex   ==-1)?0:0x02 +
+					(normalAccessorIndex   ==-1)?0:0x04;
+		#endif
+			pipelineIndex=0x08; // no COLOR_0
+
+			auto [stateSetMapIt,newStateSetCreated] = pipelineDB[pipelineIndex].emplace(attribSizeList,&renderer);
+			if(newStateSetCreated) {
+
+				CadR::StateSet& ss=stateSetMapIt->second;
+				ss.setAttribSizeList(std::move(attribSizeList));
+				ss.setAttribFormatList(std::move(attribFormatList));
+
+				window.resizeCallbacks.append(
+						[&device,&window,&ss,graphicsQueueFamily,
+						&coordinateShader,&unknownMaterialShader,
+						&pipelineCache,&pipelineLayout,&meshDB]()
+						{
+
+							cout<<"Resizing pipeline."<<endl;
+
+							// construct new pipeline
+							ss.setPipeline(
+								device->createGraphicsPipeline(
+									pipelineCache.get(),
+									vk::GraphicsPipelineCreateInfo(
+										vk::PipelineCreateFlags(),  // flags
+										2,  // stageCount
+										array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+											vk::PipelineShaderStageCreateInfo{
+												vk::PipelineShaderStageCreateFlags(),  // flags
+												vk::ShaderStageFlagBits::eVertex,      // stage
+												coordinateShader.get(),  // module
+												"main",  // pName
+												nullptr  // pSpecializationInfo
+											},
+											vk::PipelineShaderStageCreateInfo{
+												vk::PipelineShaderStageCreateFlags(),  // flags
+												vk::ShaderStageFlagBits::eFragment,    // stage
+												unknownMaterialShader.get(),  // module
+												"main",  // pName
+												nullptr  // pSpecializationInfo
+											}
+										}.data(),
+										&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+											vk::PipelineVertexInputStateCreateFlags(),  // flags
+											1,        // vertexBindingDescriptionCount
+											array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
+												vk::VertexInputBindingDescription(
+													0,  // binding
+													ss.attribSizeList()[0],  // stride
+													vk::VertexInputRate::eVertex  // inputRate
+												),
+											}.data(),
+											1,        // vertexAttributeDescriptionCount
+											array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
+												vk::VertexInputAttributeDescription(
+													0,  // location
+													0,  // binding
+													ss.attribFormatList()[0],  // format
+													0   // offset
+												),
+											}.data()
+										},
+										&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+											vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+											vk::PrimitiveTopology::eTriangleList,  // topology
+											VK_FALSE  // primitiveRestartEnable
+										},
+										nullptr, // pTessellationState
+										&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+											vk::PipelineViewportStateCreateFlags(),  // flags
+											1,  // viewportCount
+											&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(window.surfaceExtent().width),float(window.surfaceExtent().height),0.f,1.f),  // pViewports
+											1,  // scissorCount
+											&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent())  // pScissors
+										},
+										&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+											vk::PipelineRasterizationStateCreateFlags(),  // flags
+											VK_FALSE,  // depthClampEnable
+											VK_FALSE,  // rasterizerDiscardEnable
+											vk::PolygonMode::eFill,  // polygonMode
+											vk::CullModeFlagBits::eNone,  // cullMode
+											vk::FrontFace::eCounterClockwise,  // frontFace
+											VK_FALSE,  // depthBiasEnable
+											0.f,  // depthBiasConstantFactor
+											0.f,  // depthBiasClamp
+											0.f,  // depthBiasSlopeFactor
+											1.f   // lineWidth
+										},
+										&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+											vk::PipelineMultisampleStateCreateFlags(),  // flags
+											vk::SampleCountFlagBits::e1,  // rasterizationSamples
+											VK_FALSE,  // sampleShadingEnable
+											0.f,       // minSampleShading
+											nullptr,   // pSampleMask
+											VK_FALSE,  // alphaToCoverageEnable
+											VK_FALSE   // alphaToOneEnable
+										},
+										&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
+											vk::PipelineDepthStencilStateCreateFlags(),  // flags
+											VK_TRUE,  // depthTestEnable
+											VK_TRUE,  // depthWriteEnable
+											vk::CompareOp::eLess,  // depthCompareOp
+											VK_FALSE,  // depthBoundsTestEnable
+											VK_FALSE,  // stencilTestEnable
+											vk::StencilOpState(),  // front
+											vk::StencilOpState(),  // back
+											0.f,  // minDepthBounds
+											0.f   // maxDepthBounds
+										},
+										&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+											vk::PipelineColorBlendStateCreateFlags(),  // flags
+											VK_FALSE,  // logicOpEnable
+											vk::LogicOp::eClear,  // logicOp
+											1,  // attachmentCount
+											&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
+												VK_FALSE,  // blendEnable
+												vk::BlendFactor::eZero,  // srcColorBlendFactor
+												vk::BlendFactor::eZero,  // dstColorBlendFactor
+												vk::BlendOp::eAdd,       // colorBlendOp
+												vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+												vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+												vk::BlendOp::eAdd,       // alphaBlendOp
+												vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+													vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+											},
+											array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+										},
+										nullptr,  // pDynamicState
+										pipelineLayout.get(),  // layout
+										window.renderPass(),  // renderPass
+										0,  // subpass
+										vk::Pipeline(nullptr),  // basePipelineHandle
+										-1 // basePipelineIndex
+									),
+									nullptr,  // allocator
+									device  // dispatch
+								));
+
+							// recreate command buffers
+							ss.setCommandBuffers(std::move(
+								device->allocateCommandBuffers(
+									vk::CommandBufferAllocateInfo(
+										ss.renderer()->stateSetCommandPool(),  // commandPool
+										vk::CommandBufferLevel::ePrimary,  // level
+										window.imageCount()                // commandBufferCount
+									),
+									device  // dispatch
+								)));
+
+							// record command buffers
+							for(size_t i=0,c=window.imageCount(); i<c; i++) {
+								vk::CommandBuffer cb=ss.commandBuffer(i);
+								cb.begin(
+									vk::CommandBufferBeginInfo(
+										vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+										nullptr  // pInheritanceInfo
+									),
+									device  // dispatch
+								);
+								cb.beginRenderPass(
+									vk::RenderPassBeginInfo(
+										window.renderPass(),       // renderPass
+										window.framebuffers()[i],  // framebuffer
+										vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
+										1,                         // clearValueCount
+										&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
+									),
+									vk::SubpassContents::eInline,  // contents
+									device  // dispatch
+								);
+								cb.bindPipeline(vk::PipelineBindPoint::eGraphics,ss.pipeline(),device);
+								for(auto& m:meshDB) {
+									cb.bindIndexBuffer(
+										m.renderer()->indexBuffer(),  // buffer
+										0,  // offset
+										vk::IndexType::eUint32,  // indexType
+										device  // dispatch
+									);
+									cb.bindVertexBuffers(
+										0,  // firstBinding
+										1,  // bindingCount
+										m.attribStorage()->bufferList().data(),  // pBuffers
+										array<const vk::DeviceSize,1>{0}.data(),  // pOffsets
+										device  // dispatch
+									);
+									auto& a=m.attribAllocation();
+									auto& i=m.indexAllocation();
+									cb.drawIndexed(  // draw a single triangle
+										i.numItems,  // indexCount
+										1,  // instanceCount
+										i.startIndex,  // firstIndex
+										a.startIndex,  // vertexOffset
+										0,  // firstInstance
+										device  // dispatch
+									);
+								}
+								cb.endRenderPass(device);
+								cb.end(device);
+							}
+
+						},
+						nullptr
+					);
+			}
+		}
+
+		// upload all staging buffers
+		renderer.executeCopyOperations();
 
 		// semaphores
 		auto imageAvailableSemaphore=
@@ -802,15 +839,23 @@ int main(int argc,char** argv) {
 			if(!window.updateSize())
 				continue;
 
-			// render
+			// acquire next image
 			auto [imageIndex,success]=window.acquireNextImage(imageAvailableSemaphore.get());
 			if(!success)
 				continue;
+
+			// get all CommandBuffers to execute
+			vector<vk::CommandBuffer> commandBuffers;
+			for(auto& pipelineFamily:pipelineDB)
+				for(auto& ssIt:pipelineFamily)
+					commandBuffers.emplace_back(ssIt.second.commandBuffer(imageIndex));
+
+			// render
 			graphicsQueue.submit(
 				vk::SubmitInfo(
 					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
 					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					1,&commandBuffers[imageIndex],       // commandBufferCount+pCommandBuffers
+					commandBuffers.size(),commandBuffers.data(),  // commandBufferCount+pCommandBuffers
 					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
 				),
 				vk::Fence(nullptr),  // fence

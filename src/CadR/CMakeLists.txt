@@ -20,11 +20,14 @@ set(CADR_PUBLIC_HEADERS
     BufferData.h
     CadR.h
     CallbackList.h
+	Drawable.h
+	DrawCommand.h
     Export.h
     Mesh.h
     PrimitiveSet.h
     Renderer.h
     StagingBuffer.h
+	StateSet.h
     VulkanDevice.h
     VulkanInstance.h
     VulkanLibrary.h
@@ -38,9 +41,11 @@ set(CADR_PRIVATE_HEADERS
 set(CADR_SOURCES
     AttribStorage.cpp
     CadR.cpp
+	Mesh.cpp
     PrimitiveSet.cpp
     Renderer.cpp
     StagingBuffer.cpp
+	StateSet.cpp
     VulkanDevice.cpp
     VulkanInstance.cpp
     VulkanLibrary.cpp
