@@ -44,14 +44,14 @@ public:
 	void freeAttribs(Mesh& m);
 
 	void uploadAttribs(Mesh& m,const std::vector<std::vector<uint8_t>>& vertexData,size_t firstVertex=0);
-	void uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex=0);
-	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex);
-	StagingBuffer createStagingBuffer(Mesh& m,unsigned attribIndex,size_t firstVertex,size_t numVertices);
+	void uploadAttrib(Mesh& m,uint32_t attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex=0);
+	StagingBuffer createStagingBuffer(Mesh& m,uint32_t attribIndex);
+	StagingBuffer createStagingBuffer(Mesh& m,uint32_t attribIndex,size_t firstVertex,size_t numVertices);
 	std::vector<StagingBuffer> createStagingBuffers(Mesh& m);
 	std::vector<StagingBuffer> createStagingBuffers(Mesh& m,size_t firstVertex,size_t numVertices);
 
-	const ArrayAllocation<Mesh>& attribAllocation(unsigned id) const; ///< Returns the attribute allocation for particular id.
-	ArrayAllocation<Mesh>& attribAllocation(unsigned id);  ///< Returns the attribute allocation for particular id. Modify the returned data only with caution.
+	const ArrayAllocation<Mesh>& attribAllocation(uint32_t id) const; ///< Returns the attribute allocation for particular id.
+	ArrayAllocation<Mesh>& attribAllocation(uint32_t id);  ///< Returns the attribute allocation for particular id. Modify the returned data only with caution.
 	const ArrayAllocationManager<Mesh>& allocationManager() const;  ///< Returns the allocation manager.
 	ArrayAllocationManager<Mesh>& allocationManager();  ///< Returns the allocation manager.
 
@@ -60,9 +60,9 @@ public:
 
 	const std::vector<vk::Buffer>& bufferList() const;
 	const std::vector<vk::DeviceMemory>& memoryList() const;
-	vk::Buffer buffer(unsigned index) const;
-	vk::DeviceMemory memory(unsigned index) const;
-	unsigned numBuffers() const;
+	vk::Buffer buffer(uint32_t index) const;
+	vk::DeviceMemory memory(uint32_t index) const;
+	uint32_t numBuffers() const;
 
 	void render();
 	void cancelAllAllocations();
@@ -81,16 +81,16 @@ namespace CadR {
 inline void AttribStorage::allocAttribs(Mesh& m,size_t num)  { m.allocAttribs(num); }
 inline void AttribStorage::reallocAttribs(Mesh& m,size_t num)  { m.reallocAttribs(num); }
 inline void AttribStorage::freeAttribs(Mesh& m)  { m.freeAttribs(); }
-inline const ArrayAllocation<Mesh>& AttribStorage::attribAllocation(unsigned id) const  { return _allocationManager[id]; }
-inline ArrayAllocation<Mesh>& AttribStorage::attribAllocation(unsigned id)  { return _allocationManager[id]; }
+inline const ArrayAllocation<Mesh>& AttribStorage::attribAllocation(uint32_t id) const  { return _allocationManager[id]; }
+inline ArrayAllocation<Mesh>& AttribStorage::attribAllocation(uint32_t id)  { return _allocationManager[id]; }
 inline const ArrayAllocationManager<Mesh>& AttribStorage::allocationManager() const  { return _allocationManager; }
 inline ArrayAllocationManager<Mesh>& AttribStorage::allocationManager()  { return _allocationManager; }
 inline const AttribSizeList& AttribStorage::attribSizeList() const  { return _attribSizeList; }
 inline Renderer* AttribStorage::renderer() const  { return _renderer; }
 inline const std::vector<vk::Buffer>& AttribStorage::bufferList() const  { return _bufferList; }
 inline const std::vector<vk::DeviceMemory>& AttribStorage::memoryList() const  { return _memoryList; }
-inline vk::Buffer AttribStorage::buffer(unsigned index) const  { return _bufferList[index]; }
-inline vk::DeviceMemory AttribStorage::memory(unsigned index) const  { return _memoryList[index]; }
-inline unsigned AttribStorage::numBuffers() const  { return unsigned(_bufferList.size()); }
+inline vk::Buffer AttribStorage::buffer(uint32_t index) const  { return _bufferList[index]; }
+inline vk::DeviceMemory AttribStorage::memory(uint32_t index) const  { return _memoryList[index]; }
+inline uint32_t AttribStorage::numBuffers() const  { return uint32_t(_bufferList.size()); }
 
 }

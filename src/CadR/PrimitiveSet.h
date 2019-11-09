@@ -41,21 +41,22 @@ struct PrimitiveSetGpuData {
  *  make sure it occupies only 4 bytes. (Bit fields are known not to be
  *  always tightly packed on MSVC.)
  */
-struct CADR_EXPORT PrimitiveSet {
+struct CADR_EXPORT PrimitiveSet {  // 32-bits, verified by assert in PrimitiveSet.cpp
 protected:
 
-	unsigned data; // 32-bits, verified by assert in PrimitiveSet.cpp
+	uint32_t data;
 
 public:
 
 	constexpr inline vk::PrimitiveTopology topology() const;  ///< Returns topology of rendered geometry, e.g. eTriangleList, eLineStrip, etc.
-	constexpr inline unsigned offset4() const;  ///< Returns offset into the buffer of DrawCommandGpuData where the gpu specific draw command data are stored. Offset is given in multiple of 4 because shaders access memory as int array.
+	constexpr inline uint32_t offset4() const;  ///< Returns offset into the buffer of DrawCommandGpuData where the gpu specific draw command data are stored. Offset is given in multiple of 4 because shaders access memory as int array.
 	inline void setTopology(vk::PrimitiveTopology value);
-	inline void setOffset4(unsigned value);
-	inline void set(vk::PrimitiveTopology topology,unsigned offset4);  ///< Sets all DrawCommand state.
+	inline void setOffset4(uint32_t value);
+	inline void set(vk::PrimitiveTopology topology,uint32_t offset4);  ///< Sets all DrawCommand state.
 
 	inline PrimitiveSet()  {}  ///< Default constructor. Does nothing.
-	constexpr inline PrimitiveSet(unsigned topology,unsigned offset4);  ///< Construct by parameters.
+	constexpr inline PrimitiveSet(uint32_t topology,uint32_t offset4);  ///< Construct by parameters.
+	constexpr inline PrimitiveSet(vk::PrimitiveTopology topology,uint32_t offset4);  ///< Construct by parameters.
 
 };
 
@@ -72,11 +73,12 @@ inline PrimitiveSetGpuData::PrimitiveSetGpuData(uint32_t count_,uint32_t first_,
 constexpr inline PrimitiveSetGpuData::PrimitiveSetGpuData(uint32_t count_,uint32_t first_,uint32_t vertexOffset_,uint32_t userData_)
 	: count(count_), first(first_), vertexOffset(vertexOffset_), userData(userData_)  {}
 constexpr inline vk::PrimitiveTopology PrimitiveSet::topology() const  { return vk::PrimitiveTopology((data>>28)&0x0000000f); } // returns bits 28..31
-constexpr inline unsigned PrimitiveSet::offset4() const  { return data&0x0fffffff; } // returns bits 0..27
-inline void PrimitiveSet::setTopology(vk::PrimitiveTopology value)  { assert(unsigned(value)<=0xf); data=(data&0x0fffffff)|(unsigned(value)<<28); } // set bits 28..31
-inline void PrimitiveSet::setOffset4(unsigned value)  { assert(value<=0x0fffffff); data=(data&0xf0000000)|value; } // set bits 0..27, value must fit to 28 bits
-inline void PrimitiveSet::set(vk::PrimitiveTopology topology,unsigned offset4)  { assert(unsigned(topology)<=0xf && offset4<=0x0fffffff); data=(unsigned(topology)<<28)|offset4; } // set data, offset4 must fit to 27 bits
-constexpr inline PrimitiveSet::PrimitiveSet(unsigned topology,unsigned offset4) : data((topology<<28)|offset4)  { assert(topology<=0xf && offset4<=0x0fffffff); }
+constexpr inline uint32_t PrimitiveSet::offset4() const  { return data&0x0fffffff; } // returns bits 0..27
+inline void PrimitiveSet::setTopology(vk::PrimitiveTopology value)  { assert(uint32_t(value)<=0xf); data=(data&0x0fffffff)|(uint32_t(value)<<28); } // set bits 28..31
+inline void PrimitiveSet::setOffset4(uint32_t value)  { assert(value<=0x0fffffff); data=(data&0xf0000000)|value; } // set bits 0..27, value must fit to 28 bits
+inline void PrimitiveSet::set(vk::PrimitiveTopology topology,uint32_t offset4)  { assert(uint32_t(topology)<=0xf && offset4<=0x0fffffff); data=(uint32_t(topology)<<28)|offset4; } // set data, offset4 must fit to 27 bits
+constexpr inline PrimitiveSet::PrimitiveSet(uint32_t topology,uint32_t offset4) : data((topology<<28)|offset4)  { assert(topology<=0xf && offset4<=0x0fffffff); }
+constexpr inline PrimitiveSet::PrimitiveSet(vk::PrimitiveTopology topology,uint32_t offset4) : PrimitiveSet(uint32_t(topology),offset4)  {}
 
 
 }
