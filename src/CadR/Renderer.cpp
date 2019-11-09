@@ -72,6 +72,30 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			*_device  // dispatch
 		);
 
+	// drawCommand buffer
+	_drawCommandBuffer=
+		(*_device)->createBuffer(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				128*sizeof(DrawCommandGpuData),  // size
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
+	// drawCommand buffer memory
+	_drawCommandBufferMemory=allocateMemory(_drawCommandBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+	(*_device)->bindBufferMemory(
+			_drawCommandBuffer,  // buffer
+			_drawCommandBufferMemory,  // memory
+			0,  // memoryOffset
+			*_device  // dispatch
+		);
+
 	// command pool used by StateSets
 	_stateSetCommandPool=
 		(*_device)->createCommandPool(
@@ -130,6 +154,8 @@ Renderer::~Renderer()
 	(*_device)->freeMemory(_indexBufferMemory,nullptr,*_device);
 	(*_device)->destroy(_primitiveSetBuffer,nullptr,*_device);
 	(*_device)->freeMemory(_primitiveSetBufferMemory,nullptr,*_device);
+	(*_device)->destroy(_drawCommandBuffer,nullptr,*_device);
+	(*_device)->freeMemory(_drawCommandBufferMemory,nullptr,*_device);
 
 	if(_instance==this)
 		_instance=nullptr;

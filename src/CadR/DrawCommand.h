@@ -1,9 +1,12 @@
 #pragma once
 
+#include <CadR/AllocationManagers.h>
 #include <CadR/Export.h>
 #include <cstdint>
 
 namespace CadR {
+
+class Renderer;
 
 
 /** DrawCommandGpuData is data structure associated with DrawCommand and it is stored in GPU buffers,
@@ -30,26 +33,41 @@ struct DrawCommandGpuData final {
  *  draw command managed by ge::rg::Object.
  *  It holds the index into the buffer of DrawCommandGpuData.
  */
-class CADR_EXPORT DrawCommand final {
-protected:
-	uint32_t _index;
+class CADR_EXPORT DrawCommand : public ItemAllocation {
 public:
-	constexpr uint32_t index() const;
-	void setIndex(uint32_t value);
+	using ItemAllocation::alloc;
+	using ItemAllocation::free;
+	uint32_t alloc(Renderer* r);
+	void free(Renderer* r);
 
-	DrawCommand() {}
-	constexpr DrawCommand(uint32_t index);
+	using ItemAllocation::ItemAllocation;
+	DrawCommand(Renderer* r);
+
+	DrawCommand(DrawCommand&&) = delete;
+	DrawCommand(const DrawCommand&) = delete;
+	DrawCommand& operator=(DrawCommand&&) = delete;
+	DrawCommand& operator=(const DrawCommand&) = delete;
+	DrawCommand(DrawCommand&& dc,Renderer* r);
+	using ItemAllocation::assign;
+	void assign(DrawCommand&& rhs,Renderer* r);
+	inline void* operator new(size_t,CadR::DrawCommand& p)  { return &p; }
 };
 
 
+}
+
 // inline and template methods
+#include <CadR/Renderer.h>
+namespace CadR {
+
 inline DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t matrixListControlOffset4_,uint32_t stateSetOffset4_)
 	: primitiveSetOffset4(primitiveSetOffset4_), matrixListControlOffset4(matrixListControlOffset4_), stateSetOffset4(stateSetOffset4_)  {}
 inline constexpr DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t matrixListControlOffset4_,uint32_t stateSetOffset4_,uint32_t userData_)
 	: primitiveSetOffset4(primitiveSetOffset4_), matrixListControlOffset4(matrixListControlOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
-inline constexpr uint32_t DrawCommand::index() const  { return _index; }
-inline void DrawCommand::setIndex(uint32_t value)  { _index=value; }
-inline constexpr DrawCommand::DrawCommand(uint32_t index) : _index(index)  {}
-
+inline uint32_t DrawCommand::alloc(Renderer* r)  { return ItemAllocation::alloc(r->drawCommandAllocationManager()); }
+inline void DrawCommand::free(Renderer* r)  { ItemAllocation::free(r->drawCommandAllocationManager()); }
+inline DrawCommand::DrawCommand(Renderer* r) : ItemAllocation(r->drawCommandAllocationManager())  {}
+inline DrawCommand::DrawCommand(DrawCommand&& dc,Renderer* r) : ItemAllocation(std::move(dc),r->drawCommandAllocationManager())  {}
+inline void DrawCommand::assign(DrawCommand&& rhs,Renderer* r)  { ItemAllocation::assign(std::move(rhs),r->drawCommandAllocationManager()); }
 
 }

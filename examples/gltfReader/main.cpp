@@ -311,7 +311,9 @@ int main(int argc,char** argv) {
 		// pipelines
 		array<map<CadR::AttribSizeList,CadR::StateSet>,10> pipelineDB;
 
+		// CadR scene data
 		vector<CadR::Mesh> meshDB;
+		vector<CadR::Drawable> drawableDB;
 
 		// shaders
 		auto coordinateShader=
@@ -811,6 +813,11 @@ int main(int argc,char** argv) {
 						nullptr
 					);
 			}
+
+			// create Drawable
+			//drawableDB.emplace_back(&m,nullptr,nullptr,2);
+			//CadR::Drawable& d=drawableDB.back();
+			//d.d
 		}
 
 		// upload all staging buffers

@@ -27,12 +27,15 @@ private:
 
 	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
 	AttribStorage* _emptyStorage;
-	vk::Buffer _indexBuffer;
+	vk::Buffer       _indexBuffer;
 	vk::DeviceMemory _indexBufferMemory;
-	vk::Buffer _primitiveSetBuffer;
+	vk::Buffer       _primitiveSetBuffer;
 	vk::DeviceMemory _primitiveSetBufferMemory;
+	vk::Buffer       _drawCommandBuffer;
+	vk::DeviceMemory _drawCommandBufferMemory;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager<Mesh> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
+	ItemAllocationManager        _drawCommandAllocationManager;
 	vk::CommandPool _stateSetCommandPool;
 
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
@@ -55,6 +58,7 @@ public:
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
+	CADR_EXPORT vk::Buffer drawCommandBuffer() const;
 	CADR_EXPORT vk::CommandPool stateSetCommandPool() const;
 
 	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
@@ -67,8 +71,8 @@ public:
 	CADR_EXPORT void scheduleCopyOperation(StagingBuffer& stagingBuffer);
 	CADR_EXPORT void executeCopyOperations();
 
-	CADR_EXPORT const ArrayAllocation<Mesh>& indexAllocation(unsigned id) const;  ///< Returns index allocation for particular id.
-	CADR_EXPORT ArrayAllocation<Mesh>& indexAllocation(unsigned id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocation<Mesh>& indexAllocation(uint32_t id) const;  ///< Returns index allocation for particular id.
+	CADR_EXPORT ArrayAllocation<Mesh>& indexAllocation(uint32_t id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
 	CADR_EXPORT const ArrayAllocationManager<Mesh>& indexAllocationManager() const;
 	CADR_EXPORT ArrayAllocationManager<Mesh>& indexAllocationManager();
 
@@ -76,14 +80,23 @@ public:
 	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Mesh& m);
 	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Mesh& m,size_t firstIndex,size_t numIndices);
 
-	CADR_EXPORT const ArrayAllocation<Mesh>& primitiveSetAllocation(unsigned id) const;  ///< Returns primitiveSet allocation for particular id.
-	CADR_EXPORT ArrayAllocation<Mesh>& primitiveSetAllocation(unsigned id);   ///< Returns primitiveSet allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocation<Mesh>& primitiveSetAllocation(uint32_t id) const;  ///< Returns primitiveSet allocation for particular id.
+	CADR_EXPORT ArrayAllocation<Mesh>& primitiveSetAllocation(uint32_t id);   ///< Returns primitiveSet allocation for particular id. Modify the returned data only with caution.
 	CADR_EXPORT const ArrayAllocationManager<Mesh>& primitiveSetAllocationManager() const;
 	CADR_EXPORT ArrayAllocationManager<Mesh>& primitiveSetAllocationManager();
 
 	CADR_EXPORT void uploadPrimitiveSets(Mesh& m,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet=0);
 	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Mesh& m);
 	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Mesh& m,size_t firstPrimitiveSet,size_t numPrimitiveSets);
+
+	CADR_EXPORT ItemAllocation*const& drawCommandAllocation(uint32_t id) const;  ///< Returns drawCommand allocation for particular id.
+	CADR_EXPORT ItemAllocation*& drawCommandAllocation(uint32_t id);   ///< Returns drawCommand allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ItemAllocationManager& drawCommandAllocationManager() const;
+	CADR_EXPORT ItemAllocationManager& drawCommandAllocationManager();
+
+	CADR_EXPORT void uploadDrawCommand(Mesh& m,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet=0);
+	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(Mesh& m);
+	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(Mesh& m,size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
 protected:
 	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
@@ -96,18 +109,23 @@ inline void Renderer::set(Renderer* r)  { _instance=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
+inline vk::Buffer Renderer::drawCommandBuffer() const  { return _drawCommandBuffer; }
 inline vk::CommandPool Renderer::stateSetCommandPool() const  { return _stateSetCommandPool; }
 inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }
-inline const ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id) const  { return _indexAllocationManager[id]; }
-inline ArrayAllocation<Mesh>& Renderer::indexAllocation(unsigned id)  { return _indexAllocationManager[id]; }
+inline const ArrayAllocation<Mesh>& Renderer::indexAllocation(uint32_t id) const  { return _indexAllocationManager[id]; }
+inline ArrayAllocation<Mesh>& Renderer::indexAllocation(uint32_t id)  { return _indexAllocationManager[id]; }
 inline const ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }
 inline ArrayAllocationManager<Mesh>& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
-inline const ArrayAllocation<Mesh>& Renderer::primitiveSetAllocation(unsigned id) const  { return _primitiveSetAllocationManager[id]; }
-inline ArrayAllocation<Mesh>& Renderer::primitiveSetAllocation(unsigned id)  { return _primitiveSetAllocationManager[id]; }
+inline const ArrayAllocation<Mesh>& Renderer::primitiveSetAllocation(uint32_t id) const  { return _primitiveSetAllocationManager[id]; }
+inline ArrayAllocation<Mesh>& Renderer::primitiveSetAllocation(uint32_t id)  { return _primitiveSetAllocationManager[id]; }
 inline const ArrayAllocationManager<Mesh>& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
 inline ArrayAllocationManager<Mesh>& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
+inline ItemAllocation*const& Renderer::drawCommandAllocation(uint32_t id) const  { return _drawCommandAllocationManager[id]; }
+inline ItemAllocation*& Renderer::drawCommandAllocation(uint32_t id)  { return _drawCommandAllocationManager[id]; }
+inline const ItemAllocationManager& Renderer::drawCommandAllocationManager() const  { return _drawCommandAllocationManager; }
+inline ItemAllocationManager& Renderer::drawCommandAllocationManager()  { return _drawCommandAllocationManager; }
 inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
 
 
