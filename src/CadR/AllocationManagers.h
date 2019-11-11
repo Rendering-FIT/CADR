@@ -100,7 +100,7 @@ public:
 };
 
 
-class ItemAllocation {
+class CADR_EXPORT ItemAllocation {
 protected:
 	uint32_t _index;
 	friend ItemAllocationManager;
@@ -186,7 +186,6 @@ public:
 	void alloc(ItemAllocation* a,uint32_t numItems);  ///< \brief Allocates number of items. The returned items may not form the continuous block of memory. Array pointed by ids must be at least numItems long.
 	template<typename It>
 	void alloc(It start,It end);  ///< \brief Allocates items in the range given by start and end iterators. The returned items may not form the continuous block of memory.
-	void constructAlloc(ItemAllocation* a);  ///< \brief Allocates one item and stores the item's id in the variable pointed by id parameter. It can be used by ItemAllocation constructor on unilialized object as it bypasses all tests wheter ItemAllocation is already allocated.
 	void swap(ItemAllocation* a1,ItemAllocation* a2);
 	void free(ItemAllocation* a);  ///< Frees allocated item. Id must be valid.
 	void free(ItemAllocation* a,uint32_t numItems);  ///< Frees allocated items. Ids pointed by ids parameter must be valid.
@@ -362,7 +361,7 @@ inline uint32_t ItemAllocation::alloc(ItemAllocationManager& m)  { m.alloc(this)
 inline void ItemAllocation::free(ItemAllocationManager& m)  { m.free(this); }
 
 inline constexpr ItemAllocation::ItemAllocation() : _index(ItemAllocationManager::invalidID)  {}
-inline ItemAllocation::ItemAllocation(ItemAllocationManager& m)  { m.constructAlloc(this); }
+inline ItemAllocation::ItemAllocation(ItemAllocationManager& m) : _index(ItemAllocationManager::invalidID)  { m.alloc(this); }
 inline ItemAllocation::ItemAllocation(ItemAllocation&& a,ItemAllocationManager& m) : _index(a._index)  { if(a._index==ItemAllocationManager::invalidID) return; a._index=ItemAllocationManager::invalidID; m[_index]=this; }
 inline ItemAllocation::~ItemAllocation()  { assert(_index==ItemAllocationManager::invalidID && "Item is still allocated! Always free items before their destruction!"); }
 

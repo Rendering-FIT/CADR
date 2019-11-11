@@ -862,7 +862,7 @@ int main(int argc,char** argv) {
 				vk::SubmitInfo(
 					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
 					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					commandBuffers.size(),commandBuffers.data(),  // commandBufferCount+pCommandBuffers
+					uint32_t(commandBuffers.size()),commandBuffers.data(),  // commandBufferCount+pCommandBuffers
 					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
 				),
 				vk::Fence(nullptr),  // fence

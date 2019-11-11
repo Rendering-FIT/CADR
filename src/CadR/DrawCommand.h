@@ -50,7 +50,8 @@ public:
 	DrawCommand(DrawCommand&& dc,Renderer* r);
 	using ItemAllocation::assign;
 	void assign(DrawCommand&& rhs,Renderer* r);
-	inline void* operator new(size_t,CadR::DrawCommand& p)  { return &p; }
+	inline void* operator new(size_t,CadR::DrawCommand& p) noexcept { return &p; }
+	inline void operator delete(void*,CadR::DrawCommand&) noexcept {}
 };
 
 

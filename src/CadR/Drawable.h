@@ -127,17 +127,17 @@ inline void DrawCommandList::reserve(uint32_t newCapacity)  { if(newCapacity>_ca
 inline uint32_t DrawCommandList::capacity() const  { return _capacity; }
 inline uint32_t DrawCommandList::size() const  { return _size; }
 inline void DrawCommandList::shrink_to_fit()  { setCapacity(size()); }
-inline void DrawCommandList::secureSpace(uint32_t newSize)  { if(newSize<_capacity) return; size_t c=_capacity*2; if(c<newSize) c=newSize; setCapacity(c); }
+inline void DrawCommandList::secureSpace(uint32_t newSize)  { if(newSize<_capacity) return; uint32_t c=_capacity*2; if(c<newSize) c=newSize; setCapacity(c); }
 
 inline uint32_t DrawCommandList::emplace_back(DrawCommand&& dc)  { secureSpace(_size+1); new(operator[](_size)) DrawCommand(std::move(dc),renderer()); return _size++; }
 inline void DrawCommandList::set(uint32_t index,DrawCommand&& dc)  { assert(index<_size && "Parameter index out of bounds."); operator[](index).assign(std::move(dc),renderer()); }
 
 inline void DrawCommandList::clear()  { resize(0); }
 
-inline std::array<DrawCommand,0>::iterator DrawCommandList::begin()  { if(_capacity==builtInCapacity) return _internalStorage.begin(); else return _externalStorage->begin(); }
-inline std::array<DrawCommand,0>::const_iterator DrawCommandList::cbegin() const  { if(_capacity==builtInCapacity) return _internalStorage.begin(); else return _externalStorage->begin(); }
-inline std::array<DrawCommand,0>::iterator DrawCommandList::end()  { if(_capacity==builtInCapacity) return _internalStorage.end(); else return _externalStorage->end(); }
-inline std::array<DrawCommand,0>::const_iterator DrawCommandList::cend() const  { if(_capacity==builtInCapacity) return _internalStorage.end(); else return _externalStorage->end(); }
+inline std::array<DrawCommand,0>::iterator DrawCommandList::begin()  { if(_capacity==builtInCapacity) return reinterpret_cast<std::array<DrawCommand,0>*>(&_internalStorage)->begin(); else return _externalStorage->begin(); }
+inline std::array<DrawCommand,0>::const_iterator DrawCommandList::cbegin() const  { if(_capacity==builtInCapacity) return reinterpret_cast<const std::array<DrawCommand,0>*>(&_internalStorage)->begin(); else return _externalStorage->begin(); }
+inline std::array<DrawCommand,0>::iterator DrawCommandList::end()  { if(_capacity==builtInCapacity) return reinterpret_cast<std::array<DrawCommand,0>*>(&_internalStorage)->end(); else return _externalStorage->end(); }
+inline std::array<DrawCommand,0>::const_iterator DrawCommandList::cend() const  { if(_capacity==builtInCapacity) return reinterpret_cast<const std::array<DrawCommand,0>*>(&_internalStorage)->end(); else return _externalStorage->end(); }
 inline DrawCommand& DrawCommandList::operator[](uint32_t index)  { if(_capacity==builtInCapacity) return _internalStorage[index]; else return _externalStorage->operator[](index); }
 inline const DrawCommand& DrawCommandList::operator[](uint32_t index) const  { if(_capacity==builtInCapacity) return _internalStorage[index]; else return _externalStorage->operator[](index); }
 inline DrawCommand* DrawCommandList::data()  { if(_capacity==builtInCapacity) return _internalStorage.data(); else return _externalStorage->data(); }

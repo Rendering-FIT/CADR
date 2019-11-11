@@ -75,17 +75,6 @@ void ItemAllocationManager::alloc(ItemAllocation* a,uint32_t numItems)
 }
 
 
-void ItemAllocationManager::constructAlloc(ItemAllocation* a)
-{
-	if(_capacity-_firstItemAvailableAtTheEnd<1)
-		throw CadR::OutOfResources("ItemAllocationManager::alloc(): Can not allocate item. Not enough free space.");
-
-	a->_index=_firstItemAvailableAtTheEnd;
-	_pointerList[_firstItemAvailableAtTheEnd]=a;
-	_firstItemAvailableAtTheEnd++;
-}
-
-
 void ItemAllocationManager::free(ItemAllocation* a)
 {
 	uint32_t i=a->_index;
