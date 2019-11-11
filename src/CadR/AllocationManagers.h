@@ -363,7 +363,7 @@ inline void ItemAllocation::free(ItemAllocationManager& m)  { m.free(this); }
 inline constexpr ItemAllocation::ItemAllocation() : _index(ItemAllocationManager::invalidID)  {}
 inline ItemAllocation::ItemAllocation(ItemAllocationManager& m) : _index(ItemAllocationManager::invalidID)  { m.alloc(this); }
 inline ItemAllocation::ItemAllocation(ItemAllocation&& a,ItemAllocationManager& m) : _index(a._index)  { if(a._index==ItemAllocationManager::invalidID) return; a._index=ItemAllocationManager::invalidID; m[_index]=this; }
-inline ItemAllocation::~ItemAllocation()  { assert(_index==ItemAllocationManager::invalidID && "Item is still allocated! Always free items before their destruction!"); }
+inline ItemAllocation::~ItemAllocation()  { assert(_index==ItemAllocationManager::invalidID || this==&ItemAllocationManager::nullItem() && "Item is still allocated! Always free items before their destruction!"); }
 
 inline void ItemAllocation::assign(ItemAllocation&& a,ItemAllocationManager& m)
 {
