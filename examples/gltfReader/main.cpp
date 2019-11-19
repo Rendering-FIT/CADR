@@ -815,7 +815,7 @@ int main(int argc,char** argv) {
 			}
 
 			// create Drawable
-			//drawableDB.emplace_back(&m,nullptr,nullptr,2);
+			drawableDB.emplace_back(&m,nullptr,&stateSetMapIt->second,2);
 			//CadR::Drawable& d=drawableDB.back();
 			//d.d
 		}
@@ -878,6 +878,8 @@ int main(int argc,char** argv) {
 		device->waitIdle(device);
 
 	// catch exceptions
+	} catch(CadR::Error &e) {
+		cout<<"Failed because of CadR exception: "<<e.what()<<endl;
 	} catch(vk::Error &e) {
 		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
 	} catch(exception &e) {

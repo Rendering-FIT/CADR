@@ -21,7 +21,7 @@ ItemAllocationManager::ItemAllocationManager(uint32_t capacity,uint32_t numNullI
 	  _capacity(capacity), _available(capacity-numNullItems),
 	  _firstItemAvailableAtTheEnd(numNullItems), _numNullItems(numNullItems)
 {
-	assert(capacity<numNullItems && "No space for null items.");
+	assert(capacity>numNullItems && "No space for null items.");
 	for(uint32_t i=0; i<numNullItems; i++)
 		_pointerList[i]=&_nullItem;
 }
@@ -46,16 +46,16 @@ void ItemAllocationManager::setCapacity(uint32_t newCapacity)
 }
 
 
-void ItemAllocationManager::alloc(ItemAllocation* a)
+void ItemAllocationManager::alloc(ItemAllocation& a)
 {
-	if(a->_index!=invalidID)
+	if(a._index!=invalidID)
 		return;
 
 	if(_capacity-_firstItemAvailableAtTheEnd<1)
 		throw CadR::OutOfResources("ItemAllocationManager::alloc(): Can not allocate item. Not enough free space.");
 
-	a->_index=_firstItemAvailableAtTheEnd;
-	_pointerList[_firstItemAvailableAtTheEnd]=a;
+	a._index=_firstItemAvailableAtTheEnd;
+	_pointerList[_firstItemAvailableAtTheEnd]=&a;
 	_firstItemAvailableAtTheEnd++;
 }
 
@@ -75,16 +75,17 @@ void ItemAllocationManager::alloc(ItemAllocation* a,uint32_t numItems)
 }
 
 
-void ItemAllocationManager::free(ItemAllocation* a)
+void ItemAllocationManager::free(ItemAllocation& a)
 {
-	uint32_t i=a->_index;
+	uint32_t i=a._index;
 	if(i!=invalidID) {
-		a->_index=invalidID;
-		if(i!=_firstItemAvailableAtTheEnd-1) {
-			_pointerList[i]=_pointerList[_firstItemAvailableAtTheEnd-1];
+		a._index=invalidID;
+		uint32_t lastItem=_firstItemAvailableAtTheEnd-1;
+		if(i!=lastItem) {
+			_pointerList[i]=_pointerList[lastItem];
 			_pointerList[i]->_index=i;
-			_firstItemAvailableAtTheEnd--;
 		}
+		_firstItemAvailableAtTheEnd=lastItem;
 	}
 }
 
@@ -95,11 +96,12 @@ void ItemAllocationManager::free(ItemAllocation* a,uint32_t numItems)
 		uint32_t i=a[j]._index;
 		if(i!=invalidID) {
 			a[j]._index=invalidID;
-			if(i!=_firstItemAvailableAtTheEnd-1) {
-				_pointerList[i]=_pointerList[_firstItemAvailableAtTheEnd-1];
+			uint32_t lastItem=_firstItemAvailableAtTheEnd-1;
+			if(i!=lastItem) {
+				_pointerList[i]=_pointerList[lastItem];
 				_pointerList[i]->_index=i;
-				_firstItemAvailableAtTheEnd--;
 			}
+			_firstItemAvailableAtTheEnd=lastItem;
 		}
 	}
 }

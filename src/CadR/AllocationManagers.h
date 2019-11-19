@@ -182,15 +182,15 @@ public:
 	uint32_t lastID() const;
 
 	bool canAllocate(uint32_t numItems) const;
-	void alloc(ItemAllocation* a);  ///< \brief Allocates one item and stores the item's id in the variable pointed by id parameter.
-	void alloc(ItemAllocation* a,uint32_t numItems);  ///< \brief Allocates number of items. The returned items may not form the continuous block of memory. Array pointed by ids must be at least numItems long.
+	void alloc(ItemAllocation& a);  ///< \brief Allocates one id and stores it in the ItemAllocation. If ItemAllocation has already allocated id, the method does nothing.
+	void alloc(ItemAllocation* a,uint32_t numItems);  ///< \brief Allocates number of ids and stores them in the ItemAllocations. As ids are returned from the free pool, they may not be series of consecutive ids. Array pointed by ids must be at least numItems long. ItemAllocations that has already ids allocated are ignored and no allocation for them is performed.
 	template<typename It>
-	void alloc(It start,It end);  ///< \brief Allocates items in the range given by start and end iterators. The returned items may not form the continuous block of memory.
+	void alloc(It start,It end);  ///< \brief Allocates ids and stores them in range of ItemAllocations given by start and end iterators. As ids are returned from the free pool, they may not be series of consecutive ids. ItemAllocations that has already ids allocated are ignored and no allocation for them is performed.
 	void swap(ItemAllocation* a1,ItemAllocation* a2);
-	void free(ItemAllocation* a);  ///< Frees allocated item. Id must be valid.
-	void free(ItemAllocation* a,uint32_t numItems);  ///< Frees allocated items. Ids pointed by ids parameter must be valid.
+	void free(ItemAllocation& a);  ///< Frees allocated item. If item contains invalidID, the method does nothing.
+	void free(ItemAllocation* a,uint32_t numItems);  ///< Frees allocated items. The items containing invalidID are safely ignored.
 	template<typename It>
-	void free(It start,It end);  ///< Frees allocated items given by start and end iterators. Ids pointed by ids parameter must be valid.
+	void free(It start,It end);  ///< Frees allocated items given by start and end iterators. The items containing invalidID are safely ignored.
 	void clear();
 	void assertEmpty();
 
@@ -344,11 +344,12 @@ void ItemAllocationManager::free(It start,It end)
 		uint32_t i=(*it)->_index;
 		if(i!=invalidID) {
 			(*it)->_index=invalidID;
-			if(i!=_firstItemAvailableAtTheEnd-1) {
-				_pointerList[i]=_pointerList[_firstItemAvailableAtTheEnd-1];
+			uint32_t lastItem=_firstItemAvailableAtTheEnd-1;
+			if(i!=lastItem) {
+				_pointerList[i]=_pointerList[lastItem];
 				_pointerList[i]->_index=i;
-				_firstItemAvailableAtTheEnd--;
 			}
+			_firstItemAvailableAtTheEnd=lastItem;
 		}
 	}
 }
@@ -357,17 +358,17 @@ inline void ItemAllocationManager::assertEmpty()  { assert(numItems()==0 && "Man
 inline ItemAllocation& ItemAllocationManager::nullItem()  { return _nullItem; }
 
 inline constexpr uint32_t ItemAllocation::index() const  { return _index; }
-inline uint32_t ItemAllocation::alloc(ItemAllocationManager& m)  { m.alloc(this); return _index; }
-inline void ItemAllocation::free(ItemAllocationManager& m)  { m.free(this); }
+inline uint32_t ItemAllocation::alloc(ItemAllocationManager& m)  { m.alloc(*this); return _index; }
+inline void ItemAllocation::free(ItemAllocationManager& m)  { m.free(*this); }
 
 inline constexpr ItemAllocation::ItemAllocation() : _index(ItemAllocationManager::invalidID)  {}
-inline ItemAllocation::ItemAllocation(ItemAllocationManager& m) : _index(ItemAllocationManager::invalidID)  { m.alloc(this); }
+inline ItemAllocation::ItemAllocation(ItemAllocationManager& m) : _index(ItemAllocationManager::invalidID)  { m.alloc(*this); }
 inline ItemAllocation::ItemAllocation(ItemAllocation&& a,ItemAllocationManager& m) : _index(a._index)  { if(a._index==ItemAllocationManager::invalidID) return; a._index=ItemAllocationManager::invalidID; m[_index]=this; }
 inline ItemAllocation::~ItemAllocation()  { assert((_index==ItemAllocationManager::invalidID || this==&ItemAllocationManager::nullItem()) && "Item is still allocated! Always free items before their destruction!"); }
 
 inline void ItemAllocation::assign(ItemAllocation&& a,ItemAllocationManager& m)
 {
-	m.free(this);
+	m.free(*this);
 	_index=a._index;
 	if(a._index!=ItemAllocationManager::invalidID) {
 		a._index=ItemAllocationManager::invalidID;

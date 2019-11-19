@@ -9,6 +9,50 @@ static_assert(sizeof(Drawable)==64,
 
 
 
+DrawCommandList::DrawCommandList(DrawCommandList&& other) noexcept
+	: _capacity(other._capacity)
+	, _size(other._size)
+{
+	if(other._capacity==builtInCapacity) {
+		auto& m=renderer()->drawCommandAllocationManager();
+		for(uint32_t i=0; i<_size; i++)
+			new(_internalStorage[i]) DrawCommand(std::move(other._internalStorage[i]),m);
+	} else {
+		_externalStorage=other._externalStorage;
+		other._capacity=builtInCapacity;
+		other._size=0;
+	}
+}
+
+
+DrawCommandList& DrawCommandList::operator=(DrawCommandList&& rhs) noexcept
+{
+	// release previous content
+	clear();
+
+	if(rhs._capacity==builtInCapacity) {
+
+		// release external storage
+		if(_capacity>builtInCapacity)
+			setCapacity(builtInCapacity);
+
+		// move-construct new elements
+		auto& m=renderer()->drawCommandAllocationManager();
+		for(uint32_t i=0; i<rhs._size; i++)
+			new(_internalStorage[i]) DrawCommand(std::move(rhs._internalStorage[i]),m);
+
+	} else {
+		_capacity=rhs._capacity;
+		_externalStorage=rhs._externalStorage;
+		rhs._capacity=builtInCapacity;
+		rhs._size=0;
+	}
+	_size=rhs._size;
+
+	return *this;
+}
+
+
 void DrawCommandList::setCapacity(uint32_t newCapacity)
 {
 	assert(newCapacity>=size() && "Can not set capacity lower than size.");
@@ -48,17 +92,25 @@ void DrawCommandList::setCapacity(uint32_t newCapacity)
 
 void DrawCommandList::resize(uint32_t newSize)
 {
-	// secure space
-	secureSpace(newSize);
-
 	// call constructors or destructors
 	auto& m=renderer()->drawCommandAllocationManager();
-	if(newSize>=_size)
+	if(newSize>=_size) {
+
+		// secure space
+		secureSpace(newSize);
+
+		// construct new elements
 		for(uint32_t i=_size; i<newSize; i++)
 			new(operator[](i)) DrawCommand(m);
-	else
-		for(uint32_t i=newSize; i<_size; i++)
-			operator[](i).~DrawCommand();
+
+	} else
+
+		// destruct elements
+		for(uint32_t i=newSize; i<_size; i++) {
+			DrawCommand& d=operator[](i);
+			d.free(m);
+			d.~DrawCommand();
+		}
 
 	_size=newSize;
 }
@@ -233,7 +285,9 @@ void DrawCommandList::pop_back()
 	if(_size==0)
 		return;
 	_size--;
-	operator[](_size).~DrawCommand();
+	DrawCommand& d=operator[](_size);
+	d.free(renderer());
+	d.~DrawCommand();
 }
 
 
@@ -241,8 +295,12 @@ void DrawCommandList::pop_back(uint32_t num)
 {
 	assert(_size>=num && "Not enough elements in the container to pop_back().");
 
+	auto& m=renderer()->drawCommandAllocationManager();
 	uint32_t start=(_size>=num)?_size-num:0;
-	for(uint32_t i=start; i<_size; i++)
-		operator[](i).~DrawCommand();
+	for(uint32_t i=start; i<_size; i++) {
+		DrawCommand& d=operator[](i);
+		d.free(m);
+		d.~DrawCommand();
+	}
 	_size=start;
 }

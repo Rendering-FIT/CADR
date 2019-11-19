@@ -35,7 +35,9 @@ public:
 
 	DrawCommandList();
 	DrawCommandList(uint32_t capacity);
+	DrawCommandList(DrawCommandList&& other) noexcept;
 	~DrawCommandList();
+	DrawCommandList& operator=(DrawCommandList&& rhs) noexcept;
 
 	void reserve(uint32_t capacity);
 	void setCapacity(uint32_t newCapacity);
@@ -77,11 +79,13 @@ class CADR_EXPORT Drawable final {
 public:
 
 	boost::intrusive::list_member_hook<> drawableListHook;
-	StateSet* stateSet;
 	MatrixList* matrixList;
+	StateSet* stateSet;
 	DrawCommandList drawCommandList;
 
-	Drawable(Mesh* mesh,StateSet* stateSet,MatrixList* matrixList,uint32_t numDrawCommands=DrawCommandList::builtInCapacity);
+	Drawable(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t numDrawCommands);
+	Drawable(Drawable&& other) = default;
+	Drawable& operator=(Drawable&& rhs) = default;
 
 	Renderer* renderer() const;
 
@@ -90,9 +94,7 @@ public:
 
 	Drawable() = delete;
 	Drawable(const Drawable&) = delete;
-	Drawable(Drawable&&) = delete;
 	Drawable& operator=(const Drawable&) = delete;
-	Drawable& operator=(Drawable&& rhs) = delete;
 
 };
 
@@ -114,8 +116,8 @@ typedef boost::intrusive::list<
 #include <CadR/StateSet.h>
 namespace CadR {
 
-inline Drawable::Drawable(Mesh*,StateSet* stateSet_,MatrixList* matrixList_,uint32_t numDrawCommands)
-	: stateSet(stateSet_), matrixList(matrixList_), drawCommandList(numDrawCommands)  {}
+inline Drawable::Drawable(Mesh*,MatrixList* matrixList_,StateSet* stateSet_,uint32_t numDrawCommands)
+	: matrixList(matrixList_), stateSet(stateSet_), drawCommandList(numDrawCommands)  {}
 
 inline Renderer* Drawable::renderer() const  { return stateSet->renderer(); }
 inline DrawCommand*const& Drawable::drawCommandAllocation(uint32_t index) const  { return reinterpret_cast<DrawCommand*const&>(renderer()->drawCommandAllocation(drawCommandList[index].index())); }

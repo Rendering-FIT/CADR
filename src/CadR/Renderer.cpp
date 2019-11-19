@@ -18,6 +18,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
+	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
@@ -140,6 +141,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 Renderer::~Renderer()
 {
 	assert(_emptyStorage->allocationManager().numIDs()==1 && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
+	assert(_drawCommandAllocationManager.numItems()==0 && "Renderer::_drawCommandAllocationManager still contains elements on Renderer destruction.");
 
 	// destroy StateSet CommandPool
 	(*_device)->destroy(_stateSetCommandPool,nullptr,*_device);
