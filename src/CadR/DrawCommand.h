@@ -7,6 +7,7 @@
 namespace CadR {
 
 class Renderer;
+class StagingBuffer;
 
 
 /** DrawCommandGpuData is data structure associated with DrawCommand and it is stored in GPU buffers,
@@ -40,6 +41,9 @@ public:
 	uint32_t alloc(Renderer* r);
 	void free(Renderer* r);
 
+	void upload(Renderer* r,const DrawCommandGpuData& drawCommandData);
+	StagingBuffer createStagingBuffer(Renderer* r);
+
 	using ItemAllocation::ItemAllocation;
 	DrawCommand(Renderer* r);
 
@@ -59,6 +63,7 @@ public:
 
 // inline and template methods
 #include <CadR/Renderer.h>
+#include <CadR/StagingBuffer.h>
 namespace CadR {
 
 inline DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t matrixListControlOffset4_,uint32_t stateSetOffset4_)
@@ -67,6 +72,8 @@ inline constexpr DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOff
 	: primitiveSetOffset4(primitiveSetOffset4_), matrixListControlOffset4(matrixListControlOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
 inline uint32_t DrawCommand::alloc(Renderer* r)  { return ItemAllocation::alloc(r->drawCommandAllocationManager()); }
 inline void DrawCommand::free(Renderer* r)  { ItemAllocation::free(r->drawCommandAllocationManager()); }
+inline void DrawCommand::upload(Renderer* r,const DrawCommandGpuData& drawCommandData)  { r->uploadDrawCommand(*this,drawCommandData); }
+inline StagingBuffer DrawCommand::createStagingBuffer(Renderer* r)  { return r->createDrawCommandStagingBuffer(*this); }
 inline DrawCommand::DrawCommand(Renderer* r) : ItemAllocation(r->drawCommandAllocationManager())  {}
 inline DrawCommand::DrawCommand(DrawCommand&& dc,Renderer* r) : ItemAllocation(std::move(dc),r->drawCommandAllocationManager())  {}
 inline void DrawCommand::assign(DrawCommand&& rhs,Renderer* r)  { ItemAllocation::assign(std::move(rhs),r->drawCommandAllocationManager()); }

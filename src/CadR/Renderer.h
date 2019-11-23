@@ -11,10 +11,12 @@ namespace CadR {
 
 class AttribSizeList;
 class AttribStorage;
+class DrawCommand;
 class Mesh;
 class StagingBuffer;
 class VulkanDevice;
 class VulkanInstance;
+struct DrawCommandGpuData;
 struct PrimitiveSetGpuData;
 
 
@@ -94,9 +96,8 @@ public:
 	CADR_EXPORT const ItemAllocationManager& drawCommandAllocationManager() const;
 	CADR_EXPORT ItemAllocationManager& drawCommandAllocationManager();
 
-	CADR_EXPORT void uploadDrawCommand(Mesh& m,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet=0);
-	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(Mesh& m);
-	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(Mesh& m,size_t firstPrimitiveSet,size_t numPrimitiveSets);
+	CADR_EXPORT void uploadDrawCommand(DrawCommand& dc,const DrawCommandGpuData& drawCommandData);
+	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(DrawCommand& dc);
 
 protected:
 	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();

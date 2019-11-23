@@ -73,6 +73,9 @@ StagingBuffer::StagingBuffer(StagingBuffer&& sb) noexcept
 
 StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs) noexcept
 {
+	// release any allocated resources
+	cleanUp();
+
 	_renderer=rhs._renderer;
 	_stgBuffer=rhs._stgBuffer;
 	_stgMemory=rhs._stgMemory;

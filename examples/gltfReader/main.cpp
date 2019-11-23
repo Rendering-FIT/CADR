@@ -587,12 +587,6 @@ int main(int argc,char** argv) {
 				sb.submit();
 			}
 
-			// generate one PrimitiveSet
-			CadR::StagingBuffer sb=m.createPrimitiveSetStagingBuffer();
-			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
-			b[0]=CadR::PrimitiveSetGpuData(uint32_t(numIndices),0,0,0);
-			sb.submit();
-
 			// select pipeline
 			// (main distinction here is between fixed color materials (no lighting)
 			// and properly lit materials (all light computations))
@@ -814,10 +808,30 @@ int main(int argc,char** argv) {
 					);
 			}
 
+			// generate one PrimitiveSet
+			CadR::StagingBuffer sb=m.createPrimitiveSetStagingBuffer();
+			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
+			b[0]=CadR::PrimitiveSetGpuData{
+					uint32_t(numIndices),  // count
+					0,  // first
+					0,  // vertexOffset
+					0,  // userData
+				};
+			sb.submit();
+
 			// create Drawable
 			drawableDB.emplace_back(&m,nullptr,&stateSetMapIt->second,2);
-			//CadR::Drawable& d=drawableDB.back();
-			//d.d
+			CadR::Drawable& d=drawableDB.back();
+			d.setNumDrawCommands(1);
+			sb=d.createDrawCommandStagingBuffer(0);
+			*reinterpret_cast<CadR::DrawCommandGpuData*>(sb.data())=
+				CadR::DrawCommandGpuData{
+					renderer.primitiveSetAllocation(m.primitiveSetDataID()).startIndex*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+					0,  // matrixListControlOffset4
+					0,  // stateSetOffset4
+					0,  // userData
+				};
+			sb.submit();
 		}
 
 		// upload all staging buffers

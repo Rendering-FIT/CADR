@@ -315,3 +315,24 @@ void Renderer::uploadPrimitiveSets(Mesh& m,std::vector<PrimitiveSetGpuData>&& pr
 	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));
 	sb.submit();
 }
+
+
+StagingBuffer Renderer::createDrawCommandStagingBuffer(DrawCommand& dc)
+{
+	assert(dc.index()!=ItemAllocationManager::invalidID && "Can not create StagingBuffer for DrawCommand with invalid ID.");
+	return StagingBuffer(
+			_drawCommandBuffer,  // dstBuffer
+			dc.index()*sizeof(DrawCommandGpuData),  // dstOffset
+			sizeof(DrawCommandGpuData),  // size
+			this  // renderer
+		);
+}
+
+
+void Renderer::uploadDrawCommand(DrawCommand& dc,const DrawCommandGpuData& drawCommandData)
+{
+	// create StagingBuffer and submit it
+	StagingBuffer sb(createDrawCommandStagingBuffer(dc));
+	memcpy(sb.data(),&drawCommandData,sizeof(DrawCommandGpuData));
+	sb.submit();
+}

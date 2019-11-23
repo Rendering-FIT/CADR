@@ -89,6 +89,11 @@ public:
 
 	Renderer* renderer() const;
 
+	void setNumDrawCommands(uint32_t num);
+	uint32_t numDrawCommands() const;
+	void uploadDrawCommand(uint32_t index,const DrawCommandGpuData& drawCommandData);
+	StagingBuffer createDrawCommandStagingBuffer(uint32_t index);
+
 	DrawCommand*const& drawCommandAllocation(uint32_t index) const;  ///< Returns drawCommand allocation for drawCommand on particular index in drawCommandList.
 	DrawCommand*& drawCommandAllocation(uint32_t index);   ///< Returns drawCommand allocation for drawCommand on particular index in drawCommandList. Modify the returned data only with caution.
 
@@ -120,6 +125,10 @@ inline Drawable::Drawable(Mesh*,MatrixList* matrixList_,StateSet* stateSet_,uint
 	: matrixList(matrixList_), stateSet(stateSet_), drawCommandList(numDrawCommands)  {}
 
 inline Renderer* Drawable::renderer() const  { return stateSet->renderer(); }
+inline void Drawable::setNumDrawCommands(uint32_t num)  { drawCommandList.resize(num); }
+inline uint32_t Drawable::numDrawCommands() const  { return drawCommandList.size(); }
+inline void Drawable::uploadDrawCommand(uint32_t index,const DrawCommandGpuData& drawCommandData)  { renderer()->uploadDrawCommand(drawCommandList[index],drawCommandData); }
+inline StagingBuffer Drawable::createDrawCommandStagingBuffer(uint32_t index)  { return renderer()->createDrawCommandStagingBuffer(drawCommandList[index]); }
 inline DrawCommand*const& Drawable::drawCommandAllocation(uint32_t index) const  { return reinterpret_cast<DrawCommand*const&>(renderer()->drawCommandAllocation(drawCommandList[index].index())); }
 inline DrawCommand*& Drawable::drawCommandAllocation(uint32_t index)  { return reinterpret_cast<DrawCommand*&>(renderer()->drawCommandAllocation(drawCommandList[index].index())); }
 
