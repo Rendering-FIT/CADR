@@ -26,24 +26,34 @@ private:
 	VulkanDevice* _device;
 	uint32_t _graphicsQueueFamily;
 	vk::Queue _graphicsQueue;
+	vk::PhysicalDeviceMemoryProperties _memoryProperties;
 
 	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
-	AttribStorage* _emptyStorage;
+	AttribStorage*   _emptyStorage;
 	vk::Buffer       _indexBuffer;
 	vk::DeviceMemory _indexBufferMemory;
 	vk::Buffer       _primitiveSetBuffer;
 	vk::DeviceMemory _primitiveSetBufferMemory;
 	vk::Buffer       _drawCommandBuffer;
 	vk::DeviceMemory _drawCommandBufferMemory;
+	vk::Buffer       _matrixListControlBuffer;
+	vk::DeviceMemory _matrixListControlBufferMemory;
+	vk::Buffer       _drawIndirectBuffer;
+	vk::DeviceMemory _drawIndirectBufferMemory;
+	vk::Buffer       _stateSetBuffer;
+	vk::DeviceMemory _stateSetBufferMemory;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager<Mesh> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
 	ItemAllocationManager        _drawCommandAllocationManager;
 	vk::CommandPool _stateSetCommandPool;
 
-	vk::PhysicalDeviceMemoryProperties _memoryProperties;
 	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
 	std::list<std::tuple<vk::Buffer,vk::DeviceMemory>> _objectsToDeleteAfterCopyOperation;
+
+	vk::ShaderModule _processDrawCommandsShader;
+	vk::PipelineCache _pipelineCache;
+	vk::Pipeline _processDrawCommandsPipeline;
 
 	static Renderer* _instance;
 
@@ -58,10 +68,16 @@ public:
 	CADR_EXPORT ~Renderer();
 
 	CADR_EXPORT VulkanDevice* device() const;
+	CADR_EXPORT uint32_t graphicsQueueFamily() const;
+	CADR_EXPORT vk::Queue graphicsQueue() const;
+	CADR_EXPORT const vk::PhysicalDeviceMemoryProperties& memoryProperties() const;
+
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
 	CADR_EXPORT vk::Buffer drawCommandBuffer() const;
+	CADR_EXPORT vk::Buffer matrixListControlBuffer() const;
 	CADR_EXPORT vk::CommandPool stateSetCommandPool() const;
+	CADR_EXPORT vk::PipelineCache pipelineCache() const;
 
 	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
 	CADR_EXPORT std::map<AttribSizeList,std::list<AttribStorage>>& getAttribStorages();
@@ -108,10 +124,15 @@ protected:
 inline Renderer* Renderer::get()  { return _instance; }
 inline void Renderer::set(Renderer* r)  { _instance=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
+inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
+inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }
+inline const vk::PhysicalDeviceMemoryProperties& Renderer::memoryProperties() const  { return _memoryProperties; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
 inline vk::Buffer Renderer::drawCommandBuffer() const  { return _drawCommandBuffer; }
+inline vk::Buffer Renderer::matrixListControlBuffer() const  { return _matrixListControlBuffer; }
 inline vk::CommandPool Renderer::stateSetCommandPool() const  { return _stateSetCommandPool; }
+inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCache; }
 inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }

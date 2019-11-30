@@ -3,6 +3,9 @@ set(LIB_NAME CadR)
 set(LIB_NAME_UPPER)
 string(TOUPPER ${LIB_NAME} LIB_NAME_UPPER)
 
+# include CadR macros
+include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)
+
 # linkage
 if(CADR_DYNAMIC_LINKAGE)
    set(CADR_USER_DEFINED_DYNAMIC_OR_STATIC "SHARED")
@@ -54,12 +57,19 @@ set(CADR_SOURCES
     VulkanLibrary.cpp
    )
 
+# shaders
+set(CADR_SHADERS
+    shaders/processDrawCommands.comp
+   )
+
 # CADR library
+add_shaders("${CADR_SHADERS}" CADR_SHADER_DEPS)
 add_library(${LIB_NAME}
     ${CADR_USER_DEFINED_DYNAMIC_OR_STATIC}
     ${CADR_PUBLIC_HEADERS}
     ${CADR_PRIVATE_HEADERS}
     ${CADR_SOURCES}
+    ${CADR_SHADER_DEPS}
     )
 
 # dependencies
@@ -78,6 +88,7 @@ set_target_properties(${LIB_NAME} PROPERTIES
    INCLUDE_DIRECTORIES "${parent_dir}"
    INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
    )
+target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # headers installation
 install(FILES

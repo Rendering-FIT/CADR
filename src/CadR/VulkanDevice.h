@@ -70,11 +70,19 @@ public:
 	PFN_vkDestroyFramebuffer vkDestroyFramebuffer;
 	PFN_vkCreateShaderModule vkCreateShaderModule;
 	PFN_vkDestroyShaderModule vkDestroyShaderModule;
+	PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout;
+	PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout;
+	PFN_vkCreateDescriptorPool vkCreateDescriptorPool;
+	PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool;
+	PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
+	PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets;
+	PFN_vkFreeDescriptorSets vkFreeDescriptorSets;
 	PFN_vkCreatePipelineCache vkCreatePipelineCache;
 	PFN_vkDestroyPipelineCache vkDestroyPipelineCache;
 	PFN_vkCreatePipelineLayout vkCreatePipelineLayout;
 	PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout;
 	PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines;
+	PFN_vkCreateComputePipelines vkCreateComputePipelines;
 	PFN_vkDestroyPipeline vkDestroyPipeline;
 	PFN_vkCreateSemaphore vkCreateSemaphore;
 	PFN_vkDestroySemaphore vkDestroySemaphore;
@@ -86,6 +94,7 @@ public:
 	PFN_vkEndCommandBuffer vkEndCommandBuffer;
 	PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
 	PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
+	PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
 	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
 	PFN_vkCreateFence vkCreateFence;
 	PFN_vkDestroyFence vkDestroyFence;
