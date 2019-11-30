@@ -19,13 +19,13 @@ protected:
 
 public:
 
-	static const std::experimental::filesystem::path& defaultPath();
+	static const std::filesystem::path& defaultPath();
 
 	VulkanLibrary(nullptr_t);
-	VulkanLibrary(const std::experimental::filesystem::path& libPath = defaultPath());
+	VulkanLibrary(const std::filesystem::path& libPath = defaultPath());
 	~VulkanLibrary();
 
-	void init(const std::experimental::filesystem::path& libPath = defaultPath());
+	void init(const std::filesystem::path& libPath = defaultPath());
 	void reset();
 	bool initialized() const;
 
@@ -52,9 +52,9 @@ private:
 
 
 // inline and template methods
-inline const std::experimental::filesystem::path& VulkanLibrary::defaultPath()  { return _defaultPath; }
+inline const std::filesystem::path& VulkanLibrary::defaultPath()  { return _defaultPath; }
 inline VulkanLibrary::VulkanLibrary(nullptr_t)  { vkGetInstanceProcAddr=nullptr; vkCreateInstance=nullptr; }
-inline VulkanLibrary::VulkanLibrary(const std::experimental::filesystem::path& libPath)  { init(libPath); }
+inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath)  { init(libPath); }
 inline VulkanLibrary::~VulkanLibrary()  { reset(); }
 
 template<typename T> T VulkanLibrary::getProcAddr(const char* name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name)); }

@@ -5,7 +5,7 @@ find_package_with_message(nlohmann_json nlohmann_json::nlohmann_json)
 
 
 # glTFreader project
-set(APP_NAME glTFreader)
+set(APP_NAME gltfReader)
 project(${APP_NAME})
 
 set(APP_SOURCES

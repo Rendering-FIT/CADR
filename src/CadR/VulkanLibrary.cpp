@@ -7,17 +7,16 @@
 #endif
 
 using namespace std;
-using namespace std::experimental::filesystem;
 using namespace CadR;
 
 #ifdef _WIN32
-const path VulkanLibrary::_defaultPath = "vulkan-1.dll";
+const filesystem::path VulkanLibrary::_defaultPath = "vulkan-1.dll";
 #else
-const path VulkanLibrary::_defaultPath = "libvulkan.so.1";
+const filesystem::path VulkanLibrary::_defaultPath = "libvulkan.so.1";
 #endif
 
 
-void VulkanLibrary::init(const std::experimental::filesystem::path& libPath)
+void VulkanLibrary::init(const std::filesystem::path& libPath)
 {
 	// avoid multiple initialization attempts
 	if(_lib)
