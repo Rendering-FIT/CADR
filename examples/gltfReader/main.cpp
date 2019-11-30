@@ -337,17 +337,7 @@ int main(int argc,char** argv) {
 				device  // dispatch
 			);
 
-		// pipeline stuff
-		auto pipelineCache=
-			device->createPipelineCacheUnique(
-				vk::PipelineCacheCreateInfo(
-					vk::PipelineCacheCreateFlags(),  // flags
-					0,       // initialDataSize
-					nullptr  // pInitialData
-				),
-				nullptr,  // allocator
-				device  // dispatch
-			);
+		// pipeline layout
 		auto pipelineLayout=
 			device->createPipelineLayoutUnique(
 				vk::PipelineLayoutCreateInfo{
@@ -617,7 +607,7 @@ int main(int argc,char** argv) {
 				window.resizeCallbacks.append(
 						[&device,&window,&ss,graphicsQueueFamily,
 						&coordinateShader,&unknownMaterialShader,
-						&pipelineCache,&pipelineLayout,&meshDB]()
+						&renderer,&pipelineLayout,&meshDB]()
 						{
 
 							cout<<"Resizing pipeline."<<endl;
@@ -625,7 +615,7 @@ int main(int argc,char** argv) {
 							// construct new pipeline
 							ss.setPipeline(
 								device->createGraphicsPipeline(
-									pipelineCache.get(),
+									renderer.pipelineCache(),
 									vk::GraphicsPipelineCreateInfo(
 										vk::PipelineCreateFlags(),  // flags
 										2,  // stageCount
@@ -734,7 +724,7 @@ int main(int argc,char** argv) {
 										pipelineLayout.get(),  // layout
 										window.renderPass(),  // renderPass
 										0,  // subpass
-										vk::Pipeline(nullptr),  // basePipelineHandle
+										nullptr,  // basePipelineHandle
 										-1 // basePipelineIndex
 									),
 									nullptr,  // allocator
@@ -746,8 +736,8 @@ int main(int argc,char** argv) {
 								device->allocateCommandBuffers(
 									vk::CommandBufferAllocateInfo(
 										ss.renderer()->stateSetCommandPool(),  // commandPool
-										vk::CommandBufferLevel::ePrimary,  // level
-										window.imageCount()                // commandBufferCount
+										vk::CommandBufferLevel::eSecondary,    // level
+										window.imageCount()                    // commandBufferCount
 									),
 									device  // dispatch
 								)));
@@ -757,20 +747,16 @@ int main(int argc,char** argv) {
 								vk::CommandBuffer cb=ss.commandBuffer(i);
 								cb.begin(
 									vk::CommandBufferBeginInfo(
-										vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-										nullptr  // pInheritanceInfo
+										vk::CommandBufferUsageFlagBits::eRenderPassContinue | vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+										&(const vk::CommandBufferInheritanceInfo&)vk::CommandBufferInheritanceInfo(  // pInheritanceInfo
+											window.renderPass(),       // renderPass
+											0,                         // subpass
+											window.framebuffers()[i],  // framebuffer
+											VK_FALSE,                  // occlusionOqueryEnable
+											vk::QueryControlFlags(),   // queryFlags
+											vk::QueryPipelineStatisticFlags()  // pipelineStatistics
+										)
 									),
-									device  // dispatch
-								);
-								cb.beginRenderPass(
-									vk::RenderPassBeginInfo(
-										window.renderPass(),       // renderPass
-										window.framebuffers()[i],  // framebuffer
-										vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
-										1,                         // clearValueCount
-										&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
-									),
-									vk::SubpassContents::eInline,  // contents
 									device  // dispatch
 								);
 								cb.bindPipeline(vk::PipelineBindPoint::eGraphics,ss.pipeline(),device);
@@ -799,7 +785,6 @@ int main(int argc,char** argv) {
 										device  // dispatch
 									);
 								}
-								cb.endRenderPass(device);
 								cb.end(device);
 							}
 
@@ -855,6 +840,24 @@ int main(int argc,char** argv) {
 				device  // dispatch
 			);
 
+		// primaryCommandBuffers
+		vector<vk::UniqueHandle<vk::CommandBuffer,CadR::VulkanDevice>> primaryCommandBuffers;
+		window.resizeCallbacks.append(
+			[&device,&renderer,&window,&primaryCommandBuffers]() {
+				primaryCommandBuffers=
+					device->allocateCommandBuffersUnique<std::allocator<vk::UniqueHandle<vk::CommandBuffer,CadR::VulkanDevice>>>(
+						vk::CommandBufferAllocateInfo(
+							renderer.stateSetCommandPool(),    // commandPool
+							vk::CommandBufferLevel::ePrimary,  // level
+							window.imageCount()                // commandBufferCount
+						),
+						device  // dispatch
+					);
+			},
+			nullptr
+		);
+
+
 		// main loop
 		while(window.processEvents()) {
 			if(!window.updateSize())
@@ -865,18 +868,42 @@ int main(int argc,char** argv) {
 			if(!success)
 				continue;
 
-			// get all CommandBuffers to execute
-			vector<vk::CommandBuffer> commandBuffers;
+			// record primary command buffer
+			vk::CommandBuffer cb=primaryCommandBuffers[imageIndex].get();
+			cb.begin(
+				vk::CommandBufferBeginInfo(
+					vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+					nullptr  // pInheritanceInfo
+				),
+				device  // dispatch
+			);
+			cb.beginRenderPass(
+				vk::RenderPassBeginInfo(
+					window.renderPass(),       // renderPass
+					window.framebuffers()[imageIndex],  // framebuffer
+					vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
+					1,                         // clearValueCount
+					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
+				),
+				vk::SubpassContents::eSecondaryCommandBuffers,  // contents
+				device  // dispatch
+			);
+
+			// execute all StateSets
+			vector<vk::CommandBuffer> secondaryCommandBuffers;
 			for(auto& pipelineFamily:pipelineDB)
 				for(auto& ssIt:pipelineFamily)
-					commandBuffers.emplace_back(ssIt.second.commandBuffer(imageIndex));
+					secondaryCommandBuffers.emplace_back(ssIt.second.commandBuffer(imageIndex));
+			cb.executeCommands(secondaryCommandBuffers,device);
+			cb.endRenderPass(device);
+			cb.end(device);
 
 			// render
 			graphicsQueue.submit(
 				vk::SubmitInfo(
 					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
 					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					uint32_t(commandBuffers.size()),commandBuffers.data(),  // commandBufferCount+pCommandBuffers
+					1,&cb,                               // commandBufferCount+pCommandBuffers
 					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
 				),
 				vk::Fence(nullptr),  // fence
