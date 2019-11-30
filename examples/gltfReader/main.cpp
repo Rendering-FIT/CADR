@@ -9,11 +9,11 @@
 #include "Window.h"
 #include <vulkan/vulkan.hpp>
 #include <nlohmann/json.hpp>
-#if _WIN32
+#if _WIN32 // MSVC 2017 and 2019
 #include <filesystem>
 #else // gcc 7.4.0 (Ubuntu 18.04) does support path only as experimental
 #include <experimental/filesystem>
-using namespace std::experimental;
+namespace std { namespace filesystem { using std::experimental::filesystem::path; } }
 #endif
 #include <fstream>
 #include <iostream>

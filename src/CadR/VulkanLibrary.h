@@ -1,6 +1,11 @@
 #pragma once
 
+#if _WIN32 // MSVC 2017 and 2019
+#include <filesystem>
+#else // gcc 7.4.0 (Ubuntu 18.04) does support path only as experimental
 #include <experimental/filesystem>
+namespace std { namespace filesystem { using std::experimental::filesystem::path; } }
+#endif
 #include <vulkan/vulkan.hpp>
 #include <CadR/Export.h>
 
@@ -10,7 +15,7 @@ namespace CadR {
 class CADR_EXPORT VulkanLibrary final {
 protected:
 	void* _lib = nullptr;
-	static const std::experimental::filesystem::path _defaultPath;
+	static const std::filesystem::path _defaultPath;
 
 public:
 
