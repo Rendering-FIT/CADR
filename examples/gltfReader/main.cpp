@@ -747,7 +747,7 @@ int main(int argc,char** argv) {
 								vk::CommandBuffer cb=ss.commandBuffer(i);
 								cb.begin(
 									vk::CommandBufferBeginInfo(
-										vk::CommandBufferUsageFlagBits::eRenderPassContinue | vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+										vk::CommandBufferUsageFlagBits::eRenderPassContinue,  // flags
 										&(const vk::CommandBufferInheritanceInfo&)vk::CommandBufferInheritanceInfo(  // pInheritanceInfo
 											window.renderPass(),       // renderPass
 											0,                         // subpass
@@ -872,7 +872,7 @@ int main(int argc,char** argv) {
 			vk::CommandBuffer cb=primaryCommandBuffers[imageIndex].get();
 			cb.begin(
 				vk::CommandBufferBeginInfo(
-					vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+					vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 					nullptr  // pInheritanceInfo
 				),
 				device  // dispatch
