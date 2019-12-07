@@ -51,9 +51,12 @@ private:
 	vk::CommandBuffer _uploadingCommandBuffer;
 	std::list<std::tuple<vk::Buffer,vk::DeviceMemory>> _objectsToDeleteAfterCopyOperation;
 
-	vk::ShaderModule _processDrawCommandsShader;
 	vk::PipelineCache _pipelineCache;
-	vk::Pipeline _processDrawCommandsPipeline;
+	vk::ShaderModule _drawCommandShader;
+	vk::DescriptorPool _drawCommandDescriptorPool;
+	vk::DescriptorSet _drawCommandDescriptorSet;
+	vk::PipelineLayout _drawCommandPipelineLayout;
+	vk::Pipeline _drawCommandPipeline;
 
 	static Renderer* _instance;
 
@@ -76,8 +79,14 @@ public:
 	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
 	CADR_EXPORT vk::Buffer drawCommandBuffer() const;
 	CADR_EXPORT vk::Buffer matrixListControlBuffer() const;
+	CADR_EXPORT vk::Buffer drawIndirectBuffer() const;
+	CADR_EXPORT vk::Buffer stateSetBuffer() const;
 	CADR_EXPORT vk::CommandPool stateSetCommandPool() const;
+
 	CADR_EXPORT vk::PipelineCache pipelineCache() const;
+	CADR_EXPORT vk::DescriptorSet drawCommandDescriptorSet() const;
+	CADR_EXPORT vk::PipelineLayout drawCommandPipelineLayout() const;
+	CADR_EXPORT vk::Pipeline drawCommandPipeline() const;
 
 	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
 	CADR_EXPORT std::map<AttribSizeList,std::list<AttribStorage>>& getAttribStorages();
@@ -131,8 +140,13 @@ inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
 inline vk::Buffer Renderer::drawCommandBuffer() const  { return _drawCommandBuffer; }
 inline vk::Buffer Renderer::matrixListControlBuffer() const  { return _matrixListControlBuffer; }
+inline vk::Buffer Renderer::drawIndirectBuffer() const  { return _drawIndirectBuffer; }
+inline vk::Buffer Renderer::stateSetBuffer() const  { return _stateSetBuffer; }
 inline vk::CommandPool Renderer::stateSetCommandPool() const  { return _stateSetCommandPool; }
 inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCache; }
+inline vk::DescriptorSet Renderer::drawCommandDescriptorSet() const  { return _drawCommandDescriptorSet; }
+inline vk::PipelineLayout Renderer::drawCommandPipelineLayout() const  { return _drawCommandPipelineLayout; }
+inline vk::Pipeline Renderer::drawCommandPipeline() const  { return _drawCommandPipeline; }
 inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
 inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }

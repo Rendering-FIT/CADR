@@ -385,7 +385,7 @@ int main(int argc,char** argv) {
 
 			// attributes
 			CadR::AttribSizeList attribSizeList;
-			CadR::AttribFormatList attribFormatList;
+			std::vector<vk::Format> attribFormatList;
 			vector<tuple<filesystem::path,size_t>> attribUriAndOffsetList;
 			unsigned numProcessedAttributes=0;
 			for(string name : {"POSITION","NORMAL","COLOR_0","TEXCOORD_0"}) {
@@ -601,13 +601,14 @@ int main(int argc,char** argv) {
 			if(newStateSetCreated) {
 
 				CadR::StateSet& ss=stateSetMapIt->second;
-				ss.setAttribSizeList(std::move(attribSizeList));
-				ss.setAttribFormatList(std::move(attribFormatList));
+				ss.setAttribStorage(m.attribStorage());
 
 				window.resizeCallbacks.append(
-						[&device,&window,&ss,graphicsQueueFamily,
+						[&device,&window,&ss,
 						&coordinateShader,&unknownMaterialShader,
-						&renderer,&pipelineLayout,&meshDB]()
+						&renderer,&pipelineLayout,
+						attribSizeList=std::move(attribSizeList),
+						attribFormatList=std::move(attribFormatList)]()
 						{
 
 							cout<<"Resizing pipeline."<<endl;
@@ -641,7 +642,7 @@ int main(int argc,char** argv) {
 											array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
 												vk::VertexInputBindingDescription(
 													0,  // binding
-													ss.attribSizeList()[0],  // stride
+													attribSizeList[0],  // stride
 													vk::VertexInputRate::eVertex  // inputRate
 												),
 											}.data(),
@@ -650,7 +651,7 @@ int main(int argc,char** argv) {
 												vk::VertexInputAttributeDescription(
 													0,  // location
 													0,  // binding
-													ss.attribFormatList()[0],  // format
+													attribFormatList[0],  // format
 													0   // offset
 												),
 											}.data()
@@ -729,64 +730,8 @@ int main(int argc,char** argv) {
 									),
 									nullptr,  // allocator
 									device  // dispatch
-								));
-
-							// recreate command buffers
-							ss.setCommandBuffers(std::move(
-								device->allocateCommandBuffers(
-									vk::CommandBufferAllocateInfo(
-										ss.renderer()->stateSetCommandPool(),  // commandPool
-										vk::CommandBufferLevel::eSecondary,    // level
-										window.imageCount()                    // commandBufferCount
-									),
-									device  // dispatch
-								)));
-
-							// record command buffers
-							for(size_t i=0,c=window.imageCount(); i<c; i++) {
-								vk::CommandBuffer cb=ss.commandBuffer(i);
-								cb.begin(
-									vk::CommandBufferBeginInfo(
-										vk::CommandBufferUsageFlagBits::eRenderPassContinue,  // flags
-										&(const vk::CommandBufferInheritanceInfo&)vk::CommandBufferInheritanceInfo(  // pInheritanceInfo
-											window.renderPass(),       // renderPass
-											0,                         // subpass
-											window.framebuffers()[i],  // framebuffer
-											VK_FALSE,                  // occlusionOqueryEnable
-											vk::QueryControlFlags(),   // queryFlags
-											vk::QueryPipelineStatisticFlags()  // pipelineStatistics
-										)
-									),
-									device  // dispatch
-								);
-								cb.bindPipeline(vk::PipelineBindPoint::eGraphics,ss.pipeline(),device);
-								for(auto& m:meshDB) {
-									cb.bindIndexBuffer(
-										m.renderer()->indexBuffer(),  // buffer
-										0,  // offset
-										vk::IndexType::eUint32,  // indexType
-										device  // dispatch
-									);
-									cb.bindVertexBuffers(
-										0,  // firstBinding
-										1,  // bindingCount
-										m.attribStorage()->bufferList().data(),  // pBuffers
-										array<const vk::DeviceSize,1>{0}.data(),  // pOffsets
-										device  // dispatch
-									);
-									auto& a=m.attribAllocation();
-									auto& i=m.indexAllocation();
-									cb.drawIndexed(  // draw a single triangle
-										i.numItems,  // indexCount
-										1,  // instanceCount
-										i.startIndex,  // firstIndex
-										a.startIndex,  // vertexOffset
-										0,  // firstInstance
-										device  // dispatch
-									);
-								}
-								cb.end(device);
-							}
+								)
+							);
 
 						},
 						nullptr
@@ -877,24 +822,50 @@ int main(int argc,char** argv) {
 				),
 				device  // dispatch
 			);
+			cb.bindPipeline(vk::PipelineBindPoint::eCompute,renderer.drawCommandPipeline(),device);
+			cb.bindDescriptorSets(
+				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
+				renderer.drawCommandPipelineLayout(),  // layout
+				0,  // firstSet
+				renderer.drawCommandDescriptorSet(),  // descriptorSets
+				nullptr,  // dynamicOffsets
+				device  // dispatch
+			);
+			cb.dispatch(2,1,1,device);
+			cb.pipelineBarrier(
+				vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
+				vk::PipelineStageFlagBits::eDrawIndirect,  // dstStageMask
+				vk::DependencyFlags(),  // dependencyFlags
+				vk::MemoryBarrier(  // memoryBarriers
+					vk::AccessFlagBits::eShaderWrite,  // srcAccessMask
+					vk::AccessFlagBits::eIndirectCommandRead  // dstAccessMask
+				),
+				nullptr,  // bufferMemoryBarriers
+				nullptr,  // imageMemoryBarriers
+				device  // dispatch
+			);
 			cb.beginRenderPass(
 				vk::RenderPassBeginInfo(
 					window.renderPass(),       // renderPass
 					window.framebuffers()[imageIndex],  // framebuffer
 					vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
-					1,                         // clearValueCount
+					1,  // clearValueCount
 					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
 				),
-				vk::SubpassContents::eSecondaryCommandBuffers,  // contents
+				vk::SubpassContents::eInline,  // contents
+				device  // dispatch
+			);
+			cb.bindIndexBuffer(
+				renderer.indexBuffer(),  // buffer
+				0,  // offset
+				vk::IndexType::eUint32,  // indexType
 				device  // dispatch
 			);
 
 			// execute all StateSets
-			vector<vk::CommandBuffer> secondaryCommandBuffers;
 			for(auto& pipelineFamily:pipelineDB)
 				for(auto& ssIt:pipelineFamily)
-					secondaryCommandBuffers.emplace_back(ssIt.second.commandBuffer(imageIndex));
-			cb.executeCommands(secondaryCommandBuffers,device);
+					ssIt.second.recordToCommandBuffer(cb);
 			cb.endRenderPass(device);
 			cb.end(device);
 

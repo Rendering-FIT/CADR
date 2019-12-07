@@ -21,7 +21,7 @@ struct DrawCommandGpuData final {
 	uint32_t primitiveSetOffset4;
 	uint32_t matrixListControlOffset4;
 	uint32_t stateSetOffset4;
-	uint32_t userData;  ///< Provides 16-byte structure alignment and opportunuty to store user data.
+	uint32_t userData;  ///< Provides 16-byte structure alignment.
 
 	DrawCommandGpuData()  {}
 	DrawCommandGpuData(uint32_t primitiveOffset4,uint32_t matrixListControlOffset4,uint32_t stateSetOffset4);

@@ -187,7 +187,25 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			*_device  // dispatch
 		);
 
-	// descriptor set
+	// descriptor pool
+	_drawCommandDescriptorPool=
+		(*_device)->createDescriptorPool(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				1,  // poolSizeCount
+				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					vk::DescriptorPoolSize(
+						vk::DescriptorType::eStorageBuffer,  // type
+						5  // descriptorCount
+					),
+				}.data()
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
+	// descriptor set layout
 	auto descriptorSetLayout=
 		(*_device)->createDescriptorSetLayoutUnique(
 			vk::DescriptorSetLayoutCreateInfo(  // createInfo
@@ -234,26 +252,12 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			nullptr,  // allocator
 			*_device  // dispatch
 		);
-	auto descriptorPool=
-		(*_device)->createDescriptorPoolUnique(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlags(),  // flags
-				1,  // maxSets
-				1,  // poolSizeCount
-				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
-					vk::DescriptorPoolSize(
-						vk::DescriptorType::eStorageBuffer,  // type
-						5  // descriptorCount
-					),
-				}.data()
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
-		);
-	auto descriptorSet=
+
+	// allocate and update descriptor set
+	_drawCommandDescriptorSet=
 		(*_device)->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				descriptorPool.get(),  // descriptorPool
+				_drawCommandDescriptorPool,  // descriptorPool
 				1,  // descriptorSetCount
 				&descriptorSetLayout.get()  // pSetLayouts
 			),
@@ -261,7 +265,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 		)[0];
 	(*_device)->updateDescriptorSets(
 		vk::WriteDescriptorSet(  // descriptorWrites
-			descriptorSet,  // dstSet
+			_drawCommandDescriptorSet,  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
 			5,  // descriptorCount
@@ -301,7 +305,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	);
 
 	// processDrawCommands shader and pipeline stuff
-	_processDrawCommandsShader=
+	_drawCommandShader=
 		(*_device)->createShaderModule(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
@@ -321,8 +325,8 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			nullptr,  // allocator
 			*_device  // dispatch
 		);
-	auto pipelineLayout=
-		(*_device)->createPipelineLayoutUnique(
+	_drawCommandPipelineLayout=
+		(*_device)->createPipelineLayout(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				1,       // setLayoutCount
@@ -333,7 +337,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			nullptr,  // allocator
 			*_device  // dispatch
 		);
-	_processDrawCommandsPipeline=
+	_drawCommandPipeline=
 		(*_device)->createComputePipeline(
 			_pipelineCache,  // pipelineCache
 			vk::ComputePipelineCreateInfo(  // createInfo
@@ -341,11 +345,11 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::PipelineShaderStageCreateInfo(  // stage
 					vk::PipelineShaderStageCreateFlags(),  // flags
 					vk::ShaderStageFlagBits::eCompute,  // stage
-					_processDrawCommandsShader,  // module
+					_drawCommandShader,  // module
 					"main",  // pName
 					nullptr  // pSpecializationInfo
 				),
-				pipelineLayout.get(),  // layout
+				_drawCommandPipelineLayout,  // layout
 				nullptr,  // basePipelineHandle
 				-1  // basePipelineIndex
 			),
@@ -390,8 +394,10 @@ Renderer::~Renderer()
 	assert(_drawCommandAllocationManager.numItems()==0 && "Renderer::_drawCommandAllocationManager still contains elements on Renderer destruction.");
 
 	// destroy shaders, pipelines,...
-	(*_device)->destroy(_processDrawCommandsShader,nullptr,*_device);
-	(*_device)->destroy(_processDrawCommandsPipeline,nullptr,*_device);
+	(*_device)->destroy(_drawCommandShader,nullptr,*_device);
+	(*_device)->destroy(_drawCommandDescriptorPool,nullptr,*_device);
+	(*_device)->destroy(_drawCommandPipelineLayout,nullptr,*_device);
+	(*_device)->destroy(_drawCommandPipeline,nullptr,*_device);
 	(*_device)->destroy(_pipelineCache,nullptr,*_device);
 
 	// destroy StateSet CommandPool

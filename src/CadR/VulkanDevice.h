@@ -99,10 +99,14 @@ public:
 	PFN_vkCreateFence vkCreateFence;
 	PFN_vkDestroyFence vkDestroyFence;
 	PFN_vkCmdBindPipeline vkCmdBindPipeline;
+	PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets;
 	PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer;
 	PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers;
+	PFN_vkCmdDrawIndexedIndirect vkCmdDrawIndexedIndirect;
 	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 	PFN_vkCmdDraw vkCmdDraw;
+	PFN_vkCmdDispatch vkCmdDispatch;
+	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
 	PFN_vkQueueSubmit vkQueueSubmit;
 	PFN_vkWaitForFences vkWaitForFences;
 	PFN_vkQueueWaitIdle vkQueueWaitIdle;
