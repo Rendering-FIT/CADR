@@ -1,10 +1,7 @@
 #pragma once
 
 #include <CadR/CallbackList.h>
-#ifdef _WIN32
-# include <windows.h>
-# define VK_USE_PLATFORM_WIN32_KHR
-#else
+#ifndef _WIN32
 # include <X11/Xlib.h>
 # define VK_USE_PLATFORM_XLIB_KHR
 #endif
@@ -27,7 +24,7 @@ namespace CadUI {
 class Window final {
 protected:
 #ifdef _WIN32
-	HWND window=nullptr;
+	void* window=nullptr;  ///< Window handle. HWND type is replaced here by void* to avoid the need of include windows.h and issues coming out of it.
 #else
 	Display* display=nullptr;
 	::Window window=0;

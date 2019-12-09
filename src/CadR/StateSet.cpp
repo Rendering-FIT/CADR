@@ -33,7 +33,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb) const
 	vector<vk::DeviceSize> zeros(numAttributes,0);
 	cb.bindVertexBuffers(
 		0,  // firstBinding
-		numAttributes,  // bindingCount
+		uint32_t(numAttributes),  // bindingCount
 		_attribStorage->bufferList().data(),  // pBuffers
 		zeros.data(),  // pOffsets
 		*device  // dispatch
@@ -43,7 +43,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb) const
 	cb.drawIndexedIndirect(
 		_renderer->drawIndirectBuffer(),  // buffer
 		0,  // offset
-		_numDrawCommands,  // drawCount
+		uint32_t(_numDrawCommands),  // drawCount
 		sizeof(vk::DrawIndexedIndirectCommand),  // stride
 		*device  // dispatch
 	);

@@ -1,8 +1,10 @@
+#ifdef _WIN32
+# define VK_USE_PLATFORM_WIN32_KHR
+#endif
 #include "Window.h"
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
-#ifdef _WIN32
-#else
+#ifndef _WIN32
 # include <X11/Xutil.h>
 #endif
 #include <stdexcept>
@@ -127,12 +129,21 @@ void CadUI::Window::create(CadR::VulkanInstance& instance)
 	}
 
 	// show window
-	ShowWindow(window,SW_SHOWDEFAULT);
+	ShowWindow(reinterpret_cast<HWND>(window),SW_SHOWDEFAULT);
 
 	// create surface
 	_instance=&instance;
 	vkCreateWin32SurfaceKHR=_instance->getProcAddr<PFN_vkCreateWin32SurfaceKHR>("vkCreateWin32SurfaceKHR");
-	_surface=(*_instance)->createWin32SurfaceKHR(vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window),nullptr,*this);
+	_surface=
+		(*_instance)->createWin32SurfaceKHR(
+			vk::Win32SurfaceCreateInfoKHR(
+				vk::Win32SurfaceCreateFlagsKHR(),  // flags
+				wc.hInstance,                      // hinstance
+				reinterpret_cast<HWND>(window)     // hwnd
+			),
+			nullptr,  // allocator
+			*this  // dispatch
+		);
 
 #else
 
@@ -180,7 +191,7 @@ void CadUI::Window::destroy()
 
 #ifdef _WIN32
 	if(window) {
-		DestroyWindow(window);
+		DestroyWindow(reinterpret_cast<HWND>(window));
 		UnregisterClass("RenderingWindow",GetModuleHandle(NULL));
 		window=nullptr;
 	}
