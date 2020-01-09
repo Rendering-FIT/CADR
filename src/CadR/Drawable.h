@@ -26,6 +26,7 @@ protected:
 	};
 
 	Renderer* renderer() const;
+	StateSet* stateSet() const;
 	void secureSpace(uint32_t newSize);
 
 public:
@@ -84,13 +85,12 @@ protected:
 	DrawCommandList _drawCommandList;
 public:
 
-
-	Drawable(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t numDrawCommands);
+	Drawable(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
 	Drawable(Drawable&& other) = default;
 	Drawable& operator=(Drawable&& rhs);
-	~Drawable();
+	~Drawable() = default;
 
-	void reset(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t numDrawCommands);
+	void reset(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
 
 	Renderer* renderer() const;
 	MatrixList* matrixList() const;
@@ -131,19 +131,18 @@ typedef boost::intrusive::list<
 #include <CadR/StateSet.h>
 namespace CadR {
 
-inline Drawable::Drawable(Mesh*,MatrixList* matrixList,StateSet* stateSet,uint32_t numDrawCommands)
-	: _matrixList(matrixList), _stateSet(stateSet), _drawCommandList(numDrawCommands)  { stateSet->increaseNumDrawCommands(numDrawCommands); }
+inline Drawable::Drawable(Mesh*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
+	: _matrixList(matrixList), _stateSet(stateSet), _drawCommandList(drawCommandsCapacity)  {}
 inline Drawable& Drawable::operator=(Drawable&& rhs)
-	{ _stateSet->decreaseNumDrawCommands(numDrawCommands()); _matrixList=rhs._matrixList; _stateSet=rhs._stateSet; _drawCommandList=std::move(rhs._drawCommandList); return *this; }
-inline Drawable::~Drawable()  { _stateSet->decreaseNumDrawCommands(numDrawCommands()); }
-inline void Drawable::reset(Mesh*,MatrixList* matrixList,StateSet* stateSet,uint32_t numDrawCommands)
-	{ _stateSet->decreaseNumDrawCommands(this->numDrawCommands()); _matrixList=matrixList; _stateSet=stateSet; _drawCommandList.resize(numDrawCommands); stateSet->increaseNumDrawCommands(numDrawCommands); }
+	{ _matrixList=rhs._matrixList; _stateSet=rhs._stateSet; _drawCommandList=std::move(rhs._drawCommandList); return *this; }
+inline void Drawable::reset(Mesh*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
+	{ _drawCommandList.clear(); _matrixList=matrixList; _stateSet=stateSet; _drawCommandList.setCapacity(drawCommandsCapacity); }
 
 inline Renderer* Drawable::renderer() const  { return _stateSet->renderer(); }
 inline MatrixList* Drawable::matrixList() const  { return _matrixList; }
 inline StateSet* Drawable::stateSet() const  { return _stateSet; }
 inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
-inline void Drawable::setNumDrawCommands(uint32_t num)  { _stateSet->increaseNumDrawCommands(num-numDrawCommands()); _drawCommandList.resize(num); }
+inline void Drawable::setNumDrawCommands(uint32_t num)  { _drawCommandList.resize(num); }
 inline uint32_t Drawable::numDrawCommands() const  { return _drawCommandList.size(); }
 inline uint32_t Drawable::allocAndUploadDrawCommand(const DrawCommandGpuData& drawCommandData)  { uint32_t i=numDrawCommands(); setNumDrawCommands(i+1); uploadDrawCommand(i,drawCommandData); return i; }
 inline void Drawable::uploadDrawCommand(uint32_t index,const DrawCommandGpuData& drawCommandData)  { renderer()->uploadDrawCommand(_drawCommandList[index],drawCommandData); }
@@ -152,6 +151,7 @@ inline DrawCommand*const& Drawable::drawCommandAllocation(uint32_t index) const 
 inline DrawCommand*& Drawable::drawCommandAllocation(uint32_t index)  { return reinterpret_cast<DrawCommand*&>(renderer()->drawCommandAllocation(_drawCommandList[index].index())); }
 
 inline Renderer* DrawCommandList::renderer() const  { return reinterpret_cast<const Drawable*>(reinterpret_cast<const char*>(this)-size_t(&static_cast<Drawable*>(nullptr)->_drawCommandList))->renderer(); }
+inline StateSet* DrawCommandList::stateSet() const  { return reinterpret_cast<const Drawable*>(reinterpret_cast<const char*>(this)-size_t(&static_cast<Drawable*>(nullptr)->_drawCommandList))->_stateSet; }
 inline DrawCommandList::DrawCommandList() : _capacity(builtInCapacity), _size(0)  {}
 inline DrawCommandList::DrawCommandList(uint32_t capacity) : DrawCommandList()  { reserve(capacity); }
 inline DrawCommandList::~DrawCommandList()  { clear(); if(_capacity!=builtInCapacity) delete[] _externalStoragePointer; }
@@ -162,7 +162,7 @@ inline uint32_t DrawCommandList::size() const  { return _size; }
 inline void DrawCommandList::shrink_to_fit()  { setCapacity(size()); }
 inline void DrawCommandList::secureSpace(uint32_t newSize)  { if(newSize<_capacity) return; uint32_t c=_capacity*2; if(c<newSize) c=newSize; setCapacity(c); }
 
-inline uint32_t DrawCommandList::emplace_back(DrawCommand&& dc)  { secureSpace(_size+1); new(operator[](_size)) DrawCommand(std::move(dc),renderer()); return _size++; }
+inline uint32_t DrawCommandList::emplace_back(DrawCommand&& dc)  { secureSpace(_size+1); new(operator[](_size))DrawCommand(std::move(dc),renderer()); stateSet()->incrementNumDrawCommands(1); return _size++; }
 inline void DrawCommandList::set(uint32_t index,DrawCommand&& dc)  { assert(index<_size && "Parameter index out of bounds."); operator[](index).assign(std::move(dc),renderer()); }
 
 inline void DrawCommandList::clear()  { resize(0); }

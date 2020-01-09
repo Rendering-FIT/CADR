@@ -33,8 +33,8 @@ public:
 
 	size_t numDrawCommands() const;
 	void setNumDrawCommands(size_t num);
-	void increaseNumDrawCommands(ptrdiff_t increment);
-	void decreaseNumDrawCommands(ptrdiff_t decrement);
+	void incrementNumDrawCommands(ptrdiff_t increment);
+	void decrementNumDrawCommands(ptrdiff_t decrement);
 
 	void recordToCommandBuffer(vk::CommandBuffer cb) const;
 
@@ -71,8 +71,8 @@ inline vk::Pipeline StateSet::pipeline() const  { return _pipeline; }
 
 inline size_t StateSet::numDrawCommands() const  { return _numDrawCommands; }
 inline void StateSet::setNumDrawCommands(size_t num)  { _numDrawCommands=num; }
-inline void StateSet::increaseNumDrawCommands(ptrdiff_t increment)  { _numDrawCommands+=increment; }
-inline void StateSet::decreaseNumDrawCommands(ptrdiff_t decrement)  { _numDrawCommands-=decrement; }
+inline void StateSet::incrementNumDrawCommands(ptrdiff_t increment)  { _numDrawCommands+=increment; }
+inline void StateSet::decrementNumDrawCommands(ptrdiff_t decrement)  { _numDrawCommands-=decrement; }
 
 inline void StateSet::setAttribStorage(AttribStorage* attribStorage)  { assert(_numDrawCommands==0 && "Can not change AttribStorage while there are already attached DrawCommands."); _attribStorage=attribStorage; }
 inline void StateSet::setPipeline(vk::Pipeline pipeline)  { if(_pipeline) (*_renderer->device())->destroy(_pipeline,nullptr,*_renderer->device()); _pipeline=pipeline; }

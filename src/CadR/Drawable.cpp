@@ -17,6 +17,7 @@ DrawCommandList::DrawCommandList(DrawCommandList&& other) noexcept
 		auto& m=renderer()->drawCommandAllocationManager();
 		for(uint32_t i=0; i<_size; i++)
 			new(_internalStorage[i]) DrawCommand(std::move(other._internalStorage[i]),m);
+		other.resize(0);
 	} else {
 		_externalStorage=other._externalStorage;
 		other._capacity=builtInCapacity;
@@ -40,6 +41,7 @@ DrawCommandList& DrawCommandList::operator=(DrawCommandList&& rhs) noexcept
 		auto& m=renderer()->drawCommandAllocationManager();
 		for(uint32_t i=0; i<rhs._size; i++)
 			new(_internalStorage[i]) DrawCommand(std::move(rhs._internalStorage[i]),m);
+		rhs.resize(0);
 
 	} else {
 		_capacity=rhs._capacity;
@@ -112,6 +114,7 @@ void DrawCommandList::resize(uint32_t newSize)
 			d.~DrawCommand();
 		}
 
+	stateSet()->incrementNumDrawCommands(ptrdiff_t(newSize)-_size);
 	_size=newSize;
 }
 
@@ -123,6 +126,7 @@ uint32_t DrawCommandList::alloc_back(uint32_t num)
 	uint32_t end=_size+num;
 	secureSpace(end);
 	_size=end;
+	stateSet()->incrementNumDrawCommands(num);
 
 	// create new DrawCommands
 	auto& m=renderer()->drawCommandAllocationManager();
@@ -158,6 +162,7 @@ void DrawCommandList::alloc_insert(uint32_t index,uint32_t num)
 	for(uint32_t i=index,e=index+num; i<e; i++)
 		operator[](i).alloc(m);
 
+	stateSet()->incrementNumDrawCommands(num);
 	_size=newSize;
 }
 
@@ -188,6 +193,7 @@ void DrawCommandList::insert(uint32_t index,DrawCommand&& dc)
 		operator[](index).alloc(m);
 	}
 
+	stateSet()->incrementNumDrawCommands(1);
 	_size++;
 }
 
@@ -207,6 +213,7 @@ void DrawCommandList::move(uint32_t src,uint32_t dst)
 
 		// secure space
 		_size++;
+		stateSet()->incrementNumDrawCommands(1);
 		secureSpace(_size);
 
 		// create new DrawCommands by move constructor
@@ -220,18 +227,19 @@ void DrawCommandList::move(uint32_t src,uint32_t dst,uint32_t num)
 	assert(src+num<=_size && "Parameter src (source index) out of bounds.");
 	assert(dst<=_size && "Parameter dst (destination index) out of bounds.");
 
-	// secure space
+	// do we need extra space?
 	auto& m=renderer()->drawCommandAllocationManager();
 	uint32_t newSize=dst+num;
-	if(newSize<=_size)
-		newSize=_size;
-	else {
-		secureSpace(newSize);
-
+	if(newSize>_size)
+	{
 		// create new DrawCommands by move constructor
+		secureSpace(newSize);
 		uint32_t shift=dst-src;
 		for(uint32_t i=_size; i<newSize; i++)
 			new(operator[](i)) DrawCommand(std::move(operator[](i-shift)),m);
+
+		stateSet()->incrementNumDrawCommands(newSize-_size);
+		_size=newSize;
 	}
 
 	// move remaining DrawCommands
@@ -246,8 +254,6 @@ void DrawCommandList::move(uint32_t src,uint32_t dst,uint32_t num)
 			for(uint32_t i=src, e=src+num; i>=e; i++)
 				operator[](i-shift).assign(std::move(operator[](i)),m);
 		}
-
-	_size=newSize;
 }
 
 
@@ -260,8 +266,9 @@ void DrawCommandList::swap(uint32_t i1,uint32_t i2)
 
 void DrawCommandList::swap(uint32_t i1,uint32_t i2,uint32_t num)
 {
-	ItemAllocationManager& m=renderer()->drawCommandAllocationManager();
 	assert(i1+num<_size && i2+num<_size && "Index out of range.");
+
+	ItemAllocationManager& m=renderer()->drawCommandAllocationManager();
 	for(uint32_t i=0; i<num; i++)
 		m.swap(m[i1+i],m[i2+i]);
 }
@@ -285,6 +292,7 @@ void DrawCommandList::pop_back()
 	if(_size==0)
 		return;
 	_size--;
+	stateSet()->decrementNumDrawCommands(1);
 	DrawCommand& d=operator[](_size);
 	d.free(renderer());
 	d.~DrawCommand();
@@ -302,5 +310,6 @@ void DrawCommandList::pop_back(uint32_t num)
 		d.free(m);
 		d.~DrawCommand();
 	}
+	stateSet()->decrementNumDrawCommands(_size-start);
 	_size=start;
 }
