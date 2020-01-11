@@ -15,7 +15,7 @@ void StateSet::cleanUp() noexcept
 }
 
 
-void StateSet::recordToCommandBuffer(vk::CommandBuffer cb) const
+void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const
 {
 	assert(_attribStorage && "AttribStorage have to be assigned before calling StateSet::recordToCommandBuffer().");
 	assert(_pipeline && "Pipeline have to be assigned before calling StateSet::recordToCommandBuffer().");
@@ -42,9 +42,13 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb) const
 	// draw command
 	cb.drawIndexedIndirect(
 		_renderer->drawIndirectBuffer(),  // buffer
-		0,  // offset
+		indirectBufferOffset,  // offset
 		uint32_t(_numDrawCommands),  // drawCount
 		sizeof(vk::DrawIndexedIndirectCommand),  // stride
 		*device  // dispatch
 	);
+
+	// update rendering data
+	_renderer->stateSetStagingData()[_id]=indirectBufferOffset/4;
+	indirectBufferOffset+=_numDrawCommands*sizeof(vk::DrawIndexedIndirectCommand);
 }

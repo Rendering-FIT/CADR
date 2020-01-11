@@ -822,6 +822,20 @@ int main(int argc,char** argv) {
 				),
 				device  // dispatch
 			);
+			cb.copyBuffer(renderer.stateSetStagingBuffer(),renderer.stateSetBuffer(),
+	                      vk::BufferCopy(0,0,renderer.numStateSetIds()*sizeof(uint32_t)),device);
+			cb.pipelineBarrier(
+				vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
+				vk::PipelineStageFlagBits::eComputeShader,  // dstStageMask
+				vk::DependencyFlags(),  // dependencyFlags
+				vk::MemoryBarrier(  // memoryBarriers
+					vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
+					vk::AccessFlagBits::eShaderRead  // dstAccessMask
+				),
+				nullptr,  // bufferMemoryBarriers
+				nullptr,  // imageMemoryBarriers
+				device  // dispatch
+			);
 			cb.bindPipeline(vk::PipelineBindPoint::eCompute,renderer.drawCommandPipeline(),device);
 			cb.bindDescriptorSets(
 				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
@@ -863,9 +877,18 @@ int main(int argc,char** argv) {
 			);
 
 			// execute all StateSets
+			vk::DeviceSize indirectBufferOffset=0;
 			for(auto& pipelineFamily:pipelineDB)
 				for(auto& ssIt:pipelineFamily)
-					ssIt.second.recordToCommandBuffer(cb);
+					ssIt.second.recordToCommandBuffer(cb,indirectBufferOffset);
+			device->flushMappedMemoryRanges(
+				vk::MappedMemoryRange(
+					renderer.stateSetStagingMemory(),  // memory
+					0,  // offset
+					indirectBufferOffset  // size
+				),
+				device  // dispatch
+			);
 			cb.endRenderPass(device);
 			cb.end(device);
 

@@ -42,6 +42,9 @@ private:
 	vk::DeviceMemory _drawIndirectBufferMemory;
 	vk::Buffer       _stateSetBuffer;
 	vk::DeviceMemory _stateSetBufferMemory;
+	vk::Buffer       _stateSetStagingBuffer;
+	vk::DeviceMemory _stateSetStagingMemory;
+	uint32_t*        _stateSetStagingData = nullptr;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager<Mesh> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
 	ItemAllocationManager        _drawCommandAllocationManager;
@@ -57,6 +60,9 @@ private:
 	vk::DescriptorSet _drawCommandDescriptorSet;
 	vk::PipelineLayout _drawCommandPipelineLayout;
 	vk::Pipeline _drawCommandPipeline;
+
+	uint32_t _highestAllocatedSsId = 0;
+	std::vector<uint32_t> _releasedSsIds;
 
 	static Renderer* _instance;
 
@@ -81,6 +87,9 @@ public:
 	CADR_EXPORT vk::Buffer matrixListControlBuffer() const;
 	CADR_EXPORT vk::Buffer drawIndirectBuffer() const;
 	CADR_EXPORT vk::Buffer stateSetBuffer() const;
+	CADR_EXPORT vk::Buffer stateSetStagingBuffer() const;
+	CADR_EXPORT vk::DeviceMemory stateSetStagingMemory() const;
+	CADR_EXPORT uint32_t*  stateSetStagingData() const;
 	CADR_EXPORT vk::CommandPool stateSetCommandPool() const;
 
 	CADR_EXPORT vk::PipelineCache pipelineCache() const;
@@ -124,6 +133,10 @@ public:
 	CADR_EXPORT void uploadDrawCommand(DrawCommand& dc,const DrawCommandGpuData& drawCommandData);
 	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(DrawCommand& dc);
 
+	CADR_EXPORT uint32_t allocateStateSetId();
+	CADR_EXPORT void releaseStateSetId(uint32_t id);
+	CADR_EXPORT uint32_t numStateSetIds();
+
 protected:
 	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
 };
@@ -142,6 +155,9 @@ inline vk::Buffer Renderer::drawCommandBuffer() const  { return _drawCommandBuff
 inline vk::Buffer Renderer::matrixListControlBuffer() const  { return _matrixListControlBuffer; }
 inline vk::Buffer Renderer::drawIndirectBuffer() const  { return _drawIndirectBuffer; }
 inline vk::Buffer Renderer::stateSetBuffer() const  { return _stateSetBuffer; }
+inline vk::Buffer Renderer::stateSetStagingBuffer() const  { return _stateSetStagingBuffer; }
+inline vk::DeviceMemory Renderer::stateSetStagingMemory() const  { return _stateSetStagingMemory; }
+inline uint32_t* Renderer::stateSetStagingData() const  { return _stateSetStagingData; }
 inline vk::CommandPool Renderer::stateSetCommandPool() const  { return _stateSetCommandPool; }
 inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCache; }
 inline vk::DescriptorSet Renderer::drawCommandDescriptorSet() const  { return _drawCommandDescriptorSet; }
@@ -163,6 +179,7 @@ inline ItemAllocation*& Renderer::drawCommandAllocation(uint32_t id)  { return _
 inline const ItemAllocationManager& Renderer::drawCommandAllocationManager() const  { return _drawCommandAllocationManager; }
 inline ItemAllocationManager& Renderer::drawCommandAllocationManager()  { return _drawCommandAllocationManager; }
 inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
+inline uint32_t Renderer::numStateSetIds()  { return _highestAllocatedSsId+1; }
 
 
 }

@@ -64,6 +64,7 @@ public:
 	PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements;
 	PFN_vkMapMemory vkMapMemory;
 	PFN_vkUnmapMemory vkUnmapMemory;
+	PFN_vkFlushMappedMemoryRanges vkFlushMappedMemoryRanges;
 	PFN_vkCreateImageView vkCreateImageView;
 	PFN_vkDestroyImageView vkDestroyImageView;
 	PFN_vkCreateFramebuffer vkCreateFramebuffer;

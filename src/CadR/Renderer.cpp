@@ -176,6 +176,31 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 			*_device  // dispatch
 		);
 
+	// stateSet staging buffer
+	_stateSetStagingBuffer=
+		(*_device)->createBuffer(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				128*sizeof(4),  // size
+				vk::BufferUsageFlagBits::eTransferSrc,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
+	// stateSet buffer memory
+	_stateSetStagingMemory=allocateMemory(_stateSetStagingBuffer,vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCached);
+	(*_device)->bindBufferMemory(
+			_stateSetStagingBuffer,  // buffer
+			_stateSetStagingMemory,  // memory
+			0,  // memoryOffset
+			*_device  // dispatch
+		);
+	_stateSetStagingData=reinterpret_cast<uint32_t*>((*_device)->mapMemory(_stateSetStagingMemory,0,VK_WHOLE_SIZE,vk::MemoryMapFlags(),*_device));
+
 	// command pool used by StateSets
 	_stateSetCommandPool=
 		(*_device)->createCommandPool(
@@ -421,6 +446,8 @@ Renderer::~Renderer()
 	(*_device)->freeMemory(_drawIndirectBufferMemory,nullptr,*_device);
 	(*_device)->destroy(_stateSetBuffer,nullptr,*_device);
 	(*_device)->freeMemory(_stateSetBufferMemory,nullptr,*_device);
+	(*_device)->destroy(_stateSetStagingBuffer,nullptr,*_device);
+	(*_device)->freeMemory(_stateSetStagingMemory,nullptr,*_device);  // no need to unmap memory as vkFreeMemory handles that
 
 	if(_instance==this)
 		_instance=nullptr;
@@ -598,4 +625,41 @@ void Renderer::uploadDrawCommand(DrawCommand& dc,const DrawCommandGpuData& drawC
 	StagingBuffer sb(createDrawCommandStagingBuffer(dc));
 	memcpy(sb.data(),&drawCommandData,sizeof(DrawCommandGpuData));
 	sb.submit();
+}
+
+
+uint32_t Renderer::allocateStateSetId()
+{
+	uint32_t r;
+	if(_releasedSsIds.empty()) {
+		_highestAllocatedSsId++;
+		r=_highestAllocatedSsId;
+	} else {
+		r=_releasedSsIds.back();
+		_releasedSsIds.pop_back();
+	}
+	return r;
+}
+
+
+void Renderer::releaseStateSetId(uint32_t id)
+{
+	if(id!=_highestAllocatedSsId)
+
+		// just put the offset into the queue of released offsets
+		_releasedSsIds.push_back(id);
+
+	else {
+
+		// remove all highest released offsets
+		while(true) {
+			_highestAllocatedSsId--;
+			auto it=std::max_element(_releasedSsIds.begin(),_releasedSsIds.end());
+			if(it==_releasedSsIds.end() || *it!=_highestAllocatedSsId)
+				break;
+			*it=_releasedSsIds.back();
+			_releasedSsIds.pop_back();
+		}
+
+	}
 }
