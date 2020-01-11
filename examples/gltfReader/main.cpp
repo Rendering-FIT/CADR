@@ -170,7 +170,7 @@ int main(int argc,char** argv) {
 		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
 				vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
 		CadR::VulkanDevice device(vulkanInstance,deviceAndQueueFamilies,
-		                          nullptr,"VK_KHR_swapchain",nullptr);
+		                          nullptr,"VK_KHR_swapchain",&vk::PhysicalDeviceFeatures().setMultiDrawIndirect(true));
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
 		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
 		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
@@ -180,6 +180,13 @@ int main(int argc,char** argv) {
 		// get queues
 		vk::Queue graphicsQueue=device->getQueue(graphicsQueueFamily,0,device);
 		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0,device);
+
+		// nonCoherentAtomSize
+		vk::DeviceSize nonCoherentAtomSize=physicalDevice.getProperties(vulkanInstance).limits.nonCoherentAtomSize;
+		vk::DeviceSize nonCoherentAtom_addition=nonCoherentAtomSize-1;
+		vk::DeviceSize nonCoherentAtom_mask=~nonCoherentAtom_addition;
+		if((nonCoherentAtomSize&nonCoherentAtom_addition)!=0)  // check if it is power of two
+			throw std::runtime_error("Platform problem: nonCoherentAtomSize is not power of two.");
 
 		// choose surface formats
 		vk::SurfaceFormatKHR surfaceFormat;
@@ -825,7 +832,11 @@ int main(int argc,char** argv) {
 			cb.copyBuffer(
 				renderer.stateSetStagingBuffer(),  // srcBuffer
 				renderer.stateSetBuffer(),  // dstBuffer
-				vk::BufferCopy(0,0,renderer.numStateSetIds()*sizeof(uint32_t)),  // pRegions
+				vk::BufferCopy(
+					0,  // srcOffset
+					0,  // dstOffset
+					renderer.numStateSetIds()*sizeof(uint32_t)  // size
+				),  // pRegions
 				device  // dispatch
 			);
 			cb.pipelineBarrier(
@@ -889,7 +900,7 @@ int main(int argc,char** argv) {
 				vk::MappedMemoryRange(
 					renderer.stateSetStagingMemory(),  // memory
 					0,  // offset
-					indirectBufferOffset  // size
+					(renderer.numStateSetIds()*sizeof(uint32_t)+nonCoherentAtom_addition)&nonCoherentAtom_mask  // size - rounded up to next nonCoherentAtomSize
 				),
 				device  // dispatch
 			);
