@@ -5,7 +5,7 @@ using namespace CadR;
 static_assert(sizeof(Drawable)==64,
               "Drawable size is expected to be 64 bytes, to fit nicely to CPU caches, etc..\n"
               "Please, consider to tune Drawable::drawCommandList preallocated storage size,\n"
-			  "e.g. second template parameter.");
+              "e.g. second template parameter.");
 
 
 
@@ -15,9 +15,11 @@ DrawCommandList::DrawCommandList(DrawCommandList&& other) noexcept
 {
 	if(other._capacity==builtInCapacity) {
 		auto& m=renderer()->drawCommandAllocationManager();
-		for(uint32_t i=0; i<_size; i++)
+		for(uint32_t i=0; i<_size; i++) {
 			new(_internalStorage[i]) DrawCommand(std::move(other._internalStorage[i]),m);
-		other.resize(0);
+			other._internalStorage[i].~DrawCommand();
+		}
+		other._size=0;
 	} else {
 		_externalStorage=other._externalStorage;
 		other._capacity=builtInCapacity;
@@ -94,9 +96,12 @@ void DrawCommandList::setCapacity(uint32_t newCapacity)
 
 void DrawCommandList::resize(uint32_t newSize)
 {
+	if(newSize==_size)
+		return;
+
 	// call constructors or destructors
 	auto& m=renderer()->drawCommandAllocationManager();
-	if(newSize>=_size) {
+	if(newSize>_size) {
 
 		// secure space
 		secureSpace(newSize);

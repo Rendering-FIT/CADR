@@ -822,8 +822,12 @@ int main(int argc,char** argv) {
 				),
 				device  // dispatch
 			);
-			cb.copyBuffer(renderer.stateSetStagingBuffer(),renderer.stateSetBuffer(),
-	                      vk::BufferCopy(0,0,renderer.numStateSetIds()*sizeof(uint32_t)),device);
+			cb.copyBuffer(
+				renderer.stateSetStagingBuffer(),  // srcBuffer
+				renderer.stateSetBuffer(),  // dstBuffer
+				vk::BufferCopy(0,0,renderer.numStateSetIds()*sizeof(uint32_t)),  // pRegions
+				device  // dispatch
+			);
 			cb.pipelineBarrier(
 				vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
 				vk::PipelineStageFlagBits::eComputeShader,  // dstStageMask

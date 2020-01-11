@@ -49,6 +49,6 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 	);
 
 	// update rendering data
-	_renderer->stateSetStagingData()[_id]=indirectBufferOffset/4;
+	_renderer->stateSetStagingData()[_id]=uint32_t(indirectBufferOffset/4);
 	indirectBufferOffset+=_numDrawCommands*sizeof(vk::DrawIndexedIndirectCommand);
 }
