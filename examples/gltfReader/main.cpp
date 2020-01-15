@@ -750,8 +750,8 @@ int main(int argc,char** argv) {
 			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
 			b[0]=CadR::PrimitiveSetGpuData{
 					uint32_t(numIndices),  // count
-					0,  // first
-					0,  // vertexOffset
+					m.indexAllocation().startIndex,  // first
+					m.attribAllocation().startIndex,  // vertexOffset
 					0,  // userData
 				};
 			sb.submit();
@@ -765,7 +765,7 @@ int main(int argc,char** argv) {
 				CadR::DrawCommandGpuData{
 					renderer.primitiveSetAllocation(m.primitiveSetDataID()).startIndex*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
 					0,  // matrixListControlOffset4
-					0,  // stateSetOffset4
+					stateSetMapIt->second.id(),  // stateSetOffset4
 					0,  // userData
 				};
 			sb.submit();

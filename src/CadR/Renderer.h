@@ -61,7 +61,7 @@ private:
 	vk::PipelineLayout _drawCommandPipelineLayout;
 	vk::Pipeline _drawCommandPipeline;
 
-	uint32_t _highestAllocatedSsId = 0;
+	uint32_t _highestAllocatedSsId = -1;
 	std::vector<uint32_t> _releasedSsIds;
 
 	static Renderer* _instance;

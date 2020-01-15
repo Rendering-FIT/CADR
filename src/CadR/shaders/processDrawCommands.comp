@@ -24,7 +24,7 @@ layout(std430,binding=4) restrict buffer StateSetBuffer {
 void main()
 {
    // draw command buffer data
-   uint drawCommandOffset4=gl_GlobalInvocationID.x*4;
+   uint drawCommandOffset4=gl_WorkGroupID.x*4;
    uint primitiveOffset4=drawCommandBuffer[drawCommandOffset4+0];
    uint matrixControlOffset4=drawCommandBuffer[drawCommandOffset4+1];
    uint stateSetDataOffset4=drawCommandBuffer[drawCommandOffset4+2];
@@ -34,7 +34,7 @@ void main()
    uint numMatrices=1;//matrixListControlBuffer[matrixControlOffset4+1];
 
    // compute increment and get indirectBufferOffset
-   uint indirectBufferOffset4=0;//atomicAdd(stateSetBuffer[stateSetDataOffset4],5);
+   uint indirectBufferOffset4=atomicAdd(stateSetBuffer[stateSetDataOffset4],5);
 
    // write indirect buffer data
    drawIndirectBuffer[indirectBufferOffset4]=primitiveBuffer[primitiveOffset4+0]; // indexCount
