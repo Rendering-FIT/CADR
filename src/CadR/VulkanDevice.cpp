@@ -67,6 +67,7 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkCmdDrawIndexed     =getProcAddr<PFN_vkCmdDrawIndexed     >("vkCmdDrawIndexed");
 	vkCmdDraw            =getProcAddr<PFN_vkCmdDraw            >("vkCmdDraw");
 	vkCmdDispatch        =getProcAddr<PFN_vkCmdDispatch        >("vkCmdDispatch");
+	vkCmdDispatchIndirect=getProcAddr<PFN_vkCmdDispatchIndirect>("vkCmdDispatchIndirect");
 	vkCmdPipelineBarrier =getProcAddr<PFN_vkCmdPipelineBarrier >("vkCmdPipelineBarrier");
 	vkQueueSubmit        =getProcAddr<PFN_vkQueueSubmit        >("vkQueueSubmit");
 	vkWaitForFences      =getProcAddr<PFN_vkWaitForFences      >("vkWaitForFences");

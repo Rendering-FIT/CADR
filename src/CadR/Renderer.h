@@ -45,6 +45,9 @@ private:
 	vk::Buffer       _stateSetStagingBuffer;
 	vk::DeviceMemory _stateSetStagingMemory;
 	uint32_t*        _stateSetStagingData = nullptr;
+	vk::Buffer       _computeIndirectBuffer;
+	vk::DeviceMemory _computeIndirectBufferMemory;
+	uint32_t*        _computeIndirectBufferData;
 	ArrayAllocationManager<Mesh> _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager<Mesh> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
 	ItemAllocationManager        _drawCommandAllocationManager;
@@ -90,6 +93,9 @@ public:
 	CADR_EXPORT vk::Buffer stateSetStagingBuffer() const;
 	CADR_EXPORT vk::DeviceMemory stateSetStagingMemory() const;
 	CADR_EXPORT uint32_t*  stateSetStagingData() const;
+	CADR_EXPORT vk::Buffer computeIndirectBuffer() const;
+	CADR_EXPORT vk::DeviceMemory computeIndirectBufferMemory() const;
+	CADR_EXPORT uint32_t*  computeIndirectBufferData() const;
 	CADR_EXPORT vk::CommandPool stateSetCommandPool() const;
 
 	CADR_EXPORT vk::PipelineCache pipelineCache() const;
@@ -158,6 +164,9 @@ inline vk::Buffer Renderer::stateSetBuffer() const  { return _stateSetBuffer; }
 inline vk::Buffer Renderer::stateSetStagingBuffer() const  { return _stateSetStagingBuffer; }
 inline vk::DeviceMemory Renderer::stateSetStagingMemory() const  { return _stateSetStagingMemory; }
 inline uint32_t* Renderer::stateSetStagingData() const  { return _stateSetStagingData; }
+inline vk::Buffer Renderer::computeIndirectBuffer() const  { return _computeIndirectBuffer; }
+inline vk::DeviceMemory Renderer::computeIndirectBufferMemory() const  { return _computeIndirectBufferMemory; }
+inline uint32_t* Renderer::computeIndirectBufferData() const  { return _computeIndirectBufferData; }
 inline vk::CommandPool Renderer::stateSetCommandPool() const  { return _stateSetCommandPool; }
 inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCache; }
 inline vk::DescriptorSet Renderer::drawCommandDescriptorSet() const  { return _drawCommandDescriptorSet; }

@@ -860,7 +860,7 @@ int main(int argc,char** argv) {
 				nullptr,  // dynamicOffsets
 				device  // dispatch
 			);
-			cb.dispatch(2,1,1,device);
+			cb.dispatchIndirect(renderer.computeIndirectBuffer(),0,device);
 			cb.pipelineBarrier(
 				vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
 				vk::PipelineStageFlagBits::eDrawIndirect,  // dstStageMask
@@ -893,9 +893,12 @@ int main(int argc,char** argv) {
 
 			// execute all StateSets
 			vk::DeviceSize indirectBufferOffset=0;
+			size_t numDrawCommands=0;
 			for(auto& pipelineFamily:pipelineDB)
-				for(auto& ssIt:pipelineFamily)
+				for(auto& ssIt:pipelineFamily) {
 					ssIt.second.recordToCommandBuffer(cb,indirectBufferOffset);
+					numDrawCommands+=ssIt.second.numDrawCommands();
+				}
 			device->flushMappedMemoryRanges(
 				vk::MappedMemoryRange(
 					renderer.stateSetStagingMemory(),  // memory
@@ -906,6 +909,19 @@ int main(int argc,char** argv) {
 			);
 			cb.endRenderPass(device);
 			cb.end(device);
+
+			// update compute indirect data
+			renderer.computeIndirectBufferData()[0]=uint32_t(numDrawCommands);
+			renderer.computeIndirectBufferData()[1]=1;
+			renderer.computeIndirectBufferData()[2]=1;
+			device->flushMappedMemoryRanges(
+				vk::MappedMemoryRange(
+					renderer.computeIndirectBufferMemory(),  // memory
+					0,  // offset
+					VK_WHOLE_SIZE  // size
+				),
+				device  // dispatch
+			);
 
 			// render
 			graphicsQueue.submit(

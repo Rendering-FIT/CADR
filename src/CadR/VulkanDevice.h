@@ -107,6 +107,7 @@ public:
 	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 	PFN_vkCmdDraw vkCmdDraw;
 	PFN_vkCmdDispatch vkCmdDispatch;
+	PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect;
 	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
 	PFN_vkQueueSubmit vkQueueSubmit;
 	PFN_vkWaitForFences vkWaitForFences;

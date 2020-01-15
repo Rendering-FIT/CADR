@@ -201,6 +201,31 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 		);
 	_stateSetStagingData=reinterpret_cast<uint32_t*>((*_device)->mapMemory(_stateSetStagingMemory,0,VK_WHOLE_SIZE,vk::MemoryMapFlags(),*_device));
 
+	// compute indirect buffer
+	_computeIndirectBuffer=
+		(*_device)->createBuffer(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				3*sizeof(4),  // size
+				vk::BufferUsageFlagBits::eIndirectBuffer,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			),
+			nullptr,  // allocator
+			*_device  // dispatch
+		);
+
+	// compute indirect buffer memory
+	_computeIndirectBufferMemory=allocateMemory(_computeIndirectBuffer,vk::MemoryPropertyFlagBits::eHostVisible);
+	(*_device)->bindBufferMemory(
+			_computeIndirectBuffer,  // buffer
+			_computeIndirectBufferMemory,  // memory
+			0,  // memoryOffset
+			*_device  // dispatch
+		);
+	_computeIndirectBufferData=reinterpret_cast<uint32_t*>((*_device)->mapMemory(_computeIndirectBufferMemory,0,VK_WHOLE_SIZE,vk::MemoryMapFlags(),*_device));
+
 	// command pool used by StateSets
 	_stateSetCommandPool=
 		(*_device)->createCommandPool(
@@ -448,6 +473,8 @@ Renderer::~Renderer()
 	(*_device)->freeMemory(_stateSetBufferMemory,nullptr,*_device);
 	(*_device)->destroy(_stateSetStagingBuffer,nullptr,*_device);
 	(*_device)->freeMemory(_stateSetStagingMemory,nullptr,*_device);  // no need to unmap memory as vkFreeMemory handles that
+	(*_device)->destroy(_computeIndirectBuffer,nullptr,*_device);
+	(*_device)->freeMemory(_computeIndirectBufferMemory,nullptr,*_device);  // no need to unmap memory as vkFreeMemory handles that
 
 	if(_instance==this)
 		_instance=nullptr;
