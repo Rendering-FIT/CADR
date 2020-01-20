@@ -29,12 +29,12 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
-	_graphicsQueue=(*_device)->getQueue(_graphicsQueueFamily,0,*_device);
+	_graphicsQueue=_device->getQueue(_graphicsQueueFamily,0);
 	_memoryProperties=physicalDevice.getMemoryProperties(*instance);
 
 	// index buffer
 	_indexBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				1024*sizeof(uint32_t),        // size
@@ -42,23 +42,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// index buffer memory
 	_indexBufferMemory=allocateMemory(_indexBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_indexBuffer,  // buffer
 			_indexBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
 
 	// primitiveSet buffer
 	_primitiveSetBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				128*sizeof(PrimitiveSetGpuData),  // size
@@ -66,23 +63,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// primitiveSet buffer memory
 	_primitiveSetBufferMemory=allocateMemory(_primitiveSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_primitiveSetBuffer,  // buffer
 			_primitiveSetBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
 
 	// drawCommand buffer
 	_drawCommandBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				128*sizeof(DrawCommandGpuData),  // size
@@ -90,23 +84,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// drawCommand buffer memory
 	_drawCommandBufferMemory=allocateMemory(_drawCommandBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_drawCommandBuffer,  // buffer
 			_drawCommandBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
 
 	// matrixListControl
 	_matrixListControlBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				128*sizeof(8),  // size
@@ -114,23 +105,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// matrixListControl buffer memory
 	_matrixListControlBufferMemory=allocateMemory(_matrixListControlBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_matrixListControlBuffer,  // buffer
 			_matrixListControlBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
 
 	// draw indirect buffer
 	_drawIndirectBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				128*sizeof(vk::DrawIndexedIndirectCommand),  // size
@@ -138,23 +126,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// draw indirect buffer memory
 	_drawIndirectBufferMemory=allocateMemory(_drawIndirectBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_drawIndirectBuffer,  // buffer
 			_drawIndirectBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
 
 	// stateSet buffer
 	_stateSetBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				128*sizeof(4),  // size
@@ -162,23 +147,20 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// stateSet buffer memory
 	_stateSetBufferMemory=allocateMemory(_stateSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_stateSetBuffer,  // buffer
 			_stateSetBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
 
 	// stateSet staging buffer
 	_stateSetStagingBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				128*sizeof(4),  // size
@@ -186,24 +168,21 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// stateSet buffer memory
 	_stateSetStagingMemory=allocateMemory(_stateSetStagingBuffer,vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCached);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_stateSetStagingBuffer,  // buffer
 			_stateSetStagingMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
-	_stateSetStagingData=reinterpret_cast<uint32_t*>((*_device)->mapMemory(_stateSetStagingMemory,0,VK_WHOLE_SIZE,vk::MemoryMapFlags(),*_device));
+	_stateSetStagingData=reinterpret_cast<uint32_t*>(_device->mapMemory(_stateSetStagingMemory,0,VK_WHOLE_SIZE));
 
 	// compute indirect buffer
 	_computeIndirectBuffer=
-		(*_device)->createBuffer(
+		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				3*sizeof(4),  // size
@@ -211,20 +190,17 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// compute indirect buffer memory
 	_computeIndirectBufferMemory=allocateMemory(_computeIndirectBuffer,vk::MemoryPropertyFlagBits::eHostVisible);
-	(*_device)->bindBufferMemory(
+	_device->bindBufferMemory(
 			_computeIndirectBuffer,  // buffer
 			_computeIndirectBufferMemory,  // memory
-			0,  // memoryOffset
-			*_device  // dispatch
+			0  // memoryOffset
 		);
-	_computeIndirectBufferData=reinterpret_cast<uint32_t*>((*_device)->mapMemory(_computeIndirectBufferMemory,0,VK_WHOLE_SIZE,vk::MemoryMapFlags(),*_device));
+	_computeIndirectBufferData=reinterpret_cast<uint32_t*>(_device->mapMemory(_computeIndirectBufferMemory,0,VK_WHOLE_SIZE));
 
 	// command pool used by StateSets
 	_stateSetCommandPool=
@@ -459,22 +435,22 @@ Renderer::~Renderer()
 	purgeObjectsToDeleteAfterCopyOperation();
 
 	// destroy buffers
-	(*_device)->destroy(_indexBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_indexBufferMemory,nullptr,*_device);
-	(*_device)->destroy(_primitiveSetBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_primitiveSetBufferMemory,nullptr,*_device);
-	(*_device)->destroy(_drawCommandBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_drawCommandBufferMemory,nullptr,*_device);
-	(*_device)->destroy(_matrixListControlBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_matrixListControlBufferMemory,nullptr,*_device);
-	(*_device)->destroy(_drawIndirectBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_drawIndirectBufferMemory,nullptr,*_device);
-	(*_device)->destroy(_stateSetBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_stateSetBufferMemory,nullptr,*_device);
-	(*_device)->destroy(_stateSetStagingBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_stateSetStagingMemory,nullptr,*_device);  // no need to unmap memory as vkFreeMemory handles that
-	(*_device)->destroy(_computeIndirectBuffer,nullptr,*_device);
-	(*_device)->freeMemory(_computeIndirectBufferMemory,nullptr,*_device);  // no need to unmap memory as vkFreeMemory handles that
+	_device->destroy(_indexBuffer);
+	_device->freeMemory(_indexBufferMemory);
+	_device->destroy(_primitiveSetBuffer);
+	_device->freeMemory(_primitiveSetBufferMemory);
+	_device->destroy(_drawCommandBuffer);
+	_device->freeMemory(_drawCommandBufferMemory);
+	_device->destroy(_matrixListControlBuffer);
+	_device->freeMemory(_matrixListControlBufferMemory);
+	_device->destroy(_drawIndirectBuffer);
+	_device->freeMemory(_drawIndirectBufferMemory);
+	_device->destroy(_stateSetBuffer);
+	_device->freeMemory(_stateSetBufferMemory);
+	_device->destroy(_stateSetStagingBuffer);
+	_device->freeMemory(_stateSetStagingMemory);  // no need to unmap memory as vkFreeMemory handles that
+	_device->destroy(_computeIndirectBuffer);
+	_device->freeMemory(_computeIndirectBufferMemory);  // no need to unmap memory as vkFreeMemory handles that
 
 	if(_instance==this)
 		_instance=nullptr;
@@ -492,17 +468,16 @@ AttribStorage* Renderer::getOrCreateAttribStorage(const AttribSizeList& attribSi
 
 vk::DeviceMemory Renderer::allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)
 {
-	vk::MemoryRequirements memoryRequirements=(*_device)->getBufferMemoryRequirements(buffer,*_device);
+	vk::MemoryRequirements memoryRequirements=_device->getBufferMemoryRequirements(buffer);
 	for(uint32_t i=0; i<_memoryProperties.memoryTypeCount; i++)
 		if(memoryRequirements.memoryTypeBits&(1<<i))
 			if((_memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
 				return
-					(*_device)->allocateMemory(
+					_device->allocateMemory(
 						vk::MemoryAllocateInfo(
 							memoryRequirements.size,  // allocationSize
 							i                         // memoryTypeIndex
-						),
-						nullptr,*_device
+						)
 					);
 	throw std::runtime_error("No suitable memory type found for the buffer.");
 }
@@ -561,8 +536,8 @@ void Renderer::executeCopyOperations()
 void Renderer::purgeObjectsToDeleteAfterCopyOperation()
 {
 	for(auto item:_objectsToDeleteAfterCopyOperation) {
-		(*_device)->destroy(std::get<0>(item),nullptr,*_device);
-		(*_device)->freeMemory(std::get<1>(item),nullptr,*_device);
+		_device->destroy(std::get<0>(item));
+		_device->freeMemory(std::get<1>(item));
 	}
 	_objectsToDeleteAfterCopyOperation.clear();
 }

@@ -178,8 +178,8 @@ int main(int argc,char** argv) {
 		CadR::Renderer::set(&renderer);
 
 		// get queues
-		vk::Queue graphicsQueue=device->getQueue(graphicsQueueFamily,0,device);
-		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0,device);
+		vk::Queue graphicsQueue=device.getQueue(graphicsQueueFamily,0);
+		vk::Queue presentationQueue=device.getQueue(presentationQueueFamily,0);
 
 		// nonCoherentAtomSize
 		vk::DeviceSize nonCoherentAtomSize=physicalDevice.getProperties(vulkanInstance).limits.nonCoherentAtomSize;
@@ -221,7 +221,7 @@ int main(int argc,char** argv) {
 
 		// render pass
 		auto renderPass=
-			device->createRenderPassUnique(
+			device.createRenderPassUnique(
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
 					1,                            // attachmentCount
@@ -278,8 +278,7 @@ int main(int argc,char** argv) {
 						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
 						vk::DependencyFlags()  // dependencyFlags
 					)
-				),
-				nullptr,device
+				)
 			);
 
 		// setup window
@@ -899,13 +898,12 @@ int main(int argc,char** argv) {
 					ssIt.second.recordToCommandBuffer(cb,indirectBufferOffset);
 					numDrawCommands+=ssIt.second.numDrawCommands();
 				}
-			device->flushMappedMemoryRanges(
+			device.flushMappedMemoryRanges(
 				vk::MappedMemoryRange(
 					renderer.stateSetStagingMemory(),  // memory
 					0,  // offset
 					(renderer.numStateSetIds()*sizeof(uint32_t)+nonCoherentAtom_addition)&nonCoherentAtom_mask  // size - rounded up to next nonCoherentAtomSize
-				),
-				device  // dispatch
+				)
 			);
 			cb.endRenderPass(device);
 			cb.end(device);
@@ -914,13 +912,12 @@ int main(int argc,char** argv) {
 			renderer.computeIndirectBufferData()[0]=uint32_t(numDrawCommands);
 			renderer.computeIndirectBufferData()[1]=1;
 			renderer.computeIndirectBufferData()[2]=1;
-			device->flushMappedMemoryRanges(
+			device.flushMappedMemoryRanges(
 				vk::MappedMemoryRange(
 					renderer.computeIndirectBufferMemory(),  // memory
 					0,  // offset
 					VK_WHOLE_SIZE  // size
-				),
-				device  // dispatch
+				)
 			);
 
 			// render

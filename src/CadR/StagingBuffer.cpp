@@ -10,7 +10,7 @@ void StagingBuffer::init()
 	// create buffer
 	VulkanDevice* device=_renderer->device();
 	_stgBuffer=
-		(*device)->createBuffer(
+		device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
 				_size,                        // size
@@ -18,23 +18,21 @@ void StagingBuffer::init()
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
-			),
-			nullptr,*device
+			)
 		);
 	_stgMemory=
 		_renderer->allocateMemory(_stgBuffer,
 		                          vk::MemoryPropertyFlagBits::eHostVisible |
 		                          vk::MemoryPropertyFlagBits::eHostCoherent |
 		                          vk::MemoryPropertyFlagBits::eHostCached);
-	(*device)->bindBufferMemory(
+	device->bindBufferMemory(
 		_stgBuffer,  // buffer
 		_stgMemory,  // memory
-		0,       // memoryOffset
-		*device  // dispatch
+		0            // memoryOffset
 	);
 
 	// map buffer
-	_data=reinterpret_cast<uint8_t*>((*device)->mapMemory(_stgMemory,0,_size,vk::MemoryMapFlags(),*device));
+	_data=reinterpret_cast<uint8_t*>(device->mapMemory(_stgMemory,0,_size));
 }
 
 
@@ -44,11 +42,11 @@ void StagingBuffer::cleanUp()
 
 		// destroy _stgBuffer
 		VulkanDevice* device=_renderer->device();
-		(*device)->destroy(_stgBuffer,nullptr,*device);
+		device->destroy(_stgBuffer);
 		_stgBuffer=nullptr;
 
 		// free _stgMemory (this unmaps it as well)
-		(*device)->freeMemory(_stgMemory,nullptr,*device);
+		device->freeMemory(_stgMemory);
 		_stgMemory=nullptr;
 		_data=nullptr;
 
@@ -112,8 +110,7 @@ void StagingBuffer::submit()
 		throw std::runtime_error("StagingBuffer::submit() called on already submitted buffer.");
 
 	// unmap memory
-	VulkanDevice* device=_renderer->device();
-	(*device)->unmapMemory(_stgMemory,*device);
+	_renderer->device()->unmapMemory(_stgMemory);
 	_data=nullptr;
 
 	// schedule copy operation

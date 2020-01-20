@@ -35,7 +35,7 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSize
 		vk::Buffer b;
 		if(size!=0) {
 			bufferInfo.size=size*1024;
-			b=(*device)->createBuffer(bufferInfo,nullptr,*device);
+			b=device->createBuffer(bufferInfo);
 		} else
 			b=nullptr;
 		_bufferList.push_back(b);
@@ -45,11 +45,10 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSize
 		if(size!=0) {
 			m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
 			_memoryList.push_back(m);
-			(*device)->bindBufferMemory(
+			device->bindBufferMemory(
 					b,  // buffer
 					m,  // memory
-					0,  // memoryOffset
-					*device  // dispatch
+					0   // memoryOffset
 				);
 		}
 		else
@@ -81,12 +80,12 @@ AttribStorage::~AttribStorage()
 	VulkanDevice* device=_renderer->device();
 	for(vk::Buffer b : _bufferList)
 		if(b)
-			(*device)->destroy(b,nullptr,*device);
+			device->destroy(b);
 
 	// free memory
 	for(vk::DeviceMemory m : _memoryList)
 		if(m)
-			(*device)->freeMemory(m,nullptr,*device);
+			device->freeMemory(m);
 }
 
 
