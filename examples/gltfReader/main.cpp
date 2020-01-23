@@ -323,38 +323,32 @@ int main(int argc,char** argv) {
 
 		// shaders
 		auto coordinateShader=
-			device->createShaderModuleUnique(
+			device.createShaderModuleUnique(
 				vk::ShaderModuleCreateInfo(
 					vk::ShaderModuleCreateFlags(),  // flags
 					sizeof(coordinateShaderSpirv),  // codeSize
 					coordinateShaderSpirv  // pCode
-				),
-				nullptr,  // allocator
-				device  // dispatch
+				)
 			);
 		auto unknownMaterialShader=
-			device->createShaderModuleUnique(
+			device.createShaderModuleUnique(
 				vk::ShaderModuleCreateInfo(
 					vk::ShaderModuleCreateFlags(),  // flags
 					sizeof(unspecifiedMaterialShaderSpirv),  // codeSize
 					unspecifiedMaterialShaderSpirv  // pCode
-				),
-				nullptr,  // allocator
-				device  // dispatch
+				)
 			);
 
 		// pipeline layout
 		auto pipelineLayout=
-			device->createPipelineLayoutUnique(
+			device.createPipelineLayoutUnique(
 				vk::PipelineLayoutCreateInfo{
 					vk::PipelineLayoutCreateFlags(),  // flags
 					0,       // setLayoutCount
 					nullptr, // pSetLayouts
 					0,       // pushConstantRangeCount
 					nullptr  // pPushConstantRanges
-				},
-				nullptr,  // allocator
-				device  // dispatch
+				}
 			);
 
 		// mesh
@@ -621,7 +615,7 @@ int main(int argc,char** argv) {
 
 							// construct new pipeline
 							ss.setPipeline(
-								device->createGraphicsPipeline(
+								device.createGraphicsPipeline(
 									renderer.pipelineCache(),
 									vk::GraphicsPipelineCreateInfo(
 										vk::PipelineCreateFlags(),  // flags
@@ -733,9 +727,7 @@ int main(int argc,char** argv) {
 										0,  // subpass
 										nullptr,  // basePipelineHandle
 										-1 // basePipelineIndex
-									),
-									nullptr,  // allocator
-									device  // dispatch
+									)
 								)
 							);
 

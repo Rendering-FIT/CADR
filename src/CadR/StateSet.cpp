@@ -9,9 +9,20 @@ using namespace CadR;
 
 void StateSet::cleanUp() noexcept
 {
-	VulkanDevice* device=_renderer->device();
-	(*device)->destroy(_pipeline,nullptr,*device);
+	_renderer->device()->destroy(_pipeline);
 	_pipeline=nullptr;
+}
+
+
+void StateSet::setPipeline(vk::Pipeline pipeline)
+{
+	if(pipeline==_pipeline)
+		return;
+
+	if(_pipeline)
+		_renderer->device()->destroy(_pipeline);
+
+	_pipeline=pipeline;
 }
 
 

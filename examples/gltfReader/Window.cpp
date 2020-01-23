@@ -241,12 +241,12 @@ void CadUI::Window::cleanUpVulkan()
 	// clean up all device-level Vulkan stuff
 	if(_swapchainImageViews.size()>0) {
 		for(auto v:_swapchainImageViews)
-			(*_device)->destroy(v,nullptr,*_device);
+			_device->destroy(v);
 		_swapchainImageViews.clear();
 	}
 	if(_framebuffers.size()>0) {
 		for(auto f:_framebuffers)
-			(*_device)->destroy(f,nullptr,*_device);
+			_device->destroy(f);
 		_framebuffers.clear();
 	}
 	if(_swapchain) {
@@ -383,12 +383,12 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 	// clear various Vulkan objects
 	if(_framebuffers.size()>0) {
 		for(auto f:_framebuffers)
-			(*_device)->destroy(f,nullptr,*_device);
+			_device->destroy(f);
 		_framebuffers.clear();
 	}
 	if(_swapchainImageViews.size()>0) {
 		for(auto v:_swapchainImageViews)
-			(*_device)->destroy(v,nullptr,*_device);
+			_device->destroy(v);
 		_swapchainImageViews.clear();
 	}
 
@@ -397,7 +397,7 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 	_swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image:swapchainImages)
 		_swapchainImageViews.emplace_back(
-			(*_device)->createImageView(
+			_device->createImageView(
 				vk::ImageViewCreateInfo(
 					vk::ImageViewCreateFlags(),  // flags
 					image,                       // image
@@ -411,9 +411,7 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 						0,  // baseArrayLayer
 						1   // layerCount
 					)
-				),
-				nullptr,  // allocator
-				*_device  // dispatch
+				)
 			)
 		);
 
@@ -421,7 +419,7 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 	_framebuffers.reserve(swapchainImages.size());
 	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
 		_framebuffers.emplace_back(
-			(*_device)->createFramebuffer(
+			_device->createFramebuffer(
 				vk::FramebufferCreateInfo(
 					vk::FramebufferCreateFlags(),   // flags
 					_renderPass,                    // renderPass
@@ -430,9 +428,7 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 					_surfaceExtent.width,           // width
 					_surfaceExtent.height,          // height
 					1  // layers
-				),
-				nullptr,  // allocator
-				*_device  // dispatch
+				)
 			)
 		);
 

@@ -53,7 +53,6 @@ protected:
 
 // inline methods
 #include <CadR/Renderer.h>
-#include <CadR/VulkanDevice.h>
 #include <cassert>
 namespace CadR {
 
@@ -78,6 +77,5 @@ inline void StateSet::incrementNumDrawCommands(ptrdiff_t increment)  { _numDrawC
 inline void StateSet::decrementNumDrawCommands(ptrdiff_t decrement)  { _numDrawCommands-=decrement; }
 
 inline void StateSet::setAttribStorage(AttribStorage* attribStorage)  { assert(_numDrawCommands==0 && "Can not change AttribStorage while there are already attached DrawCommands."); _attribStorage=attribStorage; }
-inline void StateSet::setPipeline(vk::Pipeline pipeline)  { if(_pipeline) (*_renderer->device())->destroy(_pipeline,nullptr,*_renderer->device()); _pipeline=pipeline; }
 
 }
