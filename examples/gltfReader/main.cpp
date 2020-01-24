@@ -767,20 +767,16 @@ int main(int argc,char** argv) {
 
 		// semaphores
 		auto imageAvailableSemaphore=
-			device->createSemaphoreUnique(
+			device.createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
-				),
-				nullptr,  // allocator
-				device  // dispatch
+				)
 			);
 		auto renderingFinishedSemaphore=
-			device->createSemaphoreUnique(
+			device.createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
-				),
-				nullptr,  // allocator
-				device  // dispatch
+				)
 			);
 
 		// primaryCommandBuffers
@@ -788,13 +784,12 @@ int main(int argc,char** argv) {
 		window.resizeCallbacks.append(
 			[&device,&renderer,&window,&primaryCommandBuffers]() {
 				primaryCommandBuffers=
-					device->allocateCommandBuffersUnique<std::allocator<vk::UniqueHandle<vk::CommandBuffer,CadR::VulkanDevice>>>(
+					device.allocateCommandBuffersUnique<std::allocator<vk::UniqueHandle<vk::CommandBuffer,CadR::VulkanDevice>>>(
 						vk::CommandBufferAllocateInfo(
 							renderer.stateSetCommandPool(),    // commandPool
 							vk::CommandBufferLevel::ePrimary,  // level
 							window.imageCount()                // commandBufferCount
-						),
-						device  // dispatch
+						)
 					);
 			},
 			nullptr
@@ -930,7 +925,7 @@ int main(int argc,char** argv) {
 		}
 
 		// finish all pending work on device
-		device->waitIdle(device);
+		device.waitIdle();
 
 	// catch exceptions
 	} catch(CadR::Error &e) {

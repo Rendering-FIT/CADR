@@ -204,13 +204,11 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 
 	// command pool used by StateSets
 	_stateSetCommandPool=
-		(*_device)->createCommandPool(
+		_device->createCommandPool(
 			vk::CommandPoolCreateInfo(
 				vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
 				_graphicsQueueFamily  // queueFamilyIndex
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 
 	// descriptor pool
@@ -371,22 +369,19 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 
 	// transientCommandPool and uploadingCommandBuffer
 	_transientCommandPool=
-		(*_device)->createCommandPool(
+		_device->createCommandPool(
 			vk::CommandPoolCreateInfo(
 				vk::CommandPoolCreateFlagBits::eTransient|vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
 				_graphicsQueueFamily  // queueFamilyIndex
-			),
-			nullptr,  // allocator
-			*_device  // dispatch
+			)
 		);
 	_uploadingCommandBuffer=
-		(*_device)->allocateCommandBuffers(
+		_device->allocateCommandBuffers(
 			vk::CommandBufferAllocateInfo(
 				_transientCommandPool,             // commandPool
 				vk::CommandBufferLevel::ePrimary,  // level
 				1                                  // commandBufferCount
-			),
-			*_device
+			)
 		)[0];
 
 	// start recording
@@ -413,11 +408,11 @@ Renderer::~Renderer()
 	_device->destroy(_pipelineCache);
 
 	// destroy StateSet CommandPool
-	(*_device)->destroy(_stateSetCommandPool,nullptr,*_device);
+	_device->destroy(_stateSetCommandPool);
 
 	// clean up uploading operations
 	_uploadingCommandBuffer.end(*_device);
-	(*_device)->destroy(_transientCommandPool,nullptr,*_device);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
+	_device->destroy(_transientCommandPool);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
 	purgeObjectsToDeleteAfterCopyOperation();
 
 	// destroy buffers
@@ -485,7 +480,7 @@ void Renderer::executeCopyOperations()
 	_uploadingCommandBuffer.end(*_device);
 
 	// submit command buffer
-	auto fence=(*_device)->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()},nullptr,*_device);
+	auto fence=_device->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()});
 	_graphicsQueue.submit(
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
 			0,nullptr,nullptr,           // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
@@ -497,11 +492,10 @@ void Renderer::executeCopyOperations()
 	);
 
 	// wait for work to complete
-	vk::Result r=(*_device)->waitForFences(
-		fence.get(),    // fences (vk::ArrayProxy)
-		VK_TRUE,        // waitAll
-		uint64_t(3e9),  // timeout (3s)
-		*_device        // dispatch
+	vk::Result r=_device->waitForFences(
+		fence.get(),   // fences (vk::ArrayProxy)
+		VK_TRUE,       // waitAll
+		uint64_t(3e9)  // timeout (3s)
 	);
 	if(r==vk::Result::eTimeout)
 		throw std::runtime_error("GPU timeout. Task is probably hanging.");

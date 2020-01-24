@@ -95,13 +95,27 @@ public:
 	inline vk::Result createComputePipelines(vk::PipelineCache pipelineCache,uint32_t createInfoCount,const vk::ComputePipelineCreateInfo* pCreateInfos,const vk::AllocationCallbacks* pAllocator,vk::Pipeline* pPipelines) const  { return _device.createComputePipelines(pipelineCache,createInfoCount,pCreateInfos,pAllocator,pPipelines,*this); }
 	inline void destroyPipeline(vk::Pipeline pipeline,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyPipeline(pipeline,pAllocator,*this); }
 	inline void destroy(vk::Pipeline pipeline,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(pipeline,pAllocator,*this); }
-
+	inline vk::Result createSemaphore(const vk::SemaphoreCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Semaphore* pSemaphore) const  { return _device.createSemaphore(pCreateInfo,pAllocator,pSemaphore,*this); }
+	inline void destroySemaphore(vk::Semaphore semaphore,const vk::AllocationCallbacks* pAllocator) const  { _device.destroySemaphore(semaphore,pAllocator,*this); }
+	inline void destroy(vk::Semaphore semaphore,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(semaphore,pAllocator,*this); }
+	inline vk::Result createCommandPool(const vk::CommandPoolCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::CommandPool* pCommandPool) const  { return _device.createCommandPool(pCreateInfo,pAllocator,pCommandPool,*this); }
+	inline void destroyCommandPool(vk::CommandPool commandPool,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyCommandPool(commandPool,pAllocator,*this); }
+	inline void destroy(vk::CommandPool commandPool,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(commandPool,pAllocator,*this); }
+	inline vk::Result allocateCommandBuffers(const vk::CommandBufferAllocateInfo* pAllocateInfo,vk::CommandBuffer* pCommandBuffers) const  { return _device.allocateCommandBuffers(pAllocateInfo,pCommandBuffers,*this); }
+	inline void freeCommandBuffers(vk::CommandPool commandPool,uint32_t commandBufferCount,const vk::CommandBuffer* pCommandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBufferCount,pCommandBuffers,*this); }
+	inline void free(vk::CommandPool commandPool,uint32_t commandBufferCount,const vk::CommandBuffer* pCommandBuffers) const  { _device.free(commandPool,commandBufferCount,pCommandBuffers,*this); }
+	inline vk::Result createFence(const vk::FenceCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Fence* pFence) const  { return _device.createFence(pCreateInfo,pAllocator,pFence,*this); }
+	inline void destroyFence(vk::Fence fence,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyFence(fence,pAllocator,*this); }
+	inline void destroy(vk::Fence fence,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(fence,pAllocator,*this); }
+	inline vk::Result waitForFences(uint32_t fenceCount,const vk::Fence* pFences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fenceCount,pFences,waitAll,timeout,*this); }
+	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
 #ifdef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
+	inline vk::Result waitIdle() const  { return _device.waitIdle(*this); }
 #endif
 
 #ifndef VULKAN_HPP_DISABLE_ENHANCED_MODE
-	inline PFN_vkVoidFunction getProcAddr(const std::string& name) const  { return (PFN_vkVoidFunction)name.c_str(); }//_device.getProcAddr(name,*this); }
+	inline PFN_vkVoidFunction getProcAddr(const std::string& name) const  { return _device.getProcAddr(name,*this); }
 	inline void destroy(vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(allocator,*this); }
 	inline vk::Queue getQueue(uint32_t queueFamilyIndex,uint32_t queueIndex) const  { return _device.getQueue(queueFamilyIndex,queueIndex,*this); }
 	inline vk::ResultValueType<vk::RenderPass>::type createRenderPass(const vk::RenderPassCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createRenderPass(createInfo,allocator,*this); }
@@ -156,6 +170,22 @@ public:
 	inline vk::ResultValueType<vk::Pipeline>::type createComputePipeline(vk::PipelineCache pipelineCache,const vk::ComputePipelineCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createComputePipeline(pipelineCache,createInfo,allocator,*this); }
 	inline void destroyPipeline(vk::Pipeline pipeline,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyPipeline(pipeline,allocator,*this); }
 	inline void destroy(vk::Pipeline pipeline,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(pipeline,allocator,*this); }
+	inline vk::ResultValueType<vk::Semaphore>::type createSemaphore(const vk::SemaphoreCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSemaphore(createInfo,allocator,*this); }
+	inline void destroySemaphore(vk::Semaphore semaphore,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroySemaphore(semaphore,allocator,*this); }
+	inline void destroy(vk::Semaphore semaphore,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(semaphore,allocator,*this); }
+	inline vk::ResultValueType<vk::CommandPool>::type createCommandPool(const vk::CommandPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createCommandPool(createInfo,allocator,*this); }
+	inline void destroyCommandPool(vk::CommandPool commandPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyCommandPool(commandPool,allocator,*this); }
+	inline void destroy(vk::CommandPool commandPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(commandPool,allocator,*this); }
+	template<typename Allocator = std::allocator<vk::CommandBuffer>>
+	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo) const  { return _device.allocateCommandBuffers(allocateInfo,*this); }
+	template<typename Allocator = std::allocator<vk::CommandBuffer>>
+	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateCommandBuffers(allocateInfo,vectorAllocator,*this); }
+	void freeCommandBuffers(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBuffers,*this); }
+	void free(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.free(commandPool,commandBuffers,*this); }
+	inline vk::ResultValueType<vk::Fence>::type createFence(const vk::FenceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFence(createInfo,allocator,*this); }
+	inline void destroyFence(vk::Fence fence,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyFence(fence,allocator,*this); }
+	inline void destroy(vk::Fence fence,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(fence,allocator,*this); }
+	inline vk::ResultValueType<void>::type waitIdle() const  { return _device.waitIdle(*this); }
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE
 	inline vk::ResultValueType<vk::UniqueHandle<vk::RenderPass,VulkanDevice>>::type createRenderPassUnique(const vk::RenderPassCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createRenderPassUnique(createInfo,allocator,*this); }
@@ -182,6 +212,13 @@ public:
 	template<typename Allocator=std::allocator<vk::UniquePipeline>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator>>::type createComputePipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator const& vectorAllocator) const  { return _device.createComputePipelinesUnique(pipelineCache,createInfos,allocator,vectorAllocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>::type createComputePipelineUnique(vk::PipelineCache pipelineCache,const vk::ComputePipelineCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createComputePipelineUnique(pipelineCache,createInfo,allocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::Semaphore,VulkanDevice>>::type createSemaphoreUnique(const vk::SemaphoreCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSemaphoreUnique(createInfo,allocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::CommandPool,VulkanDevice>>::type createCommandPoolUnique(const vk::CommandPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createCommandPoolUnique(createInfo,allocator,*this); }
+	template<typename Allocator=std::allocator<vk::UniqueCommandBuffer>>
+	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>,Allocator>>::type allocateCommandBuffersUnique(const vk::CommandBufferAllocateInfo& allocateInfo) const  { return _device.allocateCommandBuffersUnique<Allocator>(allocateInfo,*this); }
+	template<typename Allocator=std::allocator<vk::UniqueCommandBuffer>>
+	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>,Allocator>>::type allocateCommandBuffersUnique(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateCommandBuffersUnique<Allocator>(allocateInfo,vectorAllocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::Fence,VulkanDevice>>::type createFenceUnique(const vk::FenceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFenceUnique(createInfo,allocator,*this); }
 #endif
 #endif
 
@@ -219,7 +256,6 @@ public:
 	PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines;
 	PFN_vkCreateComputePipelines vkCreateComputePipelines;
 	PFN_vkDestroyPipeline vkDestroyPipeline;
-
 	PFN_vkCreateSemaphore vkCreateSemaphore;
 	PFN_vkDestroySemaphore vkDestroySemaphore;
 	PFN_vkCreateCommandPool vkCreateCommandPool;
