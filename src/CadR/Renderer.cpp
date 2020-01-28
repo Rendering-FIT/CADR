@@ -385,12 +385,12 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 		)[0];
 
 	// start recording
-	_uploadingCommandBuffer.begin(
+	_device->beginCommandBuffer(
+		_uploadingCommandBuffer,  // commandBuffer
 		vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 			nullptr  // pInheritanceInfo
-		),
-		*_device
+		)
 	);
 }
 
@@ -411,7 +411,7 @@ Renderer::~Renderer()
 	_device->destroy(_stateSetCommandPool);
 
 	// clean up uploading operations
-	_uploadingCommandBuffer.end(*_device);
+	_device->endCommandBuffer(_uploadingCommandBuffer);
 	_device->destroy(_transientCommandPool);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
 	purgeObjectsToDeleteAfterCopyOperation();
 
@@ -466,8 +466,8 @@ vk::DeviceMemory Renderer::allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFl
 
 void Renderer::scheduleCopyOperation(StagingBuffer& sb)
 {
-	_uploadingCommandBuffer.copyBuffer(sb._stgBuffer,sb._dstBuffer,1,
-	                                   &(const vk::BufferCopy&)vk::BufferCopy(0,sb._dstOffset,sb._size),*_device);
+	_device->cmdCopyBuffer(_uploadingCommandBuffer,sb._stgBuffer,sb._dstBuffer,
+	                       vk::BufferCopy(0,sb._dstOffset,sb._size));
 	_objectsToDeleteAfterCopyOperation.emplace_back(sb._stgBuffer,sb._stgMemory);
 	sb._stgBuffer=nullptr;
 	sb._stgMemory=nullptr;
@@ -477,18 +477,18 @@ void Renderer::scheduleCopyOperation(StagingBuffer& sb)
 void Renderer::executeCopyOperations()
 {
 	// end recording
-	_uploadingCommandBuffer.end(*_device);
+	_device->endCommandBuffer(_uploadingCommandBuffer);
 
 	// submit command buffer
 	auto fence=_device->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()});
-	_graphicsQueue.submit(
+	_device->queueSubmit(
+		_graphicsQueue,  // queue
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
 			0,nullptr,nullptr,           // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
 			1,&_uploadingCommandBuffer,  // commandBufferCount,pCommandBuffers
 			0,nullptr                    // signalSemaphoreCount,pSignalSemaphores
 		),
-		fence.get(),  // fence
-		*_device      // dispatch
+		fence.get()  // fence
 	);
 
 	// wait for work to complete
@@ -503,12 +503,12 @@ void Renderer::executeCopyOperations()
 	purgeObjectsToDeleteAfterCopyOperation();
 
 	// start new recoding
-	_uploadingCommandBuffer.begin(
+	_device->beginCommandBuffer(
+		_uploadingCommandBuffer,  // commandBuffer
 		vk::CommandBufferBeginInfo(
 			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 			nullptr  // pInheritanceInfo
-		),
-		*_device  // dispatch
+		)
 	);
 }
 

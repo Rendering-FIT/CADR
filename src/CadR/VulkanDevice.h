@@ -104,13 +104,31 @@ public:
 	inline vk::Result allocateCommandBuffers(const vk::CommandBufferAllocateInfo* pAllocateInfo,vk::CommandBuffer* pCommandBuffers) const  { return _device.allocateCommandBuffers(pAllocateInfo,pCommandBuffers,*this); }
 	inline void freeCommandBuffers(vk::CommandPool commandPool,uint32_t commandBufferCount,const vk::CommandBuffer* pCommandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBufferCount,pCommandBuffers,*this); }
 	inline void free(vk::CommandPool commandPool,uint32_t commandBufferCount,const vk::CommandBuffer* pCommandBuffers) const  { _device.free(commandPool,commandBufferCount,pCommandBuffers,*this); }
+	inline vk::Result beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo* pBeginInfo) const  { return commandBuffer.begin(pBeginInfo,*this); }
+	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo* pRenderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(pRenderPassBegin,contents,*this); }
+	inline void cmdEndRenderPass(vk::CommandBuffer commandBuffer) const  { commandBuffer.endRenderPass(*this); }
+	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,uint32_t secondaryCommandBufferCount,const vk::CommandBuffer* pSecondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBufferCount,pSecondaryCommandBuffers,*this); }
+	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,uint32_t regionCount,const vk::BufferCopy* pRegions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regionCount,pRegions,*this); }
 	inline vk::Result createFence(const vk::FenceCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Fence* pFence) const  { return _device.createFence(pCreateInfo,pAllocator,pFence,*this); }
 	inline void destroyFence(vk::Fence fence,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyFence(fence,pAllocator,*this); }
 	inline void destroy(vk::Fence fence,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(fence,pAllocator,*this); }
+	inline void cmdBindPipeline(vk::CommandBuffer commandBuffer,vk::PipelineBindPoint pipelineBindPoint,vk::Pipeline pipeline) const  { commandBuffer.bindPipeline(pipelineBindPoint,pipeline,*this); }
+	inline void cmdBindDescriptorSets(vk::CommandBuffer commandBuffer,vk::PipelineBindPoint pipelineBindPoint,vk::PipelineLayout layout,uint32_t firstSet,uint32_t descriptorSetCount,const vk::DescriptorSet* pDescriptorSets,uint32_t dynamicOffsetCount,const uint32_t* pDynamicOffsets) const  { commandBuffer.bindDescriptorSets(pipelineBindPoint,layout,firstSet,descriptorSetCount,pDescriptorSets,dynamicOffsetCount,pDynamicOffsets,*this); }
+	inline void cmdBindIndexBuffer(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset,vk::IndexType indexType) const  { commandBuffer.bindIndexBuffer(buffer,offset,indexType,*this); }
+	inline void cmdBindVertexBuffers(vk::CommandBuffer commandBuffer,uint32_t firstBinding,uint32_t bindingCount,const vk::Buffer* pBuffers,const vk::DeviceSize* pOffsets) const  { commandBuffer.bindVertexBuffers(firstBinding,bindingCount,pBuffers,pOffsets,*this); }
+	inline void cmdDrawIndexedIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset,uint32_t drawCount,uint32_t stride) const  { commandBuffer.drawIndexedIndirect(buffer,offset,drawCount,stride,*this); }
+	inline void cmdDrawIndexed(vk::CommandBuffer commandBuffer,uint32_t indexCount,uint32_t instanceCount,uint32_t firstIndex,int32_t vertexOffset,uint32_t firstInstance) const  { commandBuffer.drawIndexed(indexCount,instanceCount,firstIndex,vertexOffset,firstInstance,*this); }
+	inline void cmdDraw(vk::CommandBuffer commandBuffer,uint32_t vertexCount,uint32_t instanceCount,uint32_t firstVertex,uint32_t firstInstance) const  { commandBuffer.draw(vertexCount,instanceCount,firstVertex,firstInstance,*this); }
+	inline void cmdDispatch(vk::CommandBuffer commandBuffer,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatch(groupCountX,groupCountY,groupCountZ,*this); }
+	inline void cmdDispatchIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset) const  { commandBuffer.dispatchIndirect(buffer,offset,*this); }
+	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,uint32_t memoryBarrierCount,const vk::MemoryBarrier* pMemoryBarriers,uint32_t bufferMemoryBarrierCount,const vk::BufferMemoryBarrier* pBufferMemoryBarriers,uint32_t imageMemoryBarrierCount,const vk::ImageMemoryBarrier* pImageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarrierCount,pMemoryBarriers,bufferMemoryBarrierCount,pBufferMemoryBarriers,imageMemoryBarrierCount,pImageMemoryBarriers,*this); }
+	inline vk::Result queueSubmit(vk::Queue queue,uint32_t submitCount,const vk::SubmitInfo* pSubmits,vk::Fence fence) const  { return queue.submit(submitCount,pSubmits,fence,*this); }
 	inline vk::Result waitForFences(uint32_t fenceCount,const vk::Fence* pFences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fenceCount,pFences,waitAll,timeout,*this); }
 	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
 #ifdef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
+	inline vk::Result endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
+	inline vk::Result queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::Result waitIdle() const  { return _device.waitIdle(*this); }
 #endif
 
@@ -182,9 +200,19 @@ public:
 	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateCommandBuffers(allocateInfo,vectorAllocator,*this); }
 	void freeCommandBuffers(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBuffers,*this); }
 	void free(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.free(commandPool,commandBuffers,*this); }
+	inline vk::ResultValueType<void>::type beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo& beginInfo) const  { return commandBuffer.begin(beginInfo,*this); }
+	inline vk::ResultValueType<void>::type endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
+	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo& renderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(renderPassBegin,contents,*this); }
+	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,vk::ArrayProxy<const vk::CommandBuffer> secondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBuffers); }
+	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,vk::ArrayProxy<const vk::BufferCopy> regions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regions,*this); }
 	inline vk::ResultValueType<vk::Fence>::type createFence(const vk::FenceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFence(createInfo,allocator,*this); }
 	inline void destroyFence(vk::Fence fence,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyFence(fence,allocator,*this); }
 	inline void destroy(vk::Fence fence,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(fence,allocator,*this); }
+	inline void cmdBindDescriptorSets(vk::CommandBuffer commandBuffer,vk::PipelineBindPoint pipelineBindPoint,vk::PipelineLayout layout,uint32_t firstSet,vk::ArrayProxy<const vk::DescriptorSet> descriptorSets,vk::ArrayProxy<const uint32_t> dynamicOffsets) const  { commandBuffer.bindDescriptorSets(pipelineBindPoint,layout,firstSet,descriptorSets,dynamicOffsets,*this); }
+	inline void cmdBindVertexBuffers(vk::CommandBuffer commandBuffer,uint32_t firstBinding,vk::ArrayProxy<const vk::Buffer> buffers,vk::ArrayProxy<const vk::DeviceSize> offsets) const  { commandBuffer.bindVertexBuffers(firstBinding,buffers,offsets,*this); }
+	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,vk::ArrayProxy<const vk::MemoryBarrier> memoryBarriers,vk::ArrayProxy<const vk::BufferMemoryBarrier> bufferMemoryBarriers,vk::ArrayProxy<const vk::ImageMemoryBarrier> imageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarriers,bufferMemoryBarriers,imageMemoryBarriers,*this); }
+	inline vk::ResultValueType<void>::type queueSubmit(vk::Queue queue,vk::ArrayProxy<const vk::SubmitInfo> submits,vk::Fence fence) const  { return queue.submit(submits,fence,*this); }
+	inline vk::ResultValueType<void>::type queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::ResultValueType<void>::type waitIdle() const  { return _device.waitIdle(*this); }
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE

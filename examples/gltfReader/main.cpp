@@ -808,24 +808,25 @@ int main(int argc,char** argv) {
 
 			// record primary command buffer
 			vk::CommandBuffer cb=primaryCommandBuffers[imageIndex].get();
-			cb.begin(
+			device.beginCommandBuffer(
+				cb,  // commandBuffer
 				vk::CommandBufferBeginInfo(
 					vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 					nullptr  // pInheritanceInfo
-				),
-				device  // dispatch
+				)
 			);
-			cb.copyBuffer(
+			device.cmdCopyBuffer(
+				cb,  // commandBuffer
 				renderer.stateSetStagingBuffer(),  // srcBuffer
 				renderer.stateSetBuffer(),  // dstBuffer
 				vk::BufferCopy(
 					0,  // srcOffset
 					0,  // dstOffset
 					renderer.numStateSetIds()*sizeof(uint32_t)  // size
-				),  // pRegions
-				device  // dispatch
+				)  // pRegions
 			);
-			cb.pipelineBarrier(
+			device.cmdPipelineBarrier(
+				cb,  // commandBuffer
 				vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
 				vk::PipelineStageFlagBits::eComputeShader,  // dstStageMask
 				vk::DependencyFlags(),  // dependencyFlags
@@ -834,20 +835,20 @@ int main(int argc,char** argv) {
 					vk::AccessFlagBits::eShaderRead  // dstAccessMask
 				),
 				nullptr,  // bufferMemoryBarriers
-				nullptr,  // imageMemoryBarriers
-				device  // dispatch
+				nullptr  // imageMemoryBarriers
 			);
-			cb.bindPipeline(vk::PipelineBindPoint::eCompute,renderer.drawCommandPipeline(),device);
-			cb.bindDescriptorSets(
+			device.cmdBindPipeline(cb,vk::PipelineBindPoint::eCompute,renderer.drawCommandPipeline());
+			device.cmdBindDescriptorSets(
+				cb,  // commandBuffer
 				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
 				renderer.drawCommandPipelineLayout(),  // layout
 				0,  // firstSet
 				renderer.drawCommandDescriptorSet(),  // descriptorSets
-				nullptr,  // dynamicOffsets
-				device  // dispatch
+				nullptr  // dynamicOffsets
 			);
-			cb.dispatchIndirect(renderer.computeIndirectBuffer(),0,device);
-			cb.pipelineBarrier(
+			device.cmdDispatchIndirect(cb,renderer.computeIndirectBuffer(),0);
+			device.cmdPipelineBarrier(
+				cb,  // commandBuffer
 				vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
 				vk::PipelineStageFlagBits::eDrawIndirect,  // dstStageMask
 				vk::DependencyFlags(),  // dependencyFlags
@@ -856,10 +857,10 @@ int main(int argc,char** argv) {
 					vk::AccessFlagBits::eIndirectCommandRead  // dstAccessMask
 				),
 				nullptr,  // bufferMemoryBarriers
-				nullptr,  // imageMemoryBarriers
-				device  // dispatch
+				nullptr  // imageMemoryBarriers
 			);
-			cb.beginRenderPass(
+			device.cmdBeginRenderPass(
+				cb,  // commandBuffer
 				vk::RenderPassBeginInfo(
 					window.renderPass(),       // renderPass
 					window.framebuffers()[imageIndex],  // framebuffer
@@ -867,14 +868,13 @@ int main(int argc,char** argv) {
 					1,  // clearValueCount
 					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
 				),
-				vk::SubpassContents::eInline,  // contents
-				device  // dispatch
+				vk::SubpassContents::eInline  // contents
 			);
-			cb.bindIndexBuffer(
+			device.cmdBindIndexBuffer(
+				cb,  // commandBuffer
 				renderer.indexBuffer(),  // buffer
 				0,  // offset
-				vk::IndexType::eUint32,  // indexType
-				device  // dispatch
+				vk::IndexType::eUint32  // indexType
 			);
 
 			// execute all StateSets
@@ -892,8 +892,8 @@ int main(int argc,char** argv) {
 					(renderer.numStateSetIds()*sizeof(uint32_t)+nonCoherentAtom_addition)&nonCoherentAtom_mask  // size - rounded up to next nonCoherentAtomSize
 				)
 			);
-			cb.endRenderPass(device);
-			cb.end(device);
+			device.cmdEndRenderPass(cb);
+			device.endCommandBuffer(cb);
 
 			// update compute indirect data
 			renderer.computeIndirectBufferData()[0]=uint32_t(numDrawCommands);
@@ -908,20 +908,20 @@ int main(int argc,char** argv) {
 			);
 
 			// render
-			graphicsQueue.submit(
+			device.queueSubmit(
+				graphicsQueue,  // queue
 				vk::SubmitInfo(
 					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
 					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
 					1,&cb,                               // commandBufferCount+pCommandBuffers
 					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
 				),
-				vk::Fence(nullptr),  // fence
-				device  // dispatch
+				vk::Fence(nullptr)  // fence
 			);
 			window.present(presentationQueue,renderingFinishedSemaphore.get(),imageIndex);
 
 			// wait for rendering to complete
-			presentationQueue.waitIdle(device);
+			device.queueWaitIdle(presentationQueue);
 		}
 
 		// finish all pending work on device

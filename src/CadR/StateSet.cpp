@@ -37,26 +37,26 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 
 	// bind pipeline
 	VulkanDevice* device=_renderer->device();
-	cb.bindPipeline(vk::PipelineBindPoint::eGraphics,_pipeline,*device);
+	device->cmdBindPipeline(cb,vk::PipelineBindPoint::eGraphics,_pipeline);
 
 	// bind attributes
 	size_t numAttributes=_attribStorage->bufferList().size();
 	vector<vk::DeviceSize> zeros(numAttributes,0);
-	cb.bindVertexBuffers(
+	device->cmdBindVertexBuffers(
+		cb,  // commandBuffer
 		0,  // firstBinding
 		uint32_t(numAttributes),  // bindingCount
 		_attribStorage->bufferList().data(),  // pBuffers
-		zeros.data(),  // pOffsets
-		*device  // dispatch
+		zeros.data()  // pOffsets
 	);
 
 	// draw command
-	cb.drawIndexedIndirect(
+	device->cmdDrawIndexedIndirect(
+		cb,  // commandBuffer
 		_renderer->drawIndirectBuffer(),  // buffer
 		indirectBufferOffset,  // offset
 		uint32_t(_numDrawCommands),  // drawCount
-		sizeof(vk::DrawIndexedIndirectCommand),  // stride
-		*device  // dispatch
+		sizeof(vk::DrawIndexedIndirectCommand)  // stride
 	);
 
 	// update rendering data
