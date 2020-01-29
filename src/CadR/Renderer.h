@@ -1,4 +1,7 @@
-#pragma once
+// StateSet.h must be included before the following ifndef because of circular include dependency
+#include <CadR/StateSet.h>
+#ifndef CADR_RENDERER_H
+#define CADR_RENDERER_H
 
 #include <list>
 #include <map>
@@ -6,6 +9,7 @@
 #include <vulkan/vulkan.hpp>
 #include <CadR/AllocationManagers.h>
 #include <CadR/Export.h>
+#include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
@@ -21,6 +25,16 @@ struct PrimitiveSetGpuData;
 
 
 class Renderer final {
+public:
+	typedef boost::intrusive::list<
+		StateSet,
+		boost::intrusive::member_hook<
+			StateSet,
+			boost::intrusive::list_member_hook<
+				boost::intrusive::link_mode<boost::intrusive::safe_link>,
+				boost::intrusive::constant_time_size<false>>,
+			&StateSet::_stateSetListHook>
+	> StateSetList;
 private:
 
 	VulkanDevice* _device;
@@ -66,6 +80,7 @@ private:
 
 	uint32_t _highestAllocatedSsId = -1;
 	std::vector<uint32_t> _releasedSsIds;
+	StateSetList _stateSetList;
 
 	static Renderer* _instance;
 
@@ -142,6 +157,8 @@ public:
 	CADR_EXPORT uint32_t allocateStateSetId();
 	CADR_EXPORT void releaseStateSetId(uint32_t id);
 	CADR_EXPORT uint32_t numStateSetIds();
+	CADR_EXPORT StateSetList& stateSetList();
+	CADR_EXPORT const StateSetList& stateSetList() const;
 
 protected:
 	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
@@ -189,6 +206,8 @@ inline const ItemAllocationManager& Renderer::drawCommandAllocationManager() con
 inline ItemAllocationManager& Renderer::drawCommandAllocationManager()  { return _drawCommandAllocationManager; }
 inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
 inline uint32_t Renderer::numStateSetIds()  { return _highestAllocatedSsId+1; }
+inline Renderer::StateSetList& Renderer::stateSetList()  { return _stateSetList; }
+inline const Renderer::StateSetList& Renderer::stateSetList() const  { return _stateSetList; }
 
 
 }
@@ -422,3 +441,4 @@ inline uint32_t Renderer::numStateSetIds()  { return _highestAllocatedSsId+1; }
    }
 }
 #endif
+#endif /* CADR_RENDERER_H */

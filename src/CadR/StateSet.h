@@ -2,6 +2,7 @@
 
 #include <CadR/Export.h>
 #include <vulkan/vulkan.hpp>
+#include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
@@ -16,6 +17,11 @@ protected:
 	size_t _numDrawCommands = 0;
 	AttribStorage* _attribStorage = nullptr;
 	vk::Pipeline _pipeline;
+public:
+	boost::intrusive::list_member_hook<
+		boost::intrusive::link_mode<boost::intrusive::safe_link>,
+		boost::intrusive::constant_time_size<false>
+	> _stateSetListHook;
 public:
 
 	StateSet();
@@ -56,15 +62,15 @@ protected:
 #include <cassert>
 namespace CadR {
 
-inline StateSet::StateSet() : _renderer(Renderer::get()), _attribStorage(nullptr)  { _id=_renderer->allocateStateSetId(); }
-inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _attribStorage(nullptr)  { _id=_renderer->allocateStateSetId(); }
+inline StateSet::StateSet() : _renderer(Renderer::get()), _attribStorage(nullptr)  { _id=_renderer->allocateStateSetId(); _renderer->stateSetList().push_back(*this); }
+inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _attribStorage(nullptr)  { _id=_renderer->allocateStateSetId(); _renderer->stateSetList().push_back(*this); }
 inline StateSet::StateSet(AttribStorage* attribStorage,vk::Pipeline pipeline)
-	: _renderer(Renderer::get()), _attribStorage(attribStorage), _pipeline(pipeline)  { _id=_renderer->allocateStateSetId(); }
+	: _renderer(Renderer::get()), _attribStorage(attribStorage), _pipeline(pipeline)  { _id=_renderer->allocateStateSetId(); _renderer->stateSetList().push_back(*this); }
 inline StateSet::StateSet(Renderer* renderer,AttribStorage* attribStorage,vk::Pipeline pipeline)
-	: _renderer(renderer), _attribStorage(attribStorage), _pipeline(pipeline)  { _id=_renderer->allocateStateSetId(); }
-inline StateSet::StateSet(StateSet&& other) noexcept : _renderer(other._renderer), _attribStorage(other._attribStorage), _pipeline(other._pipeline)  { other._pipeline=nullptr; _id=other._id; other._id=_renderer->allocateStateSetId(); }
+	: _renderer(renderer), _attribStorage(attribStorage), _pipeline(pipeline)  { _id=_renderer->allocateStateSetId(); _renderer->stateSetList().push_back(*this); }
+inline StateSet::StateSet(StateSet&& other) noexcept : _renderer(other._renderer), _attribStorage(other._attribStorage), _pipeline(other._pipeline)  { other._pipeline=nullptr; _id=other._id; other._id=_renderer->allocateStateSetId(); _renderer->stateSetList().push_back(*this); }
 inline StateSet& StateSet::operator=(StateSet&& rhs) noexcept  { cleanUp(); _renderer=rhs._renderer; _attribStorage=rhs._attribStorage; _pipeline=rhs._pipeline; rhs._pipeline=nullptr; return *this; }
-inline StateSet::~StateSet()  { cleanUp(); _renderer->releaseStateSetId(_id); assert(_numDrawCommands==0 && "StateSet must not be destroyed while some DrawCommands still use it."); }
+inline StateSet::~StateSet()  { cleanUp(); assert(_numDrawCommands==0 && "StateSet must not be destroyed while some DrawCommands still use it."); _renderer->releaseStateSetId(_id); _renderer->stateSetList().erase(Renderer::StateSetList::s_iterator_to(*this)); }
 
 inline Renderer* StateSet::renderer() const  { return _renderer; }
 inline uint32_t StateSet::id() const  { return _id; }
