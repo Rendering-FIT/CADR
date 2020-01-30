@@ -181,13 +181,6 @@ int main(int argc,char** argv) {
 		vk::Queue graphicsQueue=device.getQueue(graphicsQueueFamily,0);
 		vk::Queue presentationQueue=device.getQueue(presentationQueueFamily,0);
 
-		// nonCoherentAtomSize
-		vk::DeviceSize nonCoherentAtomSize=physicalDevice.getProperties(vulkanInstance).limits.nonCoherentAtomSize;
-		vk::DeviceSize nonCoherentAtom_addition=nonCoherentAtomSize-1;
-		vk::DeviceSize nonCoherentAtom_mask=~nonCoherentAtom_addition;
-		if((nonCoherentAtomSize&nonCoherentAtom_addition)!=0)  // check if it is power of two
-			throw std::runtime_error("Platform problem: nonCoherentAtomSize is not power of two.");
-
 		// choose surface formats
 		vk::SurfaceFormatKHR surfaceFormat;
 		{
@@ -815,97 +808,9 @@ int main(int argc,char** argv) {
 					nullptr  // pInheritanceInfo
 				)
 			);
-			device.cmdCopyBuffer(
-				cb,  // commandBuffer
-				renderer.stateSetStagingBuffer(),  // srcBuffer
-				renderer.stateSetBuffer(),  // dstBuffer
-				vk::BufferCopy(
-					0,  // srcOffset
-					0,  // dstOffset
-					renderer.numStateSetIds()*sizeof(uint32_t)  // size
-				)  // pRegions
-			);
-			device.cmdPipelineBarrier(
-				cb,  // commandBuffer
-				vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
-				vk::PipelineStageFlagBits::eComputeShader,  // dstStageMask
-				vk::DependencyFlags(),  // dependencyFlags
-				vk::MemoryBarrier(  // memoryBarriers
-					vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
-					vk::AccessFlagBits::eShaderRead  // dstAccessMask
-				),
-				nullptr,  // bufferMemoryBarriers
-				nullptr  // imageMemoryBarriers
-			);
-			device.cmdBindPipeline(cb,vk::PipelineBindPoint::eCompute,renderer.drawCommandPipeline());
-			device.cmdBindDescriptorSets(
-				cb,  // commandBuffer
-				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
-				renderer.drawCommandPipelineLayout(),  // layout
-				0,  // firstSet
-				renderer.drawCommandDescriptorSet(),  // descriptorSets
-				nullptr  // dynamicOffsets
-			);
-			device.cmdDispatchIndirect(cb,renderer.computeIndirectBuffer(),0);
-			device.cmdPipelineBarrier(
-				cb,  // commandBuffer
-				vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
-				vk::PipelineStageFlagBits::eDrawIndirect,  // dstStageMask
-				vk::DependencyFlags(),  // dependencyFlags
-				vk::MemoryBarrier(  // memoryBarriers
-					vk::AccessFlagBits::eShaderWrite,  // srcAccessMask
-					vk::AccessFlagBits::eIndirectCommandRead  // dstAccessMask
-				),
-				nullptr,  // bufferMemoryBarriers
-				nullptr  // imageMemoryBarriers
-			);
-			device.cmdBeginRenderPass(
-				cb,  // commandBuffer
-				vk::RenderPassBeginInfo(
-					window.renderPass(),       // renderPass
-					window.framebuffers()[imageIndex],  // framebuffer
-					vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
-					1,  // clearValueCount
-					&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
-				),
-				vk::SubpassContents::eInline  // contents
-			);
-			device.cmdBindIndexBuffer(
-				cb,  // commandBuffer
-				renderer.indexBuffer(),  // buffer
-				0,  // offset
-				vk::IndexType::eUint32  // indexType
-			);
-
-			// execute all StateSets
-			vk::DeviceSize indirectBufferOffset=0;
-			size_t numDrawCommands=0;
-			for(auto& pipelineFamily:pipelineDB)
-				for(auto& ssIt:pipelineFamily) {
-					ssIt.second.recordToCommandBuffer(cb,indirectBufferOffset);
-					numDrawCommands+=ssIt.second.numDrawCommands();
-				}
-			device.flushMappedMemoryRanges(
-				vk::MappedMemoryRange(
-					renderer.stateSetStagingMemory(),  // memory
-					0,  // offset
-					(renderer.numStateSetIds()*sizeof(uint32_t)+nonCoherentAtom_addition)&nonCoherentAtom_mask  // size - rounded up to next nonCoherentAtomSize
-				)
-			);
-			device.cmdEndRenderPass(cb);
+			renderer.recordDrawCommandProcessing(cb);
+			renderer.recordSceneRendering(cb,window.renderPass(),window.framebuffers()[imageIndex],vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()));
 			device.endCommandBuffer(cb);
-
-			// update compute indirect data
-			renderer.computeIndirectBufferData()[0]=uint32_t(numDrawCommands);
-			renderer.computeIndirectBufferData()[1]=1;
-			renderer.computeIndirectBufferData()[2]=1;
-			device.flushMappedMemoryRanges(
-				vk::MappedMemoryRange(
-					renderer.computeIndirectBufferMemory(),  // memory
-					0,  // offset
-					VK_WHOLE_SIZE  // size
-				)
-			);
 
 			// render
 			device.queueSubmit(

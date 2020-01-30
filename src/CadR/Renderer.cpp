@@ -32,6 +32,13 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	_graphicsQueue=_device->getQueue(_graphicsQueueFamily,0);
 	_memoryProperties=physicalDevice.getMemoryProperties(*instance);
 
+	// nonCoherentAtomSize
+	vk::DeviceSize nonCoherentAtomSize=physicalDevice.getProperties(*instance).limits.nonCoherentAtomSize;
+	nonCoherentAtom_addition=nonCoherentAtomSize-1;
+	nonCoherentAtom_mask=~nonCoherentAtom_addition;
+	if((nonCoherentAtomSize&nonCoherentAtom_addition)!=0)  // is it power of two?
+		throw std::runtime_error("Platform problem: nonCoherentAtomSize is not power of two.");
+
 	// index buffer
 	_indexBuffer=
 		_device->createBuffer(
@@ -435,6 +442,109 @@ Renderer::~Renderer()
 
 	if(_instance==this)
 		_instance=nullptr;
+}
+
+
+void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
+{
+	// fill StateSet buffer with content
+	_device->cmdCopyBuffer(
+		commandBuffer,  // commandBuffer
+		stateSetStagingBuffer(),  // srcBuffer
+		stateSetBuffer(),  // dstBuffer
+		vk::BufferCopy(
+			0,  // srcOffset
+			0,  // dstOffset
+			numStateSetIds()*sizeof(uint32_t)  // size
+		)  // pRegions
+	);
+	_device->cmdPipelineBarrier(
+		commandBuffer,  // commandBuffer
+		vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
+		vk::PipelineStageFlagBits::eComputeShader,  // dstStageMask
+		vk::DependencyFlags(),  // dependencyFlags
+		vk::MemoryBarrier(  // memoryBarriers
+			vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
+			vk::AccessFlagBits::eShaderRead  // dstAccessMask
+		),
+		nullptr,  // bufferMemoryBarriers
+		nullptr  // imageMemoryBarriers
+	);
+
+	// dispatch drawCommand compute pipeline
+	_device->cmdBindPipeline(commandBuffer,vk::PipelineBindPoint::eCompute,drawCommandPipeline());
+	_device->cmdBindDescriptorSets(
+		commandBuffer,  // commandBuffer
+		vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
+		drawCommandPipelineLayout(),  // layout
+		0,  // firstSet
+		drawCommandDescriptorSet(),  // descriptorSets
+		nullptr  // dynamicOffsets
+	);
+	_device->cmdDispatchIndirect(commandBuffer,computeIndirectBuffer(),0);
+	_device->cmdPipelineBarrier(
+		commandBuffer,  // commandBuffer
+		vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
+		vk::PipelineStageFlagBits::eDrawIndirect,  // dstStageMask
+		vk::DependencyFlags(),  // dependencyFlags
+		vk::MemoryBarrier(  // memoryBarriers
+			vk::AccessFlagBits::eShaderWrite,  // srcAccessMask
+			vk::AccessFlagBits::eIndirectCommandRead  // dstAccessMask
+		),
+		nullptr,  // bufferMemoryBarriers
+		nullptr  // imageMemoryBarriers
+	);
+}
+
+
+void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,vk::Framebuffer framebuffer,const vk::Rect2D& renderArea)
+{
+	// start render pass
+	_device->cmdBeginRenderPass(
+		commandBuffer,  // commandBuffer
+		vk::RenderPassBeginInfo(
+			renderPass,   // renderPass
+			framebuffer,  // framebuffer
+			renderArea,   // renderArea
+			1,  // clearValueCount
+			&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
+		),
+		vk::SubpassContents::eInline  // contents
+	);
+	_device->cmdBindIndexBuffer(
+		commandBuffer,  // commandBuffer
+		indexBuffer(),  // buffer
+		0,  // offset
+		vk::IndexType::eUint32  // indexType
+	);
+
+	// execute all StateSets
+	vk::DeviceSize indirectBufferOffset=0;
+	size_t numDrawCommands=0;
+	for(auto& ssIt:_stateSetList) {
+		ssIt.recordToCommandBuffer(commandBuffer,indirectBufferOffset);
+		numDrawCommands+=ssIt.numDrawCommands();
+	}
+	_device->flushMappedMemoryRanges(
+		vk::MappedMemoryRange(
+			stateSetStagingMemory(),  // memory
+			0,  // offset
+			(numStateSetIds()*sizeof(uint32_t)+nonCoherentAtom_addition)&nonCoherentAtom_mask  // size - rounded up to next nonCoherentAtomSize
+		)
+	);
+	_device->cmdEndRenderPass(commandBuffer);
+
+	// update compute indirect data
+	computeIndirectBufferData()[0]=uint32_t(numDrawCommands);
+	computeIndirectBufferData()[1]=1;
+	computeIndirectBufferData()[2]=1;
+	_device->flushMappedMemoryRanges(
+		vk::MappedMemoryRange(
+			computeIndirectBufferMemory(),  // memory
+			0,  // offset
+			VK_WHOLE_SIZE  // size
+		)
+	);
 }
 
 

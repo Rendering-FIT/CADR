@@ -41,6 +41,8 @@ private:
 	uint32_t _graphicsQueueFamily;
 	vk::Queue _graphicsQueue;
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
+	vk::DeviceSize nonCoherentAtom_addition;
+	vk::DeviceSize nonCoherentAtom_mask;
 
 	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
 	AttribStorage*   _emptyStorage;
@@ -93,6 +95,9 @@ public:
 	CADR_EXPORT Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDevice physicalDevice,
 	                     uint32_t graphicsQueueFamily);
 	CADR_EXPORT ~Renderer();
+
+	CADR_EXPORT void recordDrawCommandProcessing(vk::CommandBuffer commandBuffer);
+	CADR_EXPORT void recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,vk::Framebuffer framebuffer,const vk::Rect2D& renderArea);
 
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT uint32_t graphicsQueueFamily() const;
