@@ -8,6 +8,8 @@
 #include <CadR/VulkanLibrary.h>
 #include "Window.h"
 #include <vulkan/vulkan.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 #if _WIN32 // MSVC 2017 and 2019
 #include <filesystem>
@@ -339,8 +341,12 @@ int main(int argc,char** argv) {
 					vk::PipelineLayoutCreateFlags(),  // flags
 					0,       // setLayoutCount
 					nullptr, // pSetLayouts
-					0,       // pushConstantRangeCount
-					nullptr  // pPushConstantRanges
+					1,       // pushConstantRangeCount
+					&(const vk::PushConstantRange&)vk::PushConstantRange{  // pPushConstantRanges
+						vk::ShaderStageFlagBits::eVertex,  // stageFlags
+						0,  // offset
+						16*sizeof(float)  // size
+					}
 				}
 			);
 
@@ -807,6 +813,22 @@ int main(int argc,char** argv) {
 					vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 					nullptr  // pInheritanceInfo
 				)
+			);
+			glm::mat4 perspectiveMatrix(
+				glm::perspectiveLH_ZO(
+					float(M_PI_2),  // fovy
+					float(window.surfaceExtent().width)/window.surfaceExtent().height,  // aspect
+					0.1f,  // zNear
+					10.f  // zFar
+				)
+			);
+			device.cmdPushConstants(
+				cb,  // commandBuffer
+				pipelineLayout.get(),  // pipelineLayout
+				vk::ShaderStageFlagBits::eVertex,  // stageFlags
+				0,  // offset
+				16*sizeof(float),  // size
+				&perspectiveMatrix  // pValues
 			);
 			renderer.recordDrawCommandProcessing(cb);
 			renderer.recordSceneRendering(cb,window.renderPass(),window.framebuffers()[imageIndex],vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()));

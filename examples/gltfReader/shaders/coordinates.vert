@@ -2,8 +2,11 @@
 #extension GL_ARB_separate_shader_objects : enable
 
 
-layout(location=0) in vec4 inPosition;
+layout(push_constant) uniform pushConstants {
+    mat4 projectionMatrix;
+};
 
+layout(location=0) in vec4 inPosition;
 
 out gl_PerVertex {
 	vec4 gl_Position;
@@ -11,5 +14,5 @@ out gl_PerVertex {
 
 
 void main() {
-	gl_Position=vec4(inPosition.xy,0.5,1);
+	gl_Position=projectionMatrix*vec4(inPosition.xy,3,1);
 }

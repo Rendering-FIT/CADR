@@ -105,6 +105,7 @@ public:
 	inline void freeCommandBuffers(vk::CommandPool commandPool,uint32_t commandBufferCount,const vk::CommandBuffer* pCommandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBufferCount,pCommandBuffers,*this); }
 	inline void free(vk::CommandPool commandPool,uint32_t commandBufferCount,const vk::CommandBuffer* pCommandBuffers) const  { _device.free(commandPool,commandBufferCount,pCommandBuffers,*this); }
 	inline vk::Result beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo* pBeginInfo) const  { return commandBuffer.begin(pBeginInfo,*this); }
+	inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,uint32_t size,const void* pValues) const  { commandBuffer.pushConstants(layout,stageFlags,offset,size,pValues,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo* pRenderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(pRenderPassBegin,contents,*this); }
 	inline void cmdEndRenderPass(vk::CommandBuffer commandBuffer) const  { commandBuffer.endRenderPass(*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,uint32_t secondaryCommandBufferCount,const vk::CommandBuffer* pSecondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBufferCount,pSecondaryCommandBuffers,*this); }
@@ -202,6 +203,7 @@ public:
 	void free(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.free(commandPool,commandBuffers,*this); }
 	inline vk::ResultValueType<void>::type beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo& beginInfo) const  { return commandBuffer.begin(beginInfo,*this); }
 	inline vk::ResultValueType<void>::type endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
+	template<typename T> inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,vk::ArrayProxy<const T> values) const  { commandBuffer.pushConstants<T,VulkanDevice>(layout,stageFlags,offset,values,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo& renderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(renderPassBegin,contents,*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,vk::ArrayProxy<const vk::CommandBuffer> secondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBuffers); }
 	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,vk::ArrayProxy<const vk::BufferCopy> regions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regions,*this); }
@@ -292,6 +294,7 @@ public:
 	PFN_vkFreeCommandBuffers vkFreeCommandBuffers;
 	PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
 	PFN_vkEndCommandBuffer vkEndCommandBuffer;
+	PFN_vkCmdPushConstants vkCmdPushConstants;
 	PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
 	PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
 	PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
