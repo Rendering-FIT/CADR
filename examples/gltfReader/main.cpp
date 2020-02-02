@@ -345,7 +345,7 @@ int main(int argc,char** argv) {
 					&(const vk::PushConstantRange&)vk::PushConstantRange{  // pPushConstantRanges
 						vk::ShaderStageFlagBits::eVertex,  // stageFlags
 						0,  // offset
-						16*sizeof(float)  // size
+						2*16*sizeof(float)  // size
 					}
 				}
 			);
@@ -815,11 +815,22 @@ int main(int argc,char** argv) {
 				)
 			);
 			glm::mat4 perspectiveMatrix(
+				// make perspective:
+				// ZO - Zero to One is output depth range,
+				// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
+				// LH - LeftHand coordinate system, +Y is down, +Z points into the scene
 				glm::perspectiveLH_ZO(
 					float(M_PI_2),  // fovy
 					float(window.surfaceExtent().width)/window.surfaceExtent().height,  // aspect
 					0.1f,  // zNear
 					10.f  // zFar
+				)
+			);
+			glm::mat4 viewMatrix(
+				glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
+					glm::vec3(0.f,0.f,-5.f),  // eye
+					glm::vec3(0.f,0.f,0.f),  // center
+					glm::vec3(0.f,1.f,0.f)  // up
 				)
 			);
 			device.cmdPushConstants(
@@ -829,6 +840,14 @@ int main(int argc,char** argv) {
 				0,  // offset
 				16*sizeof(float),  // size
 				&perspectiveMatrix  // pValues
+			);
+			device.cmdPushConstants(
+				cb,  // commandBuffer
+				pipelineLayout.get(),  // pipelineLayout
+				vk::ShaderStageFlagBits::eVertex,  // stageFlags
+				64,  // offset
+				16*sizeof(float),  // size
+				&viewMatrix  // pValues
 			);
 			renderer.recordDrawCommandProcessing(cb);
 			renderer.recordSceneRendering(cb,window.renderPass(),window.framebuffers()[imageIndex],vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()));

@@ -3,7 +3,8 @@
 
 
 layout(push_constant) uniform pushConstants {
-    mat4 projectionMatrix;
+	mat4 projectionMatrix;
+	mat4 viewMatrix;
 };
 
 layout(location=0) in vec4 inPosition;
@@ -14,5 +15,5 @@ out gl_PerVertex {
 
 
 void main() {
-	gl_Position=projectionMatrix*vec4(inPosition.xy,3,1);
+	gl_Position=projectionMatrix*viewMatrix*vec4(inPosition.xyz,1);
 }
