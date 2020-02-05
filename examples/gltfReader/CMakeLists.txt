@@ -27,11 +27,12 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 
 # dependencies
 find_package(Vulkan REQUIRED)
+find_package(glm REQUIRED)
 if(UNIX)
 	find_package(X11 REQUIRED)
-	set(deps Vulkan::Headers nlohmann_json::nlohmann_json stdc++fs X11)
+	set(deps Vulkan::Headers glm nlohmann_json::nlohmann_json stdc++fs X11)
 elseif(WIN32)
-	set(deps Vulkan::Headers nlohmann_json::nlohmann_json)
+	set(deps Vulkan::Headers glm nlohmann_json::nlohmann_json)
 endif()
 
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})

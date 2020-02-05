@@ -17,7 +17,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		/usr/include
 		/usr/local/include
 		/opt/local/include
-		${THIRD_PARTY_DIR}/GLM/include
+		${THIRD_PARTY_DIR}/GLM
 	)
 
 	# set *_FOUND flag

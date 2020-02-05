@@ -862,7 +862,7 @@ int main(int argc,char** argv) {
 				// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
 				// LH - LeftHand coordinate system, +Y is down, +Z points into the scene
 				glm::perspectiveLH_ZO(
-					float(M_PI_2),  // fovy
+					glm::pi<float>()/2.f,  // fovy
 					float(window.surfaceExtent().width)/window.surfaceExtent().height,  // aspect
 					0.1f,  // zNear
 					10.f  // zFar
