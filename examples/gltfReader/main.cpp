@@ -795,6 +795,48 @@ int main(int argc,char** argv) {
 		);
 
 
+		// camera control
+		float cameraHeading=0.f;
+		float cameraElevation=0.f;
+		float cameraDistance=5.f;
+		int startMouseX,startMouseY;
+		float startCameraHeading,startCameraElevation;
+		window.mouseMoveCallback.append(
+			[&cameraHeading,&cameraElevation,&startMouseX,&startMouseY,&startCameraHeading,&startCameraElevation]
+					(int x,int y,CadUI::MouseButtons buttonState)
+			{
+				if(buttonState.isDown(CadUI::MouseButtons::Left)) {
+					cameraHeading=startCameraHeading+(x-startMouseX)*0.01f;
+					cameraElevation=startCameraElevation+(y-startMouseY)*0.01f;
+				}
+			}
+		);
+		window.mouseButtonCallback.append(
+			[&cameraHeading,&cameraElevation,&startMouseX,&startMouseY,&startCameraHeading,&startCameraElevation]
+					(CadUI::ButtonEventType eventType,CadUI::MouseButtons changedButton,int x,int y,CadUI::MouseButtons)
+			{
+				if(changedButton==CadUI::MouseButtons::Left) {
+					if(eventType==CadUI::ButtonEventType::Pressed) {
+						startMouseX=x;
+						startMouseY=y;
+						startCameraHeading=cameraHeading;
+						startCameraElevation=cameraElevation;
+					}
+					else {
+						cameraHeading=startCameraHeading+(x-startMouseX)*0.01f;
+						cameraElevation=startCameraElevation+(y-startMouseY)*0.01f;
+					}
+				}
+			}
+		);
+		window.mouseWheelCallback.append(
+			[&cameraDistance](int z,int,int,CadUI::MouseButtons)
+			{
+				cameraDistance-=z;
+			}
+		);
+
+
 		// main loop
 		while(window.processEvents()) {
 			if(!window.updateSize())
@@ -828,7 +870,11 @@ int main(int argc,char** argv) {
 			);
 			glm::mat4 viewMatrix(
 				glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
-					glm::vec3(0.f,0.f,-5.f),  // eye
+					glm::vec3(  // eye
+						+cameraDistance*sin(-cameraHeading)*cos(cameraElevation),  // x
+						-cameraDistance*sin(cameraElevation),  // y
+						-cameraDistance*cos(cameraHeading)*cos(cameraElevation)  // z
+					),
 					glm::vec3(0.f,0.f,0.f),  // center
 					glm::vec3(0.f,1.f,0.f)  // up
 				)

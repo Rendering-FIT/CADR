@@ -13,9 +13,9 @@ class CallbackList final {
 protected:
 	std::vector<std::tuple<std::function<T>,void*>> _callbacks;
 public:
-	void append(std::function<T> cb,void* obj);
+	void append(std::function<T> cb,void* obj=nullptr);
 	template<typename ObjType> void append(void (ObjType::*cb)(),ObjType* obj);
-	void remove(std::function<T> cb,void* obj);
+	void remove(std::function<T> cb,void* obj=nullptr);
 	template<typename ObjType> void remove(void (ObjType::*cb)(),ObjType* obj);
 	template<typename ...Args> void invoke(Args&& ...args);
 };

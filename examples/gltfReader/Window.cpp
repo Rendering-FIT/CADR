@@ -160,7 +160,7 @@ void CadUI::Window::create(CadR::VulkanInstance& instance)
 	window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,_windowSize.width,
 	                           _windowSize.height,0,blackColor,blackColor);
 	XSetStandardProperties(display,window,"Hello triangle",NULL,None,NULL,0,NULL);
-	XSelectInput(display,window,StructureNotifyMask);
+	XSelectInput(display,window,StructureNotifyMask|PointerMotionMask|ButtonPressMask|ButtonReleaseMask);
 	wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
 	XSetWMProtocols(display,window,&wmDeleteMessage,1);
 	XMapWindow(display,window);
@@ -281,6 +281,8 @@ bool CadUI::Window::processEvents()
 	XEvent e;
 	while(XPending(display)>0) {
 		XNextEvent(display,&e);
+
+		// handle resize event
 		if(e.type==ConfigureNotify && e.xconfigure.window==window) {
 			vk::Extent2D newSize(e.xconfigure.width,e.xconfigure.height);
 			if(newSize!=_windowSize) {
@@ -289,6 +291,65 @@ bool CadUI::Window::processEvents()
 			}
 			continue;
 		}
+
+		// handle mouse move
+		if(e.type==MotionNotify && e.xmotion.window==window) {
+			mouseMoveCallback.invoke(
+				e.xmotion.x,
+				e.xmotion.y,
+				MouseButtons(
+					(e.xmotion.state&Button1Mask?MouseButtons::Left:0) |
+					(e.xmotion.state&Button2Mask?MouseButtons::Middle:0) |
+					(e.xmotion.state&Button3Mask?MouseButtons::Right:0)
+				)
+			);
+			continue;
+		}
+
+		// handle mouse buttons
+		if((e.type==ButtonPress || e.type==ButtonRelease) && e.xbutton.window==window) {
+
+			// state of mouse buttons
+			MouseButtons buttonState(
+				(e.xbutton.state&Button1Mask?MouseButtons::Left:0) |
+				(e.xbutton.state&Button2Mask?MouseButtons::Middle:0) |
+				(e.xbutton.state&Button3Mask?MouseButtons::Right:0)
+			);
+
+			// handle mouse wheel
+			if(e.xbutton.button==Button4) {
+				if(e.xbutton.type==ButtonPress)
+					mouseWheelCallback.invoke(+1,e.xbutton.x,e.xbutton.y,buttonState);
+				continue;
+			}
+			if(e.xbutton.button==Button5) {
+				if(e.xbutton.type==ButtonPress)
+					mouseWheelCallback.invoke(-1,e.xbutton.x,e.xbutton.y,buttonState);
+				continue;
+			}
+
+			// changed button
+			MouseButtons changedButton(
+				e.xbutton.button==Button1 ? MouseButtons::Left :
+					e.xbutton.button==Button3 ? MouseButtons::Right :
+						e.xbutton.button==Button2 ? MouseButtons::Middle : MouseButtons::Unknown
+			);
+			if(e.type==ButtonPress)  buttonState|=changedButton;
+			else  buttonState&=~changedButton;
+
+			// invoke callback
+			mouseButtonCallback.invoke(
+				e.type==ButtonPress ? ButtonEventType::Pressed : ButtonEventType::Released,
+				changedButton,
+				e.xbutton.x,
+				e.xbutton.y,
+				buttonState
+			);
+
+			continue;
+		}
+
+		// handle window close
 		if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==wmDeleteMessage)
 			return false;
 	}

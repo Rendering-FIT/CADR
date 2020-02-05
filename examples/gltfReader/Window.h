@@ -21,6 +21,34 @@ namespace CadR {
 namespace CadUI {
 
 
+struct MouseButtons {
+protected:
+	uint32_t _value;
+public:
+
+	enum Button {
+		Left = 0x01,
+		Right = 0x02,
+		Middle = 0x04,
+		Unknown = 0x8000,
+	};
+
+	constexpr operator uint32_t() const  { return _value; }
+	constexpr MouseButtons& operator|=(MouseButtons mb)  { _value|=mb; return *this; }
+	constexpr MouseButtons& operator&=(MouseButtons mb)  { _value&=mb; return *this; }
+	MouseButtons()  {}
+	constexpr MouseButtons(uint32_t value) : _value(value)  {}
+	constexpr bool isDown(Button b) const  { return _value&b; }
+	constexpr bool isUp(Button b) const  { return (_value&b)==0; }
+};
+
+
+enum class ButtonEventType {
+	Pressed,
+	Released,
+};
+
+
 class Window final {
 protected:
 #ifdef _WIN32
@@ -64,6 +92,9 @@ public:
 	bool processEvents();
 	bool updateSize();
 	CadR::CallbackList<void()> resizeCallbacks;
+	CadR::CallbackList<void(int x,int y,MouseButtons buttonState)> mouseMoveCallback;
+	CadR::CallbackList<void(ButtonEventType eventType,MouseButtons changedButton,int x,int y,MouseButtons newButtonState)> mouseButtonCallback;
+	CadR::CallbackList<void(int z,int x,int y,MouseButtons buttonState)> mouseWheelCallback;
 
 	void recreateSwapchain();
 	void recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities);
