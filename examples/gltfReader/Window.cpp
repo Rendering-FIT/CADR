@@ -74,8 +74,67 @@ void CadUI::Window::create(CadR::VulkanInstance& instance)
 
 	// window's message handling procedure
 	auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
+		auto handleMouseButton=[](HWND hwnd,ButtonEventType t,MouseButtons changedButton,LPARAM lParam,WPARAM wParam) {
+			Window* w=(Window*)GetWindowLongPtr(hwnd,0);
+			w->mouseButtonCallback.invoke(
+				t,                      // eventType
+				changedButton,          // changedButton
+				short(LOWORD(lParam)),  // x
+				short(HIWORD(lParam)),  // y
+				MouseButtons(           // newButtonState
+					(wParam&MK_LBUTTON?MouseButtons::Left:0) |
+					(wParam&MK_MBUTTON?MouseButtons::Middle:0) |
+					(wParam&MK_RBUTTON?MouseButtons::Right:0)
+				)
+			);
+		};
 		switch(msg)
 		{
+			case WM_MOUSEMOVE: {
+				Window* w=(Window*)GetWindowLongPtr(hwnd,0);
+				w->mouseMoveCallback.invoke(
+					short(LOWORD(lParam)),  // x
+					short(HIWORD(lParam)),  // y
+					MouseButtons(           // buttonState
+						(wParam&MK_LBUTTON?MouseButtons::Left:0) |
+						(wParam&MK_MBUTTON?MouseButtons::Middle:0) |
+						(wParam&MK_RBUTTON?MouseButtons::Right:0)
+					)
+				);
+				return 0;
+			}
+			case WM_LBUTTONDOWN:
+				handleMouseButton(hwnd,ButtonEventType::Pressed,MouseButtons::Left,lParam,wParam);
+				return 0;
+			case WM_LBUTTONUP:
+				handleMouseButton(hwnd,ButtonEventType::Released,MouseButtons::Left,lParam,wParam);
+				return 0;
+			case WM_MBUTTONDOWN:
+				handleMouseButton(hwnd,ButtonEventType::Pressed,MouseButtons::Middle,lParam,wParam);
+				return 0;
+			case WM_MBUTTONUP:
+				handleMouseButton(hwnd,ButtonEventType::Released,MouseButtons::Middle,lParam,wParam);
+				return 0;
+			case WM_RBUTTONDOWN:
+				handleMouseButton(hwnd,ButtonEventType::Pressed,MouseButtons::Right,lParam,wParam);
+				return 0;
+			case WM_RBUTTONUP:
+				handleMouseButton(hwnd,ButtonEventType::Released,MouseButtons::Right,lParam,wParam);
+				return 0;
+			case WM_MOUSEWHEEL: {
+				Window* w=(Window*)GetWindowLongPtr(hwnd,0);
+				w->mouseWheelCallback.invoke(
+					GET_WHEEL_DELTA_WPARAM(wParam)/WHEEL_DELTA,  // z-delta
+					short(LOWORD(lParam)),  // x
+					short(HIWORD(lParam)),  // y
+					MouseButtons(           // buttonState
+						(wParam&MK_LBUTTON?MouseButtons::Left:0) |
+						(wParam&MK_MBUTTON?MouseButtons::Middle:0) |
+						(wParam&MK_RBUTTON?MouseButtons::Right:0)
+					)
+				);
+				return 0;
+			}
 			case WM_SIZE: {
 				Window* w=(Window*)GetWindowLongPtr(hwnd,0);
 				w->_needResize=true;
