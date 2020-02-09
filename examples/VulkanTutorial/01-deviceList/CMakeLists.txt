@@ -1,4 +1,4 @@
-set(APP_NAME tut01-deviceList)
+set(APP_NAME 01-deviceList)
 
 project(${APP_NAME})
 

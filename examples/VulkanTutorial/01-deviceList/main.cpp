@@ -16,7 +16,7 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"tut01-deviceList",      // application name
+						"01-deviceList",         // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
