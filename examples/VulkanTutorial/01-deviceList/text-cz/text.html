@@ -1,6 +1,6 @@
 <h1>Vulkan tutoriál: Inicializace</h1>
 
-<p>Vulkan je moderní grafické a vypočetní API. V tomto oboru se stalo
+<p>Vulkan je moderní grafické a vypočetní API. Ve svém oboru se stalo
 prakticky nejžhavějším API co se týká rozšiřování, novinek a vylepšení.
 Toto je první díl tutoriálu, který nás do Vulkan API uvede.</p>
 
@@ -9,12 +9,13 @@ Před 25 lety byly mainstreamové grafické karty, zjednodušeně řečeno, pouz
 paměť, ke které byl připojen výstup na monitor. Co jste do paměti zapsali, to se objevilo
 na obrazovce. Dnes je grafická karta programovatelný vysoce paralelizovaný vypočetní stroj,
 který může svým hrubým vypočetním výkonem nahradit desítky i stovky dnešních procesorů.
-Vulkan je navržen tak, aby poskytoval větší flexibilitu pro využití tohoto,
-často velmi výkonného, vypočetního stroje.</p>
+Vulkan je navržen tak, aby poskytoval větší flexibilitu pro využití potenciálu,
+který tkví v dnešních grafických kartách.</p>
 
-<p>Před 25 lety měly téměř všechny počítače jen jeden procesor s jedním jádrem.
+<p>Další pohled: Před 25 lety měly téměř všechny počítače jen jeden procesor s jedním jádrem.
+Toto odpovídalo konceptu jednoho aktivního grafického kontextu v OpenGL.
 Dnes je vícejádrový počítač standardem a není tedy divu, že Vulkanu je od svého počátku
-navržen tak, aby umožňoval přirozenou parallelní spolupráci práci mnoha jader procesoru
+navržen tak, aby umožňoval přirozenou parallelní spolupráci mnoha jader procesoru
 jak s jednou, tak i s několika parallelně pracujícími grafickými kartami.</p>
 
 <p>OpenGL má značnou režii pro mnohé operace a velmi složitou architekturu driveru.
@@ -24,7 +25,7 @@ chyb v driveru, menšímu množství problémů s ním a k jeho lepší stabilit
 
 <p>OpenGL je sice platformě nezávislé, ale na macOS bylo vždy několik verzí nazpět
 a mobilní zařízení podporovala většinou pouze OpenGL ES. Vulkan naproti tomu
-slibuje podporu jak macOS, tak většiny moderních tabletů a mobilů.</p>
+slibuje podporu jak na macOS, tak většiny moderních tabletů a mobilů.</p>
 
 <p>Vulkan je sice úžasný a svým nízkoúrovňovým přístupem umožňuje perfektně
 a efektivně pracovat s vypočetními zdroji a hromadu věcí optimalizovat až do detailů.
@@ -77,7 +78,7 @@ Hlavička vulkan.hpp nám nabízí třídu vk::Instance, která zaobaluje veške
 standardizovanou funkcionalitu vkInstance. Kvůli správě paměti však samotnou třídu vk::Instance nepoužijeme.
 Protože používáme vyjímky, měli bychom se držet programovacího idiomu
 <a href="https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization">RAII</a>.
-Tato zkratka znamená Resource Acquisition is initialization,
+Tato zkratka znamená Resource Acquisition Is Initialization,
 česky něco jako "Alokace musí být inicializace". Inicializace je
 typicky prováděna v konstruktoru. A kde je konstruktor alokující paměť či jiné zdroje,
 je obyčejně také destruktor, který se stará o jejich uvolnění. Tento programovací idiom
@@ -85,7 +86,7 @@ je tedy zaměřen na objektově orientovanou správu paměti a ostatních zdroj�
 A to je přesně to, co potřebujeme při vyjímkách.
 Provedeme-li na začátku funkce new a na konci delete, nebude delete zavoláno,
 pokud vznikne mezi new a delete vyjímka. Zabalíme-li však new a delete do objektu,
-kde se new volá v konstruktoru a delete v destruktoru, postará se tento objekt sám o uvolnění
+kde se v konstruktoru volá new a v destruktoru delete, postará se tento objekt sám o uvolnění
 paměti, a to jak v případě klasického opuštění funkce, tak v případě vzniku vyjímky.
 Kód starající se o dealokaci tedy píšeme společně s kódem alokace, a nemusíme procházet
 celou funkci, kdykoliv měníme work-flow funkce, přidáváme returny, a podobně, abychom
@@ -128,9 +129,10 @@ vk::UniqueInstance instance(
 
 <p>vk::InstanceCreateInfo nebudeme vytvářet jako proměnnou, ale zkonstruujeme ji při volání
 vk::createInstanceUnique(). Konstruktoru pouze předáme v parametrech požadovaný obsah struktury.
-Ne každý musí milovat tento styl. Avšak ve Vulkanu není neobvyklé volat 50 funkcí v jedné metodě.
+Ne každý musí milovat tento styl. Avšak ve Vulkanu není neobvyklé volat i 50 funkcí v jedné metodě,
+například při statické konstrukci scény.
 Těchto 50 funkcí může vyžadovat deklaraci padesáti struktur na zásobníku,
-které na něm budou zbytečně strašit až do opuštění funkce - to teoreticky i snižuje efektivnost cache procesoru.
+které na něm budou zbytečně strašit až do opuštění funkce - to teoreticky snižuje i efektivnost cache procesoru.
 Takto je struktura uvolněna hned po použití a nezabírá zbytečně místo na zásobníku.</p>
 
 <p>Celý kód funkce main pak vypadá následovně:
@@ -168,17 +170,17 @@ struktury vk::InstanceCreateInfo. Její obsah nebudu komentovat
 a odkážu na studium Vulkanní dokumentace, což je denní strava programátorů Vulkanu,
 kdykoliv zkoušejí něco nového.</p>
 
-<p>V druhé části kódu se dotážeme na seznam fyzických zařízení (physical devices)
-podporujících Vulkan a vypíšeme jejich názvy.</p>
+<p>V druhé části kódu se dotážeme na seznam fyzických zařízení (physical devices),
+které podporují Vulkan, a vypíšeme jejich názvy.</p>
 
 <p>Příště si povíme více o fyzických a logických zařízeních.
 Pokud se vám nedaří zdrojový kód zkompilovat, ukážeme si příště,
-co nainstalovat a jak nakonfigurovat, aby vše fungovalo.
+co nainstalovat a jak vše nakonfigurovat, aby to fungovalo.
 Prozatím prozradím, že kromě <a href=>zdrojáků</a>,
 je potřeba ještě cmake. Na Windows doporučuji
 <a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a>
 na Linuxech development balíčky Vulkanu (na Ubuntu libvulkan-dev).
-Na Windows budeme používat Visual C++ 2017, na Linuxech g++,
+Na Windows budeme používat Visual C++ 2017/19, na Linuxech g++,
 odborníci i cokoliv jiného.</p>
 
 <p>Soubory ke stažení:</p>
