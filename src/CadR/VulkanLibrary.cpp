@@ -10,9 +10,9 @@ using namespace std;
 using namespace CadR;
 
 #ifdef _WIN32
-const filesystem::path VulkanLibrary::_defaultPath = "vulkan-1.dll";
+const filesystem::path VulkanLibrary::_defaultName = "vulkan-1.dll";
 #else
-const filesystem::path VulkanLibrary::_defaultPath = "libvulkan.so.1";
+const filesystem::path VulkanLibrary::_defaultName = "libvulkan.so.1";
 #endif
 
 

@@ -15,17 +15,17 @@ namespace CadR {
 class CADR_EXPORT VulkanLibrary final {
 protected:
 	void* _lib = nullptr;
-	static const std::filesystem::path _defaultPath;
+	static const std::filesystem::path _defaultName;
 
 public:
 
-	static const std::filesystem::path& defaultPath();
+	static const std::filesystem::path& defaultName();
 
 	VulkanLibrary(nullptr_t);
-	VulkanLibrary(const std::filesystem::path& libPath = defaultPath());
+	VulkanLibrary(const std::filesystem::path& libPath);
 	~VulkanLibrary();
 
-	void init(const std::filesystem::path& libPath = defaultPath());
+	void init(const std::filesystem::path& libPath = defaultName());
 	void reset();
 	bool initialized() const;
 
@@ -52,7 +52,7 @@ private:
 
 
 // inline and template methods
-inline const std::filesystem::path& VulkanLibrary::defaultPath()  { return _defaultPath; }
+inline const std::filesystem::path& VulkanLibrary::defaultName()  { return _defaultName; }
 inline VulkanLibrary::VulkanLibrary(nullptr_t)  { vkGetInstanceProcAddr=nullptr; vkCreateInstance=nullptr; }
 inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath)  { init(libPath); }
 inline VulkanLibrary::~VulkanLibrary()  { reset(); }

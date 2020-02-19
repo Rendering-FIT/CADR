@@ -161,7 +161,7 @@ int main(int argc,char** argv) {
 		f.exceptions(ifstream::badbit|ifstream::failbit);
 
 		// init Vulkan and open window
-		CadR::VulkanLibrary vulkanLib;
+		CadR::VulkanLibrary vulkanLib(CadR::VulkanLibrary::defaultName());
 		CadR::VulkanInstance vulkanInstance(vulkanLib,"glTF reader",0,"CADR",0,VK_API_VERSION_1_0,nullptr,
 #ifdef _WIN32
 		                                    {"VK_KHR_surface","VK_KHR_win32_surface"});  // enabled extension names
