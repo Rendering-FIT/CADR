@@ -38,6 +38,7 @@ public:
 	          vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	          vk::ArrayProxy<const char*const> enabledExtensions = nullptr);
 	void reset();
+	bool initialized() const;
 
 	VulkanInstance(VulkanInstance&& other) noexcept;
 	VulkanInstance& operator=(VulkanInstance&& rhs) noexcept;
@@ -93,6 +94,7 @@ inline void VulkanInstance::init(VulkanLibrary& lib,const char* applicationName,
 	{	vk::ApplicationInfo appInfo(applicationName,applicationVersion,engineName,engineVersion,apiVersion);
 		vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(),&appInfo,enabledLayers.size(),enabledLayers.data(),enabledExtensions.size(),enabledExtensions.data());
 		init(lib,createInfo); }
+inline bool VulkanInstance::initialized() const  { return _instance.operator bool(); }
 template<typename T> T VulkanInstance::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name,*this)); }
 template<typename T> T VulkanInstance::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name,*this)); }
 
