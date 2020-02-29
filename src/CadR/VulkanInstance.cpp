@@ -93,13 +93,13 @@ tuple<vk::PhysicalDevice,uint32_t,uint32_t> VulkanInstance::chooseDeviceAndQueue
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 	// contains the window).
-	vector<vk::PhysicalDevice> deviceList=_instance.enumeratePhysicalDevices(*this);
+	vector<vk::PhysicalDevice> deviceList=enumeratePhysicalDevices();
 	vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
 	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
 	for(vk::PhysicalDevice pd:deviceList) {
 
 		// skip devices without VK_KHR_swapchain
-		vector<vk::ExtensionProperties> extensionList=pd.enumerateDeviceExtensionProperties(nullptr,*this);
+		vector<vk::ExtensionProperties> extensionList=enumerateDeviceExtensionProperties(pd);
 		for(vk::ExtensionProperties& e:extensionList)
 			if(strcmp(e.extensionName,"VK_KHR_swapchain")==0)
 				goto swapchainSupported;
@@ -121,7 +121,7 @@ tuple<vk::PhysicalDevice,uint32_t,uint32_t> VulkanInstance::chooseDeviceAndQueue
 		// select queues (for graphics rendering and for presentation)
 		uint32_t graphicsQueueFamily=UINT32_MAX;
 		uint32_t presentationQueueFamily=UINT32_MAX;
-		vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties(*this);
+		vector<vk::QueueFamilyProperties> queueFamilyList=getPhysicalDeviceQueueFamilyProperties(pd);
 		uint32_t i=0;
 		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
 			bool p=pd.getSurfaceSupportKHR(i,surface,*this)!=0;

@@ -30,10 +30,10 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
 	_graphicsQueue=_device->getQueue(_graphicsQueueFamily,0);
-	_memoryProperties=physicalDevice.getMemoryProperties(*instance);
+	_memoryProperties=instance->getPhysicalDeviceMemoryProperties(physicalDevice);
 
 	// nonCoherentAtomSize
-	vk::DeviceSize nonCoherentAtomSize=physicalDevice.getProperties(*instance).limits.nonCoherentAtomSize;
+	vk::DeviceSize nonCoherentAtomSize=instance->getPhysicalDeviceProperties(physicalDevice).limits.nonCoherentAtomSize;
 	nonCoherentAtom_addition=nonCoherentAtomSize-1;
 	nonCoherentAtom_mask=~nonCoherentAtom_addition;
 	if((nonCoherentAtomSize&nonCoherentAtom_addition)!=0)  // is it power of two?

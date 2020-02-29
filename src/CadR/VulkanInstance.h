@@ -57,6 +57,41 @@ public:
 	const vk::Instance& get() const;
 	vk::Instance& get();
 
+	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _instance.getProcAddr(pName,*this); }
+	inline void destroy(const vk::AllocationCallbacks* pAllocator) const noexcept  { _instance.destroy(pAllocator,*this); }
+	inline vk::Result createDevice(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Device* pDevice) const  { return physicalDevice.createDevice(pCreateInfo,pAllocator,pDevice,*this); }
+	inline vk::Result enumeratePhysicalDevices(uint32_t* pPhysicalDeviceCount,vk::PhysicalDevice* pPhysicalDevices) const  { return _instance.enumeratePhysicalDevices(pPhysicalDeviceCount,pPhysicalDevices,*this); }
+	inline void getPhysicalDeviceProperties(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceProperties* pProperties) const noexcept  { physicalDevice.getProperties(pProperties,*this); }
+	inline vk::Result enumerateDeviceExtensionProperties(vk::PhysicalDevice physicalDevice,const char* pLayerName,uint32_t* pPropertyCount,vk::ExtensionProperties* pProperties) const  { return physicalDevice.enumerateDeviceExtensionProperties(pLayerName,pPropertyCount,pProperties,*this); }
+	inline void getPhysicalDeviceFormatProperties(vk::PhysicalDevice physicalDevice,vk::Format format,vk::FormatProperties* pFormatProperties) const noexcept  { physicalDevice.getFormatProperties(format,pFormatProperties,*this); }
+	inline void getPhysicalDeviceMemoryProperties(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceMemoryProperties* pMemoryProperties) const noexcept  { physicalDevice.getMemoryProperties(pMemoryProperties,*this); }
+	inline void getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,uint32_t* pQueueFamilyPropertyCount,vk::QueueFamilyProperties* pQueueFamilyProperties) const noexcept  { physicalDevice.getQueueFamilyProperties(pQueueFamilyPropertyCount,pQueueFamilyProperties,*this); }
+
+#ifndef VULKAN_HPP_DISABLE_ENHANCED_MODE
+	inline void destroy(vk::Optional<const vk::AllocationCallbacks> allocator) const noexcept  { _instance.destroy(allocator,*this); }
+	inline vk::ResultValueType<vk::Device>::type createDevice(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return physicalDevice.createDevice(createInfo,allocator,*this); }
+	template<typename Allocator=std::allocator<vk::PhysicalDevice>>
+	typename vk::ResultValueType<std::vector<vk::PhysicalDevice,Allocator>>::type enumeratePhysicalDevices() const  { return _instance.enumeratePhysicalDevices(*this); }
+	template<typename Allocator=std::allocator<vk::PhysicalDevice>>
+	typename vk::ResultValueType<std::vector<vk::PhysicalDevice,Allocator>>::type enumeratePhysicalDevices(Allocator const& vectorAllocator) const  { return _instance.enumeratePhysicalDevices(vectorAllocator,*this); }
+	inline vk::PhysicalDeviceProperties getPhysicalDeviceProperties(vk::PhysicalDevice physicalDevice) const noexcept  { return physicalDevice.getProperties(*this); }
+	template<typename Allocator=std::allocator<vk::ExtensionProperties>>
+	typename vk::ResultValueType<std::vector<vk::ExtensionProperties,Allocator>>::type enumerateDeviceExtensionProperties(vk::PhysicalDevice physicalDevice,vk::Optional<const std::string> layerName=nullptr) const  { return physicalDevice.enumerateDeviceExtensionProperties(layerName,*this); }
+	template<typename Allocator=std::allocator<vk::ExtensionProperties>>
+	typename vk::ResultValueType<std::vector<vk::ExtensionProperties,Allocator>>::type enumerateDeviceExtensionProperties(vk::PhysicalDevice physicalDevice,vk::Optional<const std::string> layerName,Allocator const& vectorAllocator) const  { return physicalDevice.enumerateDeviceExtensionProperties(layerName,vectorAllocator,*this); }
+	inline vk::FormatProperties getPhysicalDeviceFormatProperties(vk::PhysicalDevice physicalDevice,vk::Format format) const noexcept  { return physicalDevice.getFormatProperties(format,*this); }
+	inline vk::PhysicalDeviceMemoryProperties getPhysicalDeviceMemoryProperties(vk::PhysicalDevice physicalDevice) const noexcept  { return physicalDevice.getMemoryProperties(*this); }
+	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
+	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getQueueFamilyProperties(*this); }
+	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
+	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getQueueFamilyProperties(vectorAllocator,*this); }
+#endif
+
+#ifndef VULKAN_HPP_NO_SMART_HANDLE
+	template<typename Dispatch>
+	typename vk::ResultValueType<vk::UniqueHandle<vk::Device,Dispatch>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator,Dispatch const &d) const  { return physicalDevice.createDeviceUnique(createInfo,allocator,d); }
+#endif
+
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 	PFN_vkDestroyInstance vkDestroyInstance;
 	PFN_vkCreateDevice vkCreateDevice;

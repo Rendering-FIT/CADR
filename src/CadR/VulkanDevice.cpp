@@ -10,7 +10,7 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	if(_device)
 		cleanUp();
 
-	_device=physicalDevice.createDevice(createInfo,nullptr,instance);
+	_device=instance.createDevice(physicalDevice,createInfo);
 	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
 	vkDestroyDevice      =getProcAddr<PFN_vkDestroyDevice      >("vkDestroyDevice");
 	vkGetDeviceQueue     =getProcAddr<PFN_vkGetDeviceQueue     >("vkGetDeviceQueue");
