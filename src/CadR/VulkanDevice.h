@@ -19,6 +19,13 @@ public:
 	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
 	VulkanDevice(VulkanDevice&& vd) noexcept;
 	VulkanDevice(VulkanInstance& instance,
+	             vk::PhysicalDevice physicalDevice,
+	             uint32_t graphicsQueueFamily,
+	             uint32_t presentationQueueFamily,
+	             const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	             const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	             const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	VulkanDevice(VulkanInstance& instance,
 	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	             const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
@@ -28,6 +35,13 @@ public:
 	VulkanDevice& operator=(VulkanDevice&& rhs) noexcept;
 
 	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
+	void init(VulkanInstance& instance,
+	          vk::PhysicalDevice physicalDevice,
+	          uint32_t graphicsQueueFamily,
+	          uint32_t presentationQueueFamily,
+	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	void init(VulkanInstance& instance,
 	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
@@ -325,11 +339,10 @@ private:
 // inline methods
 inline VulkanDevice::VulkanDevice()  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { init(instance,physicalDevice,createInfo); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
 inline VulkanDevice::~VulkanDevice()  { cleanUp(); }
 
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
-		const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)
-	{ init(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
+inline void VulkanDevice::init(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 
