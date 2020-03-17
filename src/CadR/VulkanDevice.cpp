@@ -10,7 +10,7 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	if(_device)
 		cleanUp();
 
-	_device=physicalDevice.createDevice(createInfo,nullptr,instance);
+	_device=instance.createDevice(physicalDevice,createInfo);
 	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
 	vkDestroyDevice      =getProcAddr<PFN_vkDestroyDevice      >("vkDestroyDevice");
 	vkGetDeviceQueue     =getProcAddr<PFN_vkGetDeviceQueue     >("vkGetDeviceQueue");
@@ -79,18 +79,18 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 
 
 void VulkanDevice::init(VulkanInstance& instance,
-                        std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+                        vk::PhysicalDevice physicalDevice,
+                        uint32_t graphicsQueueFamily,
+                        uint32_t presentationQueueFamily,
                         const vk::ArrayProxy<const char*const> enabledLayers,
                         const vk::ArrayProxy<const char*const> enabledExtensions,
                         const vk::PhysicalDeviceFeatures* enabledFeatures)
 {
 	if(_device)
 		cleanUp();
-	if(!std::get<0>(physicalDeviceAndQueueFamilies))
+	if(!physicalDevice)
 		return;
 
-	uint32_t graphicsQueueFamily=std::get<1>(physicalDeviceAndQueueFamilies);
-	uint32_t presentationQueueFamily=std::get<2>(physicalDeviceAndQueueFamilies);
 	size_t numQueues=(graphicsQueueFamily==presentationQueueFamily)?1:2;
 	std::array<vk::DeviceQueueCreateInfo,2> queueInfos = {
 		vk::DeviceQueueCreateInfo{
@@ -113,7 +113,7 @@ void VulkanDevice::init(VulkanInstance& instance,
 		enabledExtensions.size(),enabledExtensions.data(),  // enabledExtensions
 		enabledFeatures  // enabledFeatures
 	);
-	init(instance,std::get<0>(physicalDeviceAndQueueFamilies),createInfo);
+	init(instance,physicalDevice,createInfo);
 }
 
 
