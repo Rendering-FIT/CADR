@@ -1,16 +1,15 @@
 #include <CadR/CadR.h>
-#include <CadR/Renderer.h>
-#include <memory>
 
-using namespace std;
-using namespace CadR;
+static bool _leakHandles = false;
 
 
-void CadR::init()
+bool CadR::leakHandles()
 {
+	return _leakHandles;
 }
 
 
-void CadR::finalize()
+void CadR::setLeakHandles(bool v)
 {
+	_leakHandles=v;
 }

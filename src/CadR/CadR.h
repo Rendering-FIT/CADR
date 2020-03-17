@@ -1,6 +1,6 @@
 namespace CadR {
 
-void init();
-void finalize();
+bool leakHandles();
+void setLeakHandles(bool v);
 
 }

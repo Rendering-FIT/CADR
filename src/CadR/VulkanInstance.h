@@ -1,8 +1,9 @@
 #pragma once
 
-#include <tuple>
-#include <vulkan/vulkan.hpp>
+#include <CadR/CadR.h>
 #include <CadR/Export.h>
+#include <vulkan/vulkan.hpp>
+#include <tuple>
 
 namespace CadR {
 
@@ -86,7 +87,7 @@ inline VulkanInstance::VulkanInstance(VulkanLibrary& lib,const char* application
 	{	vk::ApplicationInfo appInfo(applicationName,applicationVersion,engineName,engineVersion,apiVersion);
 		vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(),&appInfo,enabledLayers.size(),enabledLayers.data(),enabledExtensions.size(),enabledExtensions.data());
 		init(lib,createInfo); }
-inline VulkanInstance::~VulkanInstance()  { reset(); }
+inline VulkanInstance::~VulkanInstance()  { if(!CadR::leakHandles()) reset(); }
 
 inline void VulkanInstance::init(VulkanLibrary& lib,const char* applicationName,uint32_t applicationVersion,
 		const char* engineName,uint32_t engineVersion,uint32_t apiVersion,

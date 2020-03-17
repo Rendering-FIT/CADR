@@ -1,13 +1,14 @@
 #pragma once
 
+#include <CadR/CadR.h>
+#include <CadR/Export.h>
+#include <vulkan/vulkan.hpp>
 #if _WIN32 // MSVC 2017 and 2019
 #include <filesystem>
 #else // gcc 7.4.0 (Ubuntu 18.04) does support path only as experimental
 #include <experimental/filesystem>
 namespace std { namespace filesystem { using std::experimental::filesystem::path; } }
 #endif
-#include <vulkan/vulkan.hpp>
-#include <CadR/Export.h>
 
 namespace CadR {
 
@@ -55,7 +56,7 @@ private:
 inline const std::filesystem::path& VulkanLibrary::defaultName()  { return _defaultName; }
 inline VulkanLibrary::VulkanLibrary()  { vkGetInstanceProcAddr=nullptr; vkCreateInstance=nullptr; }
 inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath)  { init(libPath); }
-inline VulkanLibrary::~VulkanLibrary()  { reset(); }
+inline VulkanLibrary::~VulkanLibrary()  { if(!CadR::leakHandles()) reset(); }
 
 template<typename T> T VulkanLibrary::getProcAddr(const char* name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name)); }
 template<typename T> T VulkanLibrary::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name.c_str())); }

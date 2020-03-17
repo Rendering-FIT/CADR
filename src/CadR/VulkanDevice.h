@@ -3,6 +3,7 @@
 #include <tuple>
 #include <vulkan/vulkan.hpp>
 #include <CadR/CallbackList.h>
+#include <CadR/CadR.h>
 #include <CadR/Export.h>
 
 namespace CadR {
@@ -325,7 +326,7 @@ private:
 // inline methods
 inline VulkanDevice::VulkanDevice()  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { init(instance,physicalDevice,createInfo); }
-inline VulkanDevice::~VulkanDevice()  { cleanUp(); }
+inline VulkanDevice::~VulkanDevice()  { if(!CadR::leakHandles()) cleanUp(); }
 
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 		const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)
