@@ -3,7 +3,6 @@
 #include <tuple>
 #include <vulkan/vulkan.hpp>
 #include <CadR/CallbackList.h>
-#include <CadR/CadR.h>
 #include <CadR/Export.h>
 
 namespace CadR {
@@ -18,6 +17,7 @@ public:
 
 	VulkanDevice();
 	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
+	VulkanDevice(VulkanInstance& instance,vk::Device device);
 	VulkanDevice(VulkanDevice&& vd) noexcept;
 	VulkanDevice(VulkanInstance& instance,
 	             vk::PhysicalDevice physicalDevice,
@@ -35,20 +35,21 @@ public:
 
 	VulkanDevice& operator=(VulkanDevice&& rhs) noexcept;
 
-	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
-	void init(VulkanInstance& instance,
-	          vk::PhysicalDevice physicalDevice,
-	          uint32_t graphicsQueueFamily,
-	          uint32_t presentationQueueFamily,
-	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
-	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
-	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
-	void init(VulkanInstance& instance,
-	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
-	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
-	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
-	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
-	void cleanUp();
+	void create(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
+	void create(VulkanInstance& instance,
+	            vk::PhysicalDevice physicalDevice,
+	            uint32_t graphicsQueueFamily,
+	            uint32_t presentationQueueFamily,
+	            const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	            const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	void create(VulkanInstance& instance,
+	            std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+	            const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	            const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	void init(VulkanInstance& instance,vk::Device device);
+	void destroy();
 
 	CallbackList<void()> cleanUpCallbacks;
 
@@ -59,12 +60,9 @@ public:
 	explicit operator bool() const;
 	bool operator!() const;
 
-	const vk::Device* operator->() const;
-	vk::Device* operator->();
-	const vk::Device& operator*() const;
-	vk::Device& operator*();
 	const vk::Device& get() const;
 	vk::Device& get();
+	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _device.getProcAddr(pName,*this); }
 	inline void destroy(const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(pAllocator,*this); }
@@ -339,23 +337,21 @@ private:
 
 // inline methods
 inline VulkanDevice::VulkanDevice()  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { init(instance,physicalDevice,createInfo); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
-inline VulkanDevice::~VulkanDevice()  { if(!CadR::leakHandles()) cleanUp(); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { create(instance,physicalDevice,createInfo); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::Device device)  { init(instance,device); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { create(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
+inline VulkanDevice::~VulkanDevice()  { destroy(); }
 
-inline void VulkanDevice::init(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
+inline void VulkanDevice::create(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { create(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 
 inline VulkanDevice::operator vk::Device() const  { return _device; }
 inline VulkanDevice::operator bool() const  { return _device.operator bool(); }
 inline bool VulkanDevice::operator!() const  { return _device.operator!(); }
-inline const vk::Device* VulkanDevice::operator->() const  { return &_device; }
-inline vk::Device* VulkanDevice::operator->()  { return &_device; }
-inline const vk::Device& VulkanDevice::operator*() const  { return _device; }
-inline vk::Device& VulkanDevice::operator*()  { return _device; }
 inline const vk::Device& VulkanDevice::get() const  { return _device; }
 inline vk::Device& VulkanDevice::get()  { return _device; }
+inline void VulkanDevice::set(nullptr_t)  { _device=nullptr; }
 
 
 }

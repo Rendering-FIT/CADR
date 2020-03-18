@@ -5,12 +5,13 @@
 using namespace CadR;
 
 
-void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)
+void VulkanDevice::init(VulkanInstance& instance,vk::Device device)
 {
 	if(_device)
-		cleanUp();
+		destroy();
 
-	_device=instance.createDevice(physicalDevice,createInfo);
+	_device=device;
+
 	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
 	vkDestroyDevice      =getProcAddr<PFN_vkDestroyDevice      >("vkDestroyDevice");
 	vkGetDeviceQueue     =getProcAddr<PFN_vkGetDeviceQueue     >("vkGetDeviceQueue");
@@ -74,20 +75,30 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkWaitForFences      =getProcAddr<PFN_vkWaitForFences      >("vkWaitForFences");
 	vkQueueWaitIdle      =getProcAddr<PFN_vkQueueWaitIdle      >("vkQueueWaitIdle");
 	vkDeviceWaitIdle     =getProcAddr<PFN_vkDeviceWaitIdle     >("vkDeviceWaitIdle");
-
 }
 
 
-void VulkanDevice::init(VulkanInstance& instance,
-                        vk::PhysicalDevice physicalDevice,
-                        uint32_t graphicsQueueFamily,
-                        uint32_t presentationQueueFamily,
-                        const vk::ArrayProxy<const char*const> enabledLayers,
-                        const vk::ArrayProxy<const char*const> enabledExtensions,
-                        const vk::PhysicalDeviceFeatures* enabledFeatures)
+void VulkanDevice::create(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)
 {
 	if(_device)
-		cleanUp();
+		destroy();
+	if(!physicalDevice)
+		return;
+
+	init(instance,instance.createDevice(physicalDevice,createInfo));
+}
+
+
+void VulkanDevice::create(VulkanInstance& instance,
+                          vk::PhysicalDevice physicalDevice,
+                          uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,
+                          const vk::ArrayProxy<const char*const> enabledLayers,
+                          const vk::ArrayProxy<const char*const> enabledExtensions,
+                          const vk::PhysicalDeviceFeatures* enabledFeatures)
+{
+	if(_device)
+		destroy();
 	if(!physicalDevice)
 		return;
 
@@ -113,11 +124,11 @@ void VulkanDevice::init(VulkanInstance& instance,
 		enabledExtensions.size(),enabledExtensions.data(),  // enabledExtensions
 		enabledFeatures  // enabledFeatures
 	);
-	init(instance,physicalDevice,createInfo);
+	create(instance,physicalDevice,createInfo);
 }
 
 
-void VulkanDevice::cleanUp()
+void VulkanDevice::destroy()
 {
 	if(_device) {
 
@@ -146,7 +157,7 @@ VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
 VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
 {
 	if(_device)
-		cleanUp();
+		destroy();
 
 	*this=other;
 	other._device=nullptr;

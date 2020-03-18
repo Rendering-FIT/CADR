@@ -1,6 +1,5 @@
 #pragma once
 
-#include <CadR/CadR.h>
 #include <CadR/Export.h>
 #include <vulkan/vulkan.hpp>
 #if _WIN32 // MSVC 2017 and 2019
@@ -26,9 +25,9 @@ public:
 	VulkanLibrary(const std::filesystem::path& libPath);
 	~VulkanLibrary();
 
-	void init(const std::filesystem::path& libPath = defaultName());
-	void reset();
-	bool initialized() const;
+	void load(const std::filesystem::path& libPath = defaultName());
+	void unload();
+	bool loaded() const;
 
 	VulkanLibrary(VulkanLibrary&& other) noexcept;
 	VulkanLibrary& operator=(VulkanLibrary&& rhs) noexcept;
@@ -55,13 +54,13 @@ private:
 // inline and template methods
 inline const std::filesystem::path& VulkanLibrary::defaultName()  { return _defaultName; }
 inline VulkanLibrary::VulkanLibrary()  { vkGetInstanceProcAddr=nullptr; vkCreateInstance=nullptr; }
-inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath)  { init(libPath); }
-inline VulkanLibrary::~VulkanLibrary()  { if(!CadR::leakHandles()) reset(); }
+inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath)  { load(libPath); }
+inline VulkanLibrary::~VulkanLibrary()  { unload(); }
 
 template<typename T> T VulkanLibrary::getProcAddr(const char* name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name)); }
 template<typename T> T VulkanLibrary::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name.c_str())); }
 
-inline bool VulkanLibrary::initialized() const  { return _lib!=nullptr; }
+inline bool VulkanLibrary::loaded() const  { return _lib!=nullptr; }
 inline uint32_t VulkanLibrary::enumerateInstanceVersion() const  { return (vkEnumerateInstanceVersion==nullptr) ? VK_API_VERSION_1_0 : vk::enumerateInstanceVersion(*this); }
 inline std::vector<vk::ExtensionProperties> VulkanLibrary::enumerateInstanceExtensionProperties() const  { return vk::enumerateInstanceExtensionProperties(nullptr,*this); }
 inline std::vector<vk::LayerProperties> VulkanLibrary::enumerateInstanceLayerProperties() const  { return vk::enumerateInstanceLayerProperties(*this); }

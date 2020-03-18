@@ -16,7 +16,7 @@ const filesystem::path VulkanLibrary::_defaultName = "libvulkan.so.1";
 #endif
 
 
-void VulkanLibrary::init(const std::filesystem::path& libPath)
+void VulkanLibrary::load(const std::filesystem::path& libPath)
 {
 	// avoid multiple initialization attempts
 	if(_lib)
@@ -48,7 +48,7 @@ void VulkanLibrary::init(const std::filesystem::path& libPath)
 }
 
 
-void VulkanLibrary::reset()
+void VulkanLibrary::unload()
 {
 	if(_lib) {
 
@@ -79,7 +79,7 @@ VulkanLibrary::VulkanLibrary(VulkanLibrary&& other) noexcept
 VulkanLibrary& VulkanLibrary::operator=(VulkanLibrary&& other) noexcept
 {
 	if(_lib)
-		reset();
+		unload();
 
 	*this=other;
 	other._lib=nullptr;

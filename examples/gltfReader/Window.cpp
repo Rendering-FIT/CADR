@@ -194,7 +194,7 @@ void CadUI::Window::create(CadR::VulkanInstance& instance)
 	_instance=&instance;
 	vkCreateWin32SurfaceKHR=_instance->getProcAddr<PFN_vkCreateWin32SurfaceKHR>("vkCreateWin32SurfaceKHR");
 	_surface=
-		(*_instance)->createWin32SurfaceKHR(
+		_instance->get().createWin32SurfaceKHR(
 			vk::Win32SurfaceCreateInfoKHR(
 				vk::Win32SurfaceCreateFlagsKHR(),  // flags
 				wc.hInstance,                      // hinstance
@@ -227,7 +227,7 @@ void CadUI::Window::create(CadR::VulkanInstance& instance)
 	// create surface
 	_instance=&instance;
 	vkCreateXlibSurfaceKHR=_instance->getProcAddr<PFN_vkCreateXlibSurfaceKHR>("vkCreateXlibSurfaceKHR");
-	_surface=(*_instance)->createXlibSurfaceKHR(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window),nullptr,*this);
+	_surface=_instance->get().createXlibSurfaceKHR(vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window),nullptr,*this);
 
 #endif
 
@@ -243,7 +243,7 @@ void CadUI::Window::destroy()
 	cleanUpVulkan();
 
 	if(_surface) {
-		(*_instance)->destroy(_surface,nullptr,*this);
+		_instance->get().destroy(_surface,nullptr,*this);
 		_surface=nullptr;
 	}
 	_instance=nullptr;
@@ -309,7 +309,7 @@ void CadUI::Window::cleanUpVulkan()
 		_framebuffers.clear();
 	}
 	if(_swapchain) {
-		(*_device)->destroy(_swapchain,nullptr,*this);
+		_device->get().destroy(_swapchain,nullptr,*this);
 		_swapchain=nullptr;
 	}
 
@@ -472,7 +472,7 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 
 	// create new swapchain
 	_swapchain=
-		(*_device)->createSwapchainKHR(
+		_device->get().createSwapchainKHR(
 			vk::SwapchainCreateInfoKHR(
 				vk::SwapchainCreateFlagsKHR(),  // flags
 				_surface,                       // surface
@@ -513,7 +513,7 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 	}
 
 	// swapchain images and image views
-	vector<vk::Image> swapchainImages=(*_device)->getSwapchainImagesKHR(_swapchain,*this);
+	vector<vk::Image> swapchainImages=_device->get().getSwapchainImagesKHR(_swapchain,*this);
 	_swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image:swapchainImages)
 		_swapchainImageViews.emplace_back(
@@ -561,7 +561,7 @@ tuple<uint32_t,bool> CadUI::Window::acquireNextImage(vk::Semaphore semaphoreToSi
 {
 	uint32_t imageIndex;
 	vk::Result r=
-		(*_device)->acquireNextImageKHR(
+		_device->get().acquireNextImageKHR(
 			_swapchain,                       // swapchain
 			numeric_limits<uint64_t>::max(),  // timeout
 			semaphoreToSignal,                // semaphore to signal

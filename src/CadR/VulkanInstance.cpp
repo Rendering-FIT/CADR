@@ -5,36 +5,13 @@ using namespace std;
 using namespace CadR;
 
 
-void VulkanInstance::init(VulkanLibrary& lib,const vk::InstanceCreateInfo& createInfo)
+void VulkanInstance::init(VulkanLibrary& lib,vk::Instance instance)
 {
-	// avoid multiple initialization attempts
 	if(_instance)
-		throw std::runtime_error("Multiple initialization attempts.");
+		destroy();
 
-	// make sure lib is initialized
-	if(!lib.initialized() || lib.vkGetInstanceProcAddr==nullptr)
-		throw std::runtime_error("VulkanLibrary class was not initialized.");
+	_instance=instance;
 
-	// create instance
-	// (Handle the special case of non-1.0 Vulkan version request on Vulkan 1.0 system that throws. See vkCreateInstance() documentation.)
-	if(createInfo.pApplicationInfo && createInfo.pApplicationInfo->apiVersion!=VK_API_VERSION_1_0)
-	{
-		if(lib.enumerateInstanceVersion()==VK_API_VERSION_1_0)
-		{
-			// replace requested Vulkan version by 1.0 to avoid throwing the exception
-			vk::ApplicationInfo appInfo(*createInfo.pApplicationInfo);
-			appInfo.apiVersion=VK_API_VERSION_1_0;
-			vk::InstanceCreateInfo createInfo2(createInfo);
-			createInfo2.pApplicationInfo=&appInfo;
-			_instance=vk::createInstance(createInfo2,nullptr,lib);
-		}
-		else
-			_instance=vk::createInstance(createInfo,nullptr,lib);
-	}
-	else
-		_instance=vk::createInstance(createInfo,nullptr,lib);
-
-	// get function pointers
 	vkGetInstanceProcAddr                      =lib.vkGetInstanceProcAddr;
 	vkDestroyInstance                          =getProcAddr<PFN_vkDestroyInstance                          >("vkDestroyInstance");
 	vkGetPhysicalDeviceProperties              =getProcAddr<PFN_vkGetPhysicalDeviceProperties              >("vkGetPhysicalDeviceProperties");
@@ -51,7 +28,40 @@ void VulkanInstance::init(VulkanLibrary& lib,const vk::InstanceCreateInfo& creat
 }
 
 
-void VulkanInstance::reset()
+void VulkanInstance::create(VulkanLibrary& lib,const vk::InstanceCreateInfo& createInfo)
+{
+	if(_instance)
+		destroy();
+
+	// make sure lib is initialized
+	if(!lib.loaded() || lib.vkGetInstanceProcAddr==nullptr)
+		throw std::runtime_error("VulkanLibrary class was not initialized.");
+
+	// create instance
+	// (Handle the special case of non-1.0 Vulkan version request on Vulkan 1.0 system that throws. See vkCreateInstance() documentation.)
+	vk::Instance instance;
+	if(createInfo.pApplicationInfo && createInfo.pApplicationInfo->apiVersion!=VK_API_VERSION_1_0)
+	{
+		if(lib.enumerateInstanceVersion()==VK_API_VERSION_1_0)
+		{
+			// replace requested Vulkan version by 1.0 to avoid throwing the exception
+			vk::ApplicationInfo appInfo(*createInfo.pApplicationInfo);
+			appInfo.apiVersion=VK_API_VERSION_1_0;
+			vk::InstanceCreateInfo createInfo2(createInfo);
+			createInfo2.pApplicationInfo=&appInfo;
+			instance=vk::createInstance(createInfo2,nullptr,lib);
+		}
+		else
+			instance=vk::createInstance(createInfo,nullptr,lib);
+	}
+	else
+		instance=vk::createInstance(createInfo,nullptr,lib);
+
+	init(lib,instance);
+}
+
+
+void VulkanInstance::destroy()
 {
 	if(_instance) {
 		_instance.destroy(nullptr,*this);
@@ -76,7 +86,7 @@ VulkanInstance::VulkanInstance(VulkanInstance&& other) noexcept
 VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 {
 	if(_instance)
-		reset();
+		destroy();
 
 	*this=other;
 	other._instance=nullptr;

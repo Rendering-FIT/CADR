@@ -21,7 +21,6 @@ set(CADR_PUBLIC_HEADERS
     AttribSizeList.h
     AttribStorage.h
     BufferData.h
-    CadR.h
     CallbackList.h
     Drawable.h
     DrawCommand.h
@@ -45,7 +44,6 @@ set(CADR_PRIVATE_HEADERS
 set(CADR_SOURCES
     AllocationManagers.cpp
     AttribStorage.cpp
-    CadR.cpp
     Drawable.cpp
     Mesh.cpp
     PrimitiveSet.cpp
