@@ -49,6 +49,7 @@ public:
 	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	            const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	void init(VulkanInstance& instance,vk::Device device);
+	bool initialized() const;
 	void destroy();
 
 	CallbackList<void()> cleanUpCallbacks;
@@ -60,8 +61,7 @@ public:
 	explicit operator bool() const;
 	bool operator!() const;
 
-	const vk::Device& get() const;
-	vk::Device& get();
+	vk::Device get() const;
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _device.getProcAddr(pName,*this); }
@@ -343,14 +343,14 @@ inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::Physic
 inline VulkanDevice::~VulkanDevice()  { destroy(); }
 
 inline void VulkanDevice::create(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { create(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
+inline bool VulkanDevice::initialized() const  { return _device.operator bool(); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 
 inline VulkanDevice::operator vk::Device() const  { return _device; }
 inline VulkanDevice::operator bool() const  { return _device.operator bool(); }
 inline bool VulkanDevice::operator!() const  { return _device.operator!(); }
-inline const vk::Device& VulkanDevice::get() const  { return _device; }
-inline vk::Device& VulkanDevice::get()  { return _device; }
+inline vk::Device VulkanDevice::get() const  { return _device; }
 inline void VulkanDevice::set(nullptr_t)  { _device=nullptr; }
 
 

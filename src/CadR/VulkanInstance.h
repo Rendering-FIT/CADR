@@ -39,8 +39,8 @@ public:
 	            vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	            vk::ArrayProxy<const char*const> enabledExtensions = nullptr);
 	void init(VulkanLibrary& lib,vk::Instance instance);
-	void destroy();
 	bool initialized() const;
+	void destroy();
 
 	VulkanInstance(VulkanInstance&& other) noexcept;
 	VulkanInstance& operator=(VulkanInstance&& rhs) noexcept;
@@ -52,8 +52,7 @@ public:
 	explicit operator bool() const;
 	bool operator!() const;
 
-	const vk::Instance& get() const;
-	vk::Instance& get();
+	vk::Instance get() const;
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _instance.getProcAddr(pName,*this); }
@@ -140,8 +139,7 @@ template<typename T> T VulkanInstance::getProcAddr(const std::string& name) cons
 inline VulkanInstance::operator vk::Instance() const  { return _instance; }
 inline VulkanInstance::operator bool() const  { return _instance.operator bool(); }
 inline bool VulkanInstance::operator!() const  { return _instance.operator!(); }
-inline const vk::Instance& VulkanInstance::get() const  { return _instance; }
-inline vk::Instance& VulkanInstance::get()  { return _instance; }
+inline vk::Instance VulkanInstance::get() const  { return _instance; }
 inline void VulkanInstance::set(nullptr_t)  { _instance=nullptr; }
 
 
