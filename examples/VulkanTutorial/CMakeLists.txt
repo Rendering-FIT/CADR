@@ -5,7 +5,7 @@ set(PACKAGES
 	01-deviceList
 	02-developmentSetup
 	03-funcPointers
-	03-deviceInfo
+	04-deviceInfo
 	03-simpleImage
 	)
 
