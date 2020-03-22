@@ -1,0 +1,53 @@
+<h1>Vulkan tutoriál: Funkční pointery (3. díl)</h1>
+
+<p>Po té, co jsme minule úspěšně nainstalovali Vulkan,
+je čas se podívat na architekturu toho, co jsme nainstalovali.
+A snad nejlépe objevíme architekturu Vulkanu na funkčních pointerech.</p>
+
+<p>Vulkan je, dalo by se říci, multi-device, multi-vendor a multi-threaded rozhranní.
+Česky: Vulkan podporuje více zařízení od více výrobců za použití více vláken.
+Toto je asi hlavní rozdíl od například OpenGL, kde jsme se museli spokojit
+s jedním zařízením od jednoho výrobce a použítí více vláken bylo poněkud problematické.
+Podpora více zařízení od více výrobců teoreticky přišla s knihovnou
+<a href="https://github.com/freedesktop/glvnd">glvnd</a> (GL Vendor-Neutral Dispatch),
+ale těžko říci, jak moc je opravdu využívána. Určitě se ale shodneme, že je ideální mít API
+navržené se všemi funkcemi hned od počátku a mít tak naději na vyšší efektivitu,
+konzistentnost a přehlednost rozhranní.</p>
+
+<p>Abychom nechodili dlouho kolem, můžeme si stáhnout
+<a href="">zdrojové kódy</a> tohoto dílu a zkusit je zkompilovat.
+Po spuštění můžeme vidět různé výstupy, podle grafických karet,
+které máme v počítači, a podle operačního systému, na kterém pracujeme.
+Příklad výslupů:</p>
+
+<p>Linux a mobilní Nvidia Quadro K1000M:</p>
+<pre>
+Instance function pointers:
+   vkCreateInstance()     points to: /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+   vkCreateShaderModule() points to: /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+   vkQueueSubmit()        points to: /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+Physical device function pointers:
+   Quadro K1000M
+      vkCreateShaderModule() points to: /usr/lib/x86_64-linux-gnu/libnvidia-glcore.so.430.40
+      vkQueueSubmit()        points to: /usr/lib/x86_64-linux-gnu/libGLX_nvidia.so.0
+Calling of function:
+   vkEnumerateInstanceVersion() points to: /usr/lib/x86_64-linux-gnu/libvulkan.so.1
+   Vulkan version: 1.1.121 (header version: 121)
+</pre>
+
+<p>Windows 7 se třemi kartami od různých výrobců:</p>
+<pre>
+Library of vkCreateInstance(): C:\Windows\system32\vulkan-1.dll
+Physical devices:
+   GeForce GTX 1050
+   Library of vkCreateShaderModule(): C:\Windows\system32\nvoglv64.dll
+   Library of vkQueueSubmit(): C:\Windows\system32\nvoglv64.dll
+   Radeon(TM) RX 460 Graphics
+   Library of vkCreateShaderModule(): C:\Windows\System32\amdvlk64.dll
+   Library of vkQueueSubmit(): C:\Windows\System32\amdvlk64.dll
+   Intel(R) HD Graphics 530
+   Library of vkCreateShaderModule(): C:\Windows\system32\igvk64.dll
+   Library of vkQueueSubmit(): C:\Windows\system32\igvk64.dll
+</pre>
+
+<p>Na výstupu vidíme
