@@ -1,6 +1,6 @@
 #include <vulkan/vulkan.hpp>
 #include <iostream>
-#include <stddef.h>
+//#include <stddef.h>
 #ifdef _WIN32
 # define WIN32_LEAN_AND_MEAN
 # include <windows.h>
@@ -54,33 +54,13 @@ int main(int,char**)
 	// (vulkan.hpp functions throws if they fail)
 	try {
 
-		// Vulkan functions
-		struct VkFuncs {
-			PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
-			PFN_vkCreateInstance vkCreateInstance;
-			PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
-			PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
-			PFN_vkCreateDevice vkCreateDevice;
-			PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
-			PFN_vkCreateShaderModule vkCreateShaderModule;
-			PFN_vkQueueSubmit vkQueueSubmit;
-		} vkFuncs;
-
-		// function pointers available without vk::Instance
-#ifdef _WIN32
-		vkFuncs.vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(GetProcAddress(GetModuleHandle("vulkan-1.dll"),"vkGetInstanceProcAddr"));
-#else
-		vkFuncs.vkGetInstanceProcAddr=PFN_vkGetInstanceProcAddr(dlsym(nullptr,"vkGetInstanceProcAddr"));
-#endif
-		vkFuncs.vkCreateInstance=PFN_vkCreateInstance(vk::Instance().getProcAddr("vkCreateInstance",vkFuncs));
-
 		// Vulkan instance
 		vk::UniqueInstance instance(
 			vk::createInstance(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"tut02-funcPointers",    // application name
+						"03-funcPointers",       // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -90,23 +70,17 @@ int main(int,char**)
 					nullptr,  // enabled layer names
 					0,        // enabled extension count
 					nullptr,  // enabled extension names
-				},
-				nullptr,  // allocator
-				vkFuncs));  // dispatch functions
+				}));
 
-		// function pointers get from instance
-		vkFuncs.vkEnumeratePhysicalDevices=PFN_vkEnumeratePhysicalDevices(instance->getProcAddr("vkEnumeratePhysicalDevices",vkFuncs));
-		vkFuncs.vkGetPhysicalDeviceProperties=PFN_vkGetPhysicalDeviceProperties(instance->getProcAddr("vkGetPhysicalDeviceProperties",vkFuncs));
-		vkFuncs.vkCreateDevice=PFN_vkCreateDevice(instance->getProcAddr("vkCreateDevice",vkFuncs));
-		vkFuncs.vkGetDeviceProcAddr=PFN_vkGetDeviceProcAddr(instance->getProcAddr("vkGetDeviceProcAddr",vkFuncs));
-		cout<<"Library of vkCreateInstance(): "<<getLibraryOfAddr(reinterpret_cast<void*>(vkFuncs.vkCreateInstance))<<endl;
+		// function pointer of vkCreateInstance()
+		cout<<"Library of vkCreateInstance(): "<<getLibraryOfAddr(reinterpret_cast<void*>(instance->getProcAddr("vkCreateInstance")))<<endl;
 
 		// print device list
-		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices(vkFuncs);
+		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		cout<<"Physical devices:"<<endl;
 		for(vk::PhysicalDevice pd:deviceList) {
 
-			vk::PhysicalDeviceProperties p=pd.getProperties(vkFuncs);
+			vk::PhysicalDeviceProperties p=pd.getProperties();
 			cout<<"   "<<p.deviceName<<endl;
 
 			vk::UniqueDevice device(  // Move constructor and physicalDevice.createDeviceUnique() does not work here because of bug
@@ -125,17 +99,13 @@ int main(int,char**)
 						0,nullptr,  // no layers
 						0,nullptr,  // no enabled extensions
 						nullptr  // enabled features
-					),
-					nullptr,  // allocator
-					vkFuncs  // dispatch functions
+					)
 				)
 			);
 
-			// functions get from device
-			vkFuncs.vkCreateShaderModule=PFN_vkCreateShaderModule(device->getProcAddr("vkCreateShaderModule",vkFuncs));
-			vkFuncs.vkQueueSubmit=PFN_vkQueueSubmit(device->getProcAddr("vkQueueSubmit",vkFuncs));
-			cout<<"   Library of vkCreateShaderModule(): "<<getLibraryOfAddr(reinterpret_cast<void*>(vkFuncs.vkCreateShaderModule))<<endl;
-			cout<<"   Library of vkQueueSubmit(): "<<getLibraryOfAddr(reinterpret_cast<void*>(vkFuncs.vkQueueSubmit))<<endl;
+			// functions get from the device
+			cout<<"   Library of vkCreateShaderModule(): "<<getLibraryOfAddr(reinterpret_cast<void*>(device->getProcAddr("vkCreateShaderModule")))<<endl;
+			cout<<"   Library of vkQueueSubmit(): "<<getLibraryOfAddr(reinterpret_cast<void*>(device->getProcAddr("vkQueueSubmit")))<<endl;
 
 		}
 

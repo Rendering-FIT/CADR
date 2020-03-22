@@ -1,4 +1,4 @@
-set(APP_NAME tut02-funcPointers)
+set(APP_NAME 03-funcPointers)
 
 project(${APP_NAME})
 

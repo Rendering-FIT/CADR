@@ -2,7 +2,6 @@
 set(examples_folder_name "Examples")
 
 set(PACKAGES
-	tut02-funcPointers
 	tut02-vulkanInfo
 	tut04-robustImage
 	tut05-helloTriangle

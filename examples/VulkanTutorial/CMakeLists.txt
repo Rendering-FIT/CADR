@@ -4,6 +4,9 @@ set(examples_folder_name "Examples/VulkanTutorial")
 set(PACKAGES
 	01-deviceList
 	02-developmentSetup
+	03-funcPointers
+	03-deviceInfo
+	03-simpleImage
 	)
 
 foreach(pkg ${PACKAGES})
