@@ -1,5 +1,4 @@
 #include <CadR/AttribStorage.h>
-#include <CadR/BufferData.h>
 #include <CadR/Renderer.h>
 #include <CadR/StagingBuffer.h>
 #include <CadR/VulkanDevice.h>

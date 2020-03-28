@@ -1,4 +1,3 @@
-#include <CadR/BufferData.h>
 #include <CadR/Mesh.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/StateSet.h>

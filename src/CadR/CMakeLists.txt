@@ -20,7 +20,6 @@ set(CADR_PUBLIC_HEADERS
     AllocationManagers.h
     AttribSizeList.h
     AttribStorage.h
-    BufferData.h
     CallbackList.h
     Drawable.h
     DrawCommand.h
