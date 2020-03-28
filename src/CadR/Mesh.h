@@ -119,12 +119,6 @@ public:
 
          inline void clearPrimitives();
          inline void setNumPrimitives(uint32_t num);
-
-	inline DrawableId createGeode(MatrixList *matrixList,StateSet *stateSet);
-	inline DrawableId createGeode(const uint32_t *primitiveIndices,
-	                              const uint32_t primitiveCount,
-	                              MatrixList *matrixList,StateSet *stateSet);
-	inline void deleteGeode(DrawableId id);
 #endif
 
 };
