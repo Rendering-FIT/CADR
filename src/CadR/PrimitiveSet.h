@@ -3,7 +3,6 @@
 #include <cassert>
 #include <vector>
 #include <vulkan/vulkan.hpp>
-#include <CadR/Export.h>
 
 namespace CadR {
 

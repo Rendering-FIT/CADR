@@ -1,6 +1,5 @@
 #pragma once
 
-#include <CadR/Export.h>
 #include <CadR/DrawCommand.h>
 #include <boost/intrusive/list.hpp>
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <CadR/AllocationManagers.h>
-#include <CadR/Export.h>
 #include <cstdint>
 
 namespace CadR {

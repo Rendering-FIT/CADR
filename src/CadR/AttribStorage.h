@@ -1,9 +1,8 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
-#include <CadR/Export.h>
-#include <CadR/AttribSizeList.h>
 #include <CadR/AllocationManagers.h>
+#include <CadR/AttribSizeList.h>
+#include <vulkan/vulkan.hpp>
 
 namespace CadR {
 

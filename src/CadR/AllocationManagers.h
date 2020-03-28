@@ -3,7 +3,6 @@
 #include <array>
 #include <cstdint>
 #include <vector>
-#include <CadR/Export.h>
 
 namespace CadR {
 

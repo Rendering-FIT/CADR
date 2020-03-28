@@ -1,6 +1,5 @@
 #pragma once
 
-#include <CadR/Export.h>
 #include <vulkan/vulkan.hpp>
 #if _WIN32 // MSVC 2017 and 2019
 #include <filesystem>

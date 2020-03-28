@@ -25,7 +25,6 @@ set(CADR_PUBLIC_HEADERS
     Drawable.h
     DrawCommand.h
     Errors.h
-    Export.h
     Mesh.h
     PrimitiveSet.h
     Renderer.h
@@ -73,6 +72,28 @@ add_library(${LIB_NAME}
 # dependencies
 find_package(Vulkan REQUIRED)
 find_package(Boost REQUIRED)
+
+# compile definitions
+if(WIN32)
+	if(CADR_DYNAMIC_LINKAGE)
+		target_compile_definitions(${LIB_NAME}
+			PRIVATE
+				"CADR_EXPORT=__declspec(dllexport)"
+			INTERFACE
+				"CADR_EXPORT=__declspec(dllimport)"
+		)
+	else()
+		target_compile_definitions(${LIB_NAME}
+			PUBlIC
+				"CADR_EXPORT="
+		)
+	endif()
+else()
+	target_compile_definitions(${LIB_NAME}
+		PUBLIC
+			"CADR_EXPORT=__attribute__((visibility(\"default\")))"
+	)
+endif()
 
 # target libraries
 target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)

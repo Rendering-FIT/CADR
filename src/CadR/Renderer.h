@@ -3,13 +3,12 @@
 #ifndef CADR_RENDERER_H
 #define CADR_RENDERER_H
 
+#include <CadR/AllocationManagers.h>
+#include <vulkan/vulkan.hpp>
+#include <boost/intrusive/list.hpp>
 #include <list>
 #include <map>
 #include <memory>
-#include <vulkan/vulkan.hpp>
-#include <CadR/AllocationManagers.h>
-#include <CadR/Export.h>
-#include <boost/intrusive/list.hpp>
 
 namespace CadR {
 

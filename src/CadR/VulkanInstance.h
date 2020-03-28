@@ -1,6 +1,5 @@
 #pragma once
 
-#include <CadR/Export.h>
 #include <vulkan/vulkan.hpp>
 #include <tuple>
 

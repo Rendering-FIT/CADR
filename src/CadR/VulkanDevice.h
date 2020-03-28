@@ -1,9 +1,8 @@
 #pragma once
 
-#include <tuple>
-#include <vulkan/vulkan.hpp>
 #include <CadR/CallbackList.h>
-#include <CadR/Export.h>
+#include <vulkan/vulkan.hpp>
+#include <tuple>
 
 namespace CadR {
 

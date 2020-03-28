@@ -1,8 +1,7 @@
 #pragma once
 
-#include <vector>
 #include <CadR/Drawable.h>
-#include <CadR/Export.h>
+#include <vector>
 
 namespace CadR {
 

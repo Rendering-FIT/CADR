@@ -1,7 +1,6 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
-#include <CadR/Export.h>
 
 namespace CadR {
 
