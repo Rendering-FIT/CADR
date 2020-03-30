@@ -227,12 +227,12 @@ void AttribStorage::uploadVertices(Drawable* /*d*/,std::vector<Buffer>&& /*verte
 #endif
 
 
-StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex)
+StagingBuffer AttribStorage::createStagingBuffer(Geometry& g,unsigned attribIndex)
 {
 	if(attribIndex>_bufferList.size())
 		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
 
-	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
 	const unsigned s=_attribSizeList[attribIndex];
 	return StagingBuffer(
 			_bufferList[attribIndex],  // dstBuffer
@@ -243,14 +243,14 @@ StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex)
 }
 
 
-StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex,size_t firstVertex,size_t numVertices)
+StagingBuffer AttribStorage::createStagingBuffer(Geometry& g,unsigned attribIndex,size_t firstVertex,size_t numVertices)
 {
 	if(attribIndex>_bufferList.size())
 		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
 
-	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
 	if(firstVertex+numVertices>a.numItems)
-		throw std::out_of_range("AttribStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Mesh preallocated space.");
+		throw std::out_of_range("AttribStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Geometry preallocated space.");
 
 	const unsigned s=_attribSizeList[attribIndex];
 	return StagingBuffer(
@@ -262,9 +262,9 @@ StagingBuffer AttribStorage::createStagingBuffer(Mesh& m,unsigned attribIndex,si
 }
 
 
-vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m)
+vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g)
 {
-	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
 	vector<StagingBuffer> v;
 	v.reserve(_bufferList.size());
 
@@ -282,9 +282,9 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m)
 }
 
 
-vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t firstVertex,size_t numVertices)
+vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices)
 {
-	const ArrayAllocation<Mesh>& a=attribAllocation(m.attribDataID());
+	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
 	vector<StagingBuffer> v;
 	v.reserve(_bufferList.size());
 
@@ -302,7 +302,7 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Mesh& m,size_t firstVe
 }
 
 
-void AttribStorage::uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
+void AttribStorage::uploadAttrib(Geometry& g,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
 {
 	// attribIndex bound check
 	if(attribIndex>_bufferList.size())
@@ -310,13 +310,13 @@ void AttribStorage::uploadAttrib(Mesh& m,unsigned attribIndex,const std::vector<
 
 	// create StagingBuffer and submit it
 	size_t numVertices=attribData.size()/_attribSizeList[attribIndex];
-	StagingBuffer sb(createStagingBuffer(m,attribIndex,firstVertex,numVertices));
+	StagingBuffer sb(createStagingBuffer(g,attribIndex,firstVertex,numVertices));
 	memcpy(sb.data(),attribData.data(),attribData.size());
 	sb.submit();
 }
 
 
-void AttribStorage::uploadAttribs(Mesh& m,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
+void AttribStorage::uploadAttribs(Geometry& g,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
 {
 	// check parameters validity
 	if(vertexData.size()!=_bufferList.size())
@@ -329,7 +329,7 @@ void AttribStorage::uploadAttribs(Mesh& m,const vector<vector<uint8_t>>& vertexD
 			throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
 
 	// create StagingBuffers and submit them
-	vector<StagingBuffer> sbList(createStagingBuffers(m,firstVertex,numVertices));
+	vector<StagingBuffer> sbList(createStagingBuffers(g,firstVertex,numVertices));
 	for(size_t i=0,e=vertexData.size(); i<e; i++) {
 		memcpy(sbList[i].data(),vertexData[i].data(),vertexData[i].size());
 		sbList[i].submit();
@@ -436,5 +436,5 @@ void AttribStorage::cancelAllAllocations()
  *  For more details, which methods can be called without active graphics context
  *  refer to the documentation to each of the object's methods.
  *
- *  \sa RenderingContext, Mesh, Mesh::getAttribConfig()
+ *  \sa RenderingContext, Geometry, Geometry::getAttribConfig()
  */

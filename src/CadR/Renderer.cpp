@@ -404,7 +404,7 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 
 Renderer::~Renderer()
 {
-	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Mesh::allocAttribs() without specifying AttribConfig.");
+	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Geometry::allocAttribs() without specifying AttribSizeList.");
 	assert(_drawCommandAllocationManager.numItems()==0 && "Renderer::_drawCommandAllocationManager still contains elements on Renderer destruction.");
 
 	// destroy shaders, pipelines,...
@@ -633,9 +633,9 @@ void Renderer::purgeObjectsToDeleteAfterCopyOperation()
 }
 
 
-StagingBuffer Renderer::createIndexStagingBuffer(Mesh& m)
+StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g)
 {
-	const ArrayAllocation<Mesh>& a=indexAllocation(m.indexDataID());
+	const ArrayAllocation<Geometry>& a=indexAllocation(g.indexDataID());
 	return StagingBuffer(
 			_indexBuffer,  // dstBuffer
 			a.startIndex*sizeof(uint32_t),  // dstOffset
@@ -645,9 +645,9 @@ StagingBuffer Renderer::createIndexStagingBuffer(Mesh& m)
 }
 
 
-StagingBuffer Renderer::createIndexStagingBuffer(Mesh& m,size_t firstIndex,size_t numIndices)
+StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices)
 {
-	const ArrayAllocation<Mesh>& a=indexAllocation(m.indexDataID());
+	const ArrayAllocation<Geometry>& a=indexAllocation(g.indexDataID());
 	return StagingBuffer(
 			_indexBuffer,  // dstBuffer
 			(a.startIndex+firstIndex)*sizeof(uint32_t),  // dstOffset
@@ -657,18 +657,18 @@ StagingBuffer Renderer::createIndexStagingBuffer(Mesh& m,size_t firstIndex,size_
 }
 
 
-void Renderer::uploadIndices(Mesh& m,std::vector<uint32_t>&& indexData,size_t dstIndex)
+void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>&& indexData,size_t dstIndex)
 {
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createIndexStagingBuffer(m,dstIndex,indexData.size()));
+	StagingBuffer sb(createIndexStagingBuffer(g,dstIndex,indexData.size()));
 	memcpy(sb.data(),indexData.data(),indexData.size()*sizeof(uint32_t));
 	sb.submit();
 }
 
 
-StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Mesh& m)
+StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g)
 {
-	const ArrayAllocation<Mesh>& a=primitiveSetAllocation(m.primitiveSetDataID());
+	const ArrayAllocation<Geometry>& a=primitiveSetAllocation(g.primitiveSetDataID());
 	return StagingBuffer(
 			_primitiveSetBuffer,  // dstBuffer
 			a.startIndex*sizeof(PrimitiveSetGpuData),  // dstOffset
@@ -678,9 +678,9 @@ StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Mesh& m)
 }
 
 
-StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Mesh& m,size_t firstPrimitiveSet,size_t numPrimitiveSets)
+StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets)
 {
-	const ArrayAllocation<Mesh>& a=primitiveSetAllocation(m.primitiveSetDataID());
+	const ArrayAllocation<Geometry>& a=primitiveSetAllocation(g.primitiveSetDataID());
 	return StagingBuffer(
 			_primitiveSetBuffer,  // dstBuffer
 			(a.startIndex+firstPrimitiveSet)*sizeof(PrimitiveSetGpuData),  // dstOffset
@@ -690,10 +690,10 @@ StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Mesh& m,size_t firstPrim
 }
 
 
-void Renderer::uploadPrimitiveSets(Mesh& m,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)
+void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)
 {
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createPrimitiveSetStagingBuffer(m,dstPrimitiveSet,primitiveSetData.size()));
+	StagingBuffer sb(createPrimitiveSetStagingBuffer(g,dstPrimitiveSet,primitiveSetData.size()));
 	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));
 	sb.submit();
 }

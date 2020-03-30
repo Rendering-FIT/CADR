@@ -1,4 +1,4 @@
-#include <CadR/Mesh.h>
+#include <CadR/Geometry.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
@@ -311,7 +311,7 @@ int main(int argc,char** argv) {
 		array<map<CadR::AttribSizeList,CadR::StateSet>,10> pipelineDB;
 
 		// CadR scene data
-		vector<CadR::Mesh> meshDB;
+		vector<CadR::Geometry> geometryDB;
 		vector<CadR::Drawable> drawableDB;
 
 		// shaders
@@ -494,10 +494,10 @@ int main(int argc,char** argv) {
 			if(numIndices>size_t(~uint32_t(0)))
 				throw gltfError("Too large primitive. Index out of 32-bit integer range.");
 
-			// create Mesh
-			cout<<"Creating mesh"<<endl;
-			CadR::Mesh& m=
-				meshDB.emplace_back(
+			// create Geometry
+			cout<<"Creating geometry"<<endl;
+			CadR::Geometry& g=
+				geometryDB.emplace_back(
 					&renderer,  // renderer
 					attribSizeList,  // attribSizeList
 					numVertices,  // numVertices
@@ -505,7 +505,7 @@ int main(int argc,char** argv) {
 					1  // numPrimitiveSets
 				);
 
-			// read Mesh buffers
+			// read attributes
 			unsigned i=0;
 			for(auto& uriAndOffset:attribUriAndOffsetList) {
 
@@ -520,7 +520,7 @@ int main(int argc,char** argv) {
 				f.exceptions(ifstream::badbit|ifstream::failbit);
 
 				// read buffer file
-				CadR::StagingBuffer sb=m.createStagingBuffer(i);
+				CadR::StagingBuffer sb=g.createStagingBuffer(i);
 				f.seekg(std::get<1>(uriAndOffset));
 				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
 				f.close();
@@ -541,7 +541,7 @@ int main(int argc,char** argv) {
 				f.exceptions(ifstream::badbit|ifstream::failbit);
 
 				// read buffer file
-				CadR::StagingBuffer sb=m.createIndexStagingBuffer();
+				CadR::StagingBuffer sb=g.createIndexStagingBuffer();
 				f.seekg(indicesFileOffset);
 				if(indicesComponentType==5125)  // UNSIGNED_INT
 					f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
@@ -567,7 +567,7 @@ int main(int argc,char** argv) {
 				// generate indices
 				if(numIndices>=size_t(~uint32_t(0)))
 					throw gltfError("Too large primitive. Index out of 32-bit integer range.");
-				CadR::StagingBuffer sb=m.createIndexStagingBuffer();
+				CadR::StagingBuffer sb=g.createIndexStagingBuffer();
 				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
 				for(uint32_t i=0,e=uint32_t(numIndices); i<e; i++)
 					b[i]=i;
@@ -598,7 +598,7 @@ int main(int argc,char** argv) {
 			if(newStateSetCreated) {
 
 				CadR::StateSet& ss=stateSetMapIt->second;
-				ss.setAttribStorage(m.attribStorage());
+				ss.setAttribStorage(g.attribStorage());
 
 				window.resizeCallbacks.append(
 						[&device,&window,&ss,
@@ -734,24 +734,24 @@ int main(int argc,char** argv) {
 			}
 
 			// generate one PrimitiveSet
-			CadR::StagingBuffer sb=m.createPrimitiveSetStagingBuffer();
+			CadR::StagingBuffer sb=g.createPrimitiveSetStagingBuffer();
 			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
 			b[0]=CadR::PrimitiveSetGpuData{
 					uint32_t(numIndices),  // count
-					m.indexAllocation().startIndex,  // first
-					m.attribAllocation().startIndex,  // vertexOffset
+					g.indexAllocation().startIndex,  // first
+					g.attribAllocation().startIndex,  // vertexOffset
 					0,  // userData
 				};
 			sb.submit();
 
 			// create Drawable
-			drawableDB.emplace_back(&m,nullptr,&stateSetMapIt->second,2);
+			drawableDB.emplace_back(&g,nullptr,&stateSetMapIt->second,2);
 			CadR::Drawable& d=drawableDB.back();
 			d.setNumDrawCommands(1);
 			sb=d.createDrawCommandStagingBuffer(0);
 			*reinterpret_cast<CadR::DrawCommandGpuData*>(sb.data())=
 				CadR::DrawCommandGpuData{
-					renderer.primitiveSetAllocation(m.primitiveSetDataID()).startIndex*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+					renderer.primitiveSetAllocation(g.primitiveSetDataID()).startIndex*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
 					0,  // matrixListControlOffset4
 					stateSetMapIt->second.id(),  // stateSetOffset4
 					0,  // userData

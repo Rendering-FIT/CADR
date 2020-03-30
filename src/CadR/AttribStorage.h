@@ -6,21 +6,21 @@
 
 namespace CadR {
 
-class Mesh;
+class Geometry;
 class Renderer;
 class StagingBuffer;
 
 
 /** \brief AttribStorage class provides GPU storage for vertex attributes
  *  of the scene geometry. All the data are stored in vk::Buffers.
- *  Any number of Mesh objects can be stored in a single AttribStorage
- *  as long as all the stored Meshes have the same attribute configuration (see AttribConfig)
+ *  Any number of Geometry objects can be stored in a single AttribStorage
+ *  as long as all the stored Geometries have the same attribute configuration (see AttribSizeList)
  *  and as long as there is the free space in the buffers.
  */
 class CADR_EXPORT AttribStorage final {
 protected:
 
-	ArrayAllocationManager<Mesh> _allocationManager;  ///< Allocation manager for attribute data.
+	ArrayAllocationManager<Geometry> _allocationManager;  ///< Allocation manager for attribute data.
 	AttribSizeList _attribSizeList;  ///< List of the attribute sizes of the single vertex. All vertices stored in this AttribStorage use the same attribute sizes.
 	Renderer* _renderer;  ///< Rendering context associated with the AttribStorage.
 
@@ -38,21 +38,21 @@ public:
 	AttribStorage& operator=(const AttribStorage&) = delete;
 	AttribStorage& operator=(AttribStorage&&) = default;
 
-	void allocAttribs(Mesh& m,size_t num);
-	void reallocAttribs(Mesh& m,size_t num);
-	void freeAttribs(Mesh& m);
+	void allocAttribs(Geometry& g,size_t num);
+	void reallocAttribs(Geometry& g,size_t num);
+	void freeAttribs(Geometry& g);
 
-	void uploadAttribs(Mesh& m,const std::vector<std::vector<uint8_t>>& vertexData,size_t firstVertex=0);
-	void uploadAttrib(Mesh& m,uint32_t attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex=0);
-	StagingBuffer createStagingBuffer(Mesh& m,uint32_t attribIndex);
-	StagingBuffer createStagingBuffer(Mesh& m,uint32_t attribIndex,size_t firstVertex,size_t numVertices);
-	std::vector<StagingBuffer> createStagingBuffers(Mesh& m);
-	std::vector<StagingBuffer> createStagingBuffers(Mesh& m,size_t firstVertex,size_t numVertices);
+	void uploadAttribs(Geometry& g,const std::vector<std::vector<uint8_t>>& vertexData,size_t firstVertex=0);
+	void uploadAttrib(Geometry& g,uint32_t attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex=0);
+	StagingBuffer createStagingBuffer(Geometry& g,uint32_t attribIndex);
+	StagingBuffer createStagingBuffer(Geometry& g,uint32_t attribIndex,size_t firstVertex,size_t numVertices);
+	std::vector<StagingBuffer> createStagingBuffers(Geometry& g);
+	std::vector<StagingBuffer> createStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices);
 
-	const ArrayAllocation<Mesh>& attribAllocation(uint32_t id) const; ///< Returns the attribute allocation for particular id.
-	ArrayAllocation<Mesh>& attribAllocation(uint32_t id);  ///< Returns the attribute allocation for particular id. Modify the returned data only with caution.
-	const ArrayAllocationManager<Mesh>& allocationManager() const;  ///< Returns the allocation manager.
-	ArrayAllocationManager<Mesh>& allocationManager();  ///< Returns the allocation manager.
+	const ArrayAllocation<Geometry>& attribAllocation(uint32_t id) const; ///< Returns the attribute allocation for particular id.
+	ArrayAllocation<Geometry>& attribAllocation(uint32_t id);  ///< Returns the attribute allocation for particular id. Modify the returned data only with caution.
+	const ArrayAllocationManager<Geometry>& allocationManager() const;  ///< Returns the allocation manager.
+	ArrayAllocationManager<Geometry>& allocationManager();  ///< Returns the allocation manager.
 
 	const AttribSizeList& attribSizeList() const;
 	Renderer* renderer() const;
@@ -74,16 +74,16 @@ public:
 
 
 // inline and template methods
-#include <CadR/Mesh.h>
+#include <CadR/Geometry.h>
 namespace CadR {
 
-inline void AttribStorage::allocAttribs(Mesh& m,size_t num)  { m.allocAttribs(num); }
-inline void AttribStorage::reallocAttribs(Mesh& m,size_t num)  { m.reallocAttribs(num); }
-inline void AttribStorage::freeAttribs(Mesh& m)  { m.freeAttribs(); }
-inline const ArrayAllocation<Mesh>& AttribStorage::attribAllocation(uint32_t id) const  { return _allocationManager[id]; }
-inline ArrayAllocation<Mesh>& AttribStorage::attribAllocation(uint32_t id)  { return _allocationManager[id]; }
-inline const ArrayAllocationManager<Mesh>& AttribStorage::allocationManager() const  { return _allocationManager; }
-inline ArrayAllocationManager<Mesh>& AttribStorage::allocationManager()  { return _allocationManager; }
+inline void AttribStorage::allocAttribs(Geometry& g,size_t num)  { g.allocAttribs(num); }
+inline void AttribStorage::reallocAttribs(Geometry& g,size_t num)  { g.reallocAttribs(num); }
+inline void AttribStorage::freeAttribs(Geometry& g)  { g.freeAttribs(); }
+inline const ArrayAllocation<Geometry>& AttribStorage::attribAllocation(uint32_t id) const  { return _allocationManager[id]; }
+inline ArrayAllocation<Geometry>& AttribStorage::attribAllocation(uint32_t id)  { return _allocationManager[id]; }
+inline const ArrayAllocationManager<Geometry>& AttribStorage::allocationManager() const  { return _allocationManager; }
+inline ArrayAllocationManager<Geometry>& AttribStorage::allocationManager()  { return _allocationManager; }
 inline const AttribSizeList& AttribStorage::attribSizeList() const  { return _attribSizeList; }
 inline Renderer* AttribStorage::renderer() const  { return _renderer; }
 inline const std::vector<vk::Buffer>& AttribStorage::bufferList() const  { return _bufferList; }

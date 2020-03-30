@@ -6,7 +6,7 @@
 namespace CadR {
 
 class MatrixList;
-class Mesh;
+class Geometry;
 class Renderer;
 class StateSet;
 
@@ -84,12 +84,12 @@ protected:
 	DrawCommandList _drawCommandList;
 public:
 
-	Drawable(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
+	Drawable(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
 	Drawable(Drawable&& other) = default;
 	Drawable& operator=(Drawable&& rhs);
 	~Drawable() = default;
 
-	void reset(Mesh* mesh,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
+	void reset(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
 
 	Renderer* renderer() const;
 	MatrixList* matrixList() const;
@@ -130,11 +130,11 @@ typedef boost::intrusive::list<
 #include <CadR/StateSet.h>
 namespace CadR {
 
-inline Drawable::Drawable(Mesh*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
+inline Drawable::Drawable(Geometry*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
 	: _matrixList(matrixList), _stateSet(stateSet), _drawCommandList(drawCommandsCapacity)  {}
 inline Drawable& Drawable::operator=(Drawable&& rhs)
 	{ _matrixList=rhs._matrixList; _stateSet=rhs._stateSet; _drawCommandList=std::move(rhs._drawCommandList); return *this; }
-inline void Drawable::reset(Mesh*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
+inline void Drawable::reset(Geometry*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
 	{ _drawCommandList.clear(); _matrixList=matrixList; _stateSet=stateSet; _drawCommandList.setCapacity(drawCommandsCapacity); }
 
 inline Renderer* Drawable::renderer() const  { return _stateSet->renderer(); }
