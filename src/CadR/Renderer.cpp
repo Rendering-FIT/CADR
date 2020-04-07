@@ -15,12 +15,27 @@ static const uint32_t processDrawCommandsShaderSpirv[]={
 };
 
 
-Renderer* Renderer::_instance = nullptr;
+Renderer* Renderer::_defaultRenderer = nullptr;
 
 
 
-Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDevice physicalDevice,uint32_t graphicsQueueFamily)
-	: _device(device)
+Renderer::Renderer(bool makeDefault)
+	: _device(nullptr)
+	, _graphicsQueueFamily(0xffffffff)
+	, _emptyStorage(nullptr)
+	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
+	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
+{
+	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
+	_emptyStorage=&_attribStorages.begin()->second.front();
+	if(makeDefault)
+		Renderer::set(this);
+}
+
+Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
+                   uint32_t graphicsQueueFamily,bool makeDefault)
+	: _device(nullptr)
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
@@ -29,11 +44,34 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
+	init(device,instance,physicalDevice,graphicsQueueFamily,makeDefault);
+}
+
+
+Renderer::~Renderer()
+{
+	finalize();
+	if(_defaultRenderer==this)
+		_defaultRenderer=nullptr;
+}
+
+
+void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
+                    uint32_t graphicsQueueFamily,bool makeDefault)
+{
+	if(_device)
+		finalize();
+
+	if(makeDefault)
+		Renderer::set(this);
+
+	_device=&device;
+	_graphicsQueueFamily=graphicsQueueFamily;
 	_graphicsQueue=_device->getQueue(_graphicsQueueFamily,0);
-	_memoryProperties=instance->getPhysicalDeviceMemoryProperties(physicalDevice);
+	_memoryProperties=instance.getPhysicalDeviceMemoryProperties(physicalDevice);
 
 	// nonCoherentAtomSize
-	vk::DeviceSize nonCoherentAtomSize=instance->getPhysicalDeviceProperties(physicalDevice).limits.nonCoherentAtomSize;
+	vk::DeviceSize nonCoherentAtomSize=instance.getPhysicalDeviceProperties(physicalDevice).limits.nonCoherentAtomSize;
 	nonCoherentAtom_addition=nonCoherentAtomSize-1;
 	nonCoherentAtom_mask=~nonCoherentAtom_addition;
 	if((nonCoherentAtomSize&nonCoherentAtom_addition)!=0)  // is it power of two?
@@ -402,10 +440,24 @@ Renderer::Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDev
 }
 
 
-Renderer::~Renderer()
+void Renderer::finalize()
 {
+	if(_device==nullptr)
+		return;
+
 	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Geometry::allocAttribs() without specifying AttribSizeList.");
 	assert(_drawCommandAllocationManager.numItems()==0 && "Renderer::_drawCommandAllocationManager still contains elements on Renderer destruction.");
+	assert(_stateSetList.empty() && "Renderer::_stateSetList must be empty when destroying or finalizing Renderer. Please, destroy StateSets first.");
+
+	// clear attrib storages
+	_attribStorages.clear();
+	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
+	_emptyStorage=&_attribStorages.begin()->second.front();
+
+	// clear allocation managers
+	_indexAllocationManager.clear();
+	_primitiveSetAllocationManager.clear();
+	_drawCommandAllocationManager.clear();
 
 	// destroy shaders, pipelines,...
 	_device->destroy(_drawCommandShader);
@@ -440,8 +492,10 @@ Renderer::~Renderer()
 	_device->destroy(_computeIndirectBuffer);
 	_device->freeMemory(_computeIndirectBufferMemory);  // no need to unmap memory as vkFreeMemory handles that
 
-	if(_instance==this)
-		_instance=nullptr;
+	_highestAllocatedSsId=-1;
+	_releasedSsIds.clear();
+	_stateSetStagingData=nullptr;
+	_device=nullptr;
 }
 
 

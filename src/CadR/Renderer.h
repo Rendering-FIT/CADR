@@ -83,17 +83,20 @@ private:
 	std::vector<uint32_t> _releasedSsIds;
 	StateSetList _stateSetList;
 
-	static Renderer* _instance;
+	static Renderer* _defaultRenderer;
 
 public:
 
 	CADR_EXPORT static Renderer* get();
 	CADR_EXPORT static void set(Renderer* r);
 
-	CADR_EXPORT Renderer() = delete;
-	CADR_EXPORT Renderer(VulkanDevice* device,VulkanInstance* instance,vk::PhysicalDevice physicalDevice,
-	                     uint32_t graphicsQueueFamily);
+	CADR_EXPORT Renderer(bool makeDefault=true);
+	CADR_EXPORT Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
+	                     uint32_t graphicsQueueFamily,bool makeDefault=true);
 	CADR_EXPORT ~Renderer();
+	CADR_EXPORT void init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
+	                      uint32_t graphicsQueueFamily,bool makeDefault=true);
+	CADR_EXPORT void finalize();
 
 	CADR_EXPORT void recordDrawCommandProcessing(vk::CommandBuffer commandBuffer);
 	CADR_EXPORT void recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,vk::Framebuffer framebuffer,const vk::Rect2D& renderArea);
@@ -170,8 +173,8 @@ protected:
 
 
 // inline methods
-inline Renderer* Renderer::get()  { return _instance; }
-inline void Renderer::set(Renderer* r)  { _instance=r; }
+inline Renderer* Renderer::get()  { return _defaultRenderer; }
+inline void Renderer::set(Renderer* r)  { _defaultRenderer=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
 inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }

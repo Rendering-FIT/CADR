@@ -174,7 +174,7 @@ int main(int argc,char** argv) {
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
 		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
 		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
-		CadR::Renderer renderer(&device,&vulkanInstance,physicalDevice,graphicsQueueFamily);
+		CadR::Renderer renderer(device,vulkanInstance,physicalDevice,graphicsQueueFamily);
 		CadR::Renderer::set(&renderer);
 
 		// get queues
