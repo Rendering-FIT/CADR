@@ -1,4 +1,4 @@
-set(APP_NAME 03-deviceInfo)
+set(APP_NAME 04-deviceInfo)
 
 project(${APP_NAME})
 

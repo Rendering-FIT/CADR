@@ -11,13 +11,24 @@ int main(int,char**)
 	// (vulkan.hpp fuctions throw if they fail)
 	try {
 
+		// Vulkan version
+		auto vkEnumerateInstanceVersion=reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+				vkGetInstanceProcAddr(nullptr,"vkEnumerateInstanceVersion"));
+		if(vkEnumerateInstanceVersion) {
+			uint32_t version;
+			vkEnumerateInstanceVersion(&version);
+			cout<<"Vulkan instance version: "<<VK_VERSION_MAJOR(version)<<"."<<VK_VERSION_MINOR(version)
+			    <<"."<<VK_VERSION_PATCH(version)<<endl;
+		} else
+			cout<<"Vulkan version: 1.0"<<endl;
+
 		// Vulkan instance
 		vk::UniqueInstance instance(
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"03-deviceInfo",         // application name
+						"04-deviceInfo",         // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -35,6 +46,10 @@ int main(int,char**)
 			// device properties
 			vk::PhysicalDeviceProperties p=pd.getProperties();
 			cout<<"   "<<p.deviceName<<endl;
+
+			// device Vulkan version
+			cout<<"   Vulkan version: "<<VK_VERSION_MAJOR(p.apiVersion)<<"."<<VK_VERSION_MINOR(p.apiVersion)
+			    <<"."<<VK_VERSION_PATCH(p.apiVersion)<<endl;
 
 			// device limits
 			cout<<"   maxTextureSize: "<<p.limits.maxImageDimension2D<<endl;
@@ -68,26 +83,20 @@ int main(int,char**)
 			}
 
 			// color attachment R8G8B8A8Unorm format support
-			//vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-			vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR32Sfloat);
+			vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
 			cout<<"   R8G8B8A8Unorm format support:"<<endl;
 			cout<<"      Images with linear tiling: "<<
 				string(fp.linearTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
 			cout<<"      Images with optimal tiling: "<<
 				string(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
 			cout<<"      Buffers: "<<
-				string(fp.bufferFeatures & vk::FormatFeatureFlagBits::eVertexBuffer ? "yes" : "no")<<endl;
+				string(fp.bufferFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
 
 			//vkGetPhysicalDeviceSparseImageFormatProperties
 			//vkGetPhysicalDeviceSurfaceSupportKHR
 			//vkGetPhysicalDeviceSurfaceFormatsKHR and PresentModesKHR
 
 		}
-			// check linear tiling support
-			//vk::FormatProperties fp=pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-			//if(fp.linearTilingFeatures&vk::FormatFeatureFlagBits::eColorAttachment) {
-
-			//}
 
 	// catch exceptions
 	} catch(vk::Error &e) {
