@@ -42,9 +42,9 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"CADR tut03",            // application name
+						"05-simpleImage",        // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
-						"CADR",                  // engine name
+						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
