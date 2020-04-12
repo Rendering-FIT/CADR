@@ -56,7 +56,7 @@ int main(int,char**)
 
 		// Vulkan instance
 		vk::UniqueInstance instance(
-			vk::createInstance(
+			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
@@ -80,7 +80,7 @@ int main(int,char**)
 
 		// print device list
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
-		cout<<"Physical device function pointers:"<<endl;
+		cout<<"Device function pointers:"<<endl;
 		for(vk::PhysicalDevice pd:deviceList) {
 
 			vk::PhysicalDeviceProperties p=pd.getProperties();
@@ -109,30 +109,6 @@ int main(int,char**)
 			// functions get from the device
 			cout<<"      vkCreateShaderModule() points to: "<<getLibraryOfAddr(reinterpret_cast<void*>(device->getProcAddr("vkCreateShaderModule")))<<endl;
 			cout<<"      vkQueueSubmit()        points to: "<<getLibraryOfAddr(reinterpret_cast<void*>(device->getProcAddr("vkQueueSubmit")))<<endl;
-
-		}
-
-		// Vulkan version
-		cout<<"Calling of function:"<<endl;
-		auto vkEnumerateInstanceVersion=reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
-				vkGetInstanceProcAddr(nullptr,"vkEnumerateInstanceVersion"));
-		if(vkEnumerateInstanceVersion) {
-
-			// print library
-			cout<<"   vkEnumerateInstanceVersion() points to: "<<getLibraryOfAddr(
-					reinterpret_cast<void*>(vkEnumerateInstanceVersion))<<endl;
-
-			// print Vulkan version
-			uint32_t version;
-			vkEnumerateInstanceVersion(&version);
-			cout<<"   Vulkan version: "<<VK_VERSION_MAJOR(version)<<"."<<VK_VERSION_MINOR(version)
-			    <<"."<<VK_VERSION_PATCH(version)<<" (header version: "<<VK_HEADER_VERSION<<")"<<endl;
-
-		} else {
-
-			// no vkEnumerateInstanceVersion() -> Vulkan 1.0
-			cout<<"   vkEnumerateInstanceVersion() points to: < nullptr >"<<endl;
-			cout<<"   Vulkan version: 1.0."<<VK_HEADER_VERSION<<endl;
 
 		}
 
