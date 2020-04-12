@@ -92,10 +92,6 @@ int main(int,char**)
 			cout<<"      Buffers: "<<
 				string(fp.bufferFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
 
-			//vkGetPhysicalDeviceSparseImageFormatProperties
-			//vkGetPhysicalDeviceSurfaceSupportKHR
-			//vkGetPhysicalDeviceSurfaceFormatsKHR and PresentModesKHR
-
 		}
 
 	// catch exceptions
