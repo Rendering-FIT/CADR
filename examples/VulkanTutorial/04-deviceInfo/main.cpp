@@ -48,15 +48,15 @@ int main(int,char**)
 			cout<<"   "<<p.deviceName<<endl;
 
 			// device Vulkan version
-			cout<<"   Vulkan version: "<<VK_VERSION_MAJOR(p.apiVersion)<<"."<<VK_VERSION_MINOR(p.apiVersion)
+			cout<<"      Vulkan version: "<<VK_VERSION_MAJOR(p.apiVersion)<<"."<<VK_VERSION_MINOR(p.apiVersion)
 			    <<"."<<VK_VERSION_PATCH(p.apiVersion)<<endl;
 
 			// device limits
-			cout<<"   maxTextureSize: "<<p.limits.maxImageDimension2D<<endl;
+			cout<<"      MaxTextureSize: "<<p.limits.maxImageDimension2D<<endl;
 
 			// device features
 			vk::PhysicalDeviceFeatures f=pd.getFeatures();
-			cout<<"   geometry shader: ";
+			cout<<"      Geometry shader: ";
 			if(f.geometryShader)
 				cout<<"supported"<<endl;
 			else
@@ -64,15 +64,15 @@ int main(int,char**)
 
 			// memory properties
 			vk::PhysicalDeviceMemoryProperties m=pd.getMemoryProperties();
-			cout<<"   Memory heaps:"<<endl;
+			cout<<"      Memory heaps:"<<endl;
 			for(uint32_t i=0,c=m.memoryHeapCount; i<c; i++)
-				cout<<"      "<<i<<": "<<m.memoryHeaps[i].size/1024/1024<<"MiB"<<endl;
+				cout<<"         "<<i<<": "<<m.memoryHeaps[i].size/1024/1024<<"MiB"<<endl;
 
 			// queue family properties
 			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-			cout<<"   Queues:"<<endl;
+			cout<<"      Queues:"<<endl;
 			for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
-				cout<<"      "<<i<<": ";
+				cout<<"         "<<i<<": ";
 				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
 					cout<<"g";
 				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eCompute)
@@ -84,12 +84,12 @@ int main(int,char**)
 
 			// color attachment R8G8B8A8Unorm format support
 			vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-			cout<<"   R8G8B8A8Unorm format support:"<<endl;
-			cout<<"      Images with linear tiling: "<<
+			cout<<"      R8G8B8A8Unorm format support:"<<endl;
+			cout<<"         Images with linear tiling: "<<
 				string(fp.linearTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
-			cout<<"      Images with optimal tiling: "<<
+			cout<<"         Images with optimal tiling: "<<
 				string(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
-			cout<<"      Buffers: "<<
+			cout<<"         Buffers: "<<
 				string(fp.bufferFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
 
 		}

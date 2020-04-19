@@ -1,7 +1,7 @@
 #!/bin/sh
 
-if test -f 03-simpleImage.zip; then
-	rm 03-simpleImage.zip
+if test -f 04-deviceInfo.zip; then
+	rm 04-deviceInfo.zip
 fi
 mkdir tmp
 cp ../main.cpp tmp/
@@ -10,10 +10,10 @@ echo >> tmp/CMakeLists.txt
 cat < ../CMakeLists.txt >> tmp/CMakeLists.txt
 cp text.html tmp/
 cd tmp
-zip 03-simpleImage.zip main.cpp CMakeLists.txt text.html
-mv 03-simpleImage.zip ..
+zip 04-deviceInfo.zip main.cpp CMakeLists.txt text.html
+mv 04-deviceInfo.zip ..
 cmake .
 make
-./03-simpleImage
+./04-deviceInfo
 cd ..
 #rm -r tmp
