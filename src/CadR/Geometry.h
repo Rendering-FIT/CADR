@@ -95,7 +95,7 @@ public:
 	StagingBuffer createIndexStagingBuffer();
 	StagingBuffer createIndexStagingBuffer(size_t firstIndex,size_t numIndices);
 
-	void uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet);
+	void uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex=0);
 	StagingBuffer createPrimitiveSetStagingBuffer();
 	StagingBuffer createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
@@ -185,7 +185,7 @@ inline void Geometry::uploadIndices(std::vector<uint32_t>&& indexData,size_t dst
 inline StagingBuffer Geometry::createIndexStagingBuffer()  { return renderer()->createIndexStagingBuffer(*this); }
 inline StagingBuffer Geometry::createIndexStagingBuffer(size_t firstIndex,size_t numIndices)  { return renderer()->createIndexStagingBuffer(*this,firstIndex,numIndices); }
 
-inline void Geometry::uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)  { renderer()->uploadPrimitiveSets(*this,std::move(primitiveSetData),dstPrimitiveSet); }
+inline void Geometry::uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex)  { renderer()->uploadPrimitiveSets(*this,std::move(primitiveSetData),dstPrimitiveSetIndex); }
 inline StagingBuffer Geometry::createPrimitiveSetStagingBuffer()  { return renderer()->createPrimitiveSetStagingBuffer(*this); }
 inline StagingBuffer Geometry::createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets)  { return renderer()->createPrimitiveSetStagingBuffer(*this,firstPrimitiveSet,numPrimitiveSets); }
 

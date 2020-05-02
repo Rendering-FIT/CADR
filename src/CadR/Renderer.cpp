@@ -499,6 +499,14 @@ void Renderer::finalize()
 }
 
 
+void Renderer::leakResources()
+{
+	// intentionally avoid all destructors
+	_attribStorages.swap(*new decltype(_attribStorages));
+	_device=nullptr;
+}
+
+
 void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
 {
 	// fill StateSet buffer with content
@@ -551,7 +559,8 @@ void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
 }
 
 
-void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,vk::Framebuffer framebuffer,const vk::Rect2D& renderArea)
+void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,vk::Framebuffer framebuffer,
+                                    const vk::Rect2D& renderArea, uint32_t clearValueCount, const vk::ClearValue* clearValues)
 {
 	// start render pass
 	_device->cmdBeginRenderPass(
@@ -560,8 +569,8 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPa
 			renderPass,   // renderPass
 			framebuffer,  // framebuffer
 			renderArea,   // renderArea
-			1,  // clearValueCount
-			&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f}))  // pClearValues
+			clearValueCount,  // clearValueCount
+			clearValues   // pClearValues
 		),
 		vk::SubpassContents::eInline  // contents
 	);
@@ -702,6 +711,7 @@ StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g)
 StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices)
 {
 	const ArrayAllocation<Geometry>& a=indexAllocation(g.indexDataID());
+	assert(a.numItems>=numIndices && "Renderer::createIndexStagingBuffer(): Parameter numIndices is bigger than allocated space in Geometry.");
 	return StagingBuffer(
 			_indexBuffer,  // dstBuffer
 			(a.startIndex+firstIndex)*sizeof(uint32_t),  // dstOffset
@@ -735,6 +745,7 @@ StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g)
 StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets)
 {
 	const ArrayAllocation<Geometry>& a=primitiveSetAllocation(g.primitiveSetDataID());
+	assert(a.numItems>=numPrimitiveSets && "Renderer::createPrimitiveSetStagingBuffer(): Parameter numPrimitiveSets is bigger than allocated space in Geometry.");
 	return StagingBuffer(
 			_primitiveSetBuffer,  // dstBuffer
 			(a.startIndex+firstPrimitiveSet)*sizeof(PrimitiveSetGpuData),  // dstOffset
@@ -744,10 +755,10 @@ StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g,size_t first
 }
 
 
-void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSet)
+void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex)
 {
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createPrimitiveSetStagingBuffer(g,dstPrimitiveSet,primitiveSetData.size()));
+	StagingBuffer sb(createPrimitiveSetStagingBuffer(g,dstPrimitiveSetIndex,primitiveSetData.size()));
 	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));
 	sb.submit();
 }

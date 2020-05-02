@@ -84,12 +84,13 @@ protected:
 	DrawCommandList _drawCommandList;
 public:
 
-	Drawable(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
+	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling reset().
+	Drawable(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
 	Drawable(Drawable&& other) = default;
 	Drawable& operator=(Drawable&& rhs);
 	~Drawable() = default;
 
-	void reset(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity);
+	void reset(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
 
 	Renderer* renderer() const;
 	MatrixList* matrixList() const;
@@ -105,7 +106,6 @@ public:
 	DrawCommand*const& drawCommandAllocation(uint32_t index) const;  ///< Returns drawCommand allocation for drawCommand on particular index in drawCommandList.
 	DrawCommand*& drawCommandAllocation(uint32_t index);   ///< Returns drawCommand allocation for drawCommand on particular index in drawCommandList. Modify the returned data only with caution.
 
-	Drawable() = delete;
 	Drawable(const Drawable&) = delete;
 	Drawable& operator=(const Drawable&) = delete;
 

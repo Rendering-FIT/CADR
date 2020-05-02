@@ -77,6 +77,11 @@ protected:
 
 public:
 
+	CadR::CallbackList<void()> resizeCallbacks;
+	CadR::CallbackList<void(int x,int y,MouseButtons buttonState)> mouseMoveCallback;
+	CadR::CallbackList<void(ButtonEventType eventType,MouseButtons changedButton,int x,int y,MouseButtons newButtonState)> mouseButtonCallback;
+	CadR::CallbackList<void(int z,int x,int y,MouseButtons buttonState)> mouseWheelCallback;
+
 	Window() = delete;
 	Window(CadR::VulkanInstance& instance);
 	Window(Window&& other);
@@ -91,10 +96,6 @@ public:
 
 	bool processEvents();
 	bool updateSize();
-	CadR::CallbackList<void()> resizeCallbacks;
-	CadR::CallbackList<void(int x,int y,MouseButtons buttonState)> mouseMoveCallback;
-	CadR::CallbackList<void(ButtonEventType eventType,MouseButtons changedButton,int x,int y,MouseButtons newButtonState)> mouseButtonCallback;
-	CadR::CallbackList<void(int z,int x,int y,MouseButtons buttonState)> mouseWheelCallback;
 
 	void recreateSwapchain();
 	void recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities);

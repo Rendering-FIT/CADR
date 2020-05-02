@@ -285,6 +285,7 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g)
 vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices)
 {
 	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
+	assert(a.numItems>=numVertices && "AttribStorage::createStagingBuffers(): Parameter numVertices is bigger than allocated space in Geometry.");
 	vector<StagingBuffer> v;
 	v.reserve(_bufferList.size());
 

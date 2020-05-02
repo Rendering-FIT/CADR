@@ -894,7 +894,14 @@ int main(int argc,char** argv) {
 				&viewMatrix  // pValues
 			);
 			renderer.recordDrawCommandProcessing(cb);
-			renderer.recordSceneRendering(cb,window.renderPass(),window.framebuffers()[imageIndex],vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()));
+			renderer.recordSceneRendering(
+				cb,  // commandBuffer
+				window.renderPass(),  // renderPass
+				window.framebuffers()[imageIndex],  // framebuffer
+				vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
+				1,  // clearValueCount
+				&(const vk::ClearValue&)vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f})  // clearValues
+			);
 			device.endCommandBuffer(cb);
 
 			// render

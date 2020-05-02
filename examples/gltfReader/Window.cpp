@@ -457,10 +457,10 @@ void CadUI::Window::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceC
 {
 	// set new surface extent
 	_surfaceExtent=
-		(surfaceCapabilities.currentExtent.width==std::numeric_limits<uint32_t>::max())
-			?vk::Extent2D{std::clamp(_windowSize.width ,surfaceCapabilities.minImageExtent.width ,surfaceCapabilities.maxImageExtent.width),
-			              std::clamp(_windowSize.height,surfaceCapabilities.minImageExtent.height,surfaceCapabilities.maxImageExtent.height)}
-			:surfaceCapabilities.currentExtent;
+		(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
+			? surfaceCapabilities.currentExtent
+			: vk::Extent2D{std::clamp(_windowSize.width ,surfaceCapabilities.minImageExtent.width ,surfaceCapabilities.maxImageExtent.width),
+			               std::clamp(_windowSize.height,surfaceCapabilities.minImageExtent.height,surfaceCapabilities.maxImageExtent.height)};
 
 	// save old swapchain
 	auto oldSwapchain=
