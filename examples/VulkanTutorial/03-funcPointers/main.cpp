@@ -86,10 +86,8 @@ int main(int,char**)
 			vk::PhysicalDeviceProperties p=pd.getProperties();
 			cout<<"   "<<p.deviceName<<endl;
 
-			vk::UniqueDevice device(  // Move constructor and physicalDevice.createDeviceUnique() does not work here because of bug
-			                          // in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git).
-			                          // Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp of VK_HEADER_VERSION 70.
-				pd.createDevice(
+			vk::UniqueDevice device=
+				pd.createDeviceUnique(
 					vk::DeviceCreateInfo(
 						vk::DeviceCreateFlags(),  // flags
 						1,  // at least one queue is mandatory
@@ -103,8 +101,7 @@ int main(int,char**)
 						0,nullptr,  // no enabled extensions
 						nullptr  // enabled features
 					)
-				)
-			);
+				);
 
 			// functions get from the device
 			cout<<"      vkCreateShaderModule() points to: "<<getLibraryOfAddr(reinterpret_cast<void*>(device->getProcAddr("vkCreateShaderModule")))<<endl;
