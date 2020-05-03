@@ -8,7 +8,7 @@ prostředí a zkompilovat první Vulkanní aplikaci.</p>
 <p>Pro kompilaci a ladění budeme používat množství nástrojů a knihoven.
 Na Windows budeme používat Visual C++ 2017 či novější.
 Na Linuxu jakýkoliv standardní c++ kompilátor. Já zde budu prezentovat g++.
-Mimo kompilátor budeme potřebovat ještě CMake a Vulkan SDK.
+Mimo kompilátor budeme potřebovat ještě CMake a balíčky pro vývoj ve Vulkan (Vulkan SDK).
 CMake doporučuji verzi 3.10.2 či novější, alespoň tak radí stránky Vulkan SDK.
 Budu předpokládat, že čtenář je zkušený programátor a má c++ vývojové prostředí
 nainstalované a plně funkční. Na Linuxu je to nejčastěji balík build-essential (na Ubuntu)
@@ -20,35 +20,54 @@ okenní GUI front-end. Já však budu používat pouze ccmake z balíku cmake-cu
 pro gui v konzoli. Na Windows stáhneme CMake <a href="https://cmake.org/download/">z jeho domácích stránek</a>.
 Pro další informace odkazuji na internet.</p>
 
-<p>Máme-li funkční vývojové prostředí a nainstalovaný CMake, zbývá nainstalovat Vulkan SDK.
+<p>Máme-li funkční vývojové prostředí a nainstalovaný CMake, zbývá nainstalovat věci
+specifické pro vývoj Vulkan aplikací. Na Linuxu máme více možností, proto nejprve proberme Windows.</p>
+
+<p>Na Windows budeme používat Vulkan SDK.
 Ten je k dispozici na stránkách <a href="https://vulkan.lunarg.com/">LunarG</a>.
-Zde se proklikáme na stránku SDK a stáhneme nejnovější verzi pro naši platformu,
-tedy pravděpodobně Windows nebo Linux.</p>
+Zde se proklikáme na stránku SDK a stáhneme nejnovější verzi pro Windows.
+A co že je to LunarG? LunarG a Khronos jsou velmi úzce spolupracující entity.
+Tak bych zkráceně přebásnil, co sami píšou na
+<a href="https://www.lunarg.com/faqs/relationship-lunarg-khronos/">svých stránkách</a>.
+Nemusíme tedy mít strach, že stahujeme něco, co není pod křídly Khronosu.</p>
 
 <p>Instalace na Windows není složitá - spustíme stažený instalátor a proklikáme se instalátorem
 až do konce. Nejvíce nás asi vyruší otázka, kam chceme SDK nainstalovat.
 Nechám na osobních zvycích každého. Na závěr ani nemusíme restartovat počítač.
-Pokud jsme ale měli spuštěné Visual C++ nebo CMake, doporučuji zavřít je
+Pokud jsme ale měli spuštěné Visual C++ nebo CMake, doporučuji je zavřít
 a znovu spustit. Instalátor totiž nastavil proměnnou prostředí VULKAN_SDK a všechny nově spuštěné
 aplikace nyní budou vědět, kde Vulkan SDK hledat. Již běžící aplikace ale o této nové proměnné
-nic netuší a budou se tvářit, jako by žádné SDK nainstalované nebylo. Proto je tedy vhodné
-CMake a Visual C++ zavřít, pokud běžely, a znovu je spustit.</p>
+nic netuší a budou se tvářit, jako by žádné SDK nainstalované nebylo. Proto tedy tento restart
+CMake a Visual C++.</p>
 
 <p>Instalace na Linuxu je trochu zajímavější. Nabízejí se tři "populární" možnosti,
 jak zprovoznit Vulkan. Můžeme nainstalovat buď:</p>
 
-<ul><li>Minimální balíčky pro vývoj Vulkan aplikací - pokud je daná distribuce poskytuje</li>
+<ul>
+<li>Minimální balíčky dané distribuce pro vývoj Vulkan aplikací - pokud daná distribuce nějaké má</li>
 <li>Vulkan SDK skrz balíčkovací systém</li>
 <li>Vulkan SDK z tar.gz</li></ul>
 
 <p>První volba nám dá minimální prostředí. Druhou volbu doporučuji pro seriózní vývoj.
 A třetí pouze pro ty, kteří vědí, co chtějí, a také vědí, jak toho dosáhnout.
-Tím bychom třetí volbu odbyli a pojďme se podívat na druhou a pak na první volbu.</p>
+A protože vědí, jak toho dosáhnout, nechme to na nich a pojďme se podívat na první dvě volby.</p>
 
-<p>Vulkan SDK skrz balíčkovací systém vyžaduje přidání balíčkového repozitáře.
-Pak už jen aktualizujeme seznam balíčků a doinstalujeme Vulkan SDK.
-Na stránkách pro stažení Vulkan SDK máme instrukce pro tyto kroky
-a tento seznam příkazů pro kompletní instalaci. Každá verze má trochu odlišné parametry příkazů.
+<p>Předně bych upozornil - svět se mění a pár let po vydání tohoto článku mohou být
+procedury trochu jiné. Odkazuji na internet a vlastní důvtip.</p>
+
+<p>Namátkou můžeme zkontrolovat, zda není Vulkan SDK mezi balíčkama,
+které daná distribuce standardně poskytuje. Případně jaké balíčky distribuce
+pro vývoj Vulkan aplikací poskytuje. Na ubuntu distribucích můžeme očekávat
+balíčky názvů libvulkan-dev, libvulkan1 a vulkan-utils, či podobné názvy.  <!-- zde aktualizovat názvy dle Ubuntu 20.04 -->
+Pokud jsme ovšem na starší distribuci, nemusí být její balíčky příliš aktuální.
+Například Ubuntu 18.04 nese Vulkanní balíčky verze 1.1.70, tedy z března 2018,
+které s našim tutoriálem nebudou spolupracovat. Minimální verze je 1.1.73,
+alespoň pro první příklady našeho tutoriálu.
+A nyní stojíme před rozhodnutím: Plnohodnotné Vulkan SDK nebo balíčky dané distribuce?</p>
+
+<p>Pokud zvolíme Vulkan SDK, následujme instrukce ze stránek LunarG pro stažení Vulkan SDK pro Linux.
+Ty momentálně žádají tři kroky: přidání balíčkového repozitáře, aktualizaci seznamu balíčků
+a instalaci Vulkan SDK. Každá verze Vulkan SDK má trochu odlišné parametry příkazů.
 Takto vypadají pro Ubuntu 18.04 a Vulkan verze 1.1.114:</p>
 
 <pre>wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
@@ -56,7 +75,7 @@ sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.1.114-bionic.list http://p
 sudo apt update
 sudo apt install vulkan-sdk</pre>
 
-<p>Pro novější verzi Vulkanu sledujte instrukce na stránce.
+<p>Pro novější verzi Vulkan sledujte instrukce na stránce.
 Po instalaci je vše hotovo a můžeme začít Vulkan používat.</p>
 
 <p>Pro ty, kteří chtějí minimální Vulkan vývojové prostředí, je zde volba balíčků distribuce,
@@ -69,7 +88,8 @@ Výhodou je pak jednoduchost instalace.</p>
 Vulkan je podporován Nvidií od generace Kepler, tedy GeForce 6xx (rok 2012).
 AMD ho podporuje na GCN, tedy od Radeon HD 7700-7900 (rok 2012).
 Intel od generace Skylake, řada i3-i7 6xxx (rok 2015). Avšak na Linuxu máme podporu
-již od Ivy Bridge (rok 2012). Více je v přehledné tabulce na
+již od Ivy Bridge (rok 2012), ač ne úplně kompletní, ale pro náš tutoriál snad postačující.
+Více je v přehledné tabulce na
 <a href="https://en.wikipedia.org/wiki/Vulkan_(API)#Compatibility">Wikipedii</a>.</p>
 
 <p>Ohledně driverů, doporučuji nemít více jak rok staré ovladače. Podpora Vulkan
@@ -77,7 +97,7 @@ totiž přichází s ovladačem. A máme-li funkční Vulkan, zjistíme napřík
 vulkaninfo. Tu spustíme na Linuxu v konzoli a na Windows ji najdeme v nabídce Start.
 Vulkaninfo je opravdu detailní a snaží se nám nezatajit sebemenší detail,
 proto je poněkud náročnější v něm najít názvy grafických karet, které ve vašem
-počítači podporují Vulkan. Kdo nainstaloval Vulkan SDK může využít vkconfig / Vulkan Configurator,
+počítači podporují Vulkan. Kdo nainstaloval Vulkan SDK může využít vkconfig, tedy Vulkan Configurator,
 kde najde informace přehlednějším stylem. Název první podporované grafické karty
 je pak na záložce "Vulkan Info" v položce
 "Device Properties and Extensions" -&gt; GPU0 -&gt; VkPhysicalDeviceProperties -&gt; deviceName.

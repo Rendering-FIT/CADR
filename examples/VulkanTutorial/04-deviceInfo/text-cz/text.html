@@ -2,123 +2,204 @@
 
 <p>Každé zařízení ve Vulkan má hromadu vlastností, schopností, limitů,
 dostupné paměti a dalších informací, které o zařízení můžeme zjistit
-a které často nezbytně potřebujeme pro korektní běh naší aplikace.
-Dnes si tedy ukážeme, jak na ně.</p>
+a které často potřebujeme než vytvoříme konkrétní logické zařízení.
+Dnes si tedy ukážeme, jak na tyto informace, které jsou často důležité i při běhu aplikace.</p>
 
-<p>Mnoho lidí by možná čekalo, že naše první rendrovací aplikace bude
-o otevření jednoduchého Vulkanního okna. Nebude tak.
-Inicializace okna a rendrování do něj vyžaduje práci s Vulkan Extensions,
-ukazateli na funkce a konfiguraci swapchainu.
-Tyto složitosti si necháme na později. Místo toho se nyní ponoříme do základů rendrování.
-Výsledný obrázek však nebudeme zobrazovat na obrazovce, nýbrž si jej uložíme do souboru.</p>
+<p>Při startu aplikace potřebujeme často ověřit, zda je podporována požadovaná
+verze Vulkan, požadovaný formát textur, zda je k dispozici geometry shader,
+a kolik grafické paměti je k dispozici, atd. Podle těchto informací můžeme z více zařízení,
+pokud jsou k dispozici, vybrat to, které více odpovídá našim požadavkům.</p>
 
-<p>Aplikaci si můžeme <a href="">stáhnout</a> a otevřít si zdroják main.cpp.
-Hned na začátku najdeme dvě proměnné: imageExtent a instance.</p>
+<p>Pojďme tedy na věc. Můžeme si stáhnout <a href="">zdrojové kódy</a> a zkusit je zkompilovat.
+Po jejich spuštění bychom měli vidět výstup podobný tomuto:</p>
 
 <pre>
-// image size
-const vk::Extent2D imageExtent(128,128);
+Vulkan instance version: 1.1.0
+Physical devices:
+   GeForce GTX 1050
+      Vulkan version: 1.1.84
+      MaxTextureSize: 32768
+      Geometry shader: supported
+      Memory heaps:
+         0: 1958MiB
+         1: 32168MiB
+      Queue families:
+         0: gct
+         1: t
+         2: c
+      R8G8B8A8Unorm format support:
+         Images with linear tiling: no
+         Images with optimal tiling: yes
+         Buffers: no
+   Radeon(TM) RX 460 Graphics
+      Vulkan version: 1.1.101
+      MaxTextureSize: 16384
+      Geometry shader: supported
+      Memory heaps:
+         0: 1792MiB
+         1: 16084MiB
+         2: 256MiB
+      Queue families:
+         0: gct
+         1: ct
+         2: t
+      R8G8B8A8Unorm format support:
+         Images with linear tiling: yes
+         Images with optimal tiling: yes
+         Buffers: no
+</pre>
 
+<p>V tomto výpise vidíme, že Vulkan verze instance je 1.1,
+a pak vidíme dvě grafické karty v daném počítači, na kterém byla aplikace puštěna.
+Podíváme-li se dále, může nás zmást, že i každá karta má svou verzi Vulkan.
+A opravdu je tak. V minulém díle jsme hovořili o Vulkan loader a driverech zařízení (ICD,
+Installable Client Driver). Verze instance je pak verzí Vulkan loader knihovny,
+kdežto Vulkanní verze driveru je Vulkan verze daného ICD.
+Pro více informací odkazuji do Vulkanní dokumentace.</p>
+
+<p>Dále ve výpisu vidíme maximální velikost textury, zda je podporován geometry shader,
+kolik máme hald paměti a jejich velikosti, kolik máme typů front a co umí (g - graphics
+rendering, c - compute, t - transfer) a na závěr podpora různých formátů.
+Nicméně, začněme náš výklad od kódu.</p>
+
+<h3>Verze Vulkan instance</h3>
+
+<pre>
+// Vulkan version
+auto vkEnumerateInstanceVersion=reinterpret_cast&lt;PFN_vkEnumerateInstanceVersion&gt;(
+		vkGetInstanceProcAddr(nullptr,"vkEnumerateInstanceVersion"));
+if(vkEnumerateInstanceVersion) {
+	uint32_t version;
+	vkEnumerateInstanceVersion(&amp;version);
+	cout&lt;&lt;"Vulkan instance version: "&lt;&lt;VK_VERSION_MAJOR(version)&lt;&lt;"."&lt;&lt;VK_VERSION_MINOR(version)
+			&lt;&lt;"."&lt;&lt;VK_VERSION_PATCH(version)&lt;&lt;endl;
+} else
+	cout&lt;&lt;"Vulkan version: 1.0"&lt;&lt;endl;
+</pre>
+
+<p>Pro zjištění Vulkan verze instance používáme funkci vkEnumerateInstanceVersion.
+Tato funkce je přítomná až od Vulkan verze 1.1, proto ji nevoláme staticky,
+neboť nemusí být přítomna. Místo toho si na ni vezmeme funkční pointer.
+Je-li null, jedná se o verzi 1.0. Není-li null, zavoláme ji.
+Vrácenou hodnotu v uint32_t pak dekódujeme za použití maker VK_VERSION_MAJOR
+a jeho obdobami pro MINOR a PATCH komponenty.</p>
+
+<p>Dovolím si zmínit jeden podstatný detail týkající se Vulkanní verze instance.
+Když vytváříme instanci, zadáváme požadovanou verzi Vulkan, kterou bude
+aplikace používat. Daný řádek jsem zvýraznil tučně v následujícím kódu:</p>
+
+<pre>
 // Vulkan instance
-// (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
-static vk::UniqueInstance instance;
+vk::UniqueInstance instance(
+	vk::createInstanceUnique(
+		vk::InstanceCreateInfo{
+			vk::InstanceCreateFlags(),  // flags
+			&(const vk::ApplicationInfo&)vk::ApplicationInfo{
+				"04-deviceInfo",         // application name
+				VK_MAKE_VERSION(0,0,0),  // application version
+				nullptr,                 // engine name
+				VK_MAKE_VERSION(0,0,0),  // engine version
+				<b>VK_API_VERSION_1_0,      // api version</b>
+			},
+			0,nullptr,  // no layers
+			0,nullptr,  // no extensions
+		}));
 </pre>
 
-<p>První obsahuje rozměr výsledného obrázku, druhá Vulkanní instanci,
-kterou již známe z prvního dílu našeho tutoriálu.</p>
+<p>Pokud zadáme verzi 1.0, nevzniká žádný problém. Pokud ale zadáme vyšší verzi,
+mohou nastat dvě situace. Pokud Vulkan instance podporuje verzi 1.1 či jakoukoliv vyšší,
+vše je vpohodě. Je pouze naší povinností nepoužívat funkcionalitu, která není podporována.
+Pokud je ale verze Vulkan instance 1.0, dojde k chybě při vytváření instance.
+Pro programátora může být tedy nezbytné testovat verzi Vulkan instance dříve než
+požádá o vyšší verzi Vulkan API. Více informací k tomuto tématu je ve Vulkan dokumentaci
+v části pojednávající o struktuře VkApplicationInfo, případně i v části věnované
+funkci vkCreateInstance.</p>
 
-<p>Následně nás ale může zaskočit množství handlů a objektů, které budeme potřebovat.</p>
+<p>V tomto tutoriálu si dlouhou dobu vystačíme pouze s Vulkan 1.0 a použitím extensions.
+Problém se nás tedy bezprostředně netýká. Pokud bychom ale chtěli využít funkcionalitu
+Vulkan 1.1 či vyšší, jsme povinni o to požádat v proměnné vk::InstanceCreateInfo::apiVersion.</p>
+
+<p>Další kód prochází jednotlivá fyzická zařízení.
+Pro každé zařízení pak volá několik funkcí, které si nyní popíšeme.</p>
+
+<h3>Device properties (vlastnosti zařízení)</h3>
 
 <pre>
-// Vulkan handles and objects
-// (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
-static vk::PhysicalDevice physicalDevice;
-static uint32_t graphicsQueueFamily;
-static vk::UniqueDevice device;
-static vk::Queue graphicsQueue;
-static vk::UniqueRenderPass renderPass;
-static vk::UniqueImage framebufferImage;
-static vk::UniqueDeviceMemory framebufferImageMemory;
-static vk::UniqueImageView frameImageView;
-static vk::UniqueFramebuffer framebuffer;
-static vk::UniqueCommandPool commandPool;
-static vk::UniqueCommandBuffer commandBuffer;
-static vk::UniqueFence renderingFinishedFence;
+// device properties
+vk::PhysicalDeviceProperties p=pd.getProperties();
+cout&lt;&lt;"   "&lt;&lt;p.deviceName&lt;&lt;endl;
+
+// device Vulkan version
+cout&lt;&lt;"      Vulkan version: "&lt;&lt;VK_VERSION_MAJOR(p.apiVersion)&lt;&lt;"."&lt;&lt;VK_VERSION_MINOR(p.apiVersion)
+		&lt;&lt;"."&lt;&lt;VK_VERSION_PATCH(p.apiVersion)&lt;&lt;endl;
 </pre>
 
-<p>Vulkan je nízkoúrovňové API, takže se budeme pohybovat téměř na úrovni jejich implementace v hardware.
-Nakombinovat si objekty a postavit si aplikaci přesně na míru se přímo nabízí.
-Můžeme si všimnout, že všechny proměnné, které drží handle, který je třeba uvolnit, mají destruktor,
-který se o to postará. Jsou to všechny objekty začínající slovem Unique (obdoba unique_ptr ze std).
-Tedy i při vyhození vyjímky během provádění kódu budou všechny objekty korektně uvolněny.</p>
+<p>Metoda getProperties nám pro dané fyzické zařízení vrátí strukturu
+vk::PhysicalDeviceProperties. Podíváme-li se do dokumentace, tato struktura
+nese množství zajímavých proměnných. Nám již notoricky známá je šestá položka
+deviceName, kterou si vypisujeme na obrazovku jako název zařízení.</p>
 
-<p>Význam jednotlivých proměnných si vysvětlíme v zápětí při popisu kódu.
-Vyzdvihl bych však nejdůležitější položky,
-kterými jsou physicalDevice, device, renderPass, framebufferImage a commandBuffer.
-Zjednodušeně řečeno, naše aplikace nad fyzickým zařízením (physicalDevice) vytvoří logické zařízení (device),
-kde v rámci renderPasu vyrendrujeme obrázek do framebufferImage provedením příkazů,
-které jsou zapsány v commandBufferu.</p>
+<p>Další zajímavou položkou je apiVersion. Toto je verze Vulkan API, kterou
+dané zařízení poskytuje. Na obrzovku si jej vypíšeme za použití stejných maker
+jako u Vulkan verze instance.</p>
 
-<p>Pohled do kódu nám ukazuje inicializaci instance, kterou jsme již viděli v prvním díle tutoriálu.
-Na dalších řádcích kódu
+<p>Další proměnné jsou driverVersion, vendorId, deviceId, deviceType,
+pipelineCacheUUID. V případě zájmu odkazuji na jejich význam do dokumentace.</p>
 
+<h3>Device limits (limity zařízení)</h3>
 
+<p>Základní limity zařízení jsou uloženy ve struktuře vk::PhysicalDeviceLimits,
+která je součástí vk::PhysicalDeviceProperties. Velmi snadno si tedy
+vypíšeme maximální rozlišení 2D textury.
 
-Význam těchto proměnných si zkusme v krátkosti popsat:</p>
+<pre>
+// device limits
+cout&lt;&lt;"      MaxTextureSize: "&lt;&lt;p.limits.maxImageDimension2D&lt;&lt;endl;
+</pre>
 
-<pre>static vk::PhysicalDevice physicalDevice;</pre>
-<p><strong>physicalDevice</strong> - handle fyzického zařízení, tedy grafické karty, kterou budeme používat</p>
+<p>Limitů je obrovské množství. Vulkan dokumentace nás na ně občas odkáže.
+I my se některými z nich budeme zabývat, ale až je budeme potřebovat.</p>
 
-<pre>static uint32_t graphicsQueueFamily;</pre>
-<p><strong>graphicsQueueFamily</strong> - index skupiny front, kterou budeme používat k rendrování na dané grafické kartě;
-Fronty jsou rozděleny do skupin podle svých vlastností a tyto skupiny jsou indexovány od nuly.
-My si jednu z nich vybereme k rendrování.</p>
+<h3>Device features (funkcionality zařízení)</h3>
 
-<pre>static vk::UniqueDevice device;</pre>
-<p><strong>device</strong> - logické zařízení, které vytvoříme konfigurací fyzického zařízení, t.j. zařízení
-uloženého v proměnné physicalDevice;
-Ve Vulkan k rendrování a počítání používáme logická zařízení.
-K čemu jsou tedy fyzická zařízení? Umožňují nám zjistit veškeré parametry a features
-daného fyzického zařízení tak, že jsme si například schopni mezi zařízeními vybrat to,
-které nám nejvíce vyhovuje a následně si vytvořit logické zařízení nakonfigurované tak, jak potřebujeme.</p>
+<p>Jsou určité funkcionality, které u daného zařízení mohou nebo nemusí být podporovány.
+Například geometry shader nemusí být přítomen na určitém tabletu, mobilním zařízení
+nebo Raspberry Pi. Soubor podporovaných funkcionalit Vulkan 1.0 zjistíme
+zavolání metody getFeatures nad daným fyzickým zařízením.</p>
 
-<pre>static vk::Queue graphicsQueue;</pre>
-<p><strong>graphicsQueue</strong> - fronta do které budeme posílat grafické příkazy k provedení</p>
+<pre>
+// device features
+vk::PhysicalDeviceFeatures f=pd.getFeatures();
+cout&lt;&lt;"      Geometry shader: ";
+if(f.geometryShader)
+	cout&lt;&lt;"supported"&lt;&lt;endl;
+else
+	cout&lt;&lt;"not supported"&lt;&lt;endl;
+</pre>
 
-<pre>static vk::UniqueRenderPass renderPass;</pre>
-<p><strong>renderPass</strong> - Každé rendrování se ve Vulkan děje v rámci render pasu.
-Render pasy na sebe mohou navazovat, obsahovat subpasy a podobně. Jejich přítomnost ve Vulkan API umožňuje
-optimalizovat rendering na straně hardware, jako například tiled-rendering.
-Hardware pak používá optimalizace, které podporuje, aniž by bylo jakkoliv potřeba měnit kód naší aplikace.</p>
+<p>Vrácená struktura vk::PhysicalDeviceFeatures obsahuje 55 booleanů indikujících,
+co je podporováno a co ne. Mezi nimi je zmíněný geometry shader, dále třeba tesselační shader nebo
+anizotropní filtrování, různé komprese textur, podpora výpočtů s dvounásobnou přesností (double precision)
+a mnoho dalších, které opět najdeme ve Vulkan dokumentaci.</p>
 
-<pre>static vk::UniqueImage framebufferImage;</pre>
-<p><strong>framebufferImage</strong> - handle na Vulkanní objekt typu Image,
-do kterého budeme ukládat výsledný obrázek</p>
+<h3>Paměť</h3>
 
-<pre>static vk::UniqueDeviceMemory framebufferImageMemory;</pre>
-<p><strong>framebufferImageMemory</strong> - handle na DeviceMemory objekt,
-což je vlastní paměť, do které bude výsledný obrázek uložen.</p>
+<p>Další informace, které můžeme získat o fyzickém zařízení se týkají paměti.
+Ty získáme zavoláním metody getMemoryProperties:</p>
 
-<pre>static vk::UniqueImageView frameImageView;</pre>
-<p><strong>frameImageView</strong> - handle na ImageView objekt,
-který se používá při přístupu do Image, v tomto případě do našeho výsledného obrázku.</p>
+<pre>
+// memory properties
+vk::PhysicalDeviceMemoryProperties m=pd.getMemoryProperties();
+cout&lt;&lt;"      Memory heaps:"&lt;&lt;endl;
+for(uint32_t i=0,c=m.memoryHeapCount; i&lt;c; i++)
+	cout&lt;&lt;"         "&lt;&lt;i&lt;&lt;": "&lt;&lt;m.memoryHeaps[i].size/1024/1024&lt;&lt;"MiB"&lt;&lt;endl;
+</pre>
 
-<pre>static vk::UniqueFramebuffer framebuffer;</pre>
-<p><strong>framebuffer</strong> - framebuffer reprezentuje množinu attachmentů či memory objektů,
-které render pass používá. Často je framebuffer složen například jen z color bufferu a depth bufferu.
-Složitější konfigurace jsou samozřejmě možné.</p>
-
-<pre>static vk::UniqueCommandPool commandPool;</pre>
-<p><strong>commandPool</strong> - commandBuffery (viz. následující položka) se alokují v rámci
-commandPool, aby se omezila režie.</p>
-
-<pre>static vk::UniqueCommandBuffer commandBuffer;</pre>
-<p><strong>commandBuffer</strong> - do command bufferů nahrajeme posloupnost příkazů, které
-se následně vykonají při rendrování</p>
-
-<pre>static vk::UniqueFence renderingFinishedFence;</pre>
-<p><strong>renderingFinishedFence</strong> - fences slouží k synchronizaci a má dva stavy - signaled a unsignaled;
-V našem případě až gpu dorendruje, nastaví renderingFinishedFence na signaled. Tak se cpu dozví, že už je práce hotova.</p>
-
+<p>Vrácená struktura vk::PhysicalDeviceMemoryProperties obsahuje informace o dostupných typech paměti
+a o haldách, které jsou k dispozici. Začněme u hald, které si vypisujeme na obrazovku.
+Haldy jsou často jedna, dvě nebo tři. Jedná je někdy například na některých integrovaných grafikách,
+protože tam je pamět jediná a sdílená s procesorem. Dvě je velmi častý případ a řekl bych nejtypičtější -
+jedna halda je lokální rychlá paměť na grafice a druhá halda je klasická paměť počítače nebo její část.
+Tato paměť není pro grafický chip tak rychle přístupná, nicméně přístupná je.
 
 

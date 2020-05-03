@@ -70,7 +70,7 @@ int main(int,char**)
 
 			// queue family properties
 			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-			cout<<"      Queues:"<<endl;
+			cout<<"      Queue families:"<<endl;
 			for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
 				cout<<"         "<<i<<": ";
 				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
@@ -79,6 +79,7 @@ int main(int,char**)
 					cout<<"c";
 				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eTransfer)
 					cout<<"t";
+				cout<<"  (count: "<<queueFamilyList[i].queueCount<<")";
 				cout<<endl;
 			}
 

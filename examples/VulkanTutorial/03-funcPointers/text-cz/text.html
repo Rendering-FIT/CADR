@@ -72,7 +72,7 @@ vk::UniqueInstance instance(
 	vk::createInstanceUnique(
 		vk::InstanceCreateInfo{
 			vk::InstanceCreateFlags(),  // flags
-			&(const vk::ApplicationInfo&)vk::ApplicationInfo{
+			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
 				"03-funcPointers",       // application name
 				VK_MAKE_VERSION(0,0,0),  // application version
 				nullptr,                 // engine name
@@ -142,25 +142,22 @@ To provedeme zavoláním metody createDevice() či createDeviceUnique().</p>
 <h3>Logická zařízení</h3>
 
 <pre>
-vk::UniqueDevice device(  // Move constructor and physicalDevice.createDeviceUnique() does not work here because of bug
-									// in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git).
-									// Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp of VK_HEADER_VERSION 70.
-	pd.createDevice(
+vk::UniqueDevice device=
+	pd.createDeviceUnique(
 		vk::DeviceCreateInfo(
 			vk::DeviceCreateFlags(),  // flags
 			1,  // at least one queue is mandatory
-			&(const vk::DeviceQueueCreateInfo&)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
+			&amp;(const vk::DeviceQueueCreateInfo&amp;)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
 				vk::DeviceQueueCreateFlags(),  // flags
 				0,  // queueFamilyIndex
 				1,  // queueCount
-				&(const float&)1.f,  // pQueuePriorities
+				&amp;(const float&amp;)1.f,  // pQueuePriorities
 			},
 			0,nullptr,  // no layers
 			0,nullptr,  // no enabled extensions
 			nullptr  // enabled features
 		)
-	)
-);
+	);
 </pre>
 
 <p>Když už jsme tedy vytvořili z fyzického zařízení logické, co je to to logické zařízení (logical device)?
