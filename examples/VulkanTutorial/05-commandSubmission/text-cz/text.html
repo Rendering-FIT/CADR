@@ -1,0 +1,121 @@
+<h1>Vulkan tutoriál: Posílání příkazů (5. díl)</h1>
+
+<p>Aby Vulkan zařízení odvedlo jakoukoliv práci musíme mu zaslat příkazy k provedení.
+Dnes si ukážeme, jak na to.</p>
+
+<p>Zkráceně řečeno, práci do Vulkan zařízení (device) nejprve uložíme do
+Command Bufferu (příkazový buffer) a následně odešleme do fronty (Queue) ke zpracovnání.</p>
+
+<p>Aplikaci si můžeme <a href="">stáhnout</a>, zkompilovat a spustit.
+Uvidíme výstup podobný tomuto:</p>
+
+<pre>
+Vulkan devices:
+   Quadro K1000M
+Compatible devices:
+   Quadro K1000M
+Using device:
+   Quadro K1000M
+Submiting work...
+Waiting for the work...
+Done.
+</pre>
+
+<p>První obsahuje rozměr výsledného obrázku, druhá Vulkanní instanci,
+kterou již známe z prvního dílu našeho tutoriálu.</p>
+
+<p>Následně nás ale může zaskočit množství handlů a objektů, které budeme potřebovat.</p>
+
+<pre>
+// Vulkan handles and objects
+// (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
+static vk::PhysicalDevice physicalDevice;
+static uint32_t graphicsQueueFamily;
+static vk::UniqueDevice device;
+static vk::Queue graphicsQueue;
+static vk::UniqueRenderPass renderPass;
+static vk::UniqueImage framebufferImage;
+static vk::UniqueDeviceMemory framebufferImageMemory;
+static vk::UniqueImageView frameImageView;
+static vk::UniqueFramebuffer framebuffer;
+static vk::UniqueCommandPool commandPool;
+static vk::UniqueCommandBuffer commandBuffer;
+static vk::UniqueFence renderingFinishedFence;
+</pre>
+
+<p>Vulkan je nízkoúrovňové API, takže se budeme pohybovat téměř na úrovni jejich implementace v hardware.
+Nakombinovat si objekty a postavit si aplikaci přesně na míru se přímo nabízí.
+Můžeme si všimnout, že všechny proměnné, které drží handle, který je třeba uvolnit, mají destruktor,
+který se o to postará. Jsou to všechny objekty začínající slovem Unique (obdoba unique_ptr ze std).
+Tedy i při vyhození vyjímky během provádění kódu budou všechny objekty korektně uvolněny.</p>
+
+<p>Význam jednotlivých proměnných si vysvětlíme v zápětí při popisu kódu.
+Vyzdvihl bych však nejdůležitější položky,
+kterými jsou physicalDevice, device, renderPass, framebufferImage a commandBuffer.
+Zjednodušeně řečeno, naše aplikace nad fyzickým zařízením (physicalDevice) vytvoří logické zařízení (device),
+kde v rámci renderPasu vyrendrujeme obrázek do framebufferImage provedením příkazů,
+které jsou zapsány v commandBufferu.</p>
+
+<p>Pohled do kódu nám ukazuje inicializaci instance, kterou jsme již viděli v prvním díle tutoriálu.
+Na dalších řádcích kódu
+
+
+
+Význam těchto proměnných si zkusme v krátkosti popsat:</p>
+
+<pre>static vk::PhysicalDevice physicalDevice;</pre>
+<p><strong>physicalDevice</strong> - handle fyzického zařízení, tedy grafické karty, kterou budeme používat</p>
+
+<pre>static uint32_t graphicsQueueFamily;</pre>
+<p><strong>graphicsQueueFamily</strong> - index skupiny front, kterou budeme používat k rendrování na dané grafické kartě;
+Fronty jsou rozděleny do skupin podle svých vlastností a tyto skupiny jsou indexovány od nuly.
+My si jednu z nich vybereme k rendrování.</p>
+
+<pre>static vk::UniqueDevice device;</pre>
+<p><strong>device</strong> - logické zařízení, které vytvoříme konfigurací fyzického zařízení, t.j. zařízení
+uloženého v proměnné physicalDevice;
+Ve Vulkan k rendrování a počítání používáme logická zařízení.
+K čemu jsou tedy fyzická zařízení? Umožňují nám zjistit veškeré parametry a features
+daného fyzického zařízení tak, že jsme si například schopni mezi zařízeními vybrat to,
+které nám nejvíce vyhovuje a následně si vytvořit logické zařízení nakonfigurované tak, jak potřebujeme.</p>
+
+<pre>static vk::Queue graphicsQueue;</pre>
+<p><strong>graphicsQueue</strong> - fronta do které budeme posílat grafické příkazy k provedení</p>
+
+<pre>static vk::UniqueRenderPass renderPass;</pre>
+<p><strong>renderPass</strong> - Každé rendrování se ve Vulkan děje v rámci render pasu.
+Render pasy na sebe mohou navazovat, obsahovat subpasy a podobně. Jejich přítomnost ve Vulkan API umožňuje
+optimalizovat rendering na straně hardware, jako například tiled-rendering.
+Hardware pak používá optimalizace, které podporuje, aniž by bylo jakkoliv potřeba měnit kód naší aplikace.</p>
+
+<pre>static vk::UniqueImage framebufferImage;</pre>
+<p><strong>framebufferImage</strong> - handle na Vulkanní objekt typu Image,
+do kterého budeme ukládat výsledný obrázek</p>
+
+<pre>static vk::UniqueDeviceMemory framebufferImageMemory;</pre>
+<p><strong>framebufferImageMemory</strong> - handle na DeviceMemory objekt,
+což je vlastní paměť, do které bude výsledný obrázek uložen.</p>
+
+<pre>static vk::UniqueImageView frameImageView;</pre>
+<p><strong>frameImageView</strong> - handle na ImageView objekt,
+který se používá při přístupu do Image, v tomto případě do našeho výsledného obrázku.</p>
+
+<pre>static vk::UniqueFramebuffer framebuffer;</pre>
+<p><strong>framebuffer</strong> - framebuffer reprezentuje množinu attachmentů či memory objektů,
+které render pass používá. Často je framebuffer složen například jen z color bufferu a depth bufferu.
+Složitější konfigurace jsou samozřejmě možné.</p>
+
+<pre>static vk::UniqueCommandPool commandPool;</pre>
+<p><strong>commandPool</strong> - commandBuffery (viz. následující položka) se alokují v rámci
+commandPool, aby se omezila režie.</p>
+
+<pre>static vk::UniqueCommandBuffer commandBuffer;</pre>
+<p><strong>commandBuffer</strong> - do command bufferů nahrajeme posloupnost příkazů, které
+se následně vykonají při rendrování</p>
+
+<pre>static vk::UniqueFence renderingFinishedFence;</pre>
+<p><strong>renderingFinishedFence</strong> - fences slouží k synchronizaci a má dva stavy - signaled a unsignaled;
+V našem případě až gpu dorendruje, nastaví renderingFinishedFence na signaled. Tak se cpu dozví, že už je práce hotova.</p>
+
+
+
