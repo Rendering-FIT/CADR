@@ -24,10 +24,10 @@ Physical devices:
          0: 1958MiB
          1: 32168MiB
       Queue families:
-         0: gct
-         1: t
-         2: c
-      R8G8B8A8Unorm format support:
+         0: gct  (count: 16)
+         1: t  (count: 1)
+         2: c  (count: 8)
+      R8G8B8A8Unorm format support for color attachment:
          Images with linear tiling: no
          Images with optimal tiling: yes
          Buffers: no
@@ -40,10 +40,22 @@ Physical devices:
          1: 16084MiB
          2: 256MiB
       Queue families:
-         0: gct
-         1: ct
-         2: t
-      R8G8B8A8Unorm format support:
+         0: gct  (count: 1)
+         1: ct  (count: 3)
+         2: t  (count: 2)
+      R8G8B8A8Unorm format support for color attachment:
+         Images with linear tiling: yes
+         Images with optimal tiling: yes
+         Buffers: no
+   Intel(R) HD Graphics 530
+      Vulkan version: 1.0.31
+      MaxTextureSize: 16384
+      Geometry shader: supported
+      Memory heaps:
+         0: 1824MiB
+      Queue families:
+         0: gct  (count: 1)
+      R8G8B8A8Unorm format support for color attachment:
          Images with linear tiling: yes
          Images with optimal tiling: yes
          Buffers: no
@@ -94,7 +106,7 @@ vk::UniqueInstance instance(
 	vk::createInstanceUnique(
 		vk::InstanceCreateInfo{
 			vk::InstanceCreateFlags(),  // flags
-			&(const vk::ApplicationInfo&)vk::ApplicationInfo{
+			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
 				"04-deviceInfo",         // application name
 				VK_MAKE_VERSION(0,0,0),  // application version
 				nullptr,                 // engine name
@@ -182,7 +194,7 @@ co je podporováno a co ne. Mezi nimi je zmíněný geometry shader, dále třeb
 anizotropní filtrování, různé komprese textur, podpora výpočtů s dvounásobnou přesností (double precision)
 a mnoho dalších, které opět najdeme ve Vulkan dokumentaci.</p>
 
-<h3>Paměť</h3>
+<h3>Memory properties (paměť)</h3>
 
 <p>Další informace, které můžeme získat o fyzickém zařízení se týkají paměti.
 Ty získáme zavoláním metody getMemoryProperties:</p>
@@ -195,11 +207,120 @@ for(uint32_t i=0,c=m.memoryHeapCount; i&lt;c; i++)
 	cout&lt;&lt;"         "&lt;&lt;i&lt;&lt;": "&lt;&lt;m.memoryHeaps[i].size/1024/1024&lt;&lt;"MiB"&lt;&lt;endl;
 </pre>
 
-<p>Vrácená struktura vk::PhysicalDeviceMemoryProperties obsahuje informace o dostupných typech paměti
-a o haldách, které jsou k dispozici. Začněme u hald, které si vypisujeme na obrazovku.
-Haldy jsou často jedna, dvě nebo tři. Jedná je někdy například na některých integrovaných grafikách,
-protože tam je pamět jediná a sdílená s procesorem. Dvě je velmi častý případ a řekl bych nejtypičtější -
+<p>Vrácená struktura vk::PhysicalDeviceMemoryProperties obsahuje informace o dostupných typech paměti (memory types)
+a o haldách (memory heaps), které jsou k dispozici. Začněme u hald, které si vypisujeme na obrazovku.
+Haldy jsou často jedna, dvě nebo tři. Jednu můžeme najít například na některých integrovaných grafikách,
+protože tam je paměť jediná a sdílená s procesorem. Dvě je velmi častý případ a řekl bych nejtypičtější:
 jedna halda je lokální rychlá paměť na grafice a druhá halda je klasická paměť počítače nebo její část.
-Tato paměť není pro grafický chip tak rychle přístupná, nicméně přístupná je.
+Tato paměť není pro grafický chip tak rychle přístupná, nicméně přístupná nějakým způsobem je.
+Tři haldy vidívám v dnešní době například na AMD grafikách. AMD se rozhodlo vzít malou část paměti grafiky
+a zpřístupnit ji jak grafickému čipu tak procesoru. Tato třetí halda tedy umožňuje zvlášť efektivně
+sdílet data mezi grafikou a procesorem. Obecně ale můžeme mít různé konfigurace hald,
+třeba i mnohem složitěji navržené. Záleží na výrobci, jak věci implementuje.</p>
 
+<p>Struktura vk::PhysicalDeviceMemoryProperties obsahuje i informace o typech paměti (memory types),
+ale ty si necháme na později, až budeme alokovat paměť.</p>
 
+<h3>Queues (fronty)</h3>
+
+<p>A k čemu jsou fronty, které vidíme ve výpisu?</p>
+
+<pre>
+Queue families:
+	0: gct  (count: 16)
+	1: t  (count: 1)
+	2: c  (count: 8)
+</pre>
+
+<p>Zjednodušeně můžeme říci, že práci zadáváme grafické kartě skrze příkazy.
+Tyto příkazy odesíláme do front. Tyto fronty pak grafická karta zpracovává.
+Fronty se dělí do skupin či tříd (families) podle toho, co umí.
+Můžeme mít třídu, která umí pouze počítat (compute operations support).
+V našem výpisu jsou uvedeny písmenem "c".
+Dále můžeme mít třídu, která umí rendrovat grafiku (graphics operations support)
+- ve výpisu vidíme "g". Další důležitá funkcionalita front jsou pak
+přenosy (transfer operations) - ve výpisu "t". Mnoho front pak umí
+více funkcionalit naráz. V každé třídě je pak uveden i počet front, které
+jsou k dispozici.</p>
+
+<pre>
+// queue family properties
+vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList=pd.getQueueFamilyProperties();
+cout&lt;&lt;"      Queue families:"&lt;&lt;endl;
+for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i&lt;c; i++) {
+	cout&lt;&lt;"         "&lt;&lt;i&lt;&lt;": ";
+	if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics)
+		cout&lt;&lt;"g";
+	if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eCompute)
+		cout&lt;&lt;"c";
+	if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eTransfer)
+		cout&lt;&lt;"t";
+	cout&lt;&lt;"  (count: "&lt;&lt;queueFamilyList[i].queueCount&lt;&lt;")";
+	cout&lt;&lt;endl;
+}
+</pre>
+
+<p>Náš kód je poměrně triviální. Nejprve zavoláme getQueueFamilyProperties
+nad daným fyzickým zařízením. Ta nám vrátí ve vektoru tolik vk::QueueFamilyProperties,
+kolik tříd front je přítomno. V našem případě u GeForce 1050 jsou to tři.
+Následně cyklíme přes tyto třídy a z queueFlags zjišťujeme,
+které operace jsou nad danou frontou podporovány.
+Na závěr vypíšeme počet front.</p>
+
+<h3>Format properties (vlastnosti formátů)</h3>
+
+<p>Poslední oblast, kterou si uvedeme je podpora formátů. Vulkan podporuje přehršel
+různých formátů uložení dat. Stačí se podívat na VkFormat ve Vulkan dokumentaci.
+Abychom si uvedli jeden příklad: R8G8B8A8Unorm je typický formát
+ukládající červenou, zelenou a modrou složku s alfa kanálem (RGBA).
+Každá z těchto složek má 8 bitů, tedy bajt. Proto je za každým písmenem
+RGBA připojena osmička. "U" pak stojí za unsigned, tedy bez znaménka.
+Rozsah hodnot je tedy 0..255. Norm pak značí normalizaci, neboli konverzi
+na hodnotu s plovoucí desetinou čárkou v rozsahu 0.0 až 1.0.
+Více opět najdeme ve Vulkan dokumentaci, ať už v sekci "Format Definition",
+kde se pojednává o VkFormat, či v sekci "Fixed-Point Data Conversions"
+o konverzi numerických hodnot.</p>
+
+<p>Co tedy vidíme na obrazovce o vlastnostech formátu R8G8B8A8Unorm?</p>
+
+<pre>
+R8G8B8A8Unorm format support for color attachment:
+	Images with linear tiling: no
+	Images with optimal tiling: yes
+	Buffers: no
+</pre>
+
+<p>Vidíme, že tento formát není podporován automaticky vždy.
+Také vidíme, že se dotazujeme na jeho podporu při specifickém použití,
+zde jako "color attachment". Jinými slovy, zda do něj můžeme rendrovat.
+Vidíme, že na GeForce 1050 je podporován pouze pro "Images with optimal tiling".
+Opět zjednodušeně řečeno, pokud rendrujeme do textury s optimálním uložením v paměti,
+je tento formát podporován.
+Ale pro "linear tiling", tedy linearní uložení, podporován není.
+Rendrování do bufferu rovněž podporováno není, což pokud vím, vůbec nejde.</p>
+
+<p>Jak tedy zjišťujeme podporu jednotlivých formátů?</p>
+
+<pre>
+// color attachment R8G8B8A8Unorm format support
+vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
+cout&lt;&lt;"      R8G8B8A8Unorm format support for color attachment:"&lt;&lt;endl;
+cout&lt;&lt;"         Images with linear tiling: "&lt;&lt;
+	string(fp.linearTilingFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")&lt;&lt;endl;
+cout&lt;&lt;"         Images with optimal tiling: "&lt;&lt;
+	string(fp.optimalTilingFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")&lt;&lt;endl;
+cout&lt;&lt;"         Buffers: "&lt;&lt;
+	string(fp.bufferFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")&lt;&lt;endl;
+</pre>
+
+<p>Nahradíme-li vk::FormatFeatureFlagBits::eColorAttachment za jiný flag, můžeme se ptát,
+zda je daný formát podporován pro čtení dat z textury a podobně.</p>
+
+<h3>Závěr</h3>
+
+<p>V tomto díle jsme prošli vpodstatě veškeré základní get funkce kolem fyzického zařízení z Vulkan 1.0.
+Zároveň jsme si představili mnoho ze základních pojmů Vulkan jako fronty (queues), haldy (memory heaps),
+vlastnosti, funkcionality a limity zařízení (device properties, features and limits), formáty
+a Vulkan verze instance a zařízení.
+Mnoho z toho nám poslouží příště, kdy se pustíme do první aplikace, která udělá první krůčky
+v oblasti renderingu.</p>
