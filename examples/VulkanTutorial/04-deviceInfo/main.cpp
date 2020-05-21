@@ -85,7 +85,7 @@ int main(int,char**)
 
 			// color attachment R8G8B8A8Unorm format support
 			vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-			cout<<"      R8G8B8A8Unorm format support:"<<endl;
+			cout<<"      R8G8B8A8Unorm format support for color attachment:"<<endl;
 			cout<<"         Images with linear tiling: "<<
 				string(fp.linearTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")<<endl;
 			cout<<"         Images with optimal tiling: "<<

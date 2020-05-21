@@ -43,7 +43,7 @@ int main(int,char**)
 				});
 
 		// find compatible devices
-		// (the device must have a queue supporting graphics operations and support for linear tiling)
+		// (the device must have a queue supporting graphics operations)
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
@@ -113,7 +113,7 @@ int main(int,char**)
 				)
 			)[0]);
 
-		// begin record command buffer
+		// begin command buffer
 		commandBuffer->begin(
 			vk::CommandBufferBeginInfo(
 				vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags

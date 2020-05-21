@@ -46,13 +46,13 @@ standardní součástí Vulkan SDK.</p>
 <p>Druhá věc může být pro některé poněkud kontroverzní. Jsou jí C++ vyjímky.
 Dle mého měření, ač nejsem expert, vyjímky zvyšují výkon aplikace
 a zpřehledňují kód. A je to docela logické: Použití vyjímek nám totiž z kódu
-odstraní velké množství if-ů, které vyhodnocují návratové chybové kódy
+odstraní velké množství podmínek, které vyhodnocují návratové chybové kódy
 a předávají je dále do nadřazených volajících funkcí, které opět vyhodnocují
-návratové chybové kódy, atd. Použití vyjímek odstraní tyto if-y z našeho kódu
-a kód je tímpádem rychlejší. Kompilátor namísto těchto if-ů vytvoří tabulky,
+návratové chybové kódy, atd. Použití vyjímek odstraní tyto podmínky z našeho kódu
+a kód je tímpádem rychlejší. Kompilátor namísto těchto podmínek vytvoří tabulky,
 které řídí, co se stane, když vznikne vyjímka. Ve svém důsledku je kód
 přehlednější, máme důvod očekávat, že i rychlejší, a i vývoj je z pohledu
-obsluhy chyb podstatně zjednodušen. Proti případnému argument, že vyhození vyjímky
+obsluhy chyb podstatně zjednodušen. Proti případnému argumentu, že vyhození vyjímky
 je velmi pomalé, odpovídám, že vyjímka se tak jmenuje od toho, že se jedná
 o vyjímečnou situaci, kterou typicky ošetřujeme chybovou hláškou nebo
 ukončením aplikace. Jestli se chybová hláška objeví o pár mikrosekund později
@@ -74,8 +74,9 @@ objekt VkInstance bychom měli zrušit teprve, až se provedly všechny destrukt
 které něco dělají s Vulkanem, a už se nebudou volat žádné další Vulkanní funkce.</p>
 
 <p>VkInstance je ale C-čkové rozhranní a my jsme si říkali, že budeme používat C++.
-Hlavička vulkan.hpp nám nabízí třídu vk::Instance, která zaobaluje veškerou
-standardizovanou funkcionalitu vkInstance. Kvůli správě paměti však samotnou třídu vk::Instance nepoužijeme.
+Hlavička vulkan.hpp nám nabízí třídu vk::Instance, která zapouzdřuje veškerou
+standardizovanou funkcionalitu vkInstance.
+Kvůli správě paměti však samotnou třídu vk::Instance nepoužijeme.
 Protože používáme vyjímky, měli bychom se držet programovacího idiomu
 <a href="https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization">RAII</a>.
 Tato zkratka znamená Resource Acquisition Is Initialization,
@@ -84,12 +85,12 @@ typicky prováděna v konstruktoru. A kde je konstruktor alokující paměť či
 je obyčejně také destruktor, který se stará o jejich uvolnění. Tento programovací idiom
 je tedy zaměřen na objektově orientovanou správu paměti a ostatních zdrojů.
 A to je přesně to, co potřebujeme při vyjímkách.
-Provedeme-li na začátku funkce new a na konci delete, nebude delete zavoláno,
+Provedeme-li na začátku funkce obyčejné new a na konci delete, nebude delete zavoláno,
 pokud vznikne mezi new a delete vyjímka. Zabalíme-li však new a delete do objektu,
 kde se v konstruktoru volá new a v destruktoru delete, postará se tento objekt sám o uvolnění
 paměti, a to jak v případě klasického opuštění funkce, tak v případě vzniku vyjímky.
 Kód starající se o dealokaci tedy píšeme společně s kódem alokace, a nemusíme procházet
-celou funkci, kdykoliv měníme work-flow funkce, přidáváme returny, a podobně, abychom
+celou funkci, kdykoliv měníme strukturu funkce, přidáváme returny, a podobně, abychom
 se stále ujišťovali, že jsme před každým return zavolali všechna potřebná delete a free.
 O vše se nyní postarají destruktory objektů automaticky. A tak by to mělo být.
 Nemusíme však psát vlastní objekty pro každou alokaci. Pro drtivou většinu případů nám
@@ -108,9 +109,9 @@ vk::createInstanceUnique(). Existuje i klasická funkce vk::createInstance().
 Ta ale vrací pouze vk::Instance, nikoliv vk::UniqueInstance, kterou potřebujeme my.</p>
 
 <p>vk::createInstanceUnique() bere jako jediný povinný parametr ukazatel na strukturu
-vk::InstanceCreateInfo. A toto bude naše hlavní zkušenost s Vulkanovými funkcemi:
+vk::InstanceCreateInfo. A toto bude naše hlavní zkušenost s Vulkan funkcemi:
 místo toho, aby Vulkanové funkce braly neskutečné množství parametrů, berou jako hlavní parametr
-ukazatel či referenci na strukturu, která obsahuje všechny potřebná data.
+ukazatel či referenci na strukturu, která obsahuje všechna potřebná data.
 Většina struktur pak obsahuje i pointer pNext, který může ukazovat na rozšiřující
 struktury s dalšími daty. Tímto způsobem Vulkan roste a místo nových API funkcí
 se často objevují pouze nové struktury, což je z pohledu API mnohem flexibilnější.</p>
@@ -129,7 +130,7 @@ vk::UniqueInstance instance(
 
 <p>vk::InstanceCreateInfo nebudeme vytvářet jako proměnnou, ale zkonstruujeme ji při volání
 vk::createInstanceUnique(). Konstruktoru pouze předáme v parametrech požadovaný obsah struktury.
-Ne každý musí milovat tento styl. Avšak ve Vulkanu není neobvyklé volat i 50 funkcí v jedné metodě,
+Ne každý musí milovat tento styl. Avšak ve Vulkan není neobvyklé volat i 50 funkcí v jedné metodě,
 například při statické konstrukci scény.
 Těchto 50 funkcí může vyžadovat deklaraci padesáti struktur na zásobníku,
 které na něm budou zbytečně strašit až do opuštění funkce - to teoreticky snižuje i efektivnost cache procesoru.
@@ -167,19 +168,26 @@ for(vk::PhysicalDevice pd:deviceList) {
 
 <p>Na prvních řádcích vytváříme Vulkanní instanci, přičemž většina kódu připadá na obsah
 struktury vk::InstanceCreateInfo. Její obsah nebudu komentovat
-a odkážu na studium Vulkanní dokumentace, což je denní strava programátorů Vulkanu,
+a odkážu na studium Vulkan dokumentace, což je denní strava programátorů Vulkanu,
 kdykoliv zkoušejí něco nového.</p>
 
 <p>V druhé části kódu se dotážeme na seznam fyzických zařízení (physical devices),
-které podporují Vulkan, a vypíšeme jejich názvy.</p>
+které podporují Vulkan, a vypíšeme jejich názvy.
+Výpis na počítači se třemi grafickými kartami může vypadat takto:</p>
 
-<p>Příště si povíme více o fyzických a logických zařízeních.
-Pokud se vám nedaří zdrojový kód zkompilovat, ukážeme si příště,
-co nainstalovat a jak vše nakonfigurovat, aby to fungovalo.
+<pre>
+Physical devices:
+   GeForce GTX 1050
+   Radeon(TM) RX 460 Graphics
+   Intel(R) HD Graphics 530
+</pre>
+
+<p>Pokud se vám podařilo dospět až sem, gratuluji. Pokud se nedaří aplikaci zkompilovat,
+příště si řekneme, jak nakonfigurovat vše potřebné pro vývoj Vulkan aplikací.
 Prozatím prozradím, že kromě <a href=>zdrojáků</a>,
 je potřeba ještě cmake. Na Windows doporučuji
-<a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a>
-na Linuxech development balíčky Vulkanu (na Ubuntu libvulkan-dev).
+<a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a>.
+Na Linuxech totéž, či alespoň development balíčky Vulkanu.
 Na Windows budeme používat Visual C++ 2017/19, na Linuxech g++,
 odborníci i cokoliv jiného.</p>
 
@@ -190,4 +198,3 @@ odborníci i cokoliv jiného.</p>
 </ul>
 
 - linky na dokumentaci
-- upravit application name a library name

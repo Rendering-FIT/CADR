@@ -101,8 +101,8 @@ opravdovou entitu registrovanou v operačním systému, která podporuje Vulkan 
 Zpravidla je to kus hardware, grafická karta, integrovaná grafika v procesoru, atd.
 Fyzické zařízení je ve Vulkan API reprezentováno handlem VkPhysicalDevice.
 My budeme používat vk::PhysicalDevice jako jeho C++ zapouzdření. Zajímavostí je, že
-handle VkPhysicalDevice neuvolňujeme. Je to jeden z mála handlů, které má ve vlastnictví
-VkInstance a která je také odpovědná za jejich uvolnění.</p>
+handle VkPhysicalDevice neuvolňujeme. Ty má ve vlastnictví
+VkInstance a ta je také odpovědná za jejich uvolnění.</p>
 
 <p>Vulkanní fyzická zařízení zpravidla používáme při startu aplikace, abychom ověřili,
 které všechny funkcionality, featury, formáty,... dané zařízení podporuje.
@@ -121,10 +121,13 @@ vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 </pre>
 
 <p>Jak vidíme, je použito slovíčko enumerate, nikoliv createPhysicalDevices.
-vk::PhysicalDevices nevytváříme (create), ale &quot;enumerujeme&quot;, to znamená, že si uděláme jejich výčet.
-Toto enumerate jako by nám naznačovalo, co jsem zmínil výše, že není naší prací uvolňovat VkPhysicalDevices
-po použití. To je odpovědnost instance. Proto vk::PhysicalDevice nemá metodu destroy()
-a nic jako vk::UniquePhysicalDevice neexistuje.</p>
+vk::PhysicalDevices nevytváříme (create), ale &quot;enumerujeme&quot;,
+to znamená, že si uděláme jejich výčet.
+Toto enumerate jako by nám naznačovalo, co jsem zmínil výše,
+že není naší zodpovědností uvolňovat VkPhysicalDevices po použití.
+Proto vk::PhysicalDevice nemá metodu destroy()
+a nic jako vk::UniquePhysicalDevice neexistuje.
+Uvolnění VkPhysicalDevice je prostě odpovědnost instance.</p>
 
 <p>Nyní tedy máme seznam fyzických zařízení. Co s tím můžeme dělat?
 Můžeme například vypsat jejich názvy, což jsme už udělali posledně:</p>
