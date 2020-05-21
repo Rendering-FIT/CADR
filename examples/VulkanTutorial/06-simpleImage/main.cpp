@@ -42,7 +42,7 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"05-simpleImage",        // application name
+						"06-simpleImage",        // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -59,16 +59,18 @@ int main(int,char**)
 		for(vk::PhysicalDevice pd:deviceList) {
 
 			// check linear tiling support
+		#if 0
 			vk::FormatProperties fp=pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-			if(fp.linearTilingFeatures&vk::FormatFeatureFlagBits::eColorAttachment) {
+			if(!(fp.linearTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment))
+				continue;
+		#endif
 
-				// select queue for graphics rendering
-				vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-				for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
-					if(queueFamilyList[i].queueFlags&vk::QueueFlagBits::eGraphics) {
-						compatibleDevices.emplace_back(pd,i);
-						break;
-					}
+			// select queue for graphics rendering
+			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
+			for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
+				if(queueFamilyList[i].queueFlags&vk::QueueFlagBits::eGraphics) {
+					compatibleDevices.emplace_back(pd,i);
+					break;
 				}
 			}
 		}
