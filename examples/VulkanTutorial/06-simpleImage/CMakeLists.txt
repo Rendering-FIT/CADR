@@ -1,4 +1,4 @@
-set(APP_NAME 05-simpleImage)
+set(APP_NAME 06-simpleImage)
 
 project(${APP_NAME})
 

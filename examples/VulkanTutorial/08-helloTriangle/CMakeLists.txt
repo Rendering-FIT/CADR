@@ -1,4 +1,4 @@
-set(APP_NAME tut05-helloTriangle)
+set(APP_NAME 08-helloTriangle)
 
 project(${APP_NAME})
 

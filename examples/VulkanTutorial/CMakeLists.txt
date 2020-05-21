@@ -7,9 +7,9 @@ set(PACKAGES
 	03-funcPointers
 	04-deviceInfo
 	05-commandSubmission
-	05-simpleImage
-	06-robustImage
-	07-helloTriangle
+	06-simpleImage
+	07-robustImage
+	08-helloTriangle
 	)
 
 foreach(pkg ${PACKAGES})

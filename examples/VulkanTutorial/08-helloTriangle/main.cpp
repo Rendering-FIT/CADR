@@ -20,15 +20,28 @@ static uint32_t graphicsQueueFamily;
 static vk::UniqueDevice device;
 static vk::Queue graphicsQueue;
 static vk::UniqueRenderPass renderPass;
+static vk::UniqueShaderModule vsModule;
+static vk::UniqueShaderModule fsModule;
+static vk::UniquePipelineCache pipelineCache;
+static vk::UniquePipelineLayout pipelineLayout;
 static vk::UniqueImage framebufferImage;
 static vk::UniqueImage hostVisibleImage;
 static vk::UniqueDeviceMemory framebufferImageMemory;
 static vk::UniqueDeviceMemory hostVisibleImageMemory;
 static vk::UniqueImageView frameImageView;
+static vk::UniquePipeline pipeline;
 static vk::UniqueFramebuffer framebuffer;
 static vk::UniqueCommandPool commandPool;
 static vk::UniqueCommandBuffer commandBuffer;
 static vk::UniqueFence renderingFinishedFence;
+
+// shader code in SPIR-V binary
+static const uint32_t vsSpirv[]={
+#include "shader.vert.spv"
+};
+static const uint32_t fsSpirv[]={
+#include "shader.frag.spv"
+};
 
 
 /// main function of the application
@@ -44,7 +57,7 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"CADR tut04",            // application name
+						"08-helloTriangle",      // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						"CADR",                  // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -248,6 +261,135 @@ int main(int,char**)
 			);
 
 
+		// create shader modules
+		vsModule=device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(vsSpirv),  // codeSize
+				vsSpirv  // pCode
+			)
+		);
+		fsModule=device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),  // flags
+				sizeof(fsSpirv),  // codeSize
+				fsSpirv  // pCode
+			)
+		);
+
+		// pipeline cache
+		pipelineCache=device->createPipelineCacheUnique(
+			vk::PipelineCacheCreateInfo(
+				vk::PipelineCacheCreateFlags(),  // flags
+				0,       // initialDataSize
+				nullptr  // pInitialData
+			)
+		);
+
+		// pipeline layout
+		pipelineLayout=device->createPipelineLayoutUnique(
+			vk::PipelineLayoutCreateInfo{
+				vk::PipelineLayoutCreateFlags(),  // flags
+				0,       // setLayoutCount
+				nullptr, // pSetLayouts
+				0,       // pushConstantRangeCount
+				nullptr  // pPushConstantRanges
+			}
+		);
+
+		// pipeline
+		pipeline=device->createGraphicsPipelineUnique(
+			pipelineCache.get(),
+			vk::GraphicsPipelineCreateInfo(
+				vk::PipelineCreateFlags(),  // flags
+				2,  // stageCount
+				array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+					vk::PipelineShaderStageCreateInfo{
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eVertex,      // stage
+						vsModule.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					},
+					vk::PipelineShaderStageCreateInfo{
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eFragment,    // stage
+						fsModule.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					}
+				}.data(),
+				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+					vk::PipelineVertexInputStateCreateFlags(),  // flags
+					0,        // vertexBindingDescriptionCount
+					nullptr,  // pVertexBindingDescriptions
+					0,        // vertexAttributeDescriptionCount
+					nullptr   // pVertexAttributeDescriptions
+				},
+				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+					vk::PrimitiveTopology::eTriangleList,  // topology
+					VK_FALSE  // primitiveRestartEnable
+				},
+				nullptr, // pTessellationState
+				&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+					vk::PipelineViewportStateCreateFlags(),  // flags
+					1,  // viewportCount
+					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(imageExtent.width),float(imageExtent.height),0.f,1.f),  // pViewports
+					1,  // scissorCount
+					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),imageExtent)  // pScissors
+				},
+				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+					vk::PipelineRasterizationStateCreateFlags(),  // flags
+					VK_FALSE,  // depthClampEnable
+					VK_FALSE,  // rasterizerDiscardEnable
+					vk::PolygonMode::eFill,  // polygonMode
+					vk::CullModeFlagBits::eNone,  // cullMode
+					vk::FrontFace::eCounterClockwise,  // frontFace
+					VK_FALSE,  // depthBiasEnable
+					0.f,  // depthBiasConstantFactor
+					0.f,  // depthBiasClamp
+					0.f,  // depthBiasSlopeFactor
+					1.f   // lineWidth
+				},
+				&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+					vk::PipelineMultisampleStateCreateFlags(),  // flags
+					vk::SampleCountFlagBits::e1,  // rasterizationSamples
+					VK_FALSE,  // sampleShadingEnable
+					0.f,       // minSampleShading
+					nullptr,   // pSampleMask
+					VK_FALSE,  // alphaToCoverageEnable
+					VK_FALSE   // alphaToOneEnable
+				},
+				nullptr,  // pDepthStencilState
+				&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+					vk::PipelineColorBlendStateCreateFlags(),  // flags
+					VK_FALSE,  // logicOpEnable
+					vk::LogicOp::eClear,  // logicOp
+					1,  // attachmentCount
+					&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
+						VK_FALSE,  // blendEnable
+						vk::BlendFactor::eZero,  // srcColorBlendFactor
+						vk::BlendFactor::eZero,  // dstColorBlendFactor
+						vk::BlendOp::eAdd,       // colorBlendOp
+						vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+						vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+						vk::BlendOp::eAdd,       // alphaBlendOp
+						vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+							vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+					},
+					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+				},
+				nullptr,  // pDynamicState
+				pipelineLayout.get(),  // layout
+				renderPass.get(),  // renderPass
+				0,  // subpass
+				vk::Pipeline(nullptr),  // basePipelineHandle
+				-1 // basePipelineIndex
+			)
+		);
+
+
 		// command pool
 		commandPool=
 			device->createCommandPoolUnique(
@@ -282,10 +424,14 @@ int main(int,char**)
 				framebuffer.get(),      // framebuffer
 				vk::Rect2D(vk::Offset2D(0,0),imageExtent),  // renderArea
 				1,                      // clearValueCount
-				&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
+				&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}))  // pClearValues
 			),
 			vk::SubpassContents::eInline
 		);
+
+		// rendering commands
+		commandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
+		commandBuffer->draw(3,1,0,0);  // draw single triangle
 
 		// end render pass
 		commandBuffer->endRenderPass();

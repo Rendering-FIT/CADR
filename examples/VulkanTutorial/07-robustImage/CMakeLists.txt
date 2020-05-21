@@ -1,4 +1,4 @@
-set(APP_NAME tut04-robustImage)
+set(APP_NAME 07-robustImage)
 
 project(${APP_NAME})
 
