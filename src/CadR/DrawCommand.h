@@ -10,21 +10,19 @@ class StagingBuffer;
 
 
 /** DrawCommandGpuData is data structure associated with DrawCommand and it is stored in GPU buffers,
- *  usually in RenderingContext::drawCommandBuffer().
+ *  usually in Renderer::drawCommandBuffer().
  *  Allocation management of DrawCommandGpuData buffer is usually provided
- *  by DrawCommandAllocationManager.
- *
- *  \sa RenderingContext::objectBuffer()
+ *  by Renderer::drawCommandAllocationManager().
  */
 struct DrawCommandGpuData final {
 	uint32_t primitiveSetOffset4;
-	uint32_t matrixListControlOffset4;
+	uint32_t shaderDataOffset4;
 	uint32_t stateSetOffset4;
 	uint32_t userData;  ///< Provides 16-byte structure alignment.
 
 	DrawCommandGpuData()  {}
-	DrawCommandGpuData(uint32_t primitiveOffset4,uint32_t matrixListControlOffset4,uint32_t stateSetOffset4);
-	constexpr DrawCommandGpuData(uint32_t primitiveOffset4,uint32_t matrixListControlOffset4,
+	DrawCommandGpuData(uint32_t primitiveOffset4,uint32_t shaderDataOffset4,uint32_t stateSetOffset4);
+	constexpr DrawCommandGpuData(uint32_t primitiveOffset4,uint32_t shaderDataOffset4,
 	                             uint32_t stateSetOffset4,uint32_t userData);
 };
 
@@ -65,10 +63,10 @@ public:
 #include <CadR/StagingBuffer.h>
 namespace CadR {
 
-inline DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t matrixListControlOffset4_,uint32_t stateSetOffset4_)
-	: primitiveSetOffset4(primitiveSetOffset4_), matrixListControlOffset4(matrixListControlOffset4_), stateSetOffset4(stateSetOffset4_)  {}
-inline constexpr DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t matrixListControlOffset4_,uint32_t stateSetOffset4_,uint32_t userData_)
-	: primitiveSetOffset4(primitiveSetOffset4_), matrixListControlOffset4(matrixListControlOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
+inline DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t shaderDataOffset4_,uint32_t stateSetOffset4_)
+	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_), stateSetOffset4(stateSetOffset4_)  {}
+inline constexpr DrawCommandGpuData::DrawCommandGpuData(uint32_t primitiveSetOffset4_,uint32_t shaderDataOffset4_,uint32_t stateSetOffset4_,uint32_t userData_)
+	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
 inline uint32_t DrawCommand::alloc(Renderer* r)  { return ItemAllocation::alloc(r->drawCommandAllocationManager()); }
 inline void DrawCommand::free(Renderer* r)  { ItemAllocation::free(r->drawCommandAllocationManager()); }
 inline void DrawCommand::upload(Renderer* r,const DrawCommandGpuData& drawCommandData)  { r->uploadDrawCommand(*this,drawCommandData); }

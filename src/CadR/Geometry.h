@@ -31,7 +31,7 @@ protected:
 	uint32_t _attribDataID = 0;  ///< ID of vertex data allocation inside AttribStorage.
 	uint32_t _indexDataID = 0;  ///< ID of index data allocation inside AttribStorage.
 	uint32_t _primitiveSetDataID = 0;  ///< ID od DrawCommand data allocation.
-	DrawableList _drawableList;
+	DrawableList _drawableList;  ///< List of all Drawables referencing this Geometry.
 
 public:
 

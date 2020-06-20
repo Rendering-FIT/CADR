@@ -36,6 +36,7 @@ void VulkanDevice::init(VulkanInstance& instance,vk::Device device)
 	vkDestroyDescriptorSetLayout=getProcAddr<PFN_vkDestroyDescriptorSetLayout>("vkDestroyDescriptorSetLayout");
 	vkCreateDescriptorPool=getProcAddr<PFN_vkCreateDescriptorPool>("vkCreateDescriptorPool");
 	vkDestroyDescriptorPool=getProcAddr<PFN_vkDestroyDescriptorPool>("vkDestroyDescriptorPool");
+	vkResetDescriptorPool=getProcAddr<PFN_vkResetDescriptorPool>("vkResetDescriptorPool");
 	vkAllocateDescriptorSets=getProcAddr<PFN_vkAllocateDescriptorSets>("vkAllocateDescriptorSets");
 	vkUpdateDescriptorSets=getProcAddr<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets");
 	vkFreeDescriptorSets =getProcAddr<PFN_vkFreeDescriptorSets >("vkFreeDescriptorSets");

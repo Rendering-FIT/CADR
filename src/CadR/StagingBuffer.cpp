@@ -90,6 +90,8 @@ StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs) noexcept
 
 void StagingBuffer::reset(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer)
 {
+	assert(size>0 && "Vulkan requires non-zero buffer size."); 
+
 	// release any allocated resources
 	cleanUp();
 

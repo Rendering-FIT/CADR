@@ -24,6 +24,7 @@ Renderer::Renderer(bool makeDefault)
 	, _graphicsQueueFamily(0xffffffff)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+	, _dataStorageAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
 {
@@ -39,6 +40,7 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+	, _dataStorageAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
 {
@@ -89,12 +91,29 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// index buffer memory
 	_indexBufferMemory=allocateMemory(_indexBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
 			_indexBuffer,  // buffer
 			_indexBufferMemory,  // memory
+			0  // memoryOffset
+		);
+
+	// data storage
+	_dataStorageBuffer=
+		_device->createBuffer(
+			vk::BufferCreateInfo(
+				vk::BufferCreateFlags(),      // flags
+				1024,                         // size
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
+	_dataStorageMemory=allocateMemory(_dataStorageBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+	_device->bindBufferMemory(
+			_dataStorageBuffer,  // buffer
+			_dataStorageMemory,  // memory
 			0  // memoryOffset
 		);
 
@@ -110,8 +129,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// primitiveSet buffer memory
 	_primitiveSetBufferMemory=allocateMemory(_primitiveSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
 			_primitiveSetBuffer,  // buffer
@@ -131,8 +148,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// drawCommand buffer memory
 	_drawCommandBufferMemory=allocateMemory(_drawCommandBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
 			_drawCommandBuffer,  // buffer
@@ -152,8 +167,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// matrixListControl buffer memory
 	_matrixListControlBufferMemory=allocateMemory(_matrixListControlBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
 			_matrixListControlBuffer,  // buffer
@@ -173,8 +186,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// draw indirect buffer memory
 	_drawIndirectBufferMemory=allocateMemory(_drawIndirectBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
 			_drawIndirectBuffer,  // buffer
@@ -194,8 +205,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// stateSet buffer memory
 	_stateSetBufferMemory=allocateMemory(_stateSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
 			_stateSetBuffer,  // buffer
@@ -215,8 +224,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// stateSet buffer memory
 	_stateSetStagingMemory=allocateMemory(_stateSetStagingBuffer,vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCached);
 	_device->bindBufferMemory(
 			_stateSetStagingBuffer,  // buffer
@@ -237,8 +244,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-
-	// compute indirect buffer memory
 	_computeIndirectBufferMemory=allocateMemory(_computeIndirectBuffer,vk::MemoryPropertyFlagBits::eHostVisible);
 	_device->bindBufferMemory(
 			_computeIndirectBuffer,  // buffer
@@ -456,6 +461,7 @@ void Renderer::finalize()
 
 	// clear allocation managers
 	_indexAllocationManager.clear();
+	_dataStorageAllocationManager.clear();
 	_primitiveSetAllocationManager.clear();
 	_drawCommandAllocationManager.clear();
 
@@ -477,6 +483,8 @@ void Renderer::finalize()
 	// destroy buffers
 	_device->destroy(_indexBuffer);
 	_device->freeMemory(_indexBufferMemory);
+	_device->destroy(_dataStorageBuffer);
+	_device->freeMemory(_dataStorageMemory);
 	_device->destroy(_primitiveSetBuffer);
 	_device->freeMemory(_primitiveSetBufferMemory);
 	_device->destroy(_drawCommandBuffer);
@@ -723,9 +731,58 @@ StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g,size_t firstIndex,s
 
 void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>&& indexData,size_t dstIndex)
 {
+	if(indexData.empty()) return;
+
 	// create StagingBuffer and submit it
 	StagingBuffer sb(createIndexStagingBuffer(g,dstIndex,indexData.size()));
 	memcpy(sb.data(),indexData.data(),indexData.size()*sizeof(uint32_t));
+	sb.submit();
+}
+
+
+StagingBuffer Renderer::createDataStorageStagingBuffer(uint32_t id)
+{
+	const ArrayAllocation<uint32_t>& a=dataStorageAllocation(id);
+	return StagingBuffer(
+			_dataStorageBuffer,  // dstBuffer
+			a.startIndex,  // dstOffset
+			a.numItems,  // size
+			this  // renderer
+		);
+}
+
+
+StagingBuffer Renderer::createDataStorageStagingBuffer(uint32_t id,size_t offset,size_t size)
+{
+	const ArrayAllocation<uint32_t>& a=dataStorageAllocation(id);
+	assert(a.numItems>=size && "Renderer::createDataStorageStagingBuffer(): Parameter size is bigger than allocated space.");
+	return StagingBuffer(
+			_dataStorageBuffer,  // dstBuffer
+			a.startIndex+offset,  // dstOffset
+			size,  // size
+			this  // renderer
+		);
+}
+
+
+void Renderer::uploadDataStorage(uint32_t id,std::vector<uint8_t>&& data,size_t dstIndex)
+{
+	if(data.empty()) return;
+
+	// create StagingBuffer and submit it
+	StagingBuffer sb(createDataStorageStagingBuffer(id,dstIndex,data.size()));
+	memcpy(sb.data(),data.data(),data.size());
+	sb.submit();
+}
+
+
+void Renderer::uploadDataStorage(uint32_t id,const void* data,size_t size,size_t dstIndex)
+{
+	if(size==0) return;
+
+	// create StagingBuffer and submit it
+	StagingBuffer sb(createDataStorageStagingBuffer(id,dstIndex,size));
+	memcpy(sb.data(),data,size);
 	sb.submit();
 }
 
@@ -757,6 +814,8 @@ StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g,size_t first
 
 void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex)
 {
+	if(primitiveSetData.empty()) return;
+
 	// create StagingBuffer and submit it
 	StagingBuffer sb(createPrimitiveSetStagingBuffer(g,dstPrimitiveSetIndex,primitiveSetData.size()));
 	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));

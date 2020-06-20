@@ -140,6 +140,7 @@ public:
 	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
 #ifdef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
+	inline vk::Result resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
 	inline vk::Result endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
 	inline vk::Result queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::Result waitIdle() const  { return _device.waitIdle(*this); }
@@ -176,6 +177,7 @@ public:
 	inline vk::ResultValueType<vk::DescriptorPool>::type createDescriptorPool(const vk::DescriptorPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createDescriptorPool(createInfo,allocator,*this); }
 	inline void destroyDescriptorPool(vk::DescriptorPool descriptorPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyDescriptorPool(descriptorPool,allocator,*this); }
 	inline void destroy(vk::DescriptorPool descriptorPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(descriptorPool,allocator,*this); }
+	inline vk::ResultValueType<void>::type resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
 	template<typename Allocator=std::allocator<vk::DescriptorSet>>
 	typename vk::ResultValueType<std::vector<vk::DescriptorSet,Allocator>>::type allocateDescriptorSets(const vk::DescriptorSetAllocateInfo& allocateInfo) const  { return _device.allocateDescriptorSets(allocateInfo,*this); }
 	template<typename Allocator=std::allocator<vk::DescriptorSet>>
@@ -288,6 +290,7 @@ public:
 	PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout;
 	PFN_vkCreateDescriptorPool vkCreateDescriptorPool;
 	PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool;
+	PFN_vkResetDescriptorPool vkResetDescriptorPool;
 	PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
 	PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets;
 	PFN_vkFreeDescriptorSets vkFreeDescriptorSets;

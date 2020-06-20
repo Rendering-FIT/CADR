@@ -26,11 +26,11 @@ void main()
    // draw command buffer data
    uint drawCommandOffset4=gl_WorkGroupID.x*4;
    uint primitiveOffset4=drawCommandBuffer[drawCommandOffset4+0];
-   uint matrixControlOffset4=drawCommandBuffer[drawCommandOffset4+1];
+   uint shaderDataOffset4=drawCommandBuffer[drawCommandOffset4+1];
    uint stateSetDataOffset4=drawCommandBuffer[drawCommandOffset4+2];
 
    // matrix control data
-   uint matrixListOffset64=0;//matrixListControlBuffer[matrixControlOffset4+0];
+   //uint matrixListOffset64=0;//matrixListControlBuffer[matrixControlOffset4+0];
    uint numMatrices=1;//matrixListControlBuffer[matrixControlOffset4+1];
 
    // compute increment and get indirectBufferOffset
@@ -45,5 +45,5 @@ void main()
    indirectBufferOffset4++;
    drawIndirectBuffer[indirectBufferOffset4]=primitiveBuffer[primitiveOffset4+2]; // vertexOffset
    indirectBufferOffset4++;
-   drawIndirectBuffer[indirectBufferOffset4]=matrixListOffset64; // base instance
+   drawIndirectBuffer[indirectBufferOffset4]=shaderDataOffset4; // base instance
 }

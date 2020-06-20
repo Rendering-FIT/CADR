@@ -309,6 +309,8 @@ void AttribStorage::uploadAttrib(Geometry& g,unsigned attribIndex,const std::vec
 	if(attribIndex>_bufferList.size())
 		throw std::out_of_range("AttribStorage::uploadAttrib() called with invalid attribIndex.");
 
+	if(attribData.empty()) return;
+
 	// create StagingBuffer and submit it
 	size_t numVertices=attribData.size()/_attribSizeList[attribIndex];
 	StagingBuffer sb(createStagingBuffer(g,attribIndex,firstVertex,numVertices));
@@ -328,6 +330,7 @@ void AttribStorage::uploadAttribs(Geometry& g,const vector<vector<uint8_t>>& ver
 	for(size_t i=1,e=vertexData.size(); i<e; i++)
 		if(vertexData[i].size()!=numVertices*_attribSizeList[i])
 			throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
+	if(numVertices==0) return;
 
 	// create StagingBuffers and submit them
 	vector<StagingBuffer> sbList(createStagingBuffers(g,firstVertex,numVertices));

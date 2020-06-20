@@ -1,7 +1,7 @@
 #include <CadR/StateSet.h>
 #include <CadR/AttribStorage.h>
+#include <CadR/Pipeline.h>
 #include <CadR/VulkanDevice.h>
-#include <vector>
 
 using namespace std;
 using namespace CadR;
@@ -9,20 +9,6 @@ using namespace CadR;
 
 void StateSet::cleanUp() noexcept
 {
-	_renderer->device()->destroy(_pipeline);
-	_pipeline=nullptr;
-}
-
-
-void StateSet::setPipeline(vk::Pipeline pipeline)
-{
-	if(pipeline==_pipeline)
-		return;
-
-	if(_pipeline)
-		_renderer->device()->destroy(_pipeline);
-
-	_pipeline=pipeline;
 }
 
 
@@ -37,7 +23,19 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 
 	// bind pipeline
 	VulkanDevice* device=_renderer->device();
-	device->cmdBindPipeline(cb,vk::PipelineBindPoint::eGraphics,_pipeline);
+	device->cmdBindPipeline(cb,vk::PipelineBindPoint::eGraphics,_pipeline->get());
+
+	// bind descriptor sets
+	if(!descriptorSets.empty()) {
+		device->cmdBindDescriptorSets(
+			cb,  // commandBuffer
+			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+			_pipeline->layout(),  // layout
+			firstDescriptorSet,  // firstSet
+			descriptorSets,  // descriptorSets
+			dynamicOffsets  // dynamicOffsets
+		);
+	}
 
 	// bind attributes
 	size_t numAttributes=_attribStorage->bufferList().size();

@@ -77,23 +77,23 @@ public:
 
 class CADR_EXPORT Drawable final {
 public:
-	boost::intrusive::list_member_hook<> _drawableListHook;
+	boost::intrusive::list_member_hook<> _drawableListHook;  ///< List hook whose owner is Geometry::_drawableList. Geometry::_drawableList contains all Drawables that reference it.
 protected:
-	MatrixList* _matrixList;
+	uint32_t _shaderDataID;
 	StateSet* _stateSet;
 	DrawCommandList _drawCommandList;
 public:
 
 	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling reset().
-	Drawable(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
+	Drawable(Geometry* geometry,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
 	Drawable(Drawable&& other) = default;
 	Drawable& operator=(Drawable&& rhs);
 	~Drawable() = default;
 
-	void reset(Geometry* geometry,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
+	void reset(Geometry* geometry,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
 
 	Renderer* renderer() const;
-	MatrixList* matrixList() const;
+	uint32_t shaderDataID() const;
 	StateSet* stateSet() const;
 	const DrawCommandList& drawCommandList() const;
 
@@ -130,15 +130,26 @@ typedef boost::intrusive::list<
 #include <CadR/StateSet.h>
 namespace CadR {
 
-inline Drawable::Drawable(Geometry*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
-	: _matrixList(matrixList), _stateSet(stateSet), _drawCommandList(drawCommandsCapacity)  {}
+inline Drawable::Drawable(Geometry*,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity)
+	: _shaderDataID(shaderDataID), _stateSet(stateSet), _drawCommandList(drawCommandsCapacity)  {}
 inline Drawable& Drawable::operator=(Drawable&& rhs)
-	{ _matrixList=rhs._matrixList; _stateSet=rhs._stateSet; _drawCommandList=std::move(rhs._drawCommandList); return *this; }
-inline void Drawable::reset(Geometry*,MatrixList* matrixList,StateSet* stateSet,uint32_t drawCommandsCapacity)
-	{ _drawCommandList.clear(); _matrixList=matrixList; _stateSet=stateSet; _drawCommandList.setCapacity(drawCommandsCapacity); }
+{
+	_shaderDataID=rhs._shaderDataID;
+	_drawCommandList.clear();  // this must be done before updating _stateSet
+	_stateSet=rhs._stateSet;
+	_drawCommandList=std::move(rhs._drawCommandList);
+	return *this;
+}
+inline void Drawable::reset(Geometry*,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity)
+{
+	_drawCommandList.clear();  // this must be done before updating _stateSet
+	_shaderDataID=shaderDataID;
+	_stateSet=stateSet;
+	_drawCommandList.setCapacity(drawCommandsCapacity);
+}
 
 inline Renderer* Drawable::renderer() const  { return _stateSet->renderer(); }
-inline MatrixList* Drawable::matrixList() const  { return _matrixList; }
+inline uint32_t Drawable::shaderDataID() const  { return _shaderDataID; }
 inline StateSet* Drawable::stateSet() const  { return _stateSet; }
 inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
 inline void Drawable::setNumDrawCommands(uint32_t num)  { _drawCommandList.resize(num); }

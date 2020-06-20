@@ -1,4 +1,5 @@
 #include <CadR/Geometry.h>
+#include <CadR/Pipeline.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
@@ -308,7 +309,12 @@ int main(int argc,char** argv) {
 		cout<<endl;
 
 		// pipelines
-		array<map<CadR::AttribSizeList,CadR::StateSet>,10> pipelineDB;
+		struct PipelineAndStateSet {
+			CadR::Pipeline pipeline;
+			CadR::StateSet stateSet;
+			PipelineAndStateSet(CadR::Renderer* r) : pipeline(r), stateSet(r)  {}
+		};
+		array<map<CadR::AttribSizeList,PipelineAndStateSet>,10> pipelineDB;
 
 		// CadR scene data
 		vector<CadR::Geometry> geometryDB;
@@ -595,13 +601,15 @@ int main(int argc,char** argv) {
 			pipelineIndex=0x08; // no COLOR_0
 
 			auto [stateSetMapIt,newStateSetCreated] = pipelineDB[pipelineIndex].emplace(attribSizeList,&renderer);
+			CadR::StateSet* ss=&stateSetMapIt->second.stateSet;
 			if(newStateSetCreated) {
 
-				CadR::StateSet& ss=stateSetMapIt->second;
-				ss.setAttribStorage(g.attribStorage());
+				CadR::Pipeline* pipeline=&stateSetMapIt->second.pipeline;
+				ss->setAttribStorage(g.attribStorage());
+				ss->setPipeline(pipeline);
 
 				window.resizeCallbacks.append(
-						[&device,&window,&ss,
+						[&device,&window,pipeline,
 						&coordinateShader,&unknownMaterialShader,
 						&renderer,&pipelineLayout,
 						attribSizeList=std::move(attribSizeList),
@@ -611,7 +619,8 @@ int main(int argc,char** argv) {
 							cout<<"Resizing pipeline."<<endl;
 
 							// construct new pipeline
-							ss.setPipeline(
+							device.destroy(pipeline->get());
+							pipeline->set(
 								device.createGraphicsPipeline(
 									renderer.pipelineCache(),
 									vk::GraphicsPipelineCreateInfo(
@@ -745,7 +754,7 @@ int main(int argc,char** argv) {
 			sb.submit();
 
 			// create Drawable
-			drawableDB.emplace_back(&g,nullptr,&stateSetMapIt->second,2);
+			drawableDB.emplace_back(&g,0,ss,2);
 			CadR::Drawable& d=drawableDB.back();
 			d.setNumDrawCommands(1);
 			sb=d.createDrawCommandStagingBuffer(0);
@@ -753,7 +762,7 @@ int main(int argc,char** argv) {
 				CadR::DrawCommandGpuData{
 					renderer.primitiveSetAllocation(g.primitiveSetDataID()).startIndex*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
 					0,  // matrixListControlOffset4
-					stateSetMapIt->second.id(),  // stateSetOffset4
+					ss->id(),  // stateSetOffset4
 					0,  // userData
 				};
 			sb.submit();

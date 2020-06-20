@@ -25,6 +25,7 @@ set(CADR_PUBLIC_HEADERS
     DrawCommand.h
     Errors.h
     Geometry.h
+    Pipeline.h
     PrimitiveSet.h
     Renderer.h
     StagingBuffer.h
@@ -44,6 +45,7 @@ set(CADR_SOURCES
     AttribStorage.cpp
     Drawable.cpp
     Geometry.cpp
+    Pipeline.cpp
     PrimitiveSet.cpp
     Renderer.cpp
     StagingBuffer.cpp
