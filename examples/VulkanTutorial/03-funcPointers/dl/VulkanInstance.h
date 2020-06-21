@@ -3,12 +3,10 @@
 #include <vulkan/vulkan.hpp>
 #include <tuple>
 
-namespace CadR {
-
 class VulkanLibrary;
 
 
-class CADR_EXPORT VulkanInstance final {
+class VulkanInstance final {
 protected:
 	vk::Instance _instance;
 	uint32_t _version;
@@ -159,6 +157,3 @@ inline bool VulkanInstance::supportsVersion(uint32_t version) const  { return _v
 inline bool VulkanInstance::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version>=VK_MAKE_VERSION(major,minor,patch); }
 inline vk::Instance VulkanInstance::get() const  { return _instance; }
 inline void VulkanInstance::set(nullptr_t)  { _instance=nullptr; }
-
-
-}

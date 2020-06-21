@@ -5,6 +5,7 @@ set(PACKAGES
 	01-deviceList
 	02-developmentSetup
 	03-funcPointers
+	03-funcPointers/dl
 	04-deviceInfo
 	05-commandSubmission
 	06-simpleImage
