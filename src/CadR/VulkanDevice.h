@@ -12,12 +12,13 @@ class VulkanInstance;
 class CADR_EXPORT VulkanDevice final {
 protected:
 	vk::Device _device;
+	uint32_t _version;
 public:
 
+	// constructors and destructor
 	VulkanDevice();
 	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
-	VulkanDevice(VulkanInstance& instance,vk::Device device);
-	VulkanDevice(VulkanDevice&& vd) noexcept;
+	VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device);
 	VulkanDevice(VulkanInstance& instance,
 	             vk::PhysicalDevice physicalDevice,
 	             uint32_t graphicsQueueFamily,
@@ -32,8 +33,12 @@ public:
 	             const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	~VulkanDevice();
 
+	// move constructor and move assignment
+	// (copy constructor and copy assignment are private only)
+	VulkanDevice(VulkanDevice&& vd) noexcept;
 	VulkanDevice& operator=(VulkanDevice&& rhs) noexcept;
 
+	// initialization and finalization
 	void create(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
 	void create(VulkanInstance& instance,
 	            vk::PhysicalDevice physicalDevice,
@@ -47,7 +52,7 @@ public:
 	            const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	            const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
-	void init(VulkanInstance& instance,vk::Device device);
+	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device);
 	bool initialized() const;
 	void destroy();
 
@@ -59,6 +64,10 @@ public:
 	operator vk::Device() const;
 	explicit operator bool() const;
 	bool operator!() const;
+
+	uint32_t version() const;
+	bool supportsVersion(uint32_t version) const;
+	bool supportsVersion(uint32_t major,uint32_t minor,uint32_t patch=0) const;
 
 	vk::Device get() const;
 	void set(nullptr_t);
@@ -338,9 +347,9 @@ private:
 
 
 // inline methods
-inline VulkanDevice::VulkanDevice()  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
+inline VulkanDevice::VulkanDevice() : _version(0)  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { create(instance,physicalDevice,createInfo); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::Device device)  { init(instance,device); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device)  { init(instance,physicalDevice,device); }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { create(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
 inline VulkanDevice::~VulkanDevice()  { destroy(); }
 
@@ -352,6 +361,9 @@ template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const 
 inline VulkanDevice::operator vk::Device() const  { return _device; }
 inline VulkanDevice::operator bool() const  { return _device.operator bool(); }
 inline bool VulkanDevice::operator!() const  { return _device.operator!(); }
+inline uint32_t VulkanDevice::version() const  { return _version; }
+inline bool VulkanDevice::supportsVersion(uint32_t version) const  { return _version>=version; }
+inline bool VulkanDevice::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version>=VK_MAKE_VERSION(major,minor,patch); }
 inline vk::Device VulkanDevice::get() const  { return _device; }
 inline void VulkanDevice::set(nullptr_t)  { _device=nullptr; }
 

@@ -11,10 +11,12 @@ void VulkanInstance::init(VulkanLibrary& lib,vk::Instance instance)
 		destroy();
 
 	_instance=instance;
+	_version=lib.enumerateInstanceVersion();
 
 	vkGetInstanceProcAddr                      =lib.vkGetInstanceProcAddr;
 	vkDestroyInstance                          =getProcAddr<PFN_vkDestroyInstance                          >("vkDestroyInstance");
 	vkGetPhysicalDeviceProperties              =getProcAddr<PFN_vkGetPhysicalDeviceProperties              >("vkGetPhysicalDeviceProperties");
+	vkGetPhysicalDeviceProperties2             =getProcAddr<PFN_vkGetPhysicalDeviceProperties2             >("vkGetPhysicalDeviceProperties2");
 	vkEnumeratePhysicalDevices                 =getProcAddr<PFN_vkEnumeratePhysicalDevices                 >("vkEnumeratePhysicalDevices");
 	vkCreateDevice                             =getProcAddr<PFN_vkCreateDevice                             >("vkCreateDevice");
 	vkGetDeviceProcAddr                        =getProcAddr<PFN_vkGetDeviceProcAddr                        >("vkGetDeviceProcAddr");

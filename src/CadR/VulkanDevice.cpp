@@ -5,12 +5,13 @@
 using namespace CadR;
 
 
-void VulkanDevice::init(VulkanInstance& instance,vk::Device device)
+void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device)
 {
 	if(_device)
 		destroy();
 
 	_device=device;
+	_version=instance.getPhysicalDeviceProperties(physicalDevice).apiVersion;
 
 	vkGetDeviceProcAddr  =PFN_vkGetDeviceProcAddr(_device.getProcAddr("vkGetDeviceProcAddr",instance));
 	vkDestroyDevice      =getProcAddr<PFN_vkDestroyDevice      >("vkDestroyDevice");
@@ -86,7 +87,7 @@ void VulkanDevice::create(VulkanInstance& instance,vk::PhysicalDevice physicalDe
 	if(!physicalDevice)
 		return;
 
-	init(instance,instance.createDevice(physicalDevice,createInfo));
+	init(instance,physicalDevice,instance.createDevice(physicalDevice,createInfo));
 }
 
 
