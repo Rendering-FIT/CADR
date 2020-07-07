@@ -58,6 +58,9 @@ endif()
 # src
 add_subdirectory(src)
 
+# src
+add_subdirectory(tests)
+
 # build examples
 if(CADR_BUILD_EXAMPLES)
 	add_subdirectory(examples)

@@ -25,9 +25,11 @@ set(CADR_PUBLIC_HEADERS
     DrawCommand.h
     Errors.h
     Geometry.h
+    ParentChildList.h
     Pipeline.h
     PrimitiveSet.h
     Renderer.h
+    RenderPass.h
     StagingBuffer.h
     StateSet.h
     VulkanDevice.h
@@ -48,6 +50,7 @@ set(CADR_SOURCES
     Pipeline.cpp
     PrimitiveSet.cpp
     Renderer.cpp
+    RenderPass.cpp
     StagingBuffer.cpp
     StateSet.cpp
     VulkanDevice.cpp

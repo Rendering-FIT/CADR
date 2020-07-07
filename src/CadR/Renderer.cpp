@@ -24,7 +24,7 @@ Renderer::Renderer(bool makeDefault)
 	, _graphicsQueueFamily(0xffffffff)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
-	, _dataStorageAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+	, _dataStorageAllocationManager(2048,0)  // set capacity to 2048, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
 {
@@ -40,7 +40,7 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
-	, _dataStorageAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+	, _dataStorageAllocationManager(2048,0)  // set capacity to 2048, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
 {
@@ -103,7 +103,7 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				1024,                         // size
+				2048,                         // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -452,7 +452,6 @@ void Renderer::finalize()
 
 	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Geometry::allocAttribs() without specifying AttribSizeList.");
 	assert(_drawCommandAllocationManager.numItems()==0 && "Renderer::_drawCommandAllocationManager still contains elements on Renderer destruction.");
-	assert(_stateSetList.empty() && "Renderer::_stateSetList must be empty when destroying or finalizing Renderer. Please, destroy StateSets first.");
 
 	// clear attrib storages
 	_attribStorages.clear();
@@ -591,11 +590,9 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPa
 
 	// execute all StateSets
 	vk::DeviceSize indirectBufferOffset=0;
-	size_t numDrawCommands=0;
-	for(auto& ssIt:_stateSetList) {
-		ssIt.recordToCommandBuffer(commandBuffer,indirectBufferOffset);
-		numDrawCommands+=ssIt.numDrawCommands();
-	}
+	for(auto& rp:_renderPassList)
+		rp.recordToCommandBuffer(commandBuffer,indirectBufferOffset);
+	size_t numDrawCommands=indirectBufferOffset/sizeof(vk::DrawIndexedIndirectCommand);
 	_device->flushMappedMemoryRanges(
 		vk::MappedMemoryRange(
 			stateSetStagingMemory(),  // memory
