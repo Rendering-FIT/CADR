@@ -1,4 +1,3 @@
-#include <vulkan/vulkan.hpp>
 #include <iostream>
 #ifdef _WIN32
 # define WIN32_LEAN_AND_MEAN
@@ -8,6 +7,7 @@
 #else
 # include <dlfcn.h>
 #endif
+#include <vulkan/vulkan.hpp>
 #include "VulkanLibrary.h"
 #include "VulkanInstance.h"
 #include "VulkanDevice.h"
