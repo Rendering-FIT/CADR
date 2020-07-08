@@ -98,10 +98,20 @@ public:
 #endif
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE
-#if 0 // createDeviceUnique() should not be used as it requires two dispatchers - VulkanInstance for creation and VulkanDevice for destroy.
-      // Use VulkanDevice class and its constructors instead.
-	inline vk::ResultValueType<vk::UniqueHandle<vk::Device,VulkanInstance>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return physicalDevice.createDeviceUnique(createInfo,allocator,*this); }
-#endif
+	template<typename Dispatch>
+	typename vk::ResultValueType<vk::UniqueHandle<vk::Device,Dispatch>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,Dispatch const &d) const  {
+		vk::Device device;
+		vk::Result result=static_cast<vk::Result>(vkCreateDevice(physicalDevice,reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo),nullptr,reinterpret_cast<VkDevice*>(&device)));
+		vk::ObjectDestroy<vk::NoParent,Dispatch> deleter(nullptr,d);
+		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
+	}
+	template<typename Dispatch>
+	typename vk::ResultValueType<vk::UniqueHandle<vk::Device,Dispatch>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator,Dispatch const &d) const  {
+		vk::Device device;
+		vk::Result result=static_cast<vk::Result>(vkCreateDevice(physicalDevice,reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo),reinterpret_cast<const VkAllocationCallbacks*>(static_cast<const vk::AllocationCallbacks*>(allocator)),reinterpret_cast<VkDevice*>(&device)));
+		vk::ObjectDestroy<vk::NoParent,Dispatch> deleter(allocator,d);
+		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
+	}
 #endif
 
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;

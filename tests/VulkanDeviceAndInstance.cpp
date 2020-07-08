@@ -1,30 +1,53 @@
-#include <CadR/ParentChildList.h>
-#include <CadR/StateSet.h>
+#include <CadR/VulkanInstance.h>
+#include <CadR/VulkanDevice.h>
+#include <array>
 
+using namespace std;
 using namespace CadR;
 
 
 int main(int,char**)
 {
-	StateSet ss1,ss2;
+	// VulkanInstance template methods
+	VulkanInstance instance;
+	instance.getProcAddr<PFN_vkCreateDevice>(string("a"));
+	instance.getProcAddr<PFN_vkCreateDevice>(string("a").c_str());
+	instance.enumeratePhysicalDevices();
+	instance.enumeratePhysicalDevices(vector<vk::PhysicalDevice>::allocator_type());
+	instance.getPhysicalDeviceProperties2(vk::PhysicalDevice());
+	instance.enumerateDeviceExtensionProperties(vk::PhysicalDevice());
+	instance.enumerateDeviceExtensionProperties(vk::PhysicalDevice(),string(""),vector<vk::ExtensionProperties>::allocator_type());
+	instance.getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice());
+	instance.getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice(),vector<vk::QueueFamilyProperties>::allocator_type());
 
-	ss1.childList.size();
-	ss1.childList.empty();
-	ChildList<StateSet>::iterator it1=ss1.childList.append(&ss2);
-	ss1.childList.remove(it1);
-	ss1.childList.clear();
-	for(const StateSet& child : ss1.childList) ;
-	ss1.childList.front();
-	ss1.childList.back();
+	// VulkanInstance unique methods
+	VulkanDevice device;
+	vk::UniqueHandle<vk::Device,VulkanDevice> deviceHandle;
+	instance.createDeviceUnique(vk::PhysicalDevice(),vk::DeviceCreateInfo(),device);
+	instance.createDeviceUnique(vk::PhysicalDevice(),vk::DeviceCreateInfo(),nullptr,device);
 
-	ss2.parentList.size();
-	ss2.parentList.empty();
-	ParentList<StateSet>::iterator it2=ss2.parentList.append(&ss1);
-	ss2.parentList.remove(it2);
-	ss2.parentList.clear();
-	for(const StateSet& parent : ss2.parentList) ;
-	ss2.parentList.front();
-	ss2.parentList.back();
+	// VulkanDevice template methods
+	device.getProcAddr<PFN_vkCreateDevice>(string("a"));
+	device.getProcAddr<PFN_vkCreateDevice>(string("a").c_str());
+	device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo());
+	device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(),vector<vk::DescriptorSet>::allocator_type());
+	device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
+	device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
+	device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	device.allocateCommandBuffers(vk::CommandBufferAllocateInfo());
+	device.allocateCommandBuffers(vk::CommandBufferAllocateInfo(),vector<vk::CommandBuffer>::allocator_type());
+	device.cmdPushConstants<int>(vk::CommandBuffer(),vk::PipelineLayout(),vk::ShaderStageFlags(),0,array{int()});
+
+	// VulkanDevice unique methods
+	device.allocateDescriptorSetsUnique(vk::DescriptorSetAllocateInfo());
+	device.allocateDescriptorSetsUnique(vk::DescriptorSetAllocateInfo(),allocator<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>>());
+	device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
+	device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
+	device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo());
+	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo(),allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>>());
 
 	return 0;
 }
