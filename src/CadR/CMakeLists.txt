@@ -100,7 +100,7 @@ else()
 endif()
 
 # target libraries
-target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)
+target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost stdc++fs)
 if(UNIX)
 	target_link_libraries(${LIB_NAME} dl)
 endif()

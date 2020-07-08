@@ -19,8 +19,8 @@ protected:
 	AttribStorage* _attribStorage = nullptr;
 	Pipeline* _pipeline = nullptr;
 public:
-	ChildList<StateSet> childList = ChildList<StateSet>(offsetof(StateSet,childList),offsetof(StateSet,parentList));
-	ParentList<StateSet> parentList = ParentList<StateSet>(offsetof(StateSet,parentList),offsetof(StateSet,childList));
+	ChildList<StateSet> childList = ChildList<StateSet>(size_t(&reinterpret_cast<StateSet*>(0)->childList),size_t(&reinterpret_cast<StateSet*>(0)->parentList));
+	ParentList<StateSet> parentList = ParentList<StateSet>(size_t(&reinterpret_cast<StateSet*>(0)->parentList),size_t(&reinterpret_cast<StateSet*>(0)->childList));
 public:
 
 	StateSet();

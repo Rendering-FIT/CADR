@@ -5,6 +5,11 @@
 namespace CadR {
 
 
+// forward declarations
+template<typename Type> class ParentList;
+template<typename Type> class ChildList
+
+
 template<typename Type>
 struct ParentChildRelation {
 	boost::intrusive::list_member_hook<
@@ -21,13 +26,13 @@ struct ParentChildRelation {
 template<typename InternalIteratorType,typename Type,bool ReturnChildOrParent>
 class ParentChildIterator {
 protected:
-	typename InternalIteratorType _it;
+	InternalIteratorType _it;
 public:
 	typedef std::bidirectional_iterator_tag iterator_category;
 
-	inline ParentChildIterator(typename InternalIteratorType it) : _it(it)  {}
+	inline ParentChildIterator(InternalIteratorType it) : _it(it)  {}
 
-	inline typename InternalIteratorType internalIterator() const  { return _it; }
+	inline InternalIteratorType internalIterator() const  { return _it; }
 
 	template<bool R=ReturnChildOrParent> inline typename std::enable_if< R,Type >::type& operator*()  const  { return *_it->child;  }
 	template<bool R=ReturnChildOrParent> inline typename std::enable_if<!R,Type >::type& operator*()  const  { return *_it->parent; }
