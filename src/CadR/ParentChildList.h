@@ -7,7 +7,7 @@ namespace CadR {
 
 // forward declarations
 template<typename Type> class ParentList;
-template<typename Type> class ChildList
+template<typename Type> class ChildList;
 
 
 template<typename Type>
