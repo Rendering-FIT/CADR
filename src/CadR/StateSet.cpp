@@ -7,6 +7,12 @@ using namespace std;
 using namespace CadR;
 
 
+const ParentChildListOffsets StateSet::parentChildListOffsets{
+	size_t(&reinterpret_cast<StateSet*>(0)->parentList),
+	size_t(&reinterpret_cast<StateSet*>(0)->childList)
+};
+
+
 void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const
 {
 	assert(_pipeline && "Pipeline have to be assigned before calling StateSet::recordToCommandBuffer().");

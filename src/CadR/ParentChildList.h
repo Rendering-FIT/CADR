@@ -6,8 +6,9 @@ namespace CadR {
 
 
 // forward declarations
-template<typename Type> class ParentList;
-template<typename Type> class ChildList;
+struct ParentChildListOffsets;
+template<typename Type,const ParentChildListOffsets& listOffsets> class ParentList;
+template<typename Type,const ParentChildListOffsets& listOffsets> class ChildList;
 
 
 template<typename Type>
@@ -49,7 +50,13 @@ public:
 };
 
 
-template<typename Type>
+struct ParentChildListOffsets {
+	size_t parentListOffset;
+	size_t childListOffset;
+};
+
+
+template<typename Type,const ParentChildListOffsets& listOffsets>
 class ChildList {
 public:
 	typedef boost::intrusive::list<
@@ -63,8 +70,6 @@ public:
 	> List;
 protected:
 	List _list;
-	uint32_t _childListOffset;
-	uint32_t _parentListOffset;
 public:
 
 	List& internalList()  { return _list; }
@@ -94,20 +99,19 @@ public:
 	size_t size() const  { return _list.size(); }
 	bool empty() const  { return _list.empty(); }
 
-	ChildList(size_t childListOffset,size_t parentListOffset) : _childListOffset(uint32_t(childListOffset)), _parentListOffset(uint32_t(parentListOffset))  {}
 	iterator append(Type* child) {
 		auto* r=new ParentChildRelation<Type>;
 		_list.push_back(*r);
 		r->child=child;
-		r->parent=reinterpret_cast<Type*>(reinterpret_cast<char*>(this)-_childListOffset);
-		reinterpret_cast<ParentList<Type>*>(reinterpret_cast<char*>(child)+_parentListOffset)->internalList().push_back(*r);
+		r->parent=reinterpret_cast<Type*>(reinterpret_cast<char*>(this)-listOffsets.childListOffset);
+		reinterpret_cast<ParentList<Type,listOffsets>*>(reinterpret_cast<char*>(child)+listOffsets.parentListOffset)->internalList().push_back(*r);
 		return List::s_iterator_to(*r);
 	}
 	void remove(iterator it) {
 		auto iit=it.internalIterator();
 		_list.erase(iit);
-		auto* parentList=reinterpret_cast<ParentList<Type>*>(reinterpret_cast<char*>(iit->child)+_parentListOffset);
-		parentList->internalList().erase(ParentList<Type>::List::s_iterator_to(*iit));
+		auto* parentList=reinterpret_cast<ParentList<Type,listOffsets>*>(reinterpret_cast<char*>(iit->child)+listOffsets.parentListOffset);
+		parentList->internalList().erase(ParentList<Type,listOffsets>::List::s_iterator_to(*iit));
 		delete &*iit;
 	}
 	void clear()  { while(!empty()) remove(begin()); }
@@ -116,7 +120,7 @@ public:
 };
 
 
-template<typename Type>
+template<typename Type,const ParentChildListOffsets& listOffsets>
 class ParentList {
 public:
 	typedef boost::intrusive::list<
@@ -130,8 +134,6 @@ public:
 	> List;
 protected:
 	List _list;
-	uint32_t _childListOffset;
-	uint32_t _parentListOffset;
 public:
 
 	List& internalList()  { return _list; }
@@ -161,11 +163,10 @@ public:
 	size_t size() const  { return _list.size(); }
 	bool empty() const  { return _list.empty(); }
 
-	ParentList(size_t parentListOffset,size_t childListOffset) : _childListOffset(uint32_t(childListOffset)), _parentListOffset(uint32_t(parentListOffset))  {}
 	iterator append(Type* parent) {
 		auto* r=new ParentChildRelation<Type>;
-		reinterpret_cast<ChildList<Type>*>(reinterpret_cast<char*>(parent)+_childListOffset)->internalList().push_back(*r);
-		r->child=reinterpret_cast<Type*>(reinterpret_cast<char*>(this)-_parentListOffset);
+		reinterpret_cast<ChildList<Type,listOffsets>*>(reinterpret_cast<char*>(parent)+listOffsets.childListOffset)->internalList().push_back(*r);
+		r->child=reinterpret_cast<Type*>(reinterpret_cast<char*>(this)-listOffsets.parentListOffset);
 		r->parent=parent;
 		_list.push_back(*r);
 		return List::s_iterator_to(*r);
@@ -173,8 +174,8 @@ public:
 	void remove(iterator it) {
 		auto iit=it.internalIterator();
 		_list.erase(iit);
-		auto* childList=reinterpret_cast<ChildList<Type>*>(reinterpret_cast<char*>(iit->parent)+_childListOffset);
-		childList->internalList().erase(ChildList<Type>::List::s_iterator_to(*iit));
+		auto* childList=reinterpret_cast<ChildList<Type,listOffsets>*>(reinterpret_cast<char*>(iit->parent)+listOffsets.childListOffset);
+		childList->internalList().erase(ChildList<Type,listOffsets>::List::s_iterator_to(*iit));
 		delete &*iit;
 	}
 	void clear()  { while(!empty()) remove(begin()); }
