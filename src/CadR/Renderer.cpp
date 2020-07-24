@@ -566,8 +566,9 @@ void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
 }
 
 
-void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,vk::Framebuffer framebuffer,
-                                    const vk::Rect2D& renderArea, uint32_t clearValueCount, const vk::ClearValue* clearValues)
+void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet* stateSetRoot,vk::RenderPass renderPass,
+                                    vk::Framebuffer framebuffer,const vk::Rect2D& renderArea,
+                                    uint32_t clearValueCount,const vk::ClearValue* clearValues)
 {
 	// start render pass
 	_device->cmdBeginRenderPass(
@@ -590,8 +591,7 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPa
 
 	// execute all StateSets
 	vk::DeviceSize indirectBufferOffset=0;
-	for(auto& rp:_renderPassList)
-		rp.recordToCommandBuffer(commandBuffer,indirectBufferOffset);
+	stateSetRoot->recordToCommandBuffer(commandBuffer,indirectBufferOffset);
 	size_t numDrawCommands=indirectBufferOffset/sizeof(vk::DrawIndexedIndirectCommand);
 	_device->flushMappedMemoryRanges(
 		vk::MappedMemoryRange(

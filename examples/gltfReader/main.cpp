@@ -319,6 +319,7 @@ int main(int argc,char** argv) {
 		// CadR scene data
 		vector<CadR::Geometry> geometryDB;
 		vector<CadR::Drawable> drawableDB;
+		CadR::StateSet stateSetRoot(&renderer);
 
 		// shaders
 		auto coordinateShader=
@@ -605,8 +606,11 @@ int main(int argc,char** argv) {
 			if(newStateSetCreated) {
 
 				CadR::Pipeline* pipeline=&stateSetMapIt->second.pipeline;
+				pipeline->init(nullptr,pipelineLayout.get(),nullptr);
+
+				stateSetRoot.childList.append(ss);
+				ss->pipeline=pipeline;
 				ss->setAttribStorage(g.attribStorage());
-				ss->setPipeline(pipeline);
 
 				window.resizeCallbacks.append(
 						[&device,&window,pipeline,
@@ -905,6 +909,7 @@ int main(int argc,char** argv) {
 			renderer.recordDrawCommandProcessing(cb);
 			renderer.recordSceneRendering(
 				cb,  // commandBuffer
+				&stateSetRoot,  // stateSetRoot
 				window.renderPass(),  // renderPass
 				window.framebuffers()[imageIndex],  // framebuffer
 				vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea

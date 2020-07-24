@@ -45,7 +45,7 @@ protected:
 
 // inline methods
 inline StagingBuffer::StagingBuffer(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer)
-	: _renderer(renderer), _size(size), _dstBuffer(dstBuffer), _dstOffset(dstOffset)  { assert(size>0 && "Vulkan requires non-zero buffer size."); init(); }
+	: _renderer(renderer), _size(size), _dstBuffer(dstBuffer), _dstOffset(dstOffset)  { init(); }
 inline StagingBuffer::~StagingBuffer()  { cleanUp(); }
 
 inline uint8_t* StagingBuffer::data() const  { return _data; }

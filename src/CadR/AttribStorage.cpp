@@ -333,10 +333,16 @@ void AttribStorage::uploadAttribs(Geometry& g,const vector<vector<uint8_t>>& ver
 	if(numVertices==0) return;
 
 	// create StagingBuffers and submit them
-	vector<StagingBuffer> sbList(createStagingBuffers(g,firstVertex,numVertices));
 	for(size_t i=0,e=vertexData.size(); i<e; i++) {
-		memcpy(sbList[i].data(),vertexData[i].data(),vertexData[i].size());
-		sbList[i].submit();
+
+		// skip empty attributes
+		const auto& attribData=vertexData[i];
+		if(attribData.empty()) continue;
+
+		// upload attribute
+		StagingBuffer sb=move(createStagingBuffer(g,unsigned(i),firstVertex,numVertices));
+		memcpy(sb.data(),attribData.data(),attribData.size());
+		sb.submit();
 	}
 }
 

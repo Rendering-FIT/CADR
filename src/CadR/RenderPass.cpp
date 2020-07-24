@@ -1,11 +1,11 @@
 #include <CadR/RenderPass.h>
-#include <CadR/Pipeline.h>
 #include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
 
 using namespace CadR;
 
 
+#if 0
 void RenderPass::destroy()
 {
 	_renderer->device()->destroy(_renderPass);
@@ -24,3 +24,4 @@ void RenderPass::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indi
 		ss->recordToCommandBuffer(cb,indirectBufferOffset);
 	}
 }
+#endif

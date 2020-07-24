@@ -7,6 +7,12 @@ using namespace CadR;
 
 void StagingBuffer::init()
 {
+	// handle zero-sized buffer (Vulkan does not like it)
+	if(_size==0) {
+		_data=nullptr;
+		return;
+	}
+
 	// create buffer
 	VulkanDevice* device=_renderer->device();
 	_stgBuffer=
@@ -90,8 +96,6 @@ StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs) noexcept
 
 void StagingBuffer::reset(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer)
 {
-	assert(size>0 && "Vulkan requires non-zero buffer size."); 
-
 	// release any allocated resources
 	cleanUp();
 
@@ -108,6 +112,11 @@ void StagingBuffer::reset(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Rend
 
 void StagingBuffer::submit()
 {
+	// handle zero-sized buffer (Vulkan does not like it)
+	if(!_stgBuffer)
+		return;
+
+	// double submission
 	if(_data==nullptr)
 		throw std::runtime_error("StagingBuffer::submit() called on already submitted buffer.");
 

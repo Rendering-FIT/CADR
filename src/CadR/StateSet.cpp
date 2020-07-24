@@ -15,20 +15,22 @@ const ParentChildListOffsets StateSet::parentChildListOffsets{
 
 void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const
 {
-	assert(_pipeline && "Pipeline have to be assigned before calling StateSet::recordToCommandBuffer().");
-
 	// optimization (need not to be here if you do not like it)
 	if(_numDrawCommands==0 && childList.empty())
 		return;
 
-	// bind descriptor sets
+	// bind pipeline
 	VulkanDevice* device=_renderer->device();
+	if(pipeline)
+		device->cmdBindPipeline(cb,vk::PipelineBindPoint::eGraphics,pipeline->get());
+
+	// bind descriptor sets
 	if(!descriptorSets.empty()) {
 		device->cmdBindDescriptorSets(
 			cb,  // commandBuffer
 			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-			_pipeline->layout(),  // layout
-			firstDescriptorSet,  // firstSet
+			pipelineLayout,  // layout
+			descriptorSetNumber,  // firstSet
 			descriptorSets,  // descriptorSets
 			dynamicOffsets  // dynamicOffsets
 		);

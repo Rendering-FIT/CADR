@@ -1,11 +1,8 @@
-// RenderPass.h must be included before the following ifndef because of circular include dependency
-#include <CadR/RenderPass.h>
 #ifndef CADR_RENDERER_H
 #define CADR_RENDERER_H
 
 #include <CadR/AllocationManagers.h>
 #include <vulkan/vulkan.hpp>
-#include <boost/intrusive/list.hpp>
 #include <list>
 #include <map>
 #include <memory>
@@ -17,6 +14,7 @@ class AttribStorage;
 class DrawCommand;
 class Geometry;
 class StagingBuffer;
+class StateSet;
 class VulkanDevice;
 class VulkanInstance;
 struct DrawCommandGpuData;
@@ -24,16 +22,6 @@ struct PrimitiveSetGpuData;
 
 
 class Renderer final {
-public:
-	typedef boost::intrusive::list<
-		RenderPass,
-		boost::intrusive::member_hook<
-			RenderPass,
-			boost::intrusive::list_member_hook<
-				boost::intrusive::link_mode<boost::intrusive::auto_unlink>>,
-			&RenderPass::_renderPassListHook>,
-		boost::intrusive::constant_time_size<false>
-	> RenderPassList;
 private:
 
 	VulkanDevice* _device;
@@ -84,7 +72,6 @@ private:
 
 	uint32_t _highestAllocatedSsId = -1;
 	std::vector<uint32_t> _releasedSsIds;
-	RenderPassList _renderPassList;
 
 	static Renderer* _defaultRenderer;
 
@@ -103,7 +90,7 @@ public:
 	CADR_EXPORT void leakResources();
 
 	CADR_EXPORT void recordDrawCommandProcessing(vk::CommandBuffer commandBuffer);
-	CADR_EXPORT void recordSceneRendering(vk::CommandBuffer commandBuffer,vk::RenderPass renderPass,
+	CADR_EXPORT void recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet* stateSetRoot,vk::RenderPass renderPass,
 	                                      vk::Framebuffer framebuffer,const vk::Rect2D& renderArea,
 	                                      uint32_t clearValueCount, const vk::ClearValue* clearValues);
 
@@ -181,8 +168,6 @@ public:
 	CADR_EXPORT uint32_t allocateStateSetId();
 	CADR_EXPORT void releaseStateSetId(uint32_t id);
 	CADR_EXPORT uint32_t numStateSetIds();
-	CADR_EXPORT RenderPassList& renderPassList();
-	CADR_EXPORT const RenderPassList& renderPassList() const;
 
 protected:
 	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
@@ -235,9 +220,6 @@ inline const ItemAllocationManager& Renderer::drawCommandAllocationManager() con
 inline ItemAllocationManager& Renderer::drawCommandAllocationManager()  { return _drawCommandAllocationManager; }
 inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
 inline uint32_t Renderer::numStateSetIds()  { return _highestAllocatedSsId+1; }
-inline Renderer::RenderPassList& Renderer::renderPassList()  { return _renderPassList; }
-inline const Renderer::RenderPassList& Renderer::renderPassList() const  { return _renderPassList; }
-
 
 }
 

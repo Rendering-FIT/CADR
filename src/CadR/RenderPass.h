@@ -6,6 +6,7 @@
 
 namespace CadR {
 
+#if 0
 class Renderer;
 class StateSet;
 
@@ -38,7 +39,7 @@ public:
 	vk::RenderPass get() const;
 	void set(vk::RenderPass renderPass);
 
-	void recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const;
+	//void recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const;
 
 };
 
@@ -59,5 +60,6 @@ inline RenderPass::~RenderPass()  {}
 inline Renderer* RenderPass::renderer() const  { return _renderer; }
 inline vk::RenderPass RenderPass::get() const  { return _renderPass; }
 inline void RenderPass::set(vk::RenderPass renderPass)  { _renderPass=renderPass; }
+#endif
 
 }
