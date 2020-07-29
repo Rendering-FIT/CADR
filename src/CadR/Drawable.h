@@ -1,115 +1,68 @@
 #pragma once
 
-#include <CadR/DrawCommand.h>
+#include <CadR/AllocationManagers.h>
 #include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
-class MatrixList;
 class Geometry;
 class Renderer;
+class StagingBuffer;
 class StateSet;
 
 
-struct DrawCommandList {
-public:
-	static constexpr const uint32_t builtInCapacity = 6;
-protected:
+/** DrawableGpuData contains data associated with Drawable that are stored in GPU buffers,
+ *  usually in Renderer::drawCommandBuffer().
+ *  Allocation management of DrawableGpuData buffer is usually provided
+ *  by Renderer::drawableAllocationManager().
+ */
+struct DrawableGpuData final {
+	uint32_t primitiveSetOffset4;
+	uint32_t shaderDataOffset4;
+	uint32_t stateSetOffset4;
+	uint32_t userData;  ///< Provides 16-byte structure alignment.
 
-	uint32_t _capacity;
-	uint32_t _size;
-	union {
-		std::array<DrawCommand,builtInCapacity> _internalStorage;
-		std::array<DrawCommand,0>* _externalStorage;
-		char* _externalStoragePointer;
-	};
-
-	Renderer* renderer() const;
-	StateSet* stateSet() const;
-	void secureSpace(uint32_t newSize);
-
-public:
-
-	using iterator =  std::array<DrawCommand,0>::iterator;
-	using const_iterator = std::array<DrawCommand,0>::const_iterator;
-
-	DrawCommandList();
-	DrawCommandList(uint32_t capacity);
-	DrawCommandList(DrawCommandList&& other) noexcept;
-	~DrawCommandList();
-	DrawCommandList& operator=(DrawCommandList&& rhs) noexcept;
-
-	void reserve(uint32_t capacity);
-	void setCapacity(uint32_t newCapacity);
-	void resize(uint32_t newSize);
-	uint32_t capacity() const;
-	uint32_t size() const;
-	void shrink_to_fit();
-
-	uint32_t alloc_back(uint32_t num=1);
-	void alloc_insert(uint32_t index,uint32_t num=1);
-	uint32_t emplace_back(DrawCommand&& dc);
-	void insert(uint32_t index,DrawCommand&& dc);
-
-	void set(uint32_t index,DrawCommand&& dc);
-	void move(uint32_t src,uint32_t dst);
-	void move(uint32_t src,uint32_t dst,uint32_t num);
-	void swap(uint32_t i1,uint32_t i2);
-	void swap(uint32_t i1,uint32_t i2,uint32_t num);
-
-	void free(uint32_t index,uint32_t num=1);
-	void pop_back();
-	void pop_back(uint32_t num);
-	void clear();
-
-	iterator begin();
-	const_iterator cbegin() const;
-	iterator end();
-	const_iterator cend() const;
-
-	DrawCommand& operator[](uint32_t index);
-	const DrawCommand& operator[](uint32_t index) const;
-	DrawCommand* data();
-	const DrawCommand* data() const;
-
+	DrawableGpuData()  {}
+	DrawableGpuData(uint32_t primitiveSetOffset4,uint32_t shaderDataOffset4,uint32_t stateSetOffset4);
+	constexpr DrawableGpuData(uint32_t primitiveSetOffset4,uint32_t shaderDataOffset4,
+	                          uint32_t stateSetOffset4,uint32_t userData);
 };
 
 
 class CADR_EXPORT Drawable final {
-public:
-	boost::intrusive::list_member_hook<> _drawableListHook;  ///< List hook whose owner is Geometry::_drawableList. Geometry::_drawableList contains all Drawables that reference it.
 protected:
+	ItemAllocation _gpuAllocation;
 	uint32_t _shaderDataID;
 	StateSet* _stateSet;
-	DrawCommandList _drawCommandList;
+public:
+	boost::intrusive::list_member_hook<
+		boost::intrusive::link_mode<boost::intrusive::auto_unlink>
+	> _drawableListHook;  ///< List hook of Geometry::_drawableList. Geometry::_drawableList contains all Drawables that render the Geometry.
 public:
 
-	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling reset().
-	Drawable(Geometry* geometry,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
-	Drawable(Drawable&& other) = default;
+	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling create().
+	Drawable(uint32_t shaderDataID,StateSet* stateSet);
+	Drawable(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet* stateSet,uint32_t userData=0);
+	Drawable(Drawable&& other);
 	Drawable& operator=(Drawable&& rhs);
-	~Drawable() = default;
-
-	void reset(Geometry* geometry,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity=DrawCommandList::builtInCapacity);
-
-	Renderer* renderer() const;
-	uint32_t shaderDataID() const;
-	StateSet* stateSet() const;
-	const DrawCommandList& drawCommandList() const;
-
-	void setNumDrawCommands(uint32_t num);
-	uint32_t numDrawCommands() const;
-	uint32_t allocAndUploadDrawCommand(const DrawCommandGpuData& drawCommandData);
-	void uploadDrawCommand(uint32_t index,const DrawCommandGpuData& drawCommandData);
-	StagingBuffer createDrawCommandStagingBuffer(uint32_t index);
-
-	DrawCommand*const& drawCommandAllocation(uint32_t index) const;  ///< Returns drawCommand allocation for drawCommand on particular index in drawCommandList.
-	DrawCommand*& drawCommandAllocation(uint32_t index);   ///< Returns drawCommand allocation for drawCommand on particular index in drawCommandList. Modify the returned data only with caution.
+	~Drawable();
 
 	Drawable(const Drawable&) = delete;
 	Drawable& operator=(const Drawable&) = delete;
 
-	friend DrawCommandList;
+	void create(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet* stateSet,uint32_t userData=0);
+	void create(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t userData=0);
+	void destroy();
+	bool isValid() const;
+
+	Renderer* renderer() const;
+	const ItemAllocation& allocation() const;
+	uint32_t shaderDataID() const;
+	StateSet* stateSet() const;
+
+	void upload(const DrawableGpuData& drawableData);
+	StagingBuffer createStagingBuffer();
+
 };
 
 
@@ -117,8 +70,10 @@ typedef boost::intrusive::list<
 	Drawable,
 	boost::intrusive::member_hook<
 		Drawable,
-		boost::intrusive::list_member_hook<>,
-		&Drawable::_drawableListHook>
+		boost::intrusive::list_member_hook<
+			boost::intrusive::link_mode<boost::intrusive::auto_unlink>>,
+		&Drawable::_drawableListHook>,
+	boost::intrusive::constant_time_size<false>
 > DrawableList;
 
 
@@ -127,63 +82,29 @@ typedef boost::intrusive::list<
 
 // inline methods
 #include <CadR/Renderer.h>
+#include <CadR/StagingBuffer.h>
 #include <CadR/StateSet.h>
 namespace CadR {
 
-inline Drawable::Drawable(Geometry*,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity)
-	: _shaderDataID(shaderDataID), _stateSet(stateSet), _drawCommandList(drawCommandsCapacity)  {}
-inline Drawable& Drawable::operator=(Drawable&& rhs)
+inline constexpr DrawableGpuData::DrawableGpuData(uint32_t primitiveSetOffset4_,uint32_t shaderDataOffset4_,uint32_t stateSetOffset4_,uint32_t userData_)
+	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
+inline Drawable::Drawable(uint32_t shaderDataID,StateSet* stateSet) : _shaderDataID(shaderDataID), _stateSet(stateSet)  {}
+inline Drawable::~Drawable()  { destroy(); }
+inline void Drawable::destroy()
 {
-	_shaderDataID=rhs._shaderDataID;
-	_drawCommandList.clear();  // this must be done before updating _stateSet
-	_stateSet=rhs._stateSet;
-	_drawCommandList=std::move(rhs._drawCommandList);
-	return *this;
+	if(!_gpuAllocation.isValid())
+		return;
+	_gpuAllocation.free(renderer()->drawableAllocationManager());
+	_drawableListHook.unlink();
+	_stateSet->decrementNumDrawables();
 }
-inline void Drawable::reset(Geometry*,uint32_t shaderDataID,StateSet* stateSet,uint32_t drawCommandsCapacity)
-{
-	_drawCommandList.clear();  // this must be done before updating _stateSet
-	_shaderDataID=shaderDataID;
-	_stateSet=stateSet;
-	_drawCommandList.setCapacity(drawCommandsCapacity);
-}
+inline bool Drawable::isValid() const  { return _gpuAllocation.isValid(); }
 
 inline Renderer* Drawable::renderer() const  { return _stateSet->renderer(); }
+inline const ItemAllocation& Drawable::allocation() const  { return _gpuAllocation; }
 inline uint32_t Drawable::shaderDataID() const  { return _shaderDataID; }
 inline StateSet* Drawable::stateSet() const  { return _stateSet; }
-inline const DrawCommandList& Drawable::drawCommandList() const  { return _drawCommandList; }
-inline void Drawable::setNumDrawCommands(uint32_t num)  { _drawCommandList.resize(num); }
-inline uint32_t Drawable::numDrawCommands() const  { return _drawCommandList.size(); }
-inline uint32_t Drawable::allocAndUploadDrawCommand(const DrawCommandGpuData& drawCommandData)  { uint32_t i=numDrawCommands(); setNumDrawCommands(i+1); uploadDrawCommand(i,drawCommandData); return i; }
-inline void Drawable::uploadDrawCommand(uint32_t index,const DrawCommandGpuData& drawCommandData)  { renderer()->uploadDrawCommand(_drawCommandList[index],drawCommandData); }
-inline StagingBuffer Drawable::createDrawCommandStagingBuffer(uint32_t index)  { return renderer()->createDrawCommandStagingBuffer(_drawCommandList[index]); }
-inline DrawCommand*const& Drawable::drawCommandAllocation(uint32_t index) const  { return reinterpret_cast<DrawCommand*const&>(renderer()->drawCommandAllocation(_drawCommandList[index].index())); }
-inline DrawCommand*& Drawable::drawCommandAllocation(uint32_t index)  { return reinterpret_cast<DrawCommand*&>(renderer()->drawCommandAllocation(_drawCommandList[index].index())); }
-
-inline Renderer* DrawCommandList::renderer() const  { return reinterpret_cast<const Drawable*>(reinterpret_cast<const char*>(this)-size_t(&static_cast<Drawable*>(nullptr)->_drawCommandList))->renderer(); }
-inline StateSet* DrawCommandList::stateSet() const  { return reinterpret_cast<const Drawable*>(reinterpret_cast<const char*>(this)-size_t(&static_cast<Drawable*>(nullptr)->_drawCommandList))->_stateSet; }
-inline DrawCommandList::DrawCommandList() : _capacity(builtInCapacity), _size(0)  {}
-inline DrawCommandList::DrawCommandList(uint32_t capacity) : DrawCommandList()  { reserve(capacity); }
-inline DrawCommandList::~DrawCommandList()  { clear(); if(_capacity!=builtInCapacity) delete[] _externalStoragePointer; }
-
-inline void DrawCommandList::reserve(uint32_t newCapacity)  { if(newCapacity>_capacity) setCapacity(newCapacity); }
-inline uint32_t DrawCommandList::capacity() const  { return _capacity; }
-inline uint32_t DrawCommandList::size() const  { return _size; }
-inline void DrawCommandList::shrink_to_fit()  { setCapacity(size()); }
-inline void DrawCommandList::secureSpace(uint32_t newSize)  { if(newSize<_capacity) return; uint32_t c=_capacity*2; if(c<newSize) c=newSize; setCapacity(c); }
-
-inline uint32_t DrawCommandList::emplace_back(DrawCommand&& dc)  { secureSpace(_size+1); new(operator[](_size))DrawCommand(std::move(dc),renderer()); stateSet()->incrementNumDrawCommands(1); return _size++; }
-inline void DrawCommandList::set(uint32_t index,DrawCommand&& dc)  { assert(index<_size && "Parameter index out of bounds."); operator[](index).assign(std::move(dc),renderer()); }
-
-inline void DrawCommandList::clear()  { resize(0); }
-
-inline DrawCommandList::iterator DrawCommandList::begin()  { if(_capacity==builtInCapacity) return reinterpret_cast<std::array<DrawCommand,0>*>(&_internalStorage)->begin(); else return _externalStorage->begin(); }
-inline DrawCommandList::const_iterator DrawCommandList::cbegin() const  { if(_capacity==builtInCapacity) return reinterpret_cast<const std::array<DrawCommand,0>*>(&_internalStorage)->begin(); else return _externalStorage->begin(); }
-inline DrawCommandList::iterator DrawCommandList::end()  { if(_capacity==builtInCapacity) return reinterpret_cast<std::array<DrawCommand,0>*>(&_internalStorage)->end(); else return _externalStorage->end(); }
-inline DrawCommandList::const_iterator DrawCommandList::cend() const  { if(_capacity==builtInCapacity) return reinterpret_cast<const std::array<DrawCommand,0>*>(&_internalStorage)->end(); else return _externalStorage->end(); }
-inline DrawCommand& DrawCommandList::operator[](uint32_t index)  { if(_capacity==builtInCapacity) return _internalStorage[index]; else return _externalStorage->operator[](index); }
-inline const DrawCommand& DrawCommandList::operator[](uint32_t index) const  { if(_capacity==builtInCapacity) return _internalStorage[index]; else return _externalStorage->operator[](index); }
-inline DrawCommand* DrawCommandList::data()  { if(_capacity==builtInCapacity) return _internalStorage.data(); else return _externalStorage->data(); }
-inline const DrawCommand* DrawCommandList::data() const  { if(_capacity==builtInCapacity) return _internalStorage.data(); else return _externalStorage->data(); }
+inline void Drawable::upload(const DrawableGpuData& drawableData)  { renderer()->uploadDrawable(*this,drawableData); }
+inline StagingBuffer Drawable::createStagingBuffer()  { return renderer()->createDrawableStagingBuffer(*this); }
 
 }

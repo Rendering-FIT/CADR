@@ -11,13 +11,13 @@ namespace CadR {
 
 class AttribSizeList;
 class AttribStorage;
-class DrawCommand;
+class Drawable;
 class Geometry;
 class StagingBuffer;
 class StateSet;
 class VulkanDevice;
 class VulkanInstance;
-struct DrawCommandGpuData;
+struct DrawableGpuData;
 struct PrimitiveSetGpuData;
 
 
@@ -39,8 +39,8 @@ private:
 	vk::DeviceMemory _dataStorageMemory;
 	vk::Buffer       _primitiveSetBuffer;
 	vk::DeviceMemory _primitiveSetBufferMemory;
-	vk::Buffer       _drawCommandBuffer;
-	vk::DeviceMemory _drawCommandBufferMemory;
+	vk::Buffer       _drawableBuffer;
+	vk::DeviceMemory _drawableBufferMemory;
 	vk::Buffer       _matrixListControlBuffer;
 	vk::DeviceMemory _matrixListControlBufferMemory;
 	vk::Buffer       _drawIndirectBuffer;
@@ -56,7 +56,7 @@ private:
 	ArrayAllocationManager<Geometry> _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager<uint32_t> _dataStorageAllocationManager;  ///< Allocation manager for data storage.
 	ArrayAllocationManager<Geometry> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
-	ItemAllocationManager            _drawCommandAllocationManager;
+	ItemAllocationManager            _drawableAllocationManager;
 	vk::CommandPool _stateSetCommandPool;
 
 	vk::CommandPool _transientCommandPool;
@@ -102,7 +102,7 @@ public:
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 	CADR_EXPORT vk::Buffer dataStorageBuffer() const;
 	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
-	CADR_EXPORT vk::Buffer drawCommandBuffer() const;
+	CADR_EXPORT vk::Buffer drawableBuffer() const;
 	CADR_EXPORT vk::Buffer matrixListControlBuffer() const;
 	CADR_EXPORT vk::Buffer drawIndirectBuffer() const;
 	CADR_EXPORT vk::Buffer stateSetBuffer() const;
@@ -157,13 +157,13 @@ public:
 	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Geometry& g);
 	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
-	CADR_EXPORT ItemAllocation*const& drawCommandAllocation(uint32_t id) const;  ///< Returns drawCommand allocation for particular id.
-	CADR_EXPORT ItemAllocation*& drawCommandAllocation(uint32_t id);   ///< Returns drawCommand allocation for particular id. Modify the returned data only with caution.
-	CADR_EXPORT const ItemAllocationManager& drawCommandAllocationManager() const;
-	CADR_EXPORT ItemAllocationManager& drawCommandAllocationManager();
+	CADR_EXPORT ItemAllocation*const& drawableAllocation(uint32_t id) const;  ///< Returns drawable allocation for particular id.
+	CADR_EXPORT ItemAllocation*& drawableAllocation(uint32_t id);   ///< Returns drawable allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ItemAllocationManager& drawableAllocationManager() const;
+	CADR_EXPORT ItemAllocationManager& drawableAllocationManager();
 
-	CADR_EXPORT void uploadDrawCommand(DrawCommand& dc,const DrawCommandGpuData& drawCommandData);
-	CADR_EXPORT StagingBuffer createDrawCommandStagingBuffer(DrawCommand& dc);
+	CADR_EXPORT void uploadDrawable(Drawable& d,const DrawableGpuData& drawableData);
+	CADR_EXPORT StagingBuffer createDrawableStagingBuffer(Drawable& d);
 
 	CADR_EXPORT uint32_t allocateStateSetId();
 	CADR_EXPORT void releaseStateSetId(uint32_t id);
@@ -184,7 +184,7 @@ inline const vk::PhysicalDeviceMemoryProperties& Renderer::memoryProperties() co
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::dataStorageBuffer() const  { return _dataStorageBuffer; }
 inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
-inline vk::Buffer Renderer::drawCommandBuffer() const  { return _drawCommandBuffer; }
+inline vk::Buffer Renderer::drawableBuffer() const  { return _drawableBuffer; }
 inline vk::Buffer Renderer::matrixListControlBuffer() const  { return _matrixListControlBuffer; }
 inline vk::Buffer Renderer::drawIndirectBuffer() const  { return _drawIndirectBuffer; }
 inline vk::Buffer Renderer::stateSetBuffer() const  { return _stateSetBuffer; }
@@ -214,10 +214,10 @@ inline const ArrayAllocation<Geometry>& Renderer::primitiveSetAllocation(uint32_
 inline ArrayAllocation<Geometry>& Renderer::primitiveSetAllocation(uint32_t id)  { return _primitiveSetAllocationManager[id]; }
 inline const ArrayAllocationManager<Geometry>& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
 inline ArrayAllocationManager<Geometry>& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
-inline ItemAllocation*const& Renderer::drawCommandAllocation(uint32_t id) const  { return _drawCommandAllocationManager[id]; }
-inline ItemAllocation*& Renderer::drawCommandAllocation(uint32_t id)  { return _drawCommandAllocationManager[id]; }
-inline const ItemAllocationManager& Renderer::drawCommandAllocationManager() const  { return _drawCommandAllocationManager; }
-inline ItemAllocationManager& Renderer::drawCommandAllocationManager()  { return _drawCommandAllocationManager; }
+inline ItemAllocation*const& Renderer::drawableAllocation(uint32_t id) const  { return _drawableAllocationManager[id]; }
+inline ItemAllocation*& Renderer::drawableAllocation(uint32_t id)  { return _drawableAllocationManager[id]; }
+inline const ItemAllocationManager& Renderer::drawableAllocationManager() const  { return _drawableAllocationManager; }
+inline ItemAllocationManager& Renderer::drawableAllocationManager()  { return _drawableAllocationManager; }
 inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
 inline uint32_t Renderer::numStateSetIds()  { return _highestAllocatedSsId+1; }
 

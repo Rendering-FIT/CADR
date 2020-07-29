@@ -26,7 +26,7 @@ Renderer::Renderer(bool makeDefault)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _dataStorageAllocationManager(2048,0)  // set capacity to 2048, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
-	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
+	, _drawableAllocationManager(128,0)  // capacity, num null objects
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
@@ -42,7 +42,7 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _dataStorageAllocationManager(2048,0)  // set capacity to 2048, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
-	, _drawCommandAllocationManager(128,0)  // capacity, num null objects
+	, _drawableAllocationManager(128,0)  // capacity, num null objects
 {
 	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_attribStorages.begin()->second.front();
@@ -136,22 +136,22 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 			0  // memoryOffset
 		);
 
-	// drawCommand buffer
-	_drawCommandBuffer=
+	// drawable buffer
+	_drawableBuffer=
 		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				128*sizeof(DrawCommandGpuData),  // size
+				128*sizeof(DrawableGpuData),  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
-	_drawCommandBufferMemory=allocateMemory(_drawCommandBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+	_drawableBufferMemory=allocateMemory(_drawableBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
 	_device->bindBufferMemory(
-			_drawCommandBuffer,  // buffer
-			_drawCommandBufferMemory,  // memory
+			_drawableBuffer,  // buffer
+			_drawableBufferMemory,  // memory
 			0  // memoryOffset
 		);
 
@@ -347,7 +347,7 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 					VK_WHOLE_SIZE  // range
 				),
 				vk::DescriptorBufferInfo(
-					_drawCommandBuffer,  // buffer
+					_drawableBuffer,  // buffer
 					0,  // offset
 					VK_WHOLE_SIZE  // range
 				),
@@ -451,7 +451,7 @@ void Renderer::finalize()
 		return;
 
 	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Geometry::allocAttribs() without specifying AttribSizeList.");
-	assert(_drawCommandAllocationManager.numItems()==0 && "Renderer::_drawCommandAllocationManager still contains elements on Renderer destruction.");
+	assert(_drawableAllocationManager.numItems()==0 && "Renderer::_drawableAllocationManager still contains elements during Renderer's destruction.");
 
 	// clear attrib storages
 	_attribStorages.clear();
@@ -462,7 +462,7 @@ void Renderer::finalize()
 	_indexAllocationManager.clear();
 	_dataStorageAllocationManager.clear();
 	_primitiveSetAllocationManager.clear();
-	_drawCommandAllocationManager.clear();
+	_drawableAllocationManager.clear();
 
 	// destroy shaders, pipelines,...
 	_device->destroy(_drawCommandShader);
@@ -486,8 +486,8 @@ void Renderer::finalize()
 	_device->freeMemory(_dataStorageMemory);
 	_device->destroy(_primitiveSetBuffer);
 	_device->freeMemory(_primitiveSetBufferMemory);
-	_device->destroy(_drawCommandBuffer);
-	_device->freeMemory(_drawCommandBufferMemory);
+	_device->destroy(_drawableBuffer);
+	_device->freeMemory(_drawableBufferMemory);
 	_device->destroy(_matrixListControlBuffer);
 	_device->freeMemory(_matrixListControlBufferMemory);
 	_device->destroy(_drawIndirectBuffer);
@@ -820,23 +820,23 @@ void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&
 }
 
 
-StagingBuffer Renderer::createDrawCommandStagingBuffer(DrawCommand& dc)
+StagingBuffer Renderer::createDrawableStagingBuffer(Drawable& d)
 {
-	assert(dc.index()!=ItemAllocationManager::invalidID && "Can not create StagingBuffer for DrawCommand with invalid ID.");
+	assert(d.isValid() && "Can not create StagingBuffer for Drawable without allocated GPU data. Call Drawable::create().");
 	return StagingBuffer(
-			_drawCommandBuffer,  // dstBuffer
-			dc.index()*sizeof(DrawCommandGpuData),  // dstOffset
-			sizeof(DrawCommandGpuData),  // size
+			_drawableBuffer,  // dstBuffer
+			d.allocation().index()*sizeof(DrawableGpuData),  // dstOffset
+			sizeof(DrawableGpuData),  // size
 			this  // renderer
 		);
 }
 
 
-void Renderer::uploadDrawCommand(DrawCommand& dc,const DrawCommandGpuData& drawCommandData)
+void Renderer::uploadDrawable(Drawable& d,const DrawableGpuData& drawableData)
 {
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createDrawCommandStagingBuffer(dc));
-	memcpy(sb.data(),&drawCommandData,sizeof(DrawCommandGpuData));
+	StagingBuffer sb(createDrawableStagingBuffer(d));
+	memcpy(sb.data(),&drawableData,sizeof(DrawableGpuData));
 	sb.submit();
 }
 

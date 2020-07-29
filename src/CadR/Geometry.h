@@ -27,11 +27,11 @@ template<typename Owner> struct ArrayAllocation;
 class CADR_EXPORT Geometry final {
 protected:
 
-	AttribStorage* _attribStorage;  ///< AttribStorage where vertex and index data are stored.
-	uint32_t _attribDataID = 0;  ///< ID of vertex data allocation inside AttribStorage.
-	uint32_t _indexDataID = 0;  ///< ID of index data allocation inside AttribStorage.
-	uint32_t _primitiveSetDataID = 0;  ///< ID od DrawCommand data allocation.
-	DrawableList _drawableList;  ///< List of all Drawables referencing this Geometry.
+	AttribStorage* _attribStorage;     ///< AttribStorage where vertex and index data are stored.
+	uint32_t _attribDataID = 0;        ///< ID of vertex data allocation inside AttribStorage.
+	uint32_t _indexDataID = 0;         ///< ID of index data allocation inside AttribStorage.
+	uint32_t _primitiveSetDataID = 0;  ///< ID of DrawCommand data allocation.
+	DrawableList _drawableList;        ///< List of all Drawables referencing this Geometry.
 
 public:
 
@@ -99,28 +99,7 @@ public:
 	StagingBuffer createPrimitiveSetStagingBuffer();
 	StagingBuffer createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
-#if 0
-	inline void uploadDrawCommands(const std::vector<DrawCommand>&& drawCommands,
-	                               size_t dstIndex=0);
-
-         inline void uploadPrimitives(const PrimitiveGpuData *bufferData,
-                                      uint32_t numPrimitives,uint32_t dstIndex=0);
-         inline void setPrimitives(const Primitive *primitiveList,
-                                   uint32_t numPrimitives,uint32_t startIndex=0,
-                                   bool truncate=true);
-         inline void setAndUploadPrimitives(PrimitiveGpuData *nonConstBufferData,
-                                            const Primitive *primitiveList,uint32_t numPrimitives);
-         inline void setAndUploadPrimitives(PrimitiveGpuData *nonConstBufferData,
-                                            const uint32_t *modesAndOffsets4,uint32_t numPrimitives);
-         inline void updateVertexOffsets(void *primitiveBuffer,
-                                         const Primitive *primitiveList,uint32_t numPrimitives);
-         inline static std::vector<Primitive> generatePrimitiveList(
-                                         const uint32_t *modesAndOffsets4,uint32_t numPrimitives);
-
-         inline void clearPrimitives();
-         inline void setNumPrimitives(uint32_t num);
-#endif
-
+	friend Drawable;
 };
 
 

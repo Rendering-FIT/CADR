@@ -102,27 +102,32 @@ public:
 class CADR_EXPORT ItemAllocation {
 protected:
 	uint32_t _index;
-	friend ItemAllocationManager;
 public:
 
-	constexpr uint32_t index() const;
-	uint32_t alloc(ItemAllocationManager& m);
-	void free(ItemAllocationManager& m);
+	static inline constexpr const uint32_t invalidID = 0xffffffff;
 
 	constexpr ItemAllocation();
 	ItemAllocation(ItemAllocationManager& m);
 	ItemAllocation(ItemAllocation&& a,ItemAllocationManager& m);
 	~ItemAllocation();
 
-	void assign(ItemAllocation&& a,ItemAllocationManager& m);
-
-	ItemAllocation(ItemAllocation&&) = delete;
+	ItemAllocation(ItemAllocation&&) = delete;  ///< Move-constructor deleted as move operation requires ItemAllocationManager as additional parameter. Use moveFrom() instead.
+	ItemAllocation& operator=(ItemAllocation&&) = delete; ///< Move-assignment deleted and replaced by assign() as ItemAllocationManager parameter is required for move operation. Use moveFrom() instead.
 	ItemAllocation(const ItemAllocation&) = delete;
-	ItemAllocation& operator=(ItemAllocation&&) = delete;
 	ItemAllocation& operator=(const ItemAllocation&) = delete;
+
+	void moveFrom(ItemAllocation& a,ItemAllocationManager& m);
+
+	constexpr uint32_t index() const;
+
+	uint32_t alloc(ItemAllocationManager& m);
+	void free(ItemAllocationManager& m);
+	bool isValid() const;
 
 protected:
 	constexpr ItemAllocation(uint32_t index);
+
+	friend ItemAllocationManager;
 };
 
 
@@ -140,8 +145,7 @@ protected:
  *
  *  ItemAllocationManager class does not maintain any memory buffer.
  *  It provides memory management functionality that could be
- *  tied with cpu memory block, gpu buffers, etc. See BufferStorage template
- *  for combining ge::gl::BufferObject and ItemAllocationManager functionality.
+ *  tied with cpu memory block, gpu buffers, etc.
  */
 class CADR_EXPORT ItemAllocationManager {
 protected:
@@ -359,18 +363,19 @@ inline ItemAllocation& ItemAllocationManager::nullItem()  { return _nullItem; }
 inline constexpr uint32_t ItemAllocation::index() const  { return _index; }
 inline uint32_t ItemAllocation::alloc(ItemAllocationManager& m)  { m.alloc(*this); return _index; }
 inline void ItemAllocation::free(ItemAllocationManager& m)  { m.free(*this); }
+inline bool ItemAllocation::isValid() const  { return _index!=ItemAllocation::invalidID; }
 
-inline constexpr ItemAllocation::ItemAllocation() : _index(ItemAllocationManager::invalidID)  {}
-inline ItemAllocation::ItemAllocation(ItemAllocationManager& m) : _index(ItemAllocationManager::invalidID)  { m.alloc(*this); }
-inline ItemAllocation::ItemAllocation(ItemAllocation&& a,ItemAllocationManager& m) : _index(a._index)  { if(a._index==ItemAllocationManager::invalidID) return; a._index=ItemAllocationManager::invalidID; m[_index]=this; }
-inline ItemAllocation::~ItemAllocation()  { assert((_index==ItemAllocationManager::invalidID || this==&ItemAllocationManager::nullItem()) && "Item is still allocated! Always free items before their destruction!"); }
+inline constexpr ItemAllocation::ItemAllocation() : _index(ItemAllocation::invalidID)  {}
+inline ItemAllocation::ItemAllocation(ItemAllocationManager& m) : _index(ItemAllocation::invalidID)  { m.alloc(*this); }
+inline ItemAllocation::ItemAllocation(ItemAllocation&& a,ItemAllocationManager& m) : _index(a._index)  { if(a._index==ItemAllocation::invalidID) return; a._index=ItemAllocation::invalidID; m[_index]=this; }
+inline ItemAllocation::~ItemAllocation()  { assert((_index==ItemAllocation::invalidID || this==&ItemAllocationManager::nullItem()) && "Item is still allocated! Always free items before their destruction! Destructor cannot do it for you as it has no access to ItemAllocationManager."); }
 
-inline void ItemAllocation::assign(ItemAllocation&& a,ItemAllocationManager& m)
+inline void ItemAllocation::moveFrom(ItemAllocation& a,ItemAllocationManager& m)
 {
 	m.free(*this);
 	_index=a._index;
-	if(a._index!=ItemAllocationManager::invalidID) {
-		a._index=ItemAllocationManager::invalidID;
+	if(a._index!=ItemAllocation::invalidID) {
+		a._index=ItemAllocation::invalidID;
 		m[_index]=this;
 	}
 }

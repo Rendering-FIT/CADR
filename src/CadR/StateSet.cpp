@@ -16,7 +16,7 @@ const ParentChildListOffsets StateSet::parentChildListOffsets{
 void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const
 {
 	// optimization (need not to be here if you do not like it)
-	if(_numDrawCommands==0 && childList.empty())
+	if(_numDrawables==0 && childList.empty())
 		return;
 
 	// bind pipeline
@@ -36,7 +36,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 		);
 	}
 
-	if(_numDrawCommands!=0) {
+	if(_numDrawables!=0) {
 
 		assert(_attribStorage && "AttribStorage have to be assigned before calling StateSet::recordToCommandBuffer() if StateSet has associated DrawCommands.");
 
@@ -56,13 +56,13 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 			cb,  // commandBuffer
 			_renderer->drawIndirectBuffer(),  // buffer
 			indirectBufferOffset,  // offset
-			uint32_t(_numDrawCommands),  // drawCount
+			uint32_t(_numDrawables),  // drawCount
 			sizeof(vk::DrawIndexedIndirectCommand)  // stride
 		);
 
 		// update rendering data
 		_renderer->stateSetStagingData()[_id]=uint32_t(indirectBufferOffset/4);
-		indirectBufferOffset+=_numDrawCommands*sizeof(vk::DrawIndexedIndirectCommand);
+		indirectBufferOffset+=_numDrawables*sizeof(vk::DrawIndexedIndirectCommand);
 	}
 
 	// record child StateSets

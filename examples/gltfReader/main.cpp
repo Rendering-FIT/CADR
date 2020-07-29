@@ -758,18 +758,7 @@ int main(int argc,char** argv) {
 			sb.submit();
 
 			// create Drawable
-			drawableDB.emplace_back(&g,0,ss,2);
-			CadR::Drawable& d=drawableDB.back();
-			d.setNumDrawCommands(1);
-			sb=d.createDrawCommandStagingBuffer(0);
-			*reinterpret_cast<CadR::DrawCommandGpuData*>(sb.data())=
-				CadR::DrawCommandGpuData{
-					renderer.primitiveSetAllocation(g.primitiveSetDataID()).startIndex*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
-					0,  // matrixListControlOffset4
-					ss->id(),  // stateSetOffset4
-					0,  // userData
-				};
-			sb.submit();
+			drawableDB.emplace_back(&g,0,0,ss,0);
 		}
 
 		// upload all staging buffers
