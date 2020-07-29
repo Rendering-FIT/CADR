@@ -22,7 +22,6 @@ set(CADR_PUBLIC_HEADERS
     AttribStorage.h
     CallbackList.h
     Drawable.h
-    DrawCommand.h
     Errors.h
     Geometry.h
     ParentChildList.h

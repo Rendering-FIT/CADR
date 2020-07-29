@@ -30,8 +30,6 @@ Drawable::Drawable(Drawable&& other)
 	_gpuAllocation.moveFrom(other._gpuAllocation,other._stateSet->renderer()->drawableAllocationManager());
 	_shaderDataID=other._shaderDataID;
 	_stateSet=other._stateSet;
-	/*_drawableListHook.unlink();
-	_drawableListHook.swap_nodes(other._drawableListHook);*/
 	_drawableListHook=std::move(other._drawableListHook);
 }
 
@@ -41,8 +39,8 @@ Drawable& Drawable::operator=(Drawable&& rhs)
 	// move _gpuAllocation, increment and decrement StateSet::numDrawables
 	if(_gpuAllocation.isValid()) {
 		_stateSet->decrementNumDrawables();
-		 if(_stateSet!=rhs._stateSet)
-		 	_gpuAllocation.free(_stateSet->renderer()->drawableAllocationManager());
+		if(_stateSet!=rhs._stateSet)
+			_gpuAllocation.free(_stateSet->renderer()->drawableAllocationManager());
 	}
 	_gpuAllocation.moveFrom(rhs._gpuAllocation,rhs._stateSet->renderer()->drawableAllocationManager());  // this is safe even on already allocated _gpuAllocation
 	if(_gpuAllocation.isValid())
@@ -51,8 +49,6 @@ Drawable& Drawable::operator=(Drawable&& rhs)
 	// move remaining variables
 	_shaderDataID=rhs._shaderDataID;
 	_stateSet=rhs._stateSet;
-	/*_drawableListHook.unlink();
-	_drawableListHook.swap_nodes(rhs._drawableListHook);*/
 	_drawableListHook=std::move(rhs._drawableListHook);
 	return *this;
 }
