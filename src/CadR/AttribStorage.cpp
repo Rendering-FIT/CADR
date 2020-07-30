@@ -10,6 +10,12 @@ using namespace CadR;
 
 
 
+AttribStorage::AttribStorage(const AttribSizeList& attribSizeList)
+	: AttribStorage(Renderer::get(),attribSizeList)
+{
+}
+
+
 AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSizeList)
 	: _allocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
 	, _attribSizeList(attribSizeList)

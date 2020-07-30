@@ -38,7 +38,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 
 	if(_numDrawables!=0) {
 
-		assert(_attribStorage && "AttribStorage have to be assigned before calling StateSet::recordToCommandBuffer() if StateSet has associated DrawCommands.");
+		assert(_attribStorage && "AttribStorage have to be assigned before calling StateSet::recordToCommandBuffer() if StateSet has associated Drawables.");
 
 		// bind attributes
 		size_t numAttributes=_attribStorage->bufferList().size();

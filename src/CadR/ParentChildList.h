@@ -99,12 +99,12 @@ public:
 	size_t size() const  { return _list.size(); }
 	bool empty() const  { return _list.empty(); }
 
-	iterator append(Type* child) {
+	iterator append(Type& child) {
 		auto* r=new ParentChildRelation<Type>;
 		_list.push_back(*r);
-		r->child=child;
+		r->child=&child;
 		r->parent=reinterpret_cast<Type*>(reinterpret_cast<char*>(this)-listOffsets.childListOffset);
-		reinterpret_cast<ParentList<Type,listOffsets>*>(reinterpret_cast<char*>(child)+listOffsets.parentListOffset)->internalList().push_back(*r);
+		reinterpret_cast<ParentList<Type,listOffsets>*>(reinterpret_cast<char*>(&child)+listOffsets.parentListOffset)->internalList().push_back(*r);
 		return List::s_iterator_to(*r);
 	}
 	void remove(iterator it) {
@@ -163,11 +163,11 @@ public:
 	size_t size() const  { return _list.size(); }
 	bool empty() const  { return _list.empty(); }
 
-	iterator append(Type* parent) {
+	iterator append(Type& parent) {
 		auto* r=new ParentChildRelation<Type>;
-		reinterpret_cast<ChildList<Type,listOffsets>*>(reinterpret_cast<char*>(parent)+listOffsets.childListOffset)->internalList().push_back(*r);
+		reinterpret_cast<ChildList<Type,listOffsets>*>(reinterpret_cast<char*>(&parent)+listOffsets.childListOffset)->internalList().push_back(*r);
 		r->child=reinterpret_cast<Type*>(reinterpret_cast<char*>(this)-listOffsets.parentListOffset);
-		r->parent=parent;
+		r->parent=&parent;
 		_list.push_back(*r);
 		return List::s_iterator_to(*r);
 	}

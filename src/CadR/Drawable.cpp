@@ -8,18 +8,18 @@ static_assert(sizeof(DrawableGpuData)==16,
               "DrawableGpuData size is expected to be 16 bytes.");
 
 
-Drawable::Drawable(Geometry* geometry,uint32_t primitiveSetIndex,
-                   uint32_t shaderDataID,StateSet* stateSet,uint32_t userData)
-	: _shaderDataID(shaderDataID), _stateSet(stateSet)
+Drawable::Drawable(Geometry& geometry,uint32_t primitiveSetIndex,
+                   uint32_t shaderDataID,StateSet& stateSet,uint32_t userData)
+	: _shaderDataID(shaderDataID), _stateSet(&stateSet)
 {
-	geometry->_drawableList.push_back(*this);
-	_gpuAllocation.alloc(stateSet->renderer()->drawableAllocationManager());
-	stateSet->incrementNumDrawables();
+	geometry._drawableList.push_back(*this);
+	_gpuAllocation.alloc(stateSet.renderer()->drawableAllocationManager());
+	stateSet.incrementNumDrawables();
 	upload(
 		DrawableGpuData{
-			(geometry->primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+			(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
 			shaderDataID/4,  // shaderDataOffset4
-			stateSet->id(),  // stateSetOffset4
+			stateSet.id(),  // stateSetOffset4
 			userData  // userData
 		});
 }
@@ -54,38 +54,38 @@ Drawable& Drawable::operator=(Drawable&& rhs)
 }
 
 
-void Drawable::create(Geometry* geometry,uint32_t primitiveSetIndex,
-                      uint32_t shaderDataID,StateSet* stateSet,uint32_t userData)
+void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
+                      uint32_t shaderDataID,StateSet& stateSet,uint32_t userData)
 {
 	if(_gpuAllocation.isValid()) {
 		_stateSet->decrementNumDrawables();
-		if(_stateSet!=stateSet)
+		if(_stateSet!=&stateSet)
 			_gpuAllocation.free(_stateSet->renderer()->drawableAllocationManager());
 	}
-	_gpuAllocation.alloc(stateSet->renderer()->drawableAllocationManager());  // this is safe even on already allocated _gpuAllocation
-	stateSet->incrementNumDrawables();
+	_gpuAllocation.alloc(stateSet.renderer()->drawableAllocationManager());  // this is safe even on already allocated _gpuAllocation
+	stateSet.incrementNumDrawables();
 	_shaderDataID=shaderDataID;
-	_stateSet=stateSet;
-	geometry->_drawableList.push_back(*this);
+	_stateSet=&stateSet;
+	geometry._drawableList.push_back(*this);
 	upload(
 		DrawableGpuData{
-			(geometry->primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+			(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
 			shaderDataID/4,  // shaderDataOffset4
-			stateSet->id(),  // stateSetOffset4
+			stateSet.id(),  // stateSetOffset4
 			userData  // userData
 		});
 }
 
 
-void Drawable::create(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t userData)
+void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t userData)
 {
 	if(!_gpuAllocation.isValid())
 		_stateSet->incrementNumDrawables();
 	_gpuAllocation.alloc(renderer()->drawableAllocationManager());  // this is safe even on already allocated _gpuAllocation
-	geometry->_drawableList.push_back(*this);
+	geometry._drawableList.push_back(*this);
 	upload(
 		DrawableGpuData{
-			(geometry->primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+			(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
 			_shaderDataID/4,  // shaderDataOffset4
 			_stateSet->id(),  // stateSetOffset4
 			userData  // userData

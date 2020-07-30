@@ -41,8 +41,8 @@ public:
 public:
 
 	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling create().
-	Drawable(uint32_t shaderDataID,StateSet* stateSet);
-	Drawable(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet* stateSet,uint32_t userData=0);
+	Drawable(uint32_t shaderDataID,StateSet& stateSet);
+	Drawable(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet& stateSet,uint32_t userData=0);
 	Drawable(Drawable&& other);
 	Drawable& operator=(Drawable&& rhs);
 	~Drawable();
@@ -50,8 +50,8 @@ public:
 	Drawable(const Drawable&) = delete;
 	Drawable& operator=(const Drawable&) = delete;
 
-	void create(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet* stateSet,uint32_t userData=0);
-	void create(Geometry* geometry,uint32_t primitiveSetIndex,uint32_t userData=0);
+	void create(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet& stateSet,uint32_t userData=0);
+	void create(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t userData=0);
 	void destroy();
 	bool isValid() const;
 
@@ -88,7 +88,7 @@ namespace CadR {
 
 inline constexpr DrawableGpuData::DrawableGpuData(uint32_t primitiveSetOffset4_,uint32_t shaderDataOffset4_,uint32_t stateSetOffset4_,uint32_t userData_)
 	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
-inline Drawable::Drawable(uint32_t shaderDataID,StateSet* stateSet) : _shaderDataID(shaderDataID), _stateSet(stateSet)  {}
+inline Drawable::Drawable(uint32_t shaderDataID,StateSet& stateSet) : _shaderDataID(shaderDataID), _stateSet(&stateSet)  {}
 inline Drawable::~Drawable()  { destroy(); }
 inline void Drawable::destroy()
 {

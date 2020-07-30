@@ -602,15 +602,15 @@ int main(int argc,char** argv) {
 			pipelineIndex=0x08; // no COLOR_0
 
 			auto [stateSetMapIt,newStateSetCreated] = pipelineDB[pipelineIndex].emplace(attribSizeList,&renderer);
-			CadR::StateSet* ss=&stateSetMapIt->second.stateSet;
+			CadR::StateSet& ss=stateSetMapIt->second.stateSet;
 			if(newStateSetCreated) {
 
 				CadR::Pipeline* pipeline=&stateSetMapIt->second.pipeline;
 				pipeline->init(nullptr,pipelineLayout.get(),nullptr);
 
 				stateSetRoot.childList.append(ss);
-				ss->pipeline=pipeline;
-				ss->setAttribStorage(g.attribStorage());
+				ss.pipeline=pipeline;
+				ss.setAttribStorage(g.attribStorage());
 
 				window.resizeCallbacks.append(
 						[&device,&window,pipeline,
@@ -758,7 +758,7 @@ int main(int argc,char** argv) {
 			sb.submit();
 
 			// create Drawable
-			drawableDB.emplace_back(&g,0,0,ss,0);
+			drawableDB.emplace_back(g,0,0,ss,0);
 		}
 
 		// upload all staging buffers

@@ -30,6 +30,7 @@ protected:
 public:
 
 	AttribStorage() = delete;
+	AttribStorage(const AttribSizeList& attribSizeList);
 	AttribStorage(Renderer* r,const AttribSizeList& attribSizeList);
 	~AttribStorage();
 
