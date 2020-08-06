@@ -1,6 +1,5 @@
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanDevice.h>
-#include <array>
 
 using namespace std;
 using namespace CadR;
@@ -48,6 +47,27 @@ int main(int,char**)
 	device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
 	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo());
 	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo(),allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>>());
+
+	// test return values
+	vk::Result r1;
+	vector<vk::Pipeline> r2;
+	vk::Pipeline r3;
+	vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>> r4;
+	vk::UniqueHandle<vk::Pipeline,VulkanDevice> r5;
+	r1=device.createGraphicsPipelines(vk::PipelineCache{},0,nullptr,nullptr,nullptr);
+	r2=device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
+	r2=device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	r3=device.createGraphicsPipeline(vk::PipelineCache{},vk::GraphicsPipelineCreateInfo{});
+	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
+	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	r5=device.createGraphicsPipelineUnique(vk::PipelineCache(),vk::GraphicsPipelineCreateInfo{});
+	r1=device.createComputePipelines(vk::PipelineCache{},0,nullptr,nullptr,nullptr);
+	r2=device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
+	r2=device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	r3=device.createComputePipeline(vk::PipelineCache{},vk::ComputePipelineCreateInfo{});
+	r4=device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
+	r4=device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	r5=device.createComputePipelineUnique(vk::PipelineCache(),vk::ComputePipelineCreateInfo{});
 
 	return 0;
 }
