@@ -205,7 +205,8 @@ struct UUID {
 	uint8_t data[VK_UUID_SIZE];
 
 	inline UUID() = default;
-	inline UUID(const uint8_t (&rhs)[VK_UUID_SIZE])  { memcpy(data,rhs,sizeof(data)); }
+	inline UUID(const uint8_t (&rhs)[VK_UUID_SIZE])  { memcpy(data,rhs,sizeof(data)); }  // required by vulkan.hpp prior to Vulkan SDK version 1.2.137 (release date 2020-04-07)
+	inline UUID(const array<uint8_t,VK_UUID_SIZE>& rhs)  { memcpy(data,rhs.data(),sizeof(data)); }  // required by vulkan.hpp since Vulkan SDK 1.2.137 (release date 2020-04-07)
 
 	inline void fillByZeros()  { memset(data,0,sizeof(data)); }
 
