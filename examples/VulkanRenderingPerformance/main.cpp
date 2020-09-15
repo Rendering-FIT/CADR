@@ -1047,9 +1047,12 @@ static void generateSharedVertexTriangles(
 
 
 // allocate memory for buffers
-static vk::UniqueDeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)
+static vk::UniqueDeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags,unsigned memorySizeDivisor)
 {
 	vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
+	if(memorySizeDivisor!=1)
+		memoryRequirements.size=(memoryRequirements.size/memorySizeDivisor+65535)&(~0xffff);
+
 	vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
 	for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
 		if(memoryRequirements.memoryTypeBits&(1<<i))
@@ -1284,7 +1287,7 @@ static void init(size_t deviceIndex)
 	else
 		throw runtime_error("No compatible devices.");
 	cout<<"Using device:\n"
-		   "   "<<physicalDevice.getProperties().deviceName<<endl;
+	      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 	// get supported features
 	vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
@@ -4205,215 +4208,230 @@ static void recreateSwapchainAndPipeline()
 		);
 
 	// vertex memory
-	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	coordinateBufferMemory=allocateMemory(coordinateBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	normalAttributeMemory=allocateMemory(normalAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	colorAttributeMemory=allocateMemory(colorAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	texCoordAttributeMemory=allocateMemory(texCoordAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	coordinateBufferMemory=allocateMemory(coordinateBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	normalAttributeMemory=allocateMemory(normalAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	colorAttributeMemory=allocateMemory(colorAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	texCoordAttributeMemory=allocateMemory(texCoordAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	for(size_t i=0; i<vec4Attributes.size(); i++)
-		vec4AttributeMemory[i]=allocateMemory(vec4Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		vec4AttributeMemory[i]=allocateMemory(vec4Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	for(size_t i=0; i<vec4u8Attributes.size(); i++)
-		vec4u8AttributeMemory[i]=allocateMemory(vec4u8Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedAttribute1Memory=allocateMemory(packedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedAttribute2Memory=allocateMemory(packedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedBuffer1Memory=allocateMemory(packedBuffer1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedBuffer2Memory=allocateMemory(packedBuffer2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	singlePackedBufferMemory=allocateMemory(singlePackedBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedDAttribute1Memory=allocateMemory(packedDAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedDAttribute2Memory=allocateMemory(packedDAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	packedDAttribute3Memory=allocateMemory(packedDAttribute3.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	indexBufferMemory=allocateMemory(indexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	primitiveRestartIndexBufferMemory=allocateMemory(primitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripIndexBufferMemory=allocateMemory(stripIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPrimitiveRestartIndexBufferMemory=allocateMemory(stripPrimitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPrimitiveRestart3IndexBufferMemory=allocateMemory(stripPrimitiveRestart3IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPrimitiveRestart4IndexBufferMemory=allocateMemory(stripPrimitiveRestart4IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPrimitiveRestart7IndexBufferMemory=allocateMemory(stripPrimitiveRestart7IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPrimitiveRestart10IndexBufferMemory=allocateMemory(stripPrimitiveRestart10IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	primitiveRestartMinusOne2IndexBufferMemory=allocateMemory(primitiveRestartMinusOne2IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	primitiveRestartMinusOne5IndexBufferMemory=allocateMemory(primitiveRestartMinusOne5IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	minusOneIndexBufferMemory=allocateMemory(minusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	zeroIndexBufferMemory=allocateMemory(zeroIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	plusOneIndexBufferMemory=allocateMemory(plusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPackedAttribute1Memory=allocateMemory(stripPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	stripPackedAttribute2Memory=allocateMemory(stripPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	sharedVertexPackedAttribute1Memory=allocateMemory(sharedVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	sharedVertexPackedAttribute2Memory=allocateMemory(sharedVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	sameVertexPackedAttribute1Memory=allocateMemory(sameVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	sameVertexPackedAttribute2Memory=allocateMemory(sameVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-	device->bindBufferMemory(
-		coordinateAttribute.get(),  // buffer
-		coordinateAttributeMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		coordinateBuffer.get(),  // buffer
-		coordinateBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		normalAttribute.get(),  // buffer
-		normalAttributeMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		colorAttribute.get(),  // buffer
-		colorAttributeMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		texCoordAttribute.get(),  // buffer
-		texCoordAttributeMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	for(size_t i=0; i<vec4Attributes.size(); i++)
+		vec4u8AttributeMemory[i]=allocateMemory(vec4u8Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedAttribute1Memory=allocateMemory(packedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedAttribute2Memory=allocateMemory(packedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedBuffer1Memory=allocateMemory(packedBuffer1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedBuffer2Memory=allocateMemory(packedBuffer2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	singlePackedBufferMemory=allocateMemory(singlePackedBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedDAttribute1Memory=allocateMemory(packedDAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedDAttribute2Memory=allocateMemory(packedDAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	packedDAttribute3Memory=allocateMemory(packedDAttribute3.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	indexBufferMemory=allocateMemory(indexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	primitiveRestartIndexBufferMemory=allocateMemory(primitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripIndexBufferMemory=allocateMemory(stripIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPrimitiveRestartIndexBufferMemory=allocateMemory(stripPrimitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPrimitiveRestart3IndexBufferMemory=allocateMemory(stripPrimitiveRestart3IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPrimitiveRestart4IndexBufferMemory=allocateMemory(stripPrimitiveRestart4IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPrimitiveRestart7IndexBufferMemory=allocateMemory(stripPrimitiveRestart7IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPrimitiveRestart10IndexBufferMemory=allocateMemory(stripPrimitiveRestart10IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	primitiveRestartMinusOne2IndexBufferMemory=allocateMemory(primitiveRestartMinusOne2IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	primitiveRestartMinusOne5IndexBufferMemory=allocateMemory(primitiveRestartMinusOne5IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	minusOneIndexBufferMemory=allocateMemory(minusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	zeroIndexBufferMemory=allocateMemory(zeroIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	plusOneIndexBufferMemory=allocateMemory(plusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPackedAttribute1Memory=allocateMemory(stripPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	stripPackedAttribute2Memory=allocateMemory(stripPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	sharedVertexPackedAttribute1Memory=allocateMemory(sharedVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	sharedVertexPackedAttribute2Memory=allocateMemory(sharedVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	sameVertexPackedAttribute1Memory=allocateMemory(sameVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	sameVertexPackedAttribute2Memory=allocateMemory(sameVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+	if(sparseMode==SPARSE_NONE)
+	{
 		device->bindBufferMemory(
-			vec4Attributes[i].get(),  // buffer
-			vec4AttributeMemory[i].get(),  // memory
+			coordinateAttribute.get(),  // buffer
+			coordinateAttributeMemory.get(),  // memory
 			0  // memoryOffset
 		);
-	for(size_t i=0; i<vec4u8Attributes.size(); i++)
 		device->bindBufferMemory(
-			vec4u8Attributes[i].get(),  // buffer
-			vec4u8AttributeMemory[i].get(),  // memory
+			coordinateBuffer.get(),  // buffer
+			coordinateBufferMemory.get(),  // memory
 			0  // memoryOffset
 		);
-	device->bindBufferMemory(
-		packedAttribute1.get(),  // buffer
-		packedAttribute1Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		packedAttribute2.get(),  // buffer
-		packedAttribute2Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		packedBuffer1.get(),  // buffer
-		packedBuffer1Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		packedBuffer2.get(),  // buffer
-		packedBuffer2Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		singlePackedBuffer.get(),  // buffer
-		singlePackedBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		packedDAttribute1.get(),  // buffer
-		packedDAttribute1Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		packedDAttribute2.get(),  // buffer
-		packedDAttribute2Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		packedDAttribute3.get(),  // buffer
-		packedDAttribute3Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		indexBuffer.get(),  // buffer
-		indexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		primitiveRestartIndexBuffer.get(),  // buffer
-		primitiveRestartIndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripIndexBuffer.get(),  // buffer
-		stripIndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPrimitiveRestartIndexBuffer.get(),  // buffer
-		stripPrimitiveRestartIndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPrimitiveRestart3IndexBuffer.get(),  // buffer
-		stripPrimitiveRestart3IndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPrimitiveRestart4IndexBuffer.get(),  // buffer
-		stripPrimitiveRestart4IndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPrimitiveRestart7IndexBuffer.get(),  // buffer
-		stripPrimitiveRestart7IndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPrimitiveRestart10IndexBuffer.get(),  // buffer
-		stripPrimitiveRestart10IndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		primitiveRestartMinusOne2IndexBuffer.get(),  // buffer
-		primitiveRestartMinusOne2IndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		primitiveRestartMinusOne5IndexBuffer.get(),  // buffer
-		primitiveRestartMinusOne5IndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		minusOneIndexBuffer.get(),  // buffer
-		minusOneIndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		zeroIndexBuffer.get(),  // buffer
-		zeroIndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		plusOneIndexBuffer.get(),  // buffer
-		plusOneIndexBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPackedAttribute1.get(),  // buffer
-		stripPackedAttribute1Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		stripPackedAttribute2.get(),  // buffer
-		stripPackedAttribute2Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sharedVertexPackedAttribute1.get(),  // buffer
-		sharedVertexPackedAttribute1Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sharedVertexPackedAttribute2.get(),  // buffer
-		sharedVertexPackedAttribute2Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameVertexPackedAttribute1.get(),  // buffer
-		sameVertexPackedAttribute1Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameVertexPackedAttribute2.get(),  // buffer
-		sameVertexPackedAttribute2Memory.get(),  // memory
-		0  // memoryOffset
-	);
-
+		device->bindBufferMemory(
+			normalAttribute.get(),  // buffer
+			normalAttributeMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			colorAttribute.get(),  // buffer
+			colorAttributeMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			texCoordAttribute.get(),  // buffer
+			texCoordAttributeMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		for(size_t i=0; i<vec4Attributes.size(); i++)
+			device->bindBufferMemory(
+				vec4Attributes[i].get(),  // buffer
+				vec4AttributeMemory[i].get(),  // memory
+				0  // memoryOffset
+			);
+		for(size_t i=0; i<vec4u8Attributes.size(); i++)
+			device->bindBufferMemory(
+				vec4u8Attributes[i].get(),  // buffer
+				vec4u8AttributeMemory[i].get(),  // memory
+				0  // memoryOffset
+			);
+		device->bindBufferMemory(
+			packedAttribute1.get(),  // buffer
+			packedAttribute1Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			packedAttribute2.get(),  // buffer
+			packedAttribute2Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			packedBuffer1.get(),  // buffer
+			packedBuffer1Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			packedBuffer2.get(),  // buffer
+			packedBuffer2Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			singlePackedBuffer.get(),  // buffer
+			singlePackedBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			packedDAttribute1.get(),  // buffer
+			packedDAttribute1Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			packedDAttribute2.get(),  // buffer
+			packedDAttribute2Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			packedDAttribute3.get(),  // buffer
+			packedDAttribute3Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			indexBuffer.get(),  // buffer
+			indexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			primitiveRestartIndexBuffer.get(),  // buffer
+			primitiveRestartIndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripIndexBuffer.get(),  // buffer
+			stripIndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPrimitiveRestartIndexBuffer.get(),  // buffer
+			stripPrimitiveRestartIndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPrimitiveRestart3IndexBuffer.get(),  // buffer
+			stripPrimitiveRestart3IndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPrimitiveRestart4IndexBuffer.get(),  // buffer
+			stripPrimitiveRestart4IndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPrimitiveRestart7IndexBuffer.get(),  // buffer
+			stripPrimitiveRestart7IndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPrimitiveRestart10IndexBuffer.get(),  // buffer
+			stripPrimitiveRestart10IndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			primitiveRestartMinusOne2IndexBuffer.get(),  // buffer
+			primitiveRestartMinusOne2IndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			primitiveRestartMinusOne5IndexBuffer.get(),  // buffer
+			primitiveRestartMinusOne5IndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			minusOneIndexBuffer.get(),  // buffer
+			minusOneIndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			zeroIndexBuffer.get(),  // buffer
+			zeroIndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			plusOneIndexBuffer.get(),  // buffer
+			plusOneIndexBufferMemory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPackedAttribute1.get(),  // buffer
+			stripPackedAttribute1Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			stripPackedAttribute2.get(),  // buffer
+			stripPackedAttribute2Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			sharedVertexPackedAttribute1.get(),  // buffer
+			sharedVertexPackedAttribute1Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			sharedVertexPackedAttribute2.get(),  // buffer
+			sharedVertexPackedAttribute2Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			sameVertexPackedAttribute1.get(),  // buffer
+			sameVertexPackedAttribute1Memory.get(),  // memory
+			0  // memoryOffset
+		);
+		device->bindBufferMemory(
+			sameVertexPackedAttribute2.get(),  // buffer
+			sameVertexPackedAttribute2Memory.get(),  // memory
+			0  // memoryOffset
+		);
+	}
+	else
+		sparseQueue.bindSparse(
+			vk::BindSparseInfo(
+				nullptr,  // waitSemaphores
+				vk::SparseBufferMemoryBindInfo(
+					
+				),
+				nullptr,
+				nullptr,
+				nullptr
+			),
+			vk::Fence()
+		);
 
 	// staging buffer struct
 	struct StagingBuffer {
@@ -4441,7 +4459,7 @@ static void recreateSwapchainAndPipeline()
 				);
 			memory=
 				allocateMemory(buffer.get(),
-				               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent|vk::MemoryPropertyFlagBits::eHostCached);
+				               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent|vk::MemoryPropertyFlagBits::eHostCached,1);
 			device->bindBufferMemory(
 				buffer.get(),  // buffer
 				memory.get(),  // memory
@@ -5070,6 +5088,17 @@ static void recreateSwapchainAndPipeline()
 				nullptr                       // pQueueFamilyIndices
 			)
 		);
+	samePATBuffer=
+		device->createBufferUnique(
+			vk::BufferCreateInfo(
+				bufferCreateFlags,            // flags
+				transformationPATBufferSize*bufferSizeMultiplier,  // size
+				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr                       // pQueueFamilyIndices
+			)
+		);
 	transformationMatrixAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
@@ -5097,17 +5126,6 @@ static void recreateSwapchainAndPipeline()
 			vk::BufferCreateInfo(
 				bufferCreateFlags,            // flags
 				normalMatrix4x3BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	samePATBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationPATBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5212,45 +5230,45 @@ static void recreateSwapchainAndPipeline()
 			lightNotPackedUniformBufferSize+allInOneLightingUniformBufferSize)/1024/1024<<"MiB"<<endl;
 #endif
 	singleMatrixUniformMemory=
-		allocateMemory(singleMatrixUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(singleMatrixUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	singlePATMemory=
-		allocateMemory(singlePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(singlePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	sameMatrixAttributeMemory=
-		allocateMemory(sameMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(sameMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	sameMatrixBufferMemory=
-		allocateMemory(sameMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(sameMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	sameMatrixRowMajorBufferMemory=
-		allocateMemory(sameMatrixRowMajorBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(sameMatrixRowMajorBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	sameMatrix4x3BufferMemory=
-		allocateMemory(sameMatrix4x3Buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(sameMatrix4x3Buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	sameMatrix4x3RowMajorBufferMemory=
-		allocateMemory(sameMatrix4x3RowMajorBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(sameMatrix4x3RowMajorBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	sameDMatrixBufferMemory=
-		allocateMemory(sameDMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(sameDMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	samePATBufferMemory=
-		allocateMemory(samePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(samePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	transformationMatrixAttributeMemory=
-		allocateMemory(transformationMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(transformationMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	transformationMatrixBufferMemory=
-		allocateMemory(transformationMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(transformationMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	normalMatrix4x3Memory=
-		allocateMemory(normalMatrix4x3Buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(normalMatrix4x3Buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 	viewAndProjectionMatricesMemory=
-		allocateMemory(viewAndProjectionMatricesUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(viewAndProjectionMatricesUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	viewAndProjectionDMatricesMemory=
-		allocateMemory(viewAndProjectionDMatricesUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(viewAndProjectionDMatricesUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	materialUniformBufferMemory=
-		allocateMemory(materialUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(materialUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	materialNotPackedUniformBufferMemory=
-		allocateMemory(materialNotPackedUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(materialNotPackedUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	globalLightUniformBufferMemory=
-		allocateMemory(globalLightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(globalLightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	lightUniformBufferMemory=
-		allocateMemory(lightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(lightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	lightNotPackedUniformBufferMemory=
-		allocateMemory(lightNotPackedUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(lightNotPackedUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	allInOneLightingUniformBufferMemory=
-		allocateMemory(allInOneLightingUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
+		allocateMemory(allInOneLightingUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
 	device->bindBufferMemory(
 		singleMatrixUniformBuffer.get(),  // buffer
 		singleMatrixUniformMemory.get(),  // memory
@@ -5720,7 +5738,7 @@ static void recreateSwapchainAndPipeline()
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
 				bufferCreateFlags,            // flags
-				(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand),  // size
+				(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand)*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5729,7 +5747,8 @@ static void recreateSwapchainAndPipeline()
 		);
 	indirectBufferMemory=
 		allocateMemory(indirectBuffer.get(),
-		               vk::MemoryPropertyFlagBits::eDeviceLocal);
+		               vk::MemoryPropertyFlagBits::eDeviceLocal,
+		               bufferSizeMultiplier);
 	device->bindBufferMemory(
 		indirectBuffer.get(),  // image
 		indirectBufferMemory.get(),  // memory
