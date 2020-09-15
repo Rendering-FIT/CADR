@@ -49,10 +49,12 @@ static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static uint32_t presentationQueueFamily;
+static uint32_t sparseQueueFamily;
 static vk::PhysicalDeviceFeatures enabledFeatures;
 static vk::UniqueDevice device;
 static vk::Queue graphicsQueue;
 static vk::Queue presentationQueue;
+static vk::Queue sparseQueue;
 static vk::SurfaceFormatKHR chosenSurfaceFormat;
 static vk::Format depthFormat;
 static vk::UniqueRenderPass renderPass;
@@ -530,6 +532,12 @@ static const uint32_t phongNoSpecularFS_spirv[]={
 static const uint32_t phongNoSpecularSingleUniformFS_spirv[]={
 #include "phongNoSpecularSingleUniform.frag.spv"
 };
+
+enum { SPARSE_NONE, SPARSE_BINDING, SPARSE_RESIDENCY, SPARSE_RESIDENCY_ALIASED };
+int sparseMode = SPARSE_NONE;
+vk::BufferCreateFlags bufferCreateFlags = {};
+unsigned bufferSizeMultiplier = 1;
+
 
 struct Test {
 	vector<uint64_t> renderingTimes;
@@ -1199,7 +1207,7 @@ static void init(size_t deviceIndex)
 	// renders the window).
 	vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 	vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
-	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
+	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t,uint32_t>> compatibleDevicesThreeQueues;
 	for(vk::PhysicalDevice pd:deviceList) {
 
 		// skip devices without VK_KHR_swapchain
@@ -1225,14 +1233,17 @@ static void init(size_t deviceIndex)
 		// select queues (for graphics rendering and for presentation)
 		uint32_t graphicsQueueFamily=UINT32_MAX;
 		uint32_t presentationQueueFamily=UINT32_MAX;
+		uint32_t sparseQueueFamily=UINT32_MAX;
 		vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
 		uint32_t i=0;
 		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
 			bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
 			if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
 				if(p) {
-					compatibleDevicesSingleQueue.emplace_back(pd,i);
-					goto nextDevice;
+					if(sparseMode==SPARSE_NONE || it->queueFlags&vk::QueueFlagBits::eSparseBinding) {
+						compatibleDevicesSingleQueue.emplace_back(pd,i);
+						goto nextDevice;
+					}
 				}
 				if(graphicsQueueFamily==UINT32_MAX)
 					graphicsQueueFamily=i;
@@ -1242,15 +1253,17 @@ static void init(size_t deviceIndex)
 					if(presentationQueueFamily==UINT32_MAX)
 						presentationQueueFamily=i;
 			}
+			if(sparseMode!=SPARSE_NONE && sparseQueueFamily==UINT32_MAX && it->queueFlags&vk::QueueFlagBits::eSparseBinding)
+				sparseQueueFamily=i;
 		}
 		if(graphicsQueueFamily!=UINT32_MAX && presentationQueueFamily!=UINT32_MAX)
-			compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
+			compatibleDevicesThreeQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily,sparseQueueFamily);
 		nextDevice:;
 	}
 	cout<<"Compatible devices:"<<endl;
 	for(auto& t:compatibleDevicesSingleQueue)
 		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
-	for(auto& t:compatibleDevicesTwoQueues)
+	for(auto& t:compatibleDevicesThreeQueues)
 		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 
 	// choose device
@@ -1259,12 +1272,14 @@ static void init(size_t deviceIndex)
 		physicalDevice=get<0>(t);
 		graphicsQueueFamily=get<1>(t);
 		presentationQueueFamily=graphicsQueueFamily;
+		sparseQueueFamily=(sparseMode!=SPARSE_NONE) ? sparseQueueFamily : UINT32_MAX;
 	}
-	else if((deviceIndex-compatibleDevicesSingleQueue.size())<compatibleDevicesTwoQueues.size()) {
-		auto t=compatibleDevicesTwoQueues[deviceIndex-compatibleDevicesSingleQueue.size()];
+	else if((deviceIndex-compatibleDevicesSingleQueue.size())<compatibleDevicesThreeQueues.size()) {
+		auto t=compatibleDevicesThreeQueues[deviceIndex-compatibleDevicesSingleQueue.size()];
 		physicalDevice=get<0>(t);
 		graphicsQueueFamily=get<1>(t);
 		presentationQueueFamily=get<2>(t);
+		sparseQueueFamily=(sparseMode!=SPARSE_NONE) ? get<3>(t) : UINT32_MAX;
 	}
 	else
 		throw runtime_error("No compatible devices.");
@@ -1295,30 +1310,52 @@ static void init(size_t deviceIndex)
 	cout<<"Sparse residency image2D:   "<<physicalFeatures.sparseResidencyImage2D<<endl;
 	cout<<"Sparse residency 4samples:  "<<physicalFeatures.sparseResidency4Samples<<endl;
 	cout<<"Sparse residency aliased:   "<<physicalFeatures.sparseResidencyAliased<<endl;
+	vk::SparseImageFormatProperties imageFormatProperties=
+		[]() {
+			auto l=physicalDevice.getSparseImageFormatProperties(vk::Format::eR8G8B8A8Uint,vk::ImageType::e2D,vk::SampleCountFlagBits::e1,vk::ImageUsageFlagBits::eSampled,vk::ImageTiling::eOptimal);
+			for(vk::SparseImageFormatProperties& p : l)
+				if(p.aspectMask&vk::ImageAspectFlagBits::eColor)
+					return p;
+			return vk::SparseImageFormatProperties{ {},{0,0,0},{} };
+		}();
+	cout<<"Sparse image (R8G8B8A8) sparse image block: "<<imageFormatProperties.imageGranularity.width<<"x"<<imageFormatProperties.imageGranularity.height<<endl;
 
-	// number of triangles
-	// (reduce the number on integrated graphics as it may easily run out of memory)
-	if(gpuMemory>=2.8*1024*1024*1024)
-		numTriangles=numTrianglesStandard;
-	else if(gpuMemory>=1.4*1024*1024*1024)
-		numTriangles=numTrianglesStandard/2;
-	else if(gpuMemory>=700*1024*1024)
-		numTriangles=numTrianglesStandard/5;
-	else if(gpuMemory>=400*1024*1024)
-		numTriangles=numTrianglesStandard/10;
-	else
-		numTriangles=numTrianglesStandard/20;
-	if(physicalDevice.getProperties().deviceType==vk::PhysicalDeviceType::eIntegratedGpu)
-		numTriangles=min(numTriangles,numTrianglesReduced);
-	cout<<"Number of triangles for tests: "<<numTriangles<<endl;
+	if(sparseMode!=SPARSE_NONE) {
+		switch(sparseMode) {
+		case SPARSE_BINDING:
+			if(!physicalFeatures.sparseBinding)
+				throw runtime_error("Sparse binding is not supported.");
+			enabledFeatures.setSparseBinding(true);
+			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseBinding;
+			bufferSizeMultiplier=1;
+			break;
+		case SPARSE_RESIDENCY:
+			if(!physicalFeatures.sparseResidencyBuffer)
+				throw runtime_error("Sparse residency is not supported.");
+			enabledFeatures.setSparseResidencyBuffer(true);
+			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseResidency;
+			bufferSizeMultiplier=10;
+			break;
+		case SPARSE_RESIDENCY_ALIASED:
+			if(!physicalFeatures.sparseResidencyBuffer)
+				throw runtime_error("Sparse residency is not supported.");
+			enabledFeatures.setSparseResidencyBuffer(true);
+			if(!physicalFeatures.sparseResidencyAliased)
+				throw runtime_error("Sparse aliased is not supported.");
+			enabledFeatures.setSparseResidencyAliased(true);
+			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseResidency|vk::BufferCreateFlagBits::eSparseAliased;
+			bufferSizeMultiplier=10;
+			break;
+		}
+	}
 
 	// create device
-	device.reset(  // move assignment and physicalDevice.createDeviceUnique() does not work here because of bug in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git). Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp.
-		physicalDevice.createDevice(
+	device=
+		physicalDevice.createDeviceUnique(
 			vk::DeviceCreateInfo{
 				vk::DeviceCreateFlags(),  // flags
-				compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
-				array<const vk::DeviceQueueCreateInfo,2>{  // pQueueCreateInfos
+				compatibleDevicesSingleQueue.size()>0?uint32_t(1):(sparseQueueFamily==UINT32_MAX?uint32_t(2):uint32_t(3)),  // queueCreateInfoCount
+				array<const vk::DeviceQueueCreateInfo,3>{  // pQueueCreateInfos
 					vk::DeviceQueueCreateInfo{
 						vk::DeviceQueueCreateFlags(),
 						graphicsQueueFamily,
@@ -1330,19 +1367,61 @@ static void init(size_t deviceIndex)
 						presentationQueueFamily,
 						1,
 						&(const float&)1.f,
-					}
+					},
+					vk::DeviceQueueCreateInfo{
+						vk::DeviceQueueCreateFlags(),
+						sparseQueueFamily,
+						1,
+						&(const float&)1.f,
+					},
 				}.data(),
 				0,nullptr,  // no layers
 				1,          // number of enabled extensions
 				array<const char*,1>{"VK_KHR_swapchain"}.data(),  // enabled extension names
 				&enabledFeatures,  // enabled features
 			}
-		)
-	);
+		);
+
+	// print buffer aligment or sparse block size
+	if(sparseMode==SPARSE_NONE)
+		cout<<"Buffer alignment: ";
+	else
+		cout<<"Sparse block size: ";
+	cout<<
+		device->getBufferMemoryRequirements(
+			device->createBufferUnique(
+				vk::BufferCreateInfo(
+					bufferCreateFlags,            // flags
+					1,                            // size
+					vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr                       // pQueueFamilyIndices
+				)
+			).get())
+			.alignment<<endl;
+
+	// number of triangles
+	// (reduce the number on integrated graphics as it may easily run out of memory)
+	if(gpuMemory>=2.8*1024*1024*1024) // >=2.8GiB
+		numTriangles=numTrianglesStandard;
+	else if(gpuMemory>=1.4*1024*1024*1024) // >=1.4GiB
+		numTriangles=numTrianglesStandard/2;
+	else if(gpuMemory>=700*1024*1024) // >=700MiB
+		numTriangles=numTrianglesStandard/5;
+	else if(gpuMemory>=400*1024*1024) // >=400MiB
+		numTriangles=numTrianglesStandard/10;
+	else
+		numTriangles=numTrianglesStandard/20;
+	if(physicalDevice.getProperties().deviceType==vk::PhysicalDeviceType::eIntegratedGpu)
+		numTriangles=min(numTriangles,numTrianglesReduced);
+	cout<<"Number of triangles for tests: "<<numTriangles<<endl;
 
 	// get queues
 	graphicsQueue=device->getQueue(graphicsQueueFamily,0);
 	presentationQueue=device->getQueue(presentationQueueFamily,0);
+	if(sparseQueueFamily!=UINT32_MAX)
+		sparseQueue=device->getQueue(sparseQueueFamily,0);
 
 	// choose surface format
 	vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(surface.get());
@@ -3726,12 +3805,12 @@ static void recreateSwapchainAndPipeline()
 		);
 
 	// coordinate attribute and storage buffer
-	size_t coordinateBufferSize=getBufferSize(numTriangles,true);
-	size_t normalBufferSize=size_t(numTriangles)*3*3*sizeof(float);
+	size_t coordinateBufferSize=getBufferSize(numTriangles,true); // ~48MB
+	size_t normalBufferSize=size_t(numTriangles)*3*3*sizeof(float); // ~36MB
 	size_t colorBufferSize=size_t(numTriangles)*3*4;
 	size_t texCoordBufferSize=size_t(numTriangles)*3*2*sizeof(float);
 	size_t vec4u8BufferSize=size_t(numTriangles)*3*4;
-	size_t packedDataBufferSize=size_t(numTriangles)*3*16;
+	size_t packedDataBufferSize=size_t(numTriangles)*3*16; // ~48MB
 	size_t indexBufferSize=size_t(numTriangles)*3*4;
 	size_t primitiveRestartIndexBufferSize=size_t(numTriangles)*4*4;
 	size_t stripIndexBufferSize=getIndexBufferSize(numTriangles/triStripLength,triStripLength);
@@ -3747,12 +3826,12 @@ static void recreateSwapchainAndPipeline()
 	size_t plusOneIndexBufferSize=size_t(numTriangles)*4*4;
 	size_t stripPackedDataBufferSize=getBufferSize(numTriangles/triStripLength,triStripLength,true);
 	size_t sharedVertexPackedDataBufferSize=getBufferSizeForSharedVertexTriangles(numTriangles/triStripLength,triStripLength,true);
-	size_t sameVertexPackedDataBufferSize=size_t(numTriangles)*3*16;
+	size_t sameVertexPackedDataBufferSize=size_t(numTriangles)*3*16; // ~48MB
 	coordinateAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				coordinateBufferSize,         // size
+				bufferCreateFlags,            // flags
+				coordinateBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3762,8 +3841,8 @@ static void recreateSwapchainAndPipeline()
 	coordinateBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				coordinateBufferSize,         // size
+				bufferCreateFlags,            // flags
+				coordinateBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3773,8 +3852,8 @@ static void recreateSwapchainAndPipeline()
 	normalAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				normalBufferSize,             // size
+				bufferCreateFlags,            // flags
+				normalBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3784,8 +3863,8 @@ static void recreateSwapchainAndPipeline()
 	colorAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				colorBufferSize,              // size
+				bufferCreateFlags,            // flags
+				colorBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3795,8 +3874,8 @@ static void recreateSwapchainAndPipeline()
 	texCoordAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				texCoordBufferSize,           // size
+				bufferCreateFlags,            // flags
+				texCoordBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3807,8 +3886,8 @@ static void recreateSwapchainAndPipeline()
 		a=
 			device->createBufferUnique(
 				vk::BufferCreateInfo(
-					vk::BufferCreateFlags(),      // flags
-					coordinateBufferSize,         // size
+					bufferCreateFlags,            // flags
+					coordinateBufferSize*bufferSizeMultiplier,  // size
 					vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount
@@ -3819,8 +3898,8 @@ static void recreateSwapchainAndPipeline()
 		a=
 			device->createBufferUnique(
 				vk::BufferCreateInfo(
-					vk::BufferCreateFlags(),      // flags
-					vec4u8BufferSize,             // size
+					bufferCreateFlags,            // flags
+					vec4u8BufferSize*bufferSizeMultiplier,  // size
 					vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount
@@ -3830,8 +3909,8 @@ static void recreateSwapchainAndPipeline()
 	packedAttribute1=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3841,8 +3920,8 @@ static void recreateSwapchainAndPipeline()
 	packedAttribute2=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3852,8 +3931,8 @@ static void recreateSwapchainAndPipeline()
 	packedBuffer1=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3863,8 +3942,8 @@ static void recreateSwapchainAndPipeline()
 	packedBuffer2=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3874,8 +3953,8 @@ static void recreateSwapchainAndPipeline()
 	singlePackedBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize*2,       // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*2*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3885,8 +3964,8 @@ static void recreateSwapchainAndPipeline()
 	packedDAttribute1=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3896,8 +3975,8 @@ static void recreateSwapchainAndPipeline()
 	packedDAttribute2=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3907,8 +3986,8 @@ static void recreateSwapchainAndPipeline()
 	packedDAttribute3=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				packedDataBufferSize,         // size
+				bufferCreateFlags,            // flags
+				packedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3918,8 +3997,8 @@ static void recreateSwapchainAndPipeline()
 	indexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				indexBufferSize,              // size
+				bufferCreateFlags,            // flags
+				indexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3929,8 +4008,8 @@ static void recreateSwapchainAndPipeline()
 	primitiveRestartIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				primitiveRestartIndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				primitiveRestartIndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3940,8 +4019,8 @@ static void recreateSwapchainAndPipeline()
 	stripIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripIndexBufferSize,         // size
+				bufferCreateFlags,            // flags
+				stripIndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3951,8 +4030,8 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestartIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPrimitiveRestartIndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				stripPrimitiveRestartIndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3962,8 +4041,8 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestart3IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPrimitiveRestart3IndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				stripPrimitiveRestart3IndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3973,8 +4052,8 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestart4IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPrimitiveRestart4IndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				stripPrimitiveRestart4IndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3984,8 +4063,8 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestart7IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPrimitiveRestart7IndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				stripPrimitiveRestart7IndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -3995,8 +4074,8 @@ static void recreateSwapchainAndPipeline()
 	stripPrimitiveRestart10IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPrimitiveRestart10IndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				stripPrimitiveRestart10IndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4006,8 +4085,8 @@ static void recreateSwapchainAndPipeline()
 	primitiveRestartMinusOne2IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				primitiveRestartMinusOne2IndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				primitiveRestartMinusOne2IndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4017,8 +4096,8 @@ static void recreateSwapchainAndPipeline()
 	primitiveRestartMinusOne5IndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				primitiveRestartMinusOne5IndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				primitiveRestartMinusOne5IndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4028,8 +4107,8 @@ static void recreateSwapchainAndPipeline()
 	minusOneIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				minusOneIndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				minusOneIndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4039,8 +4118,8 @@ static void recreateSwapchainAndPipeline()
 	zeroIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				zeroIndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				zeroIndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4050,8 +4129,8 @@ static void recreateSwapchainAndPipeline()
 	plusOneIndexBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				plusOneIndexBufferSize,  // size
+				bufferCreateFlags,            // flags
+				plusOneIndexBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4061,8 +4140,8 @@ static void recreateSwapchainAndPipeline()
 	stripPackedAttribute1=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPackedDataBufferSize,    // size
+				bufferCreateFlags,            // flags
+				stripPackedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4072,8 +4151,8 @@ static void recreateSwapchainAndPipeline()
 	stripPackedAttribute2=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				stripPackedDataBufferSize,    // size
+				bufferCreateFlags,            // flags
+				stripPackedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4083,8 +4162,8 @@ static void recreateSwapchainAndPipeline()
 	sharedVertexPackedAttribute1=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				sharedVertexPackedDataBufferSize,    // size
+				bufferCreateFlags,            // flags
+				sharedVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4094,8 +4173,8 @@ static void recreateSwapchainAndPipeline()
 	sharedVertexPackedAttribute2=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				sharedVertexPackedDataBufferSize,    // size
+				bufferCreateFlags,            // flags
+				sharedVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4105,8 +4184,8 @@ static void recreateSwapchainAndPipeline()
 	sameVertexPackedAttribute1=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				sameVertexPackedDataBufferSize,    // size
+				bufferCreateFlags,            // flags
+				sameVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4116,8 +4195,8 @@ static void recreateSwapchainAndPipeline()
 	sameVertexPackedAttribute2=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				sameVertexPackedDataBufferSize,    // size
+				bufferCreateFlags,            // flags
+				sameVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4890,10 +4969,10 @@ static void recreateSwapchainAndPipeline()
 
 
 	// matrix attributes, buffers and uniforms
-	size_t transformationMatrix4x4BufferSize=size_t(numTriangles)*16*sizeof(float);
+	size_t transformationMatrix4x4BufferSize=size_t(numTriangles)*16*sizeof(float); // 64MB
 	size_t transformationMatrix4x3BufferSize=size_t(numTriangles)*12*sizeof(float);
-	size_t transformationDMatrix4x4BufferSize=size_t(numTriangles)*16*sizeof(double);
-	size_t normalMatrix4x3BufferSize=size_t(numTriangles)*16*sizeof(float);
+	size_t transformationDMatrix4x4BufferSize=size_t(numTriangles)*16*sizeof(double); // 128MB
+	size_t normalMatrix4x3BufferSize=size_t(numTriangles)*16*sizeof(float); // 64MB
 	size_t transformationPATBufferSize=size_t(numTriangles)*8*sizeof(float);
 	constexpr size_t viewAndProjectionMatricesBufferSize=(16+16+12)*sizeof(float);
 	constexpr size_t viewAndProjectionDMatricesBufferSize=16*sizeof(double)+(16+12)*sizeof(float);
@@ -4906,7 +4985,7 @@ static void recreateSwapchainAndPipeline()
 	singleMatrixUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				16*sizeof(float),             // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -4917,7 +4996,7 @@ static void recreateSwapchainAndPipeline()
 	singlePATBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				8*sizeof(float),              // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -4928,8 +5007,8 @@ static void recreateSwapchainAndPipeline()
 	sameMatrixAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x4BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4939,8 +5018,8 @@ static void recreateSwapchainAndPipeline()
 	sameMatrixBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x4BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4950,8 +5029,8 @@ static void recreateSwapchainAndPipeline()
 	sameMatrixRowMajorBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x4BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4961,8 +5040,8 @@ static void recreateSwapchainAndPipeline()
 	sameMatrix4x3Buffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x3BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x3BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4972,8 +5051,8 @@ static void recreateSwapchainAndPipeline()
 	sameMatrix4x3RowMajorBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x3BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x3BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4983,8 +5062,8 @@ static void recreateSwapchainAndPipeline()
 	sameDMatrixBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationDMatrix4x4BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationDMatrix4x4BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -4994,8 +5073,8 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixAttribute=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x4BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5005,8 +5084,8 @@ static void recreateSwapchainAndPipeline()
 	transformationMatrixBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationMatrix4x4BufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5016,8 +5095,8 @@ static void recreateSwapchainAndPipeline()
 	normalMatrix4x3Buffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				normalMatrix4x3BufferSize,    // size
+				bufferCreateFlags,            // flags
+				normalMatrix4x3BufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5027,8 +5106,8 @@ static void recreateSwapchainAndPipeline()
 	samePATBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				transformationPATBufferSize,  // size
+				bufferCreateFlags,            // flags
+				transformationPATBufferSize*bufferSizeMultiplier,  // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5038,7 +5117,7 @@ static void recreateSwapchainAndPipeline()
 	viewAndProjectionMatricesUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				viewAndProjectionMatricesBufferSize,  // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5049,7 +5128,7 @@ static void recreateSwapchainAndPipeline()
 	viewAndProjectionDMatricesUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				viewAndProjectionDMatricesBufferSize,  // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5060,7 +5139,7 @@ static void recreateSwapchainAndPipeline()
 	materialUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				materialUniformBufferSize,    // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5071,7 +5150,7 @@ static void recreateSwapchainAndPipeline()
 	materialNotPackedUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				materialNotPackedUniformBufferSize,  // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5082,8 +5161,8 @@ static void recreateSwapchainAndPipeline()
 	globalLightUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				globalLightUniformBufferSize, // size
+				bufferCreateFlags,            // flags
+				globalLightUniformBufferSize,  // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -5093,7 +5172,7 @@ static void recreateSwapchainAndPipeline()
 	lightUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				lightUniformBufferSize,       // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5104,7 +5183,7 @@ static void recreateSwapchainAndPipeline()
 	lightNotPackedUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				lightNotPackedUniformBufferSize,  // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5115,7 +5194,7 @@ static void recreateSwapchainAndPipeline()
 	allInOneLightingUniformBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				allInOneLightingUniformBufferSize,  // size
 				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -5640,7 +5719,7 @@ static void recreateSwapchainAndPipeline()
 	indirectBuffer=
 		device->createBufferUnique(
 			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
+				bufferCreateFlags,            // flags
 				(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand),  // size
 				vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -8608,9 +8687,28 @@ int main(int argc,char** argv)
 	// (vulkan.hpp fuctions throws if they fail)
 	try {
 
+		// parse command line
+		size_t physicalDeviceIndex=0;
+		for(int i=1; i<argc; i++) {
+			if(argv[i]==nullptr || argv[i][0]==0)
+				continue;
+			if(argv[i][0]=='-') {
+				if(strcmp(argv[i],"--sparse-none")==0)  sparseMode=SPARSE_NONE; else
+				if(strcmp(argv[i],"--sparse-binding")==0)  sparseMode=SPARSE_BINDING; else
+				if(strcmp(argv[i],"--sparse-residency")==0)  sparseMode=SPARSE_RESIDENCY; else
+				if(strcmp(argv[i],"--sparse-residency-aliased")==0)  sparseMode=SPARSE_RESIDENCY_ALIASED;
+				else {
+					cout<<"Invalid argument: "<<argv[i]<<endl;
+					exit(99);
+				}
+			}
+			else
+				physicalDeviceIndex=size_t(max(atoi(argv[1]),0));
+		}
+
 		// init Vulkan and open window,
 		// give physical device index as parameter
-		init(argc>=2?size_t(max(atoi(argv[1]),0)):0);
+		init(physicalDeviceIndex);
 
 		auto startTime=chrono::steady_clock::now();
 
@@ -8697,14 +8795,14 @@ int main(int argc,char** argv)
 				tests.size()*2*sizeof(uint64_t),  // dataSize
 				timestamps.data(),    // pData
 				sizeof(uint64_t),     // stride
-				vk::QueryResultFlagBits::e64  // flags
+				vk::QueryResultFlagBits::e64|vk::QueryResultFlagBits::eWait  // flags
 			);
 			size_t i=0;
 			for(Test& t : tests) {
 				if(t.enabled)
 					t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
 				else
-					// neutralize invalid timestamps
+					// neutralize invalid timestamps of disabled tests
 					// e.g. avoid "run in parallel" error
 					if(i==0)  timestamps[0]=timestamps[1]=0;
 					else  timestamps[i]=timestamps[i+1]=timestamps[i-1];
