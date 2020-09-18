@@ -70,7 +70,7 @@ int main(int,char**)
 		physicalDevice=get<0>(compatibleDevices.front());
 		graphicsQueueFamily=get<1>(compatibleDevices.front());
 		cout<<"Using device:\n"
-				"   "<<physicalDevice.getProperties().deviceName<<endl;
+		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 		// create device
 		device=

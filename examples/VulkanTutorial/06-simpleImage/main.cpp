@@ -92,7 +92,7 @@ int main(int,char**)
 		else
 			throw runtime_error("No compatible devices.");
 		cout<<"Using device:\n"
-				"   "<<physicalDevice.getProperties().deviceName<<endl;
+		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 		// create device
 		device=
