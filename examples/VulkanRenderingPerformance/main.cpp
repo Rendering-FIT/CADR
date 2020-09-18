@@ -1333,20 +1333,22 @@ static void init(size_t deviceIndex)
 			bufferSizeMultiplier=1;
 			break;
 		case SPARSE_RESIDENCY:
-			if(!physicalFeatures.sparseResidencyBuffer)
+			if(!physicalFeatures.sparseBinding || !physicalFeatures.sparseResidencyBuffer)
 				throw runtime_error("Sparse residency is not supported.");
+			enabledFeatures.setSparseBinding(true);
 			enabledFeatures.setSparseResidencyBuffer(true);
-			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseResidency;
+			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency;
 			bufferSizeMultiplier=10;
 			break;
 		case SPARSE_RESIDENCY_ALIASED:
-			if(!physicalFeatures.sparseResidencyBuffer)
+			if(!physicalFeatures.sparseBinding || !physicalFeatures.sparseResidencyBuffer)
 				throw runtime_error("Sparse residency is not supported.");
+			enabledFeatures.setSparseBinding(true);
 			enabledFeatures.setSparseResidencyBuffer(true);
 			if(!physicalFeatures.sparseResidencyAliased)
 				throw runtime_error("Sparse aliased is not supported.");
 			enabledFeatures.setSparseResidencyAliased(true);
-			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseResidency|vk::BufferCreateFlagBits::eSparseAliased;
+			bufferCreateFlags=vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency|vk::BufferCreateFlagBits::eSparseAliased;
 			bufferSizeMultiplier=10;
 			break;
 		}
@@ -4782,7 +4784,7 @@ static void recreateSwapchainAndPipeline()
 		singlePATStagingBuffer.buffer.get(),  // srcBuffer
 		singlePATBuffer.get(),                // dstBuffer
 		1,                                    // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(singleMatrixData))  // pRegions
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,sizeof(singlePATBuffer))  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
 		sameMatrixStagingBuffer.buffer.get(),  // srcBuffer
