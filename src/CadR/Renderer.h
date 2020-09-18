@@ -134,7 +134,7 @@ public:
 	CADR_EXPORT const ArrayAllocationManager<Geometry>& indexAllocationManager() const;
 	CADR_EXPORT ArrayAllocationManager<Geometry>& indexAllocationManager();
 
-	CADR_EXPORT void uploadIndices(Geometry& g,std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+	CADR_EXPORT void uploadIndices(Geometry& g,std::vector<uint32_t>& indexData,size_t dstIndex=0);
 	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Geometry& g);
 	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices);
 
@@ -143,7 +143,7 @@ public:
 	CADR_EXPORT const ArrayAllocationManager<uint32_t>& dataStorageAllocationManager() const;
 	CADR_EXPORT ArrayAllocationManager<uint32_t>& dataStorageAllocationManager();
 
-	CADR_EXPORT void uploadDataStorage(uint32_t id,std::vector<uint8_t>&& data,size_t dstIndex=0);
+	CADR_EXPORT void uploadDataStorage(uint32_t id,std::vector<uint8_t>& data,size_t dstIndex=0);
 	CADR_EXPORT void uploadDataStorage(uint32_t id,const void* data,size_t size,size_t dstIndex=0);
 	CADR_EXPORT StagingBuffer createDataStorageStagingBuffer(uint32_t id);
 	CADR_EXPORT StagingBuffer createDataStorageStagingBuffer(uint32_t id,size_t offset,size_t size);
@@ -153,7 +153,7 @@ public:
 	CADR_EXPORT const ArrayAllocationManager<Geometry>& primitiveSetAllocationManager() const;
 	CADR_EXPORT ArrayAllocationManager<Geometry>& primitiveSetAllocationManager();
 
-	CADR_EXPORT void uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex=0);
+	CADR_EXPORT void uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t dstPrimitiveSetIndex=0);
 	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Geometry& g);
 	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets);
 

@@ -91,11 +91,11 @@ public:
 	std::vector<StagingBuffer> createStagingBuffers();
 	std::vector<StagingBuffer> createStagingBuffers(size_t dstIndex,size_t numItems);
 
-	void uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex=0);
+	void uploadIndices(std::vector<uint32_t>& indexData,size_t dstIndex=0);
 	StagingBuffer createIndexStagingBuffer();
 	StagingBuffer createIndexStagingBuffer(size_t firstIndex,size_t numIndices);
 
-	void uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex=0);
+	void uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t dstPrimitiveSetIndex=0);
 	StagingBuffer createPrimitiveSetStagingBuffer();
 	StagingBuffer createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
@@ -160,11 +160,11 @@ inline StagingBuffer Geometry::createStagingBuffer(uint32_t attribIndex,size_t d
 inline std::vector<StagingBuffer> Geometry::createStagingBuffers()  { return _attribStorage->createStagingBuffers(*this); }
 inline std::vector<StagingBuffer> Geometry::createStagingBuffers(size_t dstIndex,size_t numItems)  { return _attribStorage->createStagingBuffers(*this,dstIndex,numItems); }
 
-inline void Geometry::uploadIndices(std::vector<uint32_t>&& indexData,size_t dstIndex)  { renderer()->uploadIndices(*this,std::move(indexData),dstIndex); }
+inline void Geometry::uploadIndices(std::vector<uint32_t>& indexData,size_t dstIndex)  { renderer()->uploadIndices(*this,indexData,dstIndex); }
 inline StagingBuffer Geometry::createIndexStagingBuffer()  { return renderer()->createIndexStagingBuffer(*this); }
 inline StagingBuffer Geometry::createIndexStagingBuffer(size_t firstIndex,size_t numIndices)  { return renderer()->createIndexStagingBuffer(*this,firstIndex,numIndices); }
 
-inline void Geometry::uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex)  { renderer()->uploadPrimitiveSets(*this,std::move(primitiveSetData),dstPrimitiveSetIndex); }
+inline void Geometry::uploadPrimitiveSets(std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t dstPrimitiveSetIndex)  { renderer()->uploadPrimitiveSets(*this,primitiveSetData,dstPrimitiveSetIndex); }
 inline StagingBuffer Geometry::createPrimitiveSetStagingBuffer()  { return renderer()->createPrimitiveSetStagingBuffer(*this); }
 inline StagingBuffer Geometry::createPrimitiveSetStagingBuffer(size_t firstPrimitiveSet,size_t numPrimitiveSets)  { return renderer()->createPrimitiveSetStagingBuffer(*this,firstPrimitiveSet,numPrimitiveSets); }
 

@@ -726,7 +726,7 @@ StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g,size_t firstIndex,s
 }
 
 
-void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>&& indexData,size_t dstIndex)
+void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>& indexData,size_t dstIndex)
 {
 	if(indexData.empty()) return;
 
@@ -762,7 +762,7 @@ StagingBuffer Renderer::createDataStorageStagingBuffer(uint32_t id,size_t offset
 }
 
 
-void Renderer::uploadDataStorage(uint32_t id,std::vector<uint8_t>&& data,size_t dstIndex)
+void Renderer::uploadDataStorage(uint32_t id,std::vector<uint8_t>& data,size_t dstIndex)
 {
 	if(data.empty()) return;
 
@@ -809,7 +809,7 @@ StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g,size_t first
 }
 
 
-void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&& primitiveSetData,size_t dstPrimitiveSetIndex)
+void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t dstPrimitiveSetIndex)
 {
 	if(primitiveSetData.empty()) return;
 
