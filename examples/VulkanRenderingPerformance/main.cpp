@@ -3023,7 +3023,7 @@ static void recreateSwapchainAndPipeline()
 					vk::Pipeline(nullptr),  // basePipelineHandle
 					-1 // basePipelineIndex
 				)
-			);
+			).value;
 		};
 
 	const array<const vk::VertexInputBindingDescription,4> stride16AttributesBinding{
@@ -3807,7 +3807,39 @@ static void recreateSwapchainAndPipeline()
 			)
 		);
 
-	// coordinate attribute and storage buffer
+	// coordinate attributes and storage buffers
+	struct BindInfo {
+		bool sparseAllowed;
+		vk::Buffer buffer;
+		vk::DeviceMemory memory;
+		size_t size;
+		BindInfo(bool sparseAllowed_,vk::Buffer buffer_,vk::DeviceMemory memory_,size_t size_) : sparseAllowed(sparseAllowed_), buffer(buffer_), memory(memory_), size(size_)  {}
+	};
+	typedef vector<BindInfo> BindInfoList;
+	BindInfoList bindInfoList;
+	auto createBuffer=
+		[](vk::UniqueBuffer& buffer,vk::UniqueDeviceMemory& memory,size_t size,bool sparseAllowed,vk::BufferUsageFlags usage,BindInfoList& bindInfoList) {
+			buffer=
+				device->createBufferUnique(
+					vk::BufferCreateInfo(
+						bufferCreateFlags,            // flags
+						size*bufferSizeMultiplier,    // size
+						usage,                        // usage
+						vk::SharingMode::eExclusive,  // sharingMode
+						0,                            // queueFamilyIndexCount
+						nullptr                       // pQueueFamilyIndices
+					)
+				);
+			memory=allocateMemory(buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+			if(sparseMode==SPARSE_NONE || sparseAllowed==false)
+				device->bindBufferMemory(
+					buffer.get(),  // buffer
+					memory.get(),  // memory
+					0  // memoryOffset
+				);
+			else
+				bindInfoList.emplace_back(sparseAllowed,buffer.get(),memory.get(),size);
+		};
 	size_t coordinateBufferSize=getBufferSize(numTriangles,true); // ~48MB
 	size_t normalBufferSize=size_t(numTriangles)*3*3*sizeof(float); // ~36MB
 	size_t colorBufferSize=size_t(numTriangles)*3*4;
@@ -3830,608 +3862,76 @@ static void recreateSwapchainAndPipeline()
 	size_t stripPackedDataBufferSize=getBufferSize(numTriangles/triStripLength,triStripLength,true);
 	size_t sharedVertexPackedDataBufferSize=getBufferSizeForSharedVertexTriangles(numTriangles/triStripLength,triStripLength,true);
 	size_t sameVertexPackedDataBufferSize=size_t(numTriangles)*3*16; // ~48MB
-	coordinateAttribute=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				coordinateBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	coordinateBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				coordinateBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	normalAttribute=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				normalBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	colorAttribute=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				colorBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	texCoordAttribute=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				texCoordBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	for(auto& a:vec4Attributes)
-		a=
-			device->createBufferUnique(
-				vk::BufferCreateInfo(
-					bufferCreateFlags,            // flags
-					coordinateBufferSize*bufferSizeMultiplier,  // size
-					vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-					vk::SharingMode::eExclusive,  // sharingMode
-					0,                            // queueFamilyIndexCount
-					nullptr                       // pQueueFamilyIndices
-				)
-			);
-	for(auto& a:vec4u8Attributes)
-		a=
-			device->createBufferUnique(
-				vk::BufferCreateInfo(
-					bufferCreateFlags,            // flags
-					vec4u8BufferSize*bufferSizeMultiplier,  // size
-					vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-					vk::SharingMode::eExclusive,  // sharingMode
-					0,                            // queueFamilyIndexCount
-					nullptr                       // pQueueFamilyIndices
-				)
-			);
-	packedAttribute1=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	packedAttribute2=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	packedBuffer1=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	packedBuffer2=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	singlePackedBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*2*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	packedDAttribute1=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	packedDAttribute2=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	packedDAttribute3=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				packedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	indexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				indexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	primitiveRestartIndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				primitiveRestartIndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripIndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripIndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPrimitiveRestartIndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPrimitiveRestartIndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPrimitiveRestart3IndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPrimitiveRestart3IndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPrimitiveRestart4IndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPrimitiveRestart4IndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPrimitiveRestart7IndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPrimitiveRestart7IndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPrimitiveRestart10IndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPrimitiveRestart10IndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	primitiveRestartMinusOne2IndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				primitiveRestartMinusOne2IndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	primitiveRestartMinusOne5IndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				primitiveRestartMinusOne5IndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	minusOneIndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				minusOneIndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	zeroIndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				zeroIndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	plusOneIndexBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				plusOneIndexBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPackedAttribute1=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPackedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	stripPackedAttribute2=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				stripPackedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sharedVertexPackedAttribute1=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				sharedVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sharedVertexPackedAttribute2=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				sharedVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameVertexPackedAttribute1=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				sameVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameVertexPackedAttribute2=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				sameVertexPackedDataBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
+	createBuffer(coordinateAttribute,coordinateAttributeMemory,coordinateBufferSize,true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(coordinateBuffer,   coordinateBufferMemory,   coordinateBufferSize,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(normalAttribute,    normalAttributeMemory,    normalBufferSize,    true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(colorAttribute,     colorAttributeMemory,     colorBufferSize,     true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(texCoordAttribute,  texCoordAttributeMemory,  texCoordBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	for(size_t i=0,c=vec4Attributes.size(); i<c; i++)
+		createBuffer(vec4Attributes[i],vec4AttributeMemory[i],coordinateBufferSize, true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	for(size_t i=0,c=vec4u8Attributes.size(); i<c; i++)
+		createBuffer(vec4u8Attributes[i],vec4u8AttributeMemory[i],vec4u8BufferSize, true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedAttribute1,  packedAttribute1Memory,  packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedAttribute2,  packedAttribute2Memory,  packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedBuffer1,     packedBuffer1Memory,     packedDataBufferSize,  true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedBuffer2,     packedBuffer2Memory,     packedDataBufferSize,  true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(singlePackedBuffer,singlePackedBufferMemory,packedDataBufferSize*2,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedDAttribute1, packedDAttribute1Memory, packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedDAttribute2, packedDAttribute2Memory, packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(packedDAttribute3, packedDAttribute3Memory, packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(indexBuffer,       indexBufferMemory,       indexBufferSize,       true,vk::BufferUsageFlagBits::eIndexBuffer  |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(primitiveRestartIndexBuffer,         primitiveRestartIndexBufferMemory,         primitiveRestartIndexBufferSize,         true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripIndexBuffer,                    stripIndexBufferMemory,                    stripIndexBufferSize,                    true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPrimitiveRestartIndexBuffer,    stripPrimitiveRestartIndexBufferMemory,    stripPrimitiveRestartIndexBufferSize,    true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPrimitiveRestart3IndexBuffer,   stripPrimitiveRestart3IndexBufferMemory,   stripPrimitiveRestart3IndexBufferSize,   true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPrimitiveRestart4IndexBuffer,   stripPrimitiveRestart4IndexBufferMemory,   stripPrimitiveRestart4IndexBufferSize,   true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPrimitiveRestart7IndexBuffer,   stripPrimitiveRestart7IndexBufferMemory,   stripPrimitiveRestart7IndexBufferSize,   true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPrimitiveRestart10IndexBuffer,  stripPrimitiveRestart10IndexBufferMemory,  stripPrimitiveRestart10IndexBufferSize,  true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(primitiveRestartMinusOne2IndexBuffer,primitiveRestartMinusOne2IndexBufferMemory,primitiveRestartMinusOne2IndexBufferSize,true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(primitiveRestartMinusOne5IndexBuffer,primitiveRestartMinusOne5IndexBufferMemory,primitiveRestartMinusOne5IndexBufferSize,true,vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(minusOneIndexBuffer,         minusOneIndexBufferMemory,         minusOneIndexBufferSize,         true,vk::BufferUsageFlagBits::eIndexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(zeroIndexBuffer,             zeroIndexBufferMemory,             zeroIndexBufferSize,             true,vk::BufferUsageFlagBits::eIndexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(plusOneIndexBuffer,          plusOneIndexBufferMemory,          plusOneIndexBufferSize,          true,vk::BufferUsageFlagBits::eIndexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPackedAttribute1,       stripPackedAttribute1Memory,       stripPackedDataBufferSize,       true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(stripPackedAttribute2,       stripPackedAttribute2Memory,       stripPackedDataBufferSize,       true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sharedVertexPackedAttribute1,sharedVertexPackedAttribute1Memory,sharedVertexPackedDataBufferSize,true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sharedVertexPackedAttribute2,sharedVertexPackedAttribute2Memory,sharedVertexPackedDataBufferSize,true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameVertexPackedAttribute1,  sameVertexPackedAttribute1Memory,  sameVertexPackedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameVertexPackedAttribute2,  sameVertexPackedAttribute2Memory,  sameVertexPackedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 
-	// vertex memory
-	coordinateAttributeMemory=allocateMemory(coordinateAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	coordinateBufferMemory=allocateMemory(coordinateBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	normalAttributeMemory=allocateMemory(normalAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	colorAttributeMemory=allocateMemory(colorAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	texCoordAttributeMemory=allocateMemory(texCoordAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	for(size_t i=0; i<vec4Attributes.size(); i++)
-		vec4AttributeMemory[i]=allocateMemory(vec4Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	for(size_t i=0; i<vec4u8Attributes.size(); i++)
-		vec4u8AttributeMemory[i]=allocateMemory(vec4u8Attributes[i].get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedAttribute1Memory=allocateMemory(packedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedAttribute2Memory=allocateMemory(packedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedBuffer1Memory=allocateMemory(packedBuffer1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedBuffer2Memory=allocateMemory(packedBuffer2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	singlePackedBufferMemory=allocateMemory(singlePackedBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedDAttribute1Memory=allocateMemory(packedDAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedDAttribute2Memory=allocateMemory(packedDAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	packedDAttribute3Memory=allocateMemory(packedDAttribute3.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	indexBufferMemory=allocateMemory(indexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	primitiveRestartIndexBufferMemory=allocateMemory(primitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripIndexBufferMemory=allocateMemory(stripIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPrimitiveRestartIndexBufferMemory=allocateMemory(stripPrimitiveRestartIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPrimitiveRestart3IndexBufferMemory=allocateMemory(stripPrimitiveRestart3IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPrimitiveRestart4IndexBufferMemory=allocateMemory(stripPrimitiveRestart4IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPrimitiveRestart7IndexBufferMemory=allocateMemory(stripPrimitiveRestart7IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPrimitiveRestart10IndexBufferMemory=allocateMemory(stripPrimitiveRestart10IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	primitiveRestartMinusOne2IndexBufferMemory=allocateMemory(primitiveRestartMinusOne2IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	primitiveRestartMinusOne5IndexBufferMemory=allocateMemory(primitiveRestartMinusOne5IndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	minusOneIndexBufferMemory=allocateMemory(minusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	zeroIndexBufferMemory=allocateMemory(zeroIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	plusOneIndexBufferMemory=allocateMemory(plusOneIndexBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPackedAttribute1Memory=allocateMemory(stripPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	stripPackedAttribute2Memory=allocateMemory(stripPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sharedVertexPackedAttribute1Memory=allocateMemory(sharedVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sharedVertexPackedAttribute2Memory=allocateMemory(sharedVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameVertexPackedAttribute1Memory=allocateMemory(sameVertexPackedAttribute1.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameVertexPackedAttribute2Memory=allocateMemory(sameVertexPackedAttribute2.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	if(sparseMode==SPARSE_NONE)
+	if(sparseMode!=SPARSE_NONE)
 	{
-		device->bindBufferMemory(
-			coordinateAttribute.get(),  // buffer
-			coordinateAttributeMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			coordinateBuffer.get(),  // buffer
-			coordinateBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			normalAttribute.get(),  // buffer
-			normalAttributeMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			colorAttribute.get(),  // buffer
-			colorAttributeMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			texCoordAttribute.get(),  // buffer
-			texCoordAttributeMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		for(size_t i=0; i<vec4Attributes.size(); i++)
-			device->bindBufferMemory(
-				vec4Attributes[i].get(),  // buffer
-				vec4AttributeMemory[i].get(),  // memory
-				0  // memoryOffset
+		vector<vk::SparseBufferMemoryBindInfo> bufferBinds;
+		vector<vk::SparseMemoryBind> memoryBinds;
+		bufferBinds.reserve(bindInfoList.size());
+		memoryBinds.reserve(bindInfoList.size());
+		for(auto &bindInfo : bindInfoList) {
+			auto& r=memoryBinds.emplace_back(
+				0,  // resourceOffset
+				bindInfo.size,  // size
+				bindInfo.memory,  // memory
+				0,  // memoryOffset
+				vk::SparseMemoryBindFlags()  // flags
 			);
-		for(size_t i=0; i<vec4u8Attributes.size(); i++)
-			device->bindBufferMemory(
-				vec4u8Attributes[i].get(),  // buffer
-				vec4u8AttributeMemory[i].get(),  // memory
-				0  // memoryOffset
+			bufferBinds.emplace_back(
+				bindInfo.buffer,  // buffer
+				1,  // bindCount
+				&r  // pBinds
 			);
-		device->bindBufferMemory(
-			packedAttribute1.get(),  // buffer
-			packedAttribute1Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			packedAttribute2.get(),  // buffer
-			packedAttribute2Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			packedBuffer1.get(),  // buffer
-			packedBuffer1Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			packedBuffer2.get(),  // buffer
-			packedBuffer2Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			singlePackedBuffer.get(),  // buffer
-			singlePackedBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			packedDAttribute1.get(),  // buffer
-			packedDAttribute1Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			packedDAttribute2.get(),  // buffer
-			packedDAttribute2Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			packedDAttribute3.get(),  // buffer
-			packedDAttribute3Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			indexBuffer.get(),  // buffer
-			indexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			primitiveRestartIndexBuffer.get(),  // buffer
-			primitiveRestartIndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripIndexBuffer.get(),  // buffer
-			stripIndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPrimitiveRestartIndexBuffer.get(),  // buffer
-			stripPrimitiveRestartIndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPrimitiveRestart3IndexBuffer.get(),  // buffer
-			stripPrimitiveRestart3IndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPrimitiveRestart4IndexBuffer.get(),  // buffer
-			stripPrimitiveRestart4IndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPrimitiveRestart7IndexBuffer.get(),  // buffer
-			stripPrimitiveRestart7IndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPrimitiveRestart10IndexBuffer.get(),  // buffer
-			stripPrimitiveRestart10IndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			primitiveRestartMinusOne2IndexBuffer.get(),  // buffer
-			primitiveRestartMinusOne2IndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			primitiveRestartMinusOne5IndexBuffer.get(),  // buffer
-			primitiveRestartMinusOne5IndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			minusOneIndexBuffer.get(),  // buffer
-			minusOneIndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			zeroIndexBuffer.get(),  // buffer
-			zeroIndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			plusOneIndexBuffer.get(),  // buffer
-			plusOneIndexBufferMemory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPackedAttribute1.get(),  // buffer
-			stripPackedAttribute1Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			stripPackedAttribute2.get(),  // buffer
-			stripPackedAttribute2Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			sharedVertexPackedAttribute1.get(),  // buffer
-			sharedVertexPackedAttribute1Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			sharedVertexPackedAttribute2.get(),  // buffer
-			sharedVertexPackedAttribute2Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			sameVertexPackedAttribute1.get(),  // buffer
-			sameVertexPackedAttribute1Memory.get(),  // memory
-			0  // memoryOffset
-		);
-		device->bindBufferMemory(
-			sameVertexPackedAttribute2.get(),  // buffer
-			sameVertexPackedAttribute2Memory.get(),  // memory
-			0  // memoryOffset
-		);
-	}
-	else
+		}
 		sparseQueue.bindSparse(
 			vk::BindSparseInfo(
 				nullptr,  // waitSemaphores
-				vk::SparseBufferMemoryBindInfo(
-					
-				),
-				nullptr,
-				nullptr,
-				nullptr
+				bufferBinds,  // bufferBinds
+				nullptr,  // imageOpaqueBinds
+				nullptr,  // imageBinds
+				nullptr  // signalSemaphores
 			),
 			vk::Fence()
 		);
+		sparseQueue.waitIdle();
+		bindInfoList.clear();
+	}
 
 	// staging buffer struct
 	struct StagingBuffer {
@@ -5000,226 +4500,26 @@ static void recreateSwapchainAndPipeline()
 	constexpr size_t lightUniformBufferSize=16+4*12;
 	constexpr size_t lightNotPackedUniformBufferSize=5*16;
 	constexpr size_t allInOneLightingUniformBufferSize=6*16;
-	singleMatrixUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				16*sizeof(float),             // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	singlePATBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				8*sizeof(float),              // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameMatrixAttribute=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameMatrixBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameMatrixRowMajorBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameMatrix4x3Buffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x3BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameMatrix4x3RowMajorBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x3BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	sameDMatrixBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationDMatrix4x4BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	samePATBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationPATBufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	transformationMatrixAttribute=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	transformationMatrixBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				transformationMatrix4x4BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	normalMatrix4x3Buffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				normalMatrix4x3BufferSize*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	viewAndProjectionMatricesUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				viewAndProjectionMatricesBufferSize,  // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	viewAndProjectionDMatricesUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				viewAndProjectionDMatricesBufferSize,  // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	materialUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				materialUniformBufferSize,    // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	materialNotPackedUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				materialNotPackedUniformBufferSize,  // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	globalLightUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				globalLightUniformBufferSize,  // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	lightUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				lightUniformBufferSize,       // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	lightNotPackedUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				lightNotPackedUniformBufferSize,  // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	allInOneLightingUniformBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				allInOneLightingUniformBufferSize,  // size
-				vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
+	createBuffer(singleMatrixUniformBuffer,    singleMatrixUniformMemory,          16*sizeof(float),                  false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(singlePATBuffer,              singlePATMemory,                    8*sizeof(float),                   false,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameMatrixAttribute,          sameMatrixAttributeMemory,          transformationMatrix4x4BufferSize, true, vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameMatrixBuffer,             sameMatrixBufferMemory,             transformationMatrix4x4BufferSize, true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameMatrixRowMajorBuffer,     sameMatrixRowMajorBufferMemory,     transformationMatrix4x4BufferSize, true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameMatrix4x3Buffer,          sameMatrix4x3BufferMemory,          transformationMatrix4x3BufferSize, true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameMatrix4x3RowMajorBuffer,  sameMatrix4x3RowMajorBufferMemory,  transformationMatrix4x3BufferSize, true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(sameDMatrixBuffer,            sameDMatrixBufferMemory,            transformationDMatrix4x4BufferSize,true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(samePATBuffer,                samePATBufferMemory,                transformationPATBufferSize,       true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(transformationMatrixAttribute,transformationMatrixAttributeMemory,transformationMatrix4x4BufferSize, true, vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(transformationMatrixBuffer,   transformationMatrixBufferMemory,   transformationMatrix4x4BufferSize, true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(normalMatrix4x3Buffer,        normalMatrix4x3Memory,              normalMatrix4x3BufferSize,         true, vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(viewAndProjectionMatricesUniformBuffer,viewAndProjectionMatricesMemory,viewAndProjectionMatricesBufferSize,false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(viewAndProjectionDMatricesUniformBuffer,viewAndProjectionDMatricesMemory,viewAndProjectionDMatricesBufferSize,false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(materialUniformBuffer,        materialUniformBufferMemory,        materialUniformBufferSize,         false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(materialNotPackedUniformBuffer,materialNotPackedUniformBufferMemory,materialNotPackedUniformBufferSize,false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(globalLightUniformBuffer,     globalLightUniformBufferMemory,     globalLightUniformBufferSize,      false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(lightUniformBuffer,           lightUniformBufferMemory,           lightUniformBufferSize,            false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(lightNotPackedUniformBuffer,  lightNotPackedUniformBufferMemory,  lightNotPackedUniformBufferSize,   false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(allInOneLightingUniformBuffer,allInOneLightingUniformBufferMemory,allInOneLightingUniformBufferSize, false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 #if 0
 	cout<<"Second buffer set memory requirements: "<<(transformationMatrix4x4BufferSize+
 			transformationMatrix4x4BufferSize+transformationMatrix4x4BufferSize+transformationMatrix4x3BufferSize+
@@ -5229,146 +4529,6 @@ static void recreateSwapchainAndPipeline()
 			materialNotPackedUniformBufferSize+globalLightUniformBufferSize+lightUniformBufferSize+
 			lightNotPackedUniformBufferSize+allInOneLightingUniformBufferSize)/1024/1024<<"MiB"<<endl;
 #endif
-	singleMatrixUniformMemory=
-		allocateMemory(singleMatrixUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	singlePATMemory=
-		allocateMemory(singlePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	sameMatrixAttributeMemory=
-		allocateMemory(sameMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameMatrixBufferMemory=
-		allocateMemory(sameMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameMatrixRowMajorBufferMemory=
-		allocateMemory(sameMatrixRowMajorBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameMatrix4x3BufferMemory=
-		allocateMemory(sameMatrix4x3Buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameMatrix4x3RowMajorBufferMemory=
-		allocateMemory(sameMatrix4x3RowMajorBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	sameDMatrixBufferMemory=
-		allocateMemory(sameDMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	samePATBufferMemory=
-		allocateMemory(samePATBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	transformationMatrixAttributeMemory=
-		allocateMemory(transformationMatrixAttribute.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	transformationMatrixBufferMemory=
-		allocateMemory(transformationMatrixBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	normalMatrix4x3Memory=
-		allocateMemory(normalMatrix4x3Buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-	viewAndProjectionMatricesMemory=
-		allocateMemory(viewAndProjectionMatricesUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	viewAndProjectionDMatricesMemory=
-		allocateMemory(viewAndProjectionDMatricesUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	materialUniformBufferMemory=
-		allocateMemory(materialUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	materialNotPackedUniformBufferMemory=
-		allocateMemory(materialNotPackedUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	globalLightUniformBufferMemory=
-		allocateMemory(globalLightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	lightUniformBufferMemory=
-		allocateMemory(lightUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	lightNotPackedUniformBufferMemory=
-		allocateMemory(lightNotPackedUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	allInOneLightingUniformBufferMemory=
-		allocateMemory(allInOneLightingUniformBuffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,1);
-	device->bindBufferMemory(
-		singleMatrixUniformBuffer.get(),  // buffer
-		singleMatrixUniformMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		singlePATBuffer.get(),  // buffer
-		singlePATMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameMatrixAttribute.get(),  // buffer
-		sameMatrixAttributeMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameMatrixBuffer.get(),  // buffer
-		sameMatrixBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameMatrixRowMajorBuffer.get(),  // buffer
-		sameMatrixRowMajorBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameMatrix4x3Buffer.get(),  // buffer
-		sameMatrix4x3BufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameMatrix4x3RowMajorBuffer.get(),  // buffer
-		sameMatrix4x3RowMajorBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		sameDMatrixBuffer.get(),  // buffer
-		sameDMatrixBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		samePATBuffer.get(),  // buffer
-		samePATBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		transformationMatrixAttribute.get(),  // buffer
-		transformationMatrixAttributeMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		transformationMatrixBuffer.get(),  // buffer
-		transformationMatrixBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		normalMatrix4x3Buffer.get(),  // buffer
-		normalMatrix4x3Memory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		viewAndProjectionMatricesUniformBuffer.get(),  // buffer
-		viewAndProjectionMatricesMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		viewAndProjectionDMatricesUniformBuffer.get(),  // buffer
-		viewAndProjectionDMatricesMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		materialUniformBuffer.get(),  // buffer
-		materialUniformBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		materialNotPackedUniformBuffer.get(),  // buffer
-		materialNotPackedUniformBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		globalLightUniformBuffer.get(),  // buffer
-		globalLightUniformBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		lightUniformBuffer.get(),  // buffer
-		lightUniformBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		lightNotPackedUniformBuffer.get(),  // buffer
-		lightNotPackedUniformBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
-	device->bindBufferMemory(
-		allInOneLightingUniformBuffer.get(),  // buffer
-		allInOneLightingUniformBufferMemory.get(),  // memory
-		0  // memoryOffset
-	);
 
 	// single matrix uniform staging buffer
 	const float singleMatrixData[]{
