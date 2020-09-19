@@ -3825,8 +3825,8 @@ static void recreateSwapchainAndPipeline()
 			buffer=
 				device->createBufferUnique(
 					vk::BufferCreateInfo(
-						bufferCreateFlags,            // flags
-						size*bufferSizeMultiplier,    // size
+						(sparseAllowed) ? bufferCreateFlags : vk::BufferCreateFlags(),  // flags
+						(sparseAllowed) ? size*bufferSizeMultiplier : size,    // size
 						usage,                        // usage
 						vk::SharingMode::eExclusive,  // sharingMode
 						0,                            // queueFamilyIndexCount
