@@ -1128,7 +1128,7 @@ recreateSwapchain:
 	graphicsQueue.waitIdle();
 
 	// pipeline
-	twoTrianglesPipeline=
+	tie(ignore,twoTrianglesPipeline)=
 		device->createGraphicsPipelineUnique(
 			pipelineCache.get(),
 			vk::GraphicsPipelineCreateInfo(
@@ -1229,8 +1229,8 @@ recreateSwapchain:
 				vk::Pipeline(nullptr),  // basePipelineHandle
 				-1 // basePipelineIndex
 			)
-		);
-	mergePipeline=
+		).asTuple();
+	tie(ignore,mergePipeline)=
 		device->createGraphicsPipelineUnique(
 			pipelineCache.get(),
 			vk::GraphicsPipelineCreateInfo(
@@ -1331,7 +1331,7 @@ recreateSwapchain:
 				vk::Pipeline(nullptr),  // basePipelineHandle
 				-1 // basePipelineIndex
 			)
-		);
+		).asTuple();
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());

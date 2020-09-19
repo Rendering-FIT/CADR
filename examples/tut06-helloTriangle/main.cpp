@@ -486,96 +486,97 @@ static void recreateSwapchainAndPipeline()
 		);
 
 	// pipeline
-	pipeline=device->createGraphicsPipelineUnique(
-		pipelineCache.get(),
-		vk::GraphicsPipelineCreateInfo(
-			vk::PipelineCreateFlags(),  // flags
-			2,  // stageCount
-			array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
-				vk::PipelineShaderStageCreateInfo{
-					vk::PipelineShaderStageCreateFlags(),  // flags
-					vk::ShaderStageFlagBits::eVertex,      // stage
-					vsModule.get(),  // module
-					"main",  // pName
-					nullptr  // pSpecializationInfo
+	tie(ignore,pipeline)=
+		device->createGraphicsPipelineUnique(
+			pipelineCache.get(),
+			vk::GraphicsPipelineCreateInfo(
+				vk::PipelineCreateFlags(),  // flags
+				2,  // stageCount
+				array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
+					vk::PipelineShaderStageCreateInfo{
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eVertex,      // stage
+						vsModule.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					},
+					vk::PipelineShaderStageCreateInfo{
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eFragment,    // stage
+						fsModule.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					}
+				}.data(),
+				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+					vk::PipelineVertexInputStateCreateFlags(),  // flags
+					0,        // vertexBindingDescriptionCount
+					nullptr,  // pVertexBindingDescriptions
+					0,        // vertexAttributeDescriptionCount
+					nullptr   // pVertexAttributeDescriptions
 				},
-				vk::PipelineShaderStageCreateInfo{
-					vk::PipelineShaderStageCreateFlags(),  // flags
-					vk::ShaderStageFlagBits::eFragment,    // stage
-					fsModule.get(),  // module
-					"main",  // pName
-					nullptr  // pSpecializationInfo
-				}
-			}.data(),
-			&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
-				vk::PipelineVertexInputStateCreateFlags(),  // flags
-				0,        // vertexBindingDescriptionCount
-				nullptr,  // pVertexBindingDescriptions
-				0,        // vertexAttributeDescriptionCount
-				nullptr   // pVertexAttributeDescriptions
-			},
-			&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
-				vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-				vk::PrimitiveTopology::eTriangleList,  // topology
-				VK_FALSE  // primitiveRestartEnable
-			},
-			nullptr, // pTessellationState
-			&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
-				vk::PipelineViewportStateCreateFlags(),  // flags
-				1,  // viewportCount
-				&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
-				1,  // scissorCount
-				&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
-			},
-			&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
-				vk::PipelineRasterizationStateCreateFlags(),  // flags
-				VK_FALSE,  // depthClampEnable
-				VK_FALSE,  // rasterizerDiscardEnable
-				vk::PolygonMode::eFill,  // polygonMode
-				vk::CullModeFlagBits::eNone,  // cullMode
-				vk::FrontFace::eCounterClockwise,  // frontFace
-				VK_FALSE,  // depthBiasEnable
-				0.f,  // depthBiasConstantFactor
-				0.f,  // depthBiasClamp
-				0.f,  // depthBiasSlopeFactor
-				1.f   // lineWidth
-			},
-			&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
-				vk::PipelineMultisampleStateCreateFlags(),  // flags
-				vk::SampleCountFlagBits::e1,  // rasterizationSamples
-				VK_FALSE,  // sampleShadingEnable
-				0.f,       // minSampleShading
-				nullptr,   // pSampleMask
-				VK_FALSE,  // alphaToCoverageEnable
-				VK_FALSE   // alphaToOneEnable
-			},
-			nullptr,  // pDepthStencilState
-			&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
-				vk::PipelineColorBlendStateCreateFlags(),  // flags
-				VK_FALSE,  // logicOpEnable
-				vk::LogicOp::eClear,  // logicOp
-				1,  // attachmentCount
-				&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
-					VK_FALSE,  // blendEnable
-					vk::BlendFactor::eZero,  // srcColorBlendFactor
-					vk::BlendFactor::eZero,  // dstColorBlendFactor
-					vk::BlendOp::eAdd,       // colorBlendOp
-					vk::BlendFactor::eZero,  // srcAlphaBlendFactor
-					vk::BlendFactor::eZero,  // dstAlphaBlendFactor
-					vk::BlendOp::eAdd,       // alphaBlendOp
-					vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
-						vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+					vk::PrimitiveTopology::eTriangleList,  // topology
+					VK_FALSE  // primitiveRestartEnable
 				},
-				array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-			},
-			nullptr,  // pDynamicState
-			pipelineLayout.get(),  // layout
-			renderPass.get(),  // renderPass
-			0,  // subpass
-			vk::Pipeline(nullptr),  // basePipelineHandle
-			-1 // basePipelineIndex
-		)
-	);
+				nullptr, // pTessellationState
+				&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+					vk::PipelineViewportStateCreateFlags(),  // flags
+					1,  // viewportCount
+					&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(currentSurfaceExtent.width),float(currentSurfaceExtent.height),0.f,1.f),  // pViewports
+					1,  // scissorCount
+					&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),currentSurfaceExtent)  // pScissors
+				},
+				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+					vk::PipelineRasterizationStateCreateFlags(),  // flags
+					VK_FALSE,  // depthClampEnable
+					VK_FALSE,  // rasterizerDiscardEnable
+					vk::PolygonMode::eFill,  // polygonMode
+					vk::CullModeFlagBits::eNone,  // cullMode
+					vk::FrontFace::eCounterClockwise,  // frontFace
+					VK_FALSE,  // depthBiasEnable
+					0.f,  // depthBiasConstantFactor
+					0.f,  // depthBiasClamp
+					0.f,  // depthBiasSlopeFactor
+					1.f   // lineWidth
+				},
+				&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+					vk::PipelineMultisampleStateCreateFlags(),  // flags
+					vk::SampleCountFlagBits::e1,  // rasterizationSamples
+					VK_FALSE,  // sampleShadingEnable
+					0.f,       // minSampleShading
+					nullptr,   // pSampleMask
+					VK_FALSE,  // alphaToCoverageEnable
+					VK_FALSE   // alphaToOneEnable
+				},
+				nullptr,  // pDepthStencilState
+				&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+					vk::PipelineColorBlendStateCreateFlags(),  // flags
+					VK_FALSE,  // logicOpEnable
+					vk::LogicOp::eClear,  // logicOp
+					1,  // attachmentCount
+					&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
+						VK_FALSE,  // blendEnable
+						vk::BlendFactor::eZero,  // srcColorBlendFactor
+						vk::BlendFactor::eZero,  // dstColorBlendFactor
+						vk::BlendOp::eAdd,       // colorBlendOp
+						vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+						vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+						vk::BlendOp::eAdd,       // alphaBlendOp
+						vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+							vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+					},
+					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+				},
+				nullptr,  // pDynamicState
+				pipelineLayout.get(),  // layout
+				renderPass.get(),  // renderPass
+				0,  // subpass
+				vk::Pipeline(nullptr),  // basePipelineHandle
+				-1 // basePipelineIndex
+			)
+		).asTuple();
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());

@@ -506,7 +506,7 @@ int main(int,char**)
 				),
 				vk::Fence(nullptr)
 			);
-			presentationQueue.presentKHR(
+			(void)presentationQueue.presentKHR(
 				vk::PresentInfoKHR(
 					1,                 // waitSemaphoreCount
 					&renderFinishedSemaphore.get(),  // pWaitSemaphores

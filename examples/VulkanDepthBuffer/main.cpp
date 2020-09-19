@@ -676,7 +676,7 @@ recreateSwapchain:
 	graphicsQueue.waitIdle();
 
 	// pipeline
-	pipeline=
+	tie(ignore,pipeline)=
 		device->createGraphicsPipelineUnique(
 			pipelineCache.get(),
 			vk::GraphicsPipelineCreateInfo(
@@ -777,7 +777,7 @@ recreateSwapchain:
 				vk::Pipeline(nullptr),  // basePipelineHandle
 				-1 // basePipelineIndex
 			)
-		);
+		).asTuple();
 
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
