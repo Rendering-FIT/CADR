@@ -1047,7 +1047,7 @@ static void generateSharedVertexTriangles(
 
 
 // allocate memory for buffers
-static vk::UniqueDeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags,unsigned memorySizeDivisor)
+static tuple<vk::UniqueDeviceMemory,size_t> allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags,unsigned memorySizeDivisor)
 {
 	vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
 	if(memorySizeDivisor!=1)
@@ -1057,13 +1057,14 @@ static vk::UniqueDeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropert
 	for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
 		if(memoryRequirements.memoryTypeBits&(1<<i))
 			if((memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
-				return
+				return tuple(
 					device->allocateMemoryUnique(
 						vk::MemoryAllocateInfo(
 							memoryRequirements.size,  // allocationSize
 							i                         // memoryTypeIndex
 						)
-					);
+					),
+					memoryRequirements.size);
 	throw std::runtime_error("No suitable memory type found for the buffer.");
 }
 
@@ -3832,7 +3833,8 @@ static void recreateSwapchainAndPipeline()
 						nullptr                       // pQueueFamilyIndices
 					)
 				);
-			memory=allocateMemory(buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
+			size_t allocatedSize;
+			tie(memory,allocatedSize)=allocateMemory(buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
 			if(sparseMode==SPARSE_NONE || sparseAllowed==false)
 				device->bindBufferMemory(
 					buffer.get(),  // buffer
@@ -3840,7 +3842,7 @@ static void recreateSwapchainAndPipeline()
 					0  // memoryOffset
 				);
 			else
-				bindInfoList.emplace_back(sparseAllowed,buffer.get(),memory.get(),size);
+				bindInfoList.emplace_back(sparseAllowed,buffer.get(),memory.get(),allocatedSize);
 		};
 	size_t coordinateBufferSize=getBufferSize(numTriangles,true); // ~48MB
 	size_t normalBufferSize=size_t(numTriangles)*3*3*sizeof(float); // ~36MB
@@ -3959,7 +3961,7 @@ static void recreateSwapchainAndPipeline()
 						nullptr                       // pQueueFamilyIndices
 					)
 				);
-			memory=
+			tie(memory,ignore)=
 				allocateMemory(buffer.get(),
 				               vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCoherent|vk::MemoryPropertyFlagBits::eHostCached,1);
 			device->bindBufferMemory(
@@ -4522,6 +4524,7 @@ static void recreateSwapchainAndPipeline()
 	createBuffer(lightUniformBuffer,           lightUniformBufferMemory,           lightUniformBufferSize,            false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(lightNotPackedUniformBuffer,  lightNotPackedUniformBufferMemory,  lightNotPackedUniformBufferSize,   false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(allInOneLightingUniformBuffer,allInOneLightingUniformBufferMemory,allInOneLightingUniformBufferSize, false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(indirectBuffer,               indirectBufferMemory,               (size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand),true,vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 #if 0
 	cout<<"Second buffer set memory requirements: "<<(transformationMatrix4x4BufferSize+
 			transformationMatrix4x4BufferSize+transformationMatrix4x4BufferSize+transformationMatrix4x3BufferSize+
@@ -4531,6 +4534,40 @@ static void recreateSwapchainAndPipeline()
 			materialNotPackedUniformBufferSize+globalLightUniformBufferSize+lightUniformBufferSize+
 			lightNotPackedUniformBufferSize+allInOneLightingUniformBufferSize)/1024/1024<<"MiB"<<endl;
 #endif
+
+	if(sparseMode!=SPARSE_NONE)
+	{
+		vector<vk::SparseBufferMemoryBindInfo> bufferBinds;
+		vector<vk::SparseMemoryBind> memoryBinds;
+		bufferBinds.reserve(bindInfoList.size());
+		memoryBinds.reserve(bindInfoList.size());
+		for(auto &bindInfo : bindInfoList) {
+			auto& r=memoryBinds.emplace_back(
+				0,  // resourceOffset
+				bindInfo.size,  // size
+				bindInfo.memory,  // memory
+				0,  // memoryOffset
+				vk::SparseMemoryBindFlags()  // flags
+			);
+			bufferBinds.emplace_back(
+				bindInfo.buffer,  // buffer
+				1,  // bindCount
+				&r  // pBinds
+			);
+		}
+		sparseQueue.bindSparse(
+			vk::BindSparseInfo(
+				nullptr,  // waitSemaphores
+				bufferBinds,  // bufferBinds
+				nullptr,  // imageOpaqueBinds
+				nullptr,  // imageBinds
+				nullptr  // signalSemaphores
+			),
+			vk::Fence()
+		);
+		sparseQueue.waitIdle();
+		bindInfoList.clear();
+	}
 
 	// single matrix uniform staging buffer
 	const float singleMatrixData[]{
@@ -4893,28 +4930,6 @@ static void recreateSwapchainAndPipeline()
 		allInOneLightingUniformBuffer.get(),                // dstBuffer
 		1,                                                  // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,allInOneLightingUniformBufferSize)  // pRegions
-	);
-
-	// indirect buffer
-	indirectBuffer=
-		device->createBufferUnique(
-			vk::BufferCreateInfo(
-				bufferCreateFlags,            // flags
-				(size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand)*bufferSizeMultiplier,  // size
-				vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	indirectBufferMemory=
-		allocateMemory(indirectBuffer.get(),
-		               vk::MemoryPropertyFlagBits::eDeviceLocal,
-		               bufferSizeMultiplier);
-	device->bindBufferMemory(
-		indirectBuffer.get(),  // image
-		indirectBufferMemory.get(),  // memory
-		0  // memoryOffset
 	);
 
 	// indirect staging buffer
