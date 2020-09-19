@@ -4489,7 +4489,6 @@ static void recreateSwapchainAndPipeline()
 		)
 	);
 
-
 	// matrix attributes, buffers and uniforms
 	size_t transformationMatrix4x4BufferSize=size_t(numTriangles)*16*sizeof(float); // 64MB
 	size_t transformationMatrix4x3BufferSize=size_t(numTriangles)*12*sizeof(float);
@@ -7984,7 +7983,7 @@ int main(int argc,char** argv)
 
 			// read timestamps
 			vector<uint64_t> timestamps(tests.size()*2);
-			device->getQueryPoolResults(
+			vk::Result r=device->getQueryPoolResults(
 				timestampPool.get(),  // queryPool
 				0,                    // firstQuery
 				uint32_t(tests.size())*2,  // queryCount
@@ -7993,6 +7992,8 @@ int main(int argc,char** argv)
 				sizeof(uint64_t),     // stride
 				vk::QueryResultFlagBits::e64|vk::QueryResultFlagBits::eWait  // flags
 			);
+			if(r!=vk::Result::eSuccess)
+				throw std::runtime_error("vkGetQueryPoolResults() did not finish with VK_SUCCESS result.");
 			size_t i=0;
 			for(Test& t : tests) {
 				if(t.enabled)
