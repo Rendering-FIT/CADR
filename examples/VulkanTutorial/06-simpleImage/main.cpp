@@ -10,11 +10,12 @@ const vk::Extent2D imageExtent(128,128);
 
 
 // Vulkan instance
-// (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
+// (must be destructed as the last one)
 static vk::UniqueInstance instance;
 
 // Vulkan handles and objects
-// (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
+// (they need to be placed in particular (not arbitrary) order;
+// this is because of their destruction order from bottom to up)
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static vk::UniqueDevice device;
@@ -100,12 +101,14 @@ int main(int,char**)
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
 					1,                        // queueCreateInfoCount
-					&(const vk::DeviceQueueCreateInfo&)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
-						vk::DeviceQueueCreateFlags(),  // flags
-						graphicsQueueFamily,  // queueFamilyIndex
-						1,  // queueCount
-						&(const float&)1.f,  // pQueuePriorities
-					},
+					array {                   // pQueueCreateInfos
+						vk::DeviceQueueCreateInfo{
+							vk::DeviceQueueCreateFlags(),  // flags
+							graphicsQueueFamily,  // queueFamilyIndex
+							1,                    // queueCount
+							&(const float&)1.f,   // pQueuePriorities
+						}
+					}.data(),
 					0,nullptr,  // no layers
 					0,nullptr,  // number of enabled extensions, enabled extension names
 					nullptr,    // enabled features
@@ -122,33 +125,39 @@ int main(int,char**)
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
 					1,                            // attachmentCount
-					&(const vk::AttachmentDescription&)vk::AttachmentDescription(  // pAttachments
-						vk::AttachmentDescriptionFlags(),  // flags
-						vk::Format::eR8G8B8A8Unorm,        // format
-						vk::SampleCountFlagBits::e1,       // samples
-						vk::AttachmentLoadOp::eClear,      // loadOp
-						vk::AttachmentStoreOp::eStore,     // storeOp
-						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
-						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
-						vk::ImageLayout::eUndefined,       // initialLayout
-						vk::ImageLayout::eGeneral          // finalLayout
-					),
+					array{  // pAttachments
+						vk::AttachmentDescription(
+							vk::AttachmentDescriptionFlags(),  // flags
+							vk::Format::eR8G8B8A8Unorm,        // format
+							vk::SampleCountFlagBits::e1,       // samples
+							vk::AttachmentLoadOp::eClear,      // loadOp
+							vk::AttachmentStoreOp::eStore,     // storeOp
+							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+							vk::ImageLayout::eUndefined,       // initialLayout
+							vk::ImageLayout::eGeneral          // finalLayout
+						)
+					}.data(),
 					1,  // subpassCount
-					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
-						vk::SubpassDescriptionFlags(),     // flags
-						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-						0,        // inputAttachmentCount
-						nullptr,  // pInputAttachments
-						1,        // colorAttachmentCount
-						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
-							0,  // attachment
-							vk::ImageLayout::eColorAttachmentOptimal  // layout
-						),
-						nullptr,  // pResolveAttachments
-						nullptr,  // pDepthStencilAttachment
-						0,        // preserveAttachmentCount
-						nullptr   // pPreserveAttachments
-					),
+					array{  // pSubpasses
+						vk::SubpassDescription(
+							vk::SubpassDescriptionFlags(),     // flags
+							vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+							0,        // inputAttachmentCount
+							nullptr,  // pInputAttachments
+							1,        // colorAttachmentCount
+							array{    // pColorAttachments
+								vk::AttachmentReference(
+									0,  // attachment
+									vk::ImageLayout::eColorAttachmentOptimal  // layout
+								),
+							}.data(),
+							nullptr,  // pResolveAttachments
+							nullptr,  // pDepthStencilAttachment
+							0,        // preserveAttachmentCount
+							nullptr   // pPreserveAttachments
+						)
+					}.data(),
 					0,  // dependencyCount
 					nullptr  // pDependencies
 				)
@@ -287,14 +296,11 @@ int main(int,char**)
 
 		// submit work
 		graphicsQueue.submit(
-			vk::ArrayProxy<const vk::SubmitInfo>(
-				1,
-				&(const vk::SubmitInfo&)vk::SubmitInfo(
-					0,nullptr,                       // waitSemaphoreCount, pWaitSemaphores
-					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					1,&commandBuffer.get(),          // commandBufferCount, pCommandBuffers
-					0,nullptr                        // signalSemaphoreCount, pSignalSemaphores
-				)
+			vk::SubmitInfo(
+				0,nullptr,                       // waitSemaphoreCount, pWaitSemaphores
+				&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+				1,&commandBuffer.get(),          // commandBufferCount, pCommandBuffers
+				0,nullptr                        // signalSemaphoreCount, pSignalSemaphores
 			),
 			renderingFinishedFence.get()  // fence
 		);

@@ -89,13 +89,15 @@ int main(int,char**)
 				pd.createDeviceUnique(
 					vk::DeviceCreateInfo(
 						vk::DeviceCreateFlags(),  // flags
-						1,  // at least one queue is mandatory
-						&(const vk::DeviceQueueCreateInfo&)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
-							vk::DeviceQueueCreateFlags(),  // flags
-							0,  // queueFamilyIndex
-							1,  // queueCount
-							&(const float&)1.f,  // pQueuePriorities
-						},
+						1,  // queueCreateInfoCount; at least one queue is mandatory
+						array{  // pQueueCreateInfos
+							vk::DeviceQueueCreateInfo{
+								vk::DeviceQueueCreateFlags(),  // flags
+								0,  // queueFamilyIndex
+								1,  // queueCount
+								&(const float&)1.f,  // pQueuePriorities
+							}
+						}.data(),
 						0,nullptr,  // no layers
 						0,nullptr,  // no enabled extensions
 						nullptr  // enabled features

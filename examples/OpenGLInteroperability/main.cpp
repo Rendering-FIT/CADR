@@ -1882,7 +1882,7 @@ static bool queueFrame()
 
 	// render a triangle
 	// coordinates are given in OpenGL NDC (Normalized Device Coordinates; x,y,z are in range -1,+1;
-	// x points right, y points up, z points forward) 
+	// x points right, y points up, z points forward)
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 	glBegin(GL_TRIANGLES);
 	glColor3f(0.f,0.f,1.f);

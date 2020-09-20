@@ -10,11 +10,12 @@ const vk::Extent2D imageExtent(128,128);
 
 
 // Vulkan instance
-// (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
+// (must be destructed as the last one)
 static vk::UniqueInstance instance;
 
 // Vulkan handles and objects
-// (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
+// (they need to be placed in particular (not arbitrary) order;
+// this is because of their destruction order from bottom to up)
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static vk::UniqueDevice device;

@@ -10,7 +10,7 @@
 // - vk::Device::createGraphicsPipelinesUnique(), createComputePipelinesUnique() and probably few others are broken
 //   (compilation fails) since Vulkan version 1.2.136. The problem was fixed in git on 2020-07-20. The first working release is 1.2.149.
 // - vk::Device::createGraphicsPipelinesUnique() and createComputePipeline() used to return vk::Pipeline
-//   while now it returns vk::ResultValue<vk::Pipeline>. The change comes from two success values instead of one returned from 
+//   while now it returns vk::ResultValue<vk::Pipeline>. The change comes from two success values instead of one returned from
 //   vkCreateGraphicsPipelines() and vkCreateComputePipelines() introduced in Vulkan version 1.2.135.
 //   The change did not affect vulkan.hpp in the version 1.2.135, but the following version 1.2.136.
 //   The first Vulkan SDK affected was 1.2.141.0.
