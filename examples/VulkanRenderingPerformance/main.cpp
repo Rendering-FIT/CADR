@@ -8,7 +8,9 @@
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <chrono>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 
 using namespace std;
 
@@ -357,6 +359,13 @@ static const unsigned triangleSize=0;
 static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad*.vert is still drawing to the clip space (by gl_InstanceIndex)
 static const unsigned triStripLength=1000;
 
+// sparse memory variables
+enum { SPARSE_NONE, SPARSE_BINDING, SPARSE_RESIDENCY, SPARSE_RESIDENCY_ALIASED };
+static int sparseMode = SPARSE_NONE;
+static size_t sparsePageSize=0;
+static vk::BufferCreateFlags bufferCreateFlags = {};
+static unsigned bufferSizeMultiplier = 1;
+
 // shader code in SPIR-V binary
 static const uint32_t attributelessConstantOutputVS_spirv[]={
 #include "attributelessConstantOutput.vert.spv"
@@ -532,11 +541,6 @@ static const uint32_t phongNoSpecularFS_spirv[]={
 static const uint32_t phongNoSpecularSingleUniformFS_spirv[]={
 #include "phongNoSpecularSingleUniform.frag.spv"
 };
-
-enum { SPARSE_NONE, SPARSE_BINDING, SPARSE_RESIDENCY, SPARSE_RESIDENCY_ALIASED };
-int sparseMode = SPARSE_NONE;
-vk::BufferCreateFlags bufferCreateFlags = {};
-unsigned bufferSizeMultiplier = 1;
 
 
 struct Test {
@@ -1388,12 +1392,14 @@ static void init(size_t deviceIndex)
 			}
 		);
 
+	// get queues
+	graphicsQueue=device->getQueue(graphicsQueueFamily,0);
+	presentationQueue=device->getQueue(presentationQueueFamily,0);
+	if(sparseQueueFamily!=UINT32_MAX)
+		sparseQueue=device->getQueue(sparseQueueFamily,0);
+
 	// print buffer aligment or sparse block size
-	if(sparseMode==SPARSE_NONE)
-		cout<<"Buffer alignment: ";
-	else
-		cout<<"Sparse block size: ";
-	cout<<
+	size_t memoryAlignment=
 		device->getBufferMemoryRequirements(
 			device->createBufferUnique(
 				vk::BufferCreateInfo(
@@ -1405,7 +1411,125 @@ static void init(size_t deviceIndex)
 					nullptr                       // pQueueFamilyIndices
 				)
 			).get())
-			.alignment<<endl;
+			.alignment;
+	if(sparseMode==SPARSE_NONE)
+		cout<<"Buffer alignment: "<<memoryAlignment<<endl;
+	else {
+		sparsePageSize=memoryAlignment;
+		cout<<"Sparse block size: "<<sparsePageSize<<endl;
+	}
+
+	if(sparseMode!=SPARSE_NONE)
+	{
+		auto test=
+			[](size_t numPages,size_t numBuffers,size_t numMemoryObjectsPerBuffer)->double {
+
+				// create buffers
+				vector<vk::UniqueBuffer> bufferList;
+				bufferList.reserve(numBuffers);
+				for(size_t i=0; i<numBuffers; i++)
+					bufferList.emplace_back(
+						device->createBufferUnique(
+							vk::BufferCreateInfo(
+								bufferCreateFlags,            // flags
+								numPages*sparsePageSize*bufferSizeMultiplier/numBuffers,  // size
+								vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+								vk::SharingMode::eExclusive,  // sharingMode
+								0,                            // queueFamilyIndexCount
+								nullptr                       // pQueueFamilyIndices
+							)
+						)
+					);
+
+				// allocate memory
+				vector<vk::UniqueDeviceMemory> memoryList;
+				memoryList.reserve(numMemoryObjectsPerBuffer*numBuffers);
+				for(size_t i=0; i<numBuffers; i++)
+					for(size_t j=0; j<numMemoryObjectsPerBuffer; j++)
+						memoryList.emplace_back(
+							get<0>(
+								allocateMemory(
+									bufferList[i].get(),
+									vk::MemoryPropertyFlagBits::eDeviceLocal,
+									numMemoryObjectsPerBuffer*bufferSizeMultiplier
+								)
+							)
+						);
+
+				// fill SparseMemoryBind structures
+				vector<vk::SparseMemoryBind> memoryBinds;
+				memoryBinds.reserve(numPages/(numMemoryObjectsPerBuffer*numBuffers));
+				size_t memorySize=sparsePageSize*numPages/(numMemoryObjectsPerBuffer*numBuffers);
+				for(size_t i=0,idx=0; i<numBuffers; i++)
+					for(size_t j=0; j<numMemoryObjectsPerBuffer; j++,idx++)
+						memoryBinds.emplace_back(
+							j*memorySize,  // resourceOffset
+							memorySize,  // size
+							memoryList[idx].get(),  // memory
+							0,  // memoryOffset
+							vk::SparseMemoryBindFlags()  // flags
+						);
+
+				// fill SparseBufferMemoryBindInfo structures
+				vector<vk::SparseBufferMemoryBindInfo> bufferBinds;
+				bufferBinds.reserve(numBuffers);
+				for(size_t i=0; i<numBuffers; i++)
+					bufferBinds.emplace_back(
+						bufferList[i].get(),  // buffer
+						numMemoryObjectsPerBuffer,  // bindCount
+						memoryBinds.data()+(i*numMemoryObjectsPerBuffer)  // pBinds
+					);
+
+				// call bindSparse
+				auto startTime=chrono::high_resolution_clock::now();
+				sparseQueue.bindSparse(
+					vk::BindSparseInfo(
+						nullptr,  // waitSemaphores
+						bufferBinds,  // bufferBinds
+						nullptr,  // imageOpaqueBinds
+						nullptr,  // imageBinds
+						nullptr  // signalSemaphores
+					),
+					vk::Fence()
+				);
+				sparseQueue.waitIdle();
+
+				// return time in seconds as double
+				return chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+			};
+
+		// do sparse bind measurement
+		cout<<"Sparse binding performance:"<<endl;
+		cout<<"   bind page time    (numPages, numBuffers, numMemoryObjectsPerBuffer)"<<endl;
+		constexpr unsigned repeatCount=3;
+		constexpr auto testData=array{
+			tuple{1024,1,1}, tuple{4096,1,1},
+			tuple{1024,32,1}, tuple{1024,32,32},
+			tuple{1024,1,1024}, tuple{4096,1,4096},
+			tuple{1024,1024,1}, tuple{4096,4096,1},
+			tuple{2048,64,1}, tuple{1024,32,1}, tuple{512,16,1},
+		};
+		array<double,testData.size()> results;
+		results.fill(numeric_limits<double>::max());
+		for(size_t j=0; j<repeatCount; j++)
+			for(size_t i=0; i<testData.size(); i++) {
+				auto& d=testData[i];
+				size_t numPages=get<0>(d);
+				size_t numBuffers=get<1>(d);
+				size_t numMemoryObjectsPerBuffer=get<2>(d);
+				results[i]=min(test(numPages,numBuffers,numMemoryObjectsPerBuffer),results[i]);
+			}
+
+		// print results
+		for(size_t i=0; i<testData.size(); i++) {
+			double t=results[i];
+			size_t numPages=get<0>(testData[i]);
+			size_t numBuffers=get<1>(testData[i]);
+			size_t numMemoryObjectsPerBuffer=get<2>(testData[i]);
+			cout<<"   "<<setw(10)<<t/numPages*1e6<<"us      ("<<setw(6)<<numPages
+			    <<"    "<<setw(7)<<numBuffers<<"     "<<setw(8)<<numMemoryObjectsPerBuffer<<")"<<endl;
+		}
+	}
 
 	// number of triangles
 	// (reduce the number on integrated graphics as it may easily run out of memory)
@@ -1422,12 +1546,6 @@ static void init(size_t deviceIndex)
 	if(physicalDevice.getProperties().deviceType==vk::PhysicalDeviceType::eIntegratedGpu)
 		numTriangles=min(numTriangles,numTrianglesReduced);
 	cout<<"Number of triangles for tests: "<<numTriangles<<endl;
-
-	// get queues
-	graphicsQueue=device->getQueue(graphicsQueueFamily,0);
-	presentationQueue=device->getQueue(presentationQueueFamily,0);
-	if(sparseQueueFamily!=UINT32_MAX)
-		sparseQueue=device->getQueue(sparseQueueFamily,0);
 
 	// choose surface format
 	vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(surface.get());
@@ -3909,6 +4027,8 @@ static void recreateSwapchainAndPipeline()
 		vector<vk::SparseMemoryBind> memoryBinds;
 		bufferBinds.reserve(bindInfoList.size());
 		memoryBinds.reserve(bindInfoList.size());
+		size_t numPages=0;
+		size_t numPageBlocks=0;
 		for(auto &bindInfo : bindInfoList) {
 			auto& r=memoryBinds.emplace_back(
 				0,  // resourceOffset
@@ -3922,7 +4042,11 @@ static void recreateSwapchainAndPipeline()
 				1,  // bindCount
 				&r  // pBinds
 			);
+			numPages+=bindInfo.size/sparsePageSize;
+			numPageBlocks++;
 		}
+		bindInfoList.clear();
+		auto startTime=chrono::high_resolution_clock::now();
 		sparseQueue.bindSparse(
 			vk::BindSparseInfo(
 				nullptr,  // waitSemaphores
@@ -3934,7 +4058,11 @@ static void recreateSwapchainAndPipeline()
 			vk::Fence()
 		);
 		sparseQueue.waitIdle();
-		bindInfoList.clear();
+		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+		cout<<"Sparse binding for all test buffers took "<<totalMeasurementTime*1000
+		    <<"ms and per memory page: "<<totalMeasurementTime/numPages*1e6<<"us"<<endl;
+		cout<<"   (number of pages: "<<numPages<<", number of memory blocks: "<<numPageBlocks<<")"<<endl;
+
 	}
 
 	// staging buffer struct
