@@ -506,16 +506,17 @@ int main(int,char**)
 				),
 				vk::Fence(nullptr)
 			);
-			(void)presentationQueue.presentKHR(
-				vk::PresentInfoKHR(
-					1,                 // waitSemaphoreCount
-					&renderFinishedSemaphore.get(),  // pWaitSemaphores
-					1,                 // swapchainCount
-					&swapchain.get(),  // pSwapchains
-					&imageIndex,       // pImageIndices
-					nullptr            // pResults
-				)
-			);
+			ignore=
+				presentationQueue.presentKHR(
+					vk::PresentInfoKHR(
+						1,                 // waitSemaphoreCount
+						&renderFinishedSemaphore.get(),  // pWaitSemaphores
+						1,                 // swapchainCount
+						&swapchain.get(),  // pSwapchains
+						&imageIndex,       // pImageIndices
+						nullptr            // pResults
+					)
+				);
 			presentationQueue.waitIdle();
 		}
 

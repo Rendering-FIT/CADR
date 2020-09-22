@@ -61,6 +61,7 @@ int main(int,char**)
 	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
 	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
 	r5=device.createGraphicsPipelineUnique(vk::PipelineCache(),vk::GraphicsPipelineCreateInfo{});
+	if(r1!=vk::Result::eSuccess)  return 1;
 	r1=device.createComputePipelines(vk::PipelineCache{},0,nullptr,nullptr,nullptr);
 	r2=device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
 	r2=device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
@@ -68,6 +69,7 @@ int main(int,char**)
 	r4=device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
 	r4=device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
 	r5=device.createComputePipelineUnique(vk::PipelineCache(),vk::ComputePipelineCreateInfo{});
+	if(r1!=vk::Result::eSuccess)  return 1;
 
 	return 0;
 }
