@@ -30,8 +30,8 @@ protected:
 public:
 
 	AttribStorage() = delete;
-	AttribStorage(const AttribSizeList& attribSizeList);
-	AttribStorage(Renderer* r,const AttribSizeList& attribSizeList);
+	AttribStorage(const AttribSizeList& attribSizeList,size_t initialNumVertices=1024);
+	AttribStorage(Renderer* r,const AttribSizeList& attribSizeList,size_t initialNumVertices=1024);
 	~AttribStorage();
 
 	AttribStorage(const AttribStorage&) = delete;
@@ -63,6 +63,7 @@ public:
 	vk::Buffer buffer(uint32_t index) const;
 	vk::DeviceMemory memory(uint32_t index) const;
 	uint32_t numBuffers() const;
+	void resizeBuffers(size_t newNumVertices);
 
 	void render();
 	void cancelAllAllocations();

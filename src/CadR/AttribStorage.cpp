@@ -10,21 +10,17 @@ using namespace CadR;
 
 
 
-AttribStorage::AttribStorage(const AttribSizeList& attribSizeList)
-	: AttribStorage(Renderer::get(),attribSizeList)
+AttribStorage::AttribStorage(const AttribSizeList& attribSizeList,size_t initialNumVertices)
+	: AttribStorage(Renderer::get(),attribSizeList,initialNumVertices)
 {
 }
 
 
-AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSizeList)
-	: _allocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
+AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSizeList,size_t initialNumVertices)
+	: _allocationManager(uint32_t(initialNumVertices),0)  // set capacity to initialNumVertices, set null object (on index 0) to be of zero size
 	, _attribSizeList(attribSizeList)
 	, _renderer(renderer)
 {
-#if 0
-	//_renderer->onAttribStorageInit(this);
-#endif
-
 	// attribute buffers
 	vk::BufferCreateInfo bufferInfo;
 	bufferInfo.flags=vk::BufferCreateFlags();
@@ -34,12 +30,12 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSize
 	bufferInfo.pQueueFamilyIndices=nullptr;
 	VulkanDevice* device=_renderer->device();
 	_bufferList.reserve(_attribSizeList.size());
-	for(uint8_t size : _attribSizeList) {
+	for(uint8_t attribSize : _attribSizeList) {
 
 		// create buffer
 		vk::Buffer b;
-		if(size!=0) {
-			bufferInfo.size=size*1024;
+		if(attribSize!=0) {
+			bufferInfo.size=attribSize*initialNumVertices;
 			b=device->createBuffer(bufferInfo);
 		} else
 			b=nullptr;
@@ -47,7 +43,7 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSize
 
 		// allocate memory
 		vk::DeviceMemory m;
-		if(size!=0) {
+		if(initialNumVertices!=0) {
 			m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
 			_memoryList.push_back(m);
 			device->bindBufferMemory(
@@ -58,20 +54,7 @@ AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSize
 		}
 		else
 			_memoryList.push_back(nullptr);
-
 	}
-
-#if 0
-	// create index buffer
-	if(_attribConfig.indexed())
-	{
-		bufferInfo.usage=vk::BufferUsageFlagBits::eIndexBuffer;
-		bufferInfo.size=4*1024;
-		_indexBuffer=device->createBuffer(bufferInfo);
-	}
-	else
-		_indexBuffer=nullptr;
-#endif
 }
 
 
@@ -353,21 +336,56 @@ void AttribStorage::uploadAttribs(Geometry& g,const vector<vector<uint8_t>>& ver
 }
 
 
-#if 0
-void AttribStorage::uploadIndices(Drawable* /*d*/,std::vector<uint32_t>&& /*indexData*/,size_t /*dstIndex*/)
+void AttribStorage::resizeBuffers(size_t newNumVertices)
 {
-#if 0
-   if(_eb==nullptr) {
-      cout<<"Error in AttribStorage::uploadIndices(): ebo is null.\n"
-            "   AttribStorage was probably created with AttribConfig\n"
-            "   without ebo member set to true." << endl;
-      return;
-   }
-   const unsigned elementSize=4;
-   unsigned srcOffset=fromIndex*elementSize;
-   unsigned dstOffset=(_indexAllocationManager[mesh.indicesDataId()].startIndex+fromIndex)*elementSize;
-   _eb->setData((uint8_t*)indices+srcOffset,numIndices*elementSize,dstOffset);
-#endif
+
+	vk::BufferCreateInfo bufferInfo;
+	bufferInfo.flags=vk::BufferCreateFlags();
+	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst;
+	bufferInfo.sharingMode=vk::SharingMode::eExclusive;
+	bufferInfo.queueFamilyIndexCount=0;
+	bufferInfo.pQueueFamilyIndices=nullptr;
+	VulkanDevice* device=_renderer->device();
+
+	for(uint32_t i=0; i<numBuffers(); i++) {
+
+		// store safely old buffer
+		struct OldHandles {
+			vk::Buffer buffer;
+			vk::DeviceMemory memory;
+			VulkanDevice* device;
+			OldHandles(vk::Buffer b,vk::DeviceMemory m,VulkanDevice* d) : buffer(b), memory(m), device(d)  {}
+			~OldHandles()  { device->destroy(buffer); device->destroy(memory); }
+		};
+		OldHandles oldHandles(_bufferList[i],_memoryList[i],device);
+		_bufferList[i]=nullptr;
+		_memoryList[i]=nullptr;
+
+		// create new buffer
+		uint8_t attribSize=_attribSizeList[i];
+		vk::Buffer b;
+		if(attribSize!=0) {
+			bufferInfo.size=attribSize*newNumVertices;
+			b=device->createBuffer(bufferInfo);
+			_bufferList[i]=b;
+		}
+
+		// allocate memory
+		vk::DeviceMemory m;
+		if(newNumVertices!=0) {
+			m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
+			_memoryList[i]=m;
+			device->bindBufferMemory(
+					b,  // buffer
+					m,  // memory
+					0   // memoryOffset
+				);
+		}
+	}
+	
+	if(newNumVertices>0) {
+
+	}
 }
 
 
@@ -394,7 +412,6 @@ void AttribStorage::render(const std::vector<RenderingCommandData>& renderingDat
          gl.glMultiDrawArraysIndirect(it2->glMode,(const void*)offset,GLsizei(it2->drawCommandCount),0);
       }
 }
-#endif
 #endif
 
 
