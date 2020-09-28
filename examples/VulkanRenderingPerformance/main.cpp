@@ -3953,15 +3953,9 @@ static void recreateSwapchainAndPipeline()
 				);
 			size_t allocatedSize;
 			tie(memory,allocatedSize)=allocateMemory(buffer.get(),vk::MemoryPropertyFlagBits::eDeviceLocal,bufferSizeMultiplier);
-			if(sparseMode==SPARSE_NONE || sparseAllowed==false)
-				device->bindBufferMemory(
-					buffer.get(),  // buffer
-					memory.get(),  // memory
-					0  // memoryOffset
-				);
-			else
-				bindInfoList.emplace_back(sparseAllowed,buffer.get(),memory.get(),allocatedSize);
+			bindInfoList.emplace_back(sparseAllowed,buffer.get(),memory.get(),allocatedSize);
 		};
+	auto startTime=chrono::high_resolution_clock::now();
 	size_t coordinateBufferSize=getBufferSize(numTriangles,true); // ~48MB
 	size_t normalBufferSize=size_t(numTriangles)*3*3*sizeof(float); // ~36MB
 	size_t colorBufferSize=size_t(numTriangles)*3*4;
@@ -4020,8 +4014,27 @@ static void recreateSwapchainAndPipeline()
 	createBuffer(sharedVertexPackedAttribute2,sharedVertexPackedAttribute2Memory,sharedVertexPackedDataBufferSize,true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(sameVertexPackedAttribute1,  sameVertexPackedAttribute1Memory,  sameVertexPackedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(sameVertexPackedAttribute2,  sameVertexPackedAttribute2Memory,  sameVertexPackedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+	cout<<"First buffer and memory set creation time: "<<totalMeasurementTime*1000<<"ms."<<endl;
 
-	if(sparseMode!=SPARSE_NONE)
+	if(sparseMode==SPARSE_NONE)
+	{
+		size_t totalMemorySize=0;
+		auto startTime=chrono::high_resolution_clock::now();
+		for(auto &bindInfo : bindInfoList) {
+			device->bindBufferMemory(
+				bindInfo.buffer,  // buffer
+				bindInfo.memory,  // memory
+				0  // memoryOffset
+			);
+			totalMemorySize+=bindInfo.size;
+		}
+		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+		cout<<"Non-sparse binding of the first set of buffers took "<<totalMeasurementTime*1000<<"ms."<<endl;
+		cout<<"   (total amount of memory: "<<totalMemorySize/1024/1024<<"MiB, number of memory allocations: "<<bindInfoList.size()<<")"<<endl;
+		bindInfoList.clear();
+	}
+	else
 	{
 		vector<vk::SparseBufferMemoryBindInfo> bufferBinds;
 		vector<vk::SparseMemoryBind> memoryBinds;
@@ -4030,6 +4043,14 @@ static void recreateSwapchainAndPipeline()
 		size_t numPages=0;
 		size_t numPageBlocks=0;
 		for(auto &bindInfo : bindInfoList) {
+			if(!bindInfo.sparseAllowed) {
+				device->bindBufferMemory(
+					bindInfo.buffer,  // buffer
+					bindInfo.memory,  // memory
+					0  // memoryOffset
+				);
+				continue;
+			}
 			auto& r=memoryBinds.emplace_back(
 				0,  // resourceOffset
 				bindInfo.size,  // size
@@ -4059,10 +4080,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		sparseQueue.waitIdle();
 		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
-		cout<<"Sparse binding for all test buffers took "<<totalMeasurementTime*1000
-		    <<"ms and per memory page: "<<totalMeasurementTime/numPages*1e6<<"us"<<endl;
+		cout<<"Sparse binding of the first set of buffers took "<<totalMeasurementTime*1000<<"ms.\n"
+		    <<"   Binding time of a memory page: "<<totalMeasurementTime/numPages*1e6<<"us."<<endl;
 		cout<<"   (number of pages: "<<numPages<<", number of memory blocks: "<<numPageBlocks<<")"<<endl;
-
 	}
 
 	// staging buffer struct
@@ -4631,6 +4651,7 @@ static void recreateSwapchainAndPipeline()
 	constexpr size_t lightUniformBufferSize=16+4*12;
 	constexpr size_t lightNotPackedUniformBufferSize=5*16;
 	constexpr size_t allInOneLightingUniformBufferSize=6*16;
+	startTime=chrono::high_resolution_clock::now();
 	createBuffer(singleMatrixUniformBuffer,    singleMatrixUniformMemory,          16*sizeof(float),                  false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(singlePATBuffer,              singlePATMemory,                    8*sizeof(float),                   false,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(sameMatrixAttribute,          sameMatrixAttributeMemory,          transformationMatrix4x4BufferSize, true, vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
@@ -4652,6 +4673,8 @@ static void recreateSwapchainAndPipeline()
 	createBuffer(lightNotPackedUniformBuffer,  lightNotPackedUniformBufferMemory,  lightNotPackedUniformBufferSize,   false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(allInOneLightingUniformBuffer,allInOneLightingUniformBufferMemory,allInOneLightingUniformBufferSize, false,vk::BufferUsageFlagBits::eUniformBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(indirectBuffer,               indirectBufferMemory,               (size_t(numTriangles)+1)*sizeof(vk::DrawIndirectCommand),true,vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+	cout<<"Second buffer and memory set creation time: "<<totalMeasurementTime*1000<<"ms."<<endl;
 #if 0
 	cout<<"Second buffer set memory requirements: "<<(transformationMatrix4x4BufferSize+
 			transformationMatrix4x4BufferSize+transformationMatrix4x4BufferSize+transformationMatrix4x3BufferSize+
@@ -4662,13 +4685,40 @@ static void recreateSwapchainAndPipeline()
 			lightNotPackedUniformBufferSize+allInOneLightingUniformBufferSize)/1024/1024<<"MiB"<<endl;
 #endif
 
-	if(sparseMode!=SPARSE_NONE)
+	if(sparseMode==SPARSE_NONE)
+	{
+		size_t totalMemorySize=0;
+		auto startTime=chrono::high_resolution_clock::now();
+		for(auto &bindInfo : bindInfoList) {
+			device->bindBufferMemory(
+				bindInfo.buffer,  // buffer
+				bindInfo.memory,  // memory
+				0  // memoryOffset
+			);
+			totalMemorySize+=bindInfo.size;
+		}
+		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+		cout<<"Non-sparse binding of the second set of buffers took "<<totalMeasurementTime*1000<<"ms."<<endl;
+		cout<<"   (total amount of memory: "<<totalMemorySize/1024/1024<<"MiB, number of memory allocations: "<<bindInfoList.size()<<")"<<endl;
+		bindInfoList.clear();
+	}
+	else
 	{
 		vector<vk::SparseBufferMemoryBindInfo> bufferBinds;
 		vector<vk::SparseMemoryBind> memoryBinds;
 		bufferBinds.reserve(bindInfoList.size());
 		memoryBinds.reserve(bindInfoList.size());
+		size_t numPages=0;
+		size_t numPageBlocks=0;
 		for(auto &bindInfo : bindInfoList) {
+			if(!bindInfo.sparseAllowed) {
+				device->bindBufferMemory(
+					bindInfo.buffer,  // buffer
+					bindInfo.memory,  // memory
+					0  // memoryOffset
+				);
+				continue;
+			}
 			auto& r=memoryBinds.emplace_back(
 				0,  // resourceOffset
 				bindInfo.size,  // size
@@ -4681,7 +4731,11 @@ static void recreateSwapchainAndPipeline()
 				1,  // bindCount
 				&r  // pBinds
 			);
+			numPages+=bindInfo.size/sparsePageSize;
+			numPageBlocks++;
 		}
+		bindInfoList.clear();
+		auto startTime=chrono::high_resolution_clock::now();
 		sparseQueue.bindSparse(
 			vk::BindSparseInfo(
 				nullptr,  // waitSemaphores
@@ -4693,7 +4747,10 @@ static void recreateSwapchainAndPipeline()
 			vk::Fence()
 		);
 		sparseQueue.waitIdle();
-		bindInfoList.clear();
+		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
+		cout<<"Sparse binding of the second set of buffers took "<<totalMeasurementTime*1000<<"ms.\n"
+		    <<"   Binding time of a memory page: "<<totalMeasurementTime/numPages*1e6<<"us."<<endl;
+		cout<<"   (number of pages: "<<numPages<<", number of memory blocks: "<<numPageBlocks<<")"<<endl;
 	}
 
 	// single matrix uniform staging buffer
