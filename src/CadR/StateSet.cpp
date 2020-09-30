@@ -1,6 +1,6 @@
 #include <CadR/StateSet.h>
-#include <CadR/AttribStorage.h>
 #include <CadR/Pipeline.h>
+#include <CadR/VertexStorage.h>
 #include <CadR/VulkanDevice.h>
 
 using namespace std;
@@ -38,16 +38,16 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 
 	if(_numDrawables!=0) {
 
-		assert(_attribStorage && "AttribStorage have to be assigned before calling StateSet::recordToCommandBuffer() if StateSet has associated Drawables.");
+		assert(_vertexStorage && "VertexStorage have to be assigned before calling StateSet::recordToCommandBuffer() if StateSet has associated Drawables.");
 
 		// bind attributes
-		size_t numAttributes=_attribStorage->bufferList().size();
+		size_t numAttributes=_vertexStorage->bufferList().size();
 		vector<vk::DeviceSize> zeros(numAttributes,0);
 		device->cmdBindVertexBuffers(
 			cb,  // commandBuffer
 			0,  // firstBinding
 			uint32_t(numAttributes),  // bindingCount
-			_attribStorage->bufferList().data(),  // pBuffers
+			_vertexStorage->bufferList().data(),  // pBuffers
 			zeros.data()  // pOffsets
 		);
 

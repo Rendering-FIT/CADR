@@ -10,11 +10,11 @@
 namespace CadR {
 
 class AttribSizeList;
-class AttribStorage;
 class Drawable;
 class Geometry;
 class StagingBuffer;
 class StateSet;
+class VertexStorage;
 class VulkanDevice;
 class VulkanInstance;
 struct DrawableGpuData;
@@ -31,8 +31,8 @@ private:
 	vk::DeviceSize nonCoherentAtom_addition;
 	vk::DeviceSize nonCoherentAtom_mask;
 
-	std::map<AttribSizeList,std::list<AttribStorage>> _attribStorages;
-	AttribStorage*   _emptyStorage;
+	std::map<AttribSizeList,std::list<VertexStorage>> _vertexStorages;
+	VertexStorage*   _emptyStorage;
 	vk::Buffer       _indexBuffer;
 	vk::DeviceMemory _indexBufferMemory;
 	vk::Buffer       _dataStorageBuffer;
@@ -119,10 +119,10 @@ public:
 	CADR_EXPORT vk::PipelineLayout drawCommandPipelineLayout() const;
 	CADR_EXPORT vk::Pipeline drawCommandPipeline() const;
 
-	CADR_EXPORT AttribStorage* getOrCreateAttribStorage(const AttribSizeList& attribSizeList);
-	CADR_EXPORT std::map<AttribSizeList,std::list<AttribStorage>>& getAttribStorages();
-	CADR_EXPORT const AttribStorage* emptyStorage() const;
-	CADR_EXPORT AttribStorage* emptyStorage();
+	CADR_EXPORT VertexStorage* getOrCreateVertexStorage(const AttribSizeList& attribSizeList);
+	CADR_EXPORT std::map<AttribSizeList,std::list<VertexStorage>>& getVertexStorages();
+	CADR_EXPORT const VertexStorage* emptyStorage() const;
+	CADR_EXPORT VertexStorage* emptyStorage();
 
 	CADR_EXPORT vk::DeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags);
 	CADR_EXPORT vk::CommandBuffer uploadingCommandBuffer() const;
@@ -199,9 +199,9 @@ inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCach
 inline vk::DescriptorSet Renderer::drawCommandDescriptorSet() const  { return _drawCommandDescriptorSet; }
 inline vk::PipelineLayout Renderer::drawCommandPipelineLayout() const  { return _drawCommandPipelineLayout; }
 inline vk::Pipeline Renderer::drawCommandPipeline() const  { return _drawCommandPipeline; }
-inline std::map<AttribSizeList,std::list<AttribStorage>>& Renderer::getAttribStorages()  { return _attribStorages; }
-inline const AttribStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
-inline AttribStorage* Renderer::emptyStorage()  { return _emptyStorage; }
+inline std::map<AttribSizeList,std::list<VertexStorage>>& Renderer::getVertexStorages()  { return _vertexStorages; }
+inline const VertexStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
+inline VertexStorage* Renderer::emptyStorage()  { return _emptyStorage; }
 inline const ArrayAllocation<Geometry>& Renderer::indexAllocation(uint32_t id) const  { return _indexAllocationManager[id]; }
 inline ArrayAllocation<Geometry>& Renderer::indexAllocation(uint32_t id)  { return _indexAllocationManager[id]; }
 inline const ArrayAllocationManager<Geometry>& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }

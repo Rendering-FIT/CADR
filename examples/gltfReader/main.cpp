@@ -610,7 +610,7 @@ int main(int argc,char** argv) {
 
 				stateSetRoot.childList.append(ss);
 				ss.pipeline=pipeline;
-				ss.setAttribStorage(g.attribStorage());
+				ss.setVertexStorage(g.vertexStorage());
 
 				window.resizeCallbacks.append(
 						[&device,&window,pipeline,
@@ -752,7 +752,7 @@ int main(int argc,char** argv) {
 			b[0]=CadR::PrimitiveSetGpuData{
 					uint32_t(numIndices),  // count
 					g.indexAllocation().startIndex,  // first
-					g.attribAllocation().startIndex,  // vertexOffset
+					g.vertexAllocation().startIndex,  // vertexOffset
 					0,  // userData
 				};
 			sb.submit();

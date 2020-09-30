@@ -1,4 +1,4 @@
-#include <CadR/AttribStorage.h>
+#include <CadR/VertexStorage.h>
 #include <CadR/Renderer.h>
 #include <CadR/StagingBuffer.h>
 #include <CadR/VulkanDevice.h>
@@ -10,59 +10,66 @@ using namespace CadR;
 
 
 
-AttribStorage::AttribStorage(const AttribSizeList& attribSizeList,size_t initialNumVertices)
-	: AttribStorage(Renderer::get(),attribSizeList,initialNumVertices)
+VertexStorage::VertexStorage(const AttribSizeList& attribSizeList,size_t initialNumVertices)
+	: VertexStorage(Renderer::get(),attribSizeList,initialNumVertices)
 {
 }
 
 
-AttribStorage::AttribStorage(Renderer* renderer,const AttribSizeList& attribSizeList,size_t initialNumVertices)
+VertexStorage::VertexStorage(Renderer* renderer,const AttribSizeList& attribSizeList,size_t initialNumVertices)
 	: _allocationManager(uint32_t(initialNumVertices),0)  // set capacity to initialNumVertices, set null object (on index 0) to be of zero size
 	, _attribSizeList(attribSizeList)
 	, _renderer(renderer)
 {
+	// no attributes -> do noting
+	auto numAttribs=_attribSizeList.size();
+	if(numAttribs==0)
+		return;
+
+	// resize buffers
+	_bufferList.resize(numAttribs,nullptr);
+	_memoryList.resize(numAttribs,nullptr);
+	if(initialNumVertices==0)
+		return;
+
 	// attribute buffers
 	vk::BufferCreateInfo bufferInfo;
 	bufferInfo.flags=vk::BufferCreateFlags();
-	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst;
+	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|
+	                 vk::BufferUsageFlagBits::eTransferSrc|vk::BufferUsageFlagBits::eTransferDst;
 	bufferInfo.sharingMode=vk::SharingMode::eExclusive;
 	bufferInfo.queueFamilyIndexCount=0;
 	bufferInfo.pQueueFamilyIndices=nullptr;
 	VulkanDevice* device=_renderer->device();
-	_bufferList.reserve(_attribSizeList.size());
-	for(uint8_t attribSize : _attribSizeList) {
+	for(uint32_t i=0; i<numAttribs; i++) {
 
-		// create buffer
-		vk::Buffer b;
+		uint8_t attribSize=_attribSizeList[i];
 		if(attribSize!=0) {
-			bufferInfo.size=attribSize*initialNumVertices;
-			b=device->createBuffer(bufferInfo);
-		} else
-			b=nullptr;
-		_bufferList.push_back(b);
 
-		// allocate memory
-		vk::DeviceMemory m;
-		if(initialNumVertices!=0) {
-			m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
-			_memoryList.push_back(m);
+			// create buffer
+			bufferInfo.size=attribSize*initialNumVertices;
+			vk::Buffer b=device->createBuffer(bufferInfo);
+			_bufferList[i]=b;
+
+			// allocate memory
+			vk::DeviceMemory m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
+			_memoryList[i]=m;
+
+			// bind memory
 			device->bindBufferMemory(
 					b,  // buffer
 					m,  // memory
 					0   // memoryOffset
 				);
 		}
-		else
-			_memoryList.push_back(nullptr);
 	}
 }
 
 
-AttribStorage::~AttribStorage()
+VertexStorage::~VertexStorage()
 {
 	// invalidate all allocations and clean up
 	cancelAllAllocations();
-	//_renderer->onAttribStorageRelease(this);
 
 	// destroy buffers
 	VulkanDevice* device=_renderer->device();
@@ -79,7 +86,7 @@ AttribStorage::~AttribStorage()
 
 #if 0
 /** Allocates the memory for vertices and indices
- *  inside AttribStorage.
+ *  inside VertexStorage.
  *
  *  Returns true on success. False on failure, usually caused by absence of
  *  large enough free memory block.
@@ -95,17 +102,17 @@ AttribStorage::~AttribStorage()
  *  @param numIndices number of indices to be allocated inside associated
  *                    Element Buffer Object
  */
-bool AttribStorage::allocData(Drawable* d,unsigned numVertices,unsigned numIndices)
+bool VertexStorage::allocData(Drawable* d,unsigned numVertices,unsigned numIndices)
 {
 	// do we have enough space?
 	if(!_vertexAllocationManager.canAllocate(numVertices) ||
 	   !_indexAllocationManager.canAllocate(numIndices))
 		return false;
 
-	// allocate memory for vertices (inside AttribStorage's preallocated memory or buffers)
+	// allocate memory for vertices (inside VertexStorage's preallocated memory or buffers)
 	unsigned verticesDataId=_vertexAllocationManager.alloc(numVertices,d);
 
-	// allocate memory for indices (inside AttribStorage's preallocated memory or buffers)
+	// allocate memory for indices (inside VertexStorage's preallocated memory or buffers)
 	unsigned indicesDataId;
 	if(numIndices==0)
 		indicesDataId=0;
@@ -115,7 +122,7 @@ bool AttribStorage::allocData(Drawable* d,unsigned numVertices,unsigned numIndic
 	// update Drawable
 	if(d->attribStorage()!=NULL)
 	{
-		cerr<<"Warning: calling AttribStorage::allocData() on Mesh\n"
+		cerr<<"Warning: calling VertexStorage::allocData() on Mesh\n"
 		      "   that is not empty." << endl;
 		d->freeData();
 	}
@@ -136,16 +143,16 @@ bool AttribStorage::allocData(Drawable* d,unsigned numVertices,unsigned numIndic
  *  If preserveContent is false, content of element and index data are undefined
  *  after reallocation.
  */
-bool AttribStorage::reallocData(Drawable* /*d*/,unsigned /*numVertices*/,unsigned /*numIndices*/,
+bool VertexStorage::reallocData(Drawable* /*d*/,unsigned /*numVertices*/,unsigned /*numIndices*/,
                                 bool /*preserveContent*/)
 {
 	// Used strategy:
 	// - if new arrays are smaller, we keep data in place and free the remaning space
 	// - if new arrays are bigger and can be enlarged on the place, we do it
-	// - otherwise we try to allocate new place for the data in the same AttribStorage
-	// - if we do not succeed in the current AttribStorage, we move the data to
-	//   some other AttribStorage
-	// - if no AttribStorage accommodate us, we allocate new AttribStorage
+	// - otherwise we try to allocate new place for the data in the same VertexStorage
+	// - if we do not succeed in the current VertexStorage, we move the data to
+	//   some other VertexStorage
+	// - if no VertexStorage accommodate us, we allocate new VertexStorage
 
 	// FIXME: not implemented yet
 	return false;
@@ -160,13 +167,13 @@ bool AttribStorage::reallocData(Drawable* /*d*/,unsigned /*numVertices*/,unsigne
  *
  *  The method does not require active graphics context.
  */
-void AttribStorage::freeData(Drawable* d)
+void VertexStorage::freeData(Drawable* d)
 {
 	// check whether this attribStorage owns the given Mesh
 	if(d->attribStorage()!=this)
 	{
-		cerr<<"Error: calling AttribStorage::freeData() on Drawable\n"
-		      "   that is not managed by this AttribStorage."<<endl;
+		cerr<<"Error: calling VertexStorage::freeData() on Drawable\n"
+		      "   that is not managed by this VertexStorage."<<endl;
 		return;
 	}
 
@@ -175,7 +182,7 @@ void AttribStorage::freeData(Drawable* d)
 	// Mesh as empty by setting attribStorage member to NULL)
 	if(d->drawCommandDataId()!=0)
 	{
-		cerr<<"Error: calling AttribStorage::freeData() on Drawable\n"
+		cerr<<"Error: calling VertexStorage::freeData() on Drawable\n"
 		      "   that still has drawCommands allocated.\n"
 		      "   Free drawCommands of associated Drawable first."<<endl;
 		return;
@@ -190,13 +197,13 @@ void AttribStorage::freeData(Drawable* d)
 }
 
 
-void AttribStorage::uploadVertices(Drawable* /*d*/,std::vector<Buffer>&& /*vertexData*/,size_t /*dstIndex*/)
+void VertexStorage::uploadVertices(Drawable* /*d*/,std::vector<Buffer>&& /*vertexData*/,size_t /*dstIndex*/)
 {
 #if 0
    auto& cfg=_attribConfig.configuration();
    unsigned c=unsigned(cfg.attribTypes.size());
    assert(c==attribListSize && "Number of attributes passed in parameters and stored inside "
-                               "AttribStorage must match.");
+                               "VertexStorage must match.");
    unsigned dstIndex=_vertexAllocationManager[mesh.verticesDataId()].startIndex+fromIndex;
    for(unsigned i=0,j=0; i<c; i++)
    {
@@ -216,12 +223,12 @@ void AttribStorage::uploadVertices(Drawable* /*d*/,std::vector<Buffer>&& /*verte
 #endif
 
 
-StagingBuffer AttribStorage::createStagingBuffer(Geometry& g,unsigned attribIndex)
+StagingBuffer VertexStorage::createStagingBuffer(Geometry& g,unsigned attribIndex)
 {
 	if(attribIndex>_bufferList.size())
-		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
+		throw std::out_of_range("VertexStorage::createStagingBuffer() called with invalid attribIndex.");
 
-	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
+	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
 	const unsigned s=_attribSizeList[attribIndex];
 	return StagingBuffer(
 			_bufferList[attribIndex],  // dstBuffer
@@ -232,14 +239,14 @@ StagingBuffer AttribStorage::createStagingBuffer(Geometry& g,unsigned attribInde
 }
 
 
-StagingBuffer AttribStorage::createStagingBuffer(Geometry& g,unsigned attribIndex,size_t firstVertex,size_t numVertices)
+StagingBuffer VertexStorage::createStagingBuffer(Geometry& g,unsigned attribIndex,size_t firstVertex,size_t numVertices)
 {
 	if(attribIndex>_bufferList.size())
-		throw std::out_of_range("AttribStorage::createStagingBuffer() called with invalid attribIndex.");
+		throw std::out_of_range("VertexStorage::createStagingBuffer() called with invalid attribIndex.");
 
-	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
+	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
 	if(firstVertex+numVertices>a.numItems)
-		throw std::out_of_range("AttribStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Geometry preallocated space.");
+		throw std::out_of_range("VertexStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Geometry preallocated space.");
 
 	const unsigned s=_attribSizeList[attribIndex];
 	return StagingBuffer(
@@ -251,9 +258,9 @@ StagingBuffer AttribStorage::createStagingBuffer(Geometry& g,unsigned attribInde
 }
 
 
-vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g)
+vector<StagingBuffer> VertexStorage::createStagingBuffers(Geometry& g)
 {
-	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
+	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
 	vector<StagingBuffer> v;
 	v.reserve(_bufferList.size());
 
@@ -271,10 +278,10 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g)
 }
 
 
-vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices)
+vector<StagingBuffer> VertexStorage::createStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices)
 {
-	const ArrayAllocation<Geometry>& a=attribAllocation(g.attribDataID());
-	assert(a.numItems>=numVertices && "AttribStorage::createStagingBuffers(): Parameter numVertices is bigger than allocated space in Geometry.");
+	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
+	assert(a.numItems>=numVertices && "VertexStorage::createStagingBuffers(): Parameter numVertices is bigger than allocated space in Geometry.");
 	vector<StagingBuffer> v;
 	v.reserve(_bufferList.size());
 
@@ -292,11 +299,11 @@ vector<StagingBuffer> AttribStorage::createStagingBuffers(Geometry& g,size_t fir
 }
 
 
-void AttribStorage::uploadAttrib(Geometry& g,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
+void VertexStorage::upload(Geometry& g,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
 {
 	// attribIndex bound check
 	if(attribIndex>_bufferList.size())
-		throw std::out_of_range("AttribStorage::uploadAttrib() called with invalid attribIndex.");
+		throw std::out_of_range("VertexStorage::uploadAttrib() called with invalid attribIndex.");
 
 	if(attribData.empty()) return;
 
@@ -308,17 +315,17 @@ void AttribStorage::uploadAttrib(Geometry& g,unsigned attribIndex,const std::vec
 }
 
 
-void AttribStorage::uploadAttribs(Geometry& g,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
+void VertexStorage::upload(Geometry& g,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
 {
 	// check parameters validity
 	if(vertexData.size()!=_bufferList.size())
-		throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
+		throw std::out_of_range("VertexStorage::uploadAttribs() called with invalid vertexData.");
 	if(vertexData.size()==0)
 		return;
 	size_t numVertices=vertexData[0].size()/_attribSizeList[0];
 	for(size_t i=1,e=vertexData.size(); i<e; i++)
 		if(vertexData[i].size()!=numVertices*_attribSizeList[i])
-			throw std::out_of_range("AttribStorage::uploadAttribs() called with invalid vertexData.");
+			throw std::out_of_range("VertexStorage::uploadAttribs() called with invalid vertexData.");
 	if(numVertices==0) return;
 
 	// create StagingBuffers and submit them
@@ -336,61 +343,127 @@ void AttribStorage::uploadAttribs(Geometry& g,const vector<vector<uint8_t>>& ver
 }
 
 
-void AttribStorage::resizeBuffers(size_t newNumVertices)
+void VertexStorage::reallocStorage(size_t newNumVertices)
 {
+	auto numAttribs=this->numAttribs();
+	if(numAttribs==0) {
+		_allocationManager.setCapacity(newNumVertices);
+		return;
+	}
 
+	// store safely new buffers
+	struct NewBuffersAndMemory {
+		vector<vk::Buffer> bufferList;
+		vector<vk::DeviceMemory> memoryList;
+		VulkanDevice* device;
+		NewBuffersAndMemory(VulkanDevice* d) : device(d)  {}
+		~NewBuffersAndMemory()  { for(vk::Buffer b : bufferList) device->destroy(b); for(vk::DeviceMemory m : memoryList) device->free(m); }
+	};
+	VulkanDevice* device=_renderer->device();
+	NewBuffersAndMemory n(device);
+
+	// fill lists with nulls
+	n.bufferList.resize(numAttribs,nullptr);
+	n.memoryList.resize(numAttribs,nullptr);
+	if(newNumVertices==0) {
+		_allocationManager.setCapacity(0);
+		_bufferList.swap(n.bufferList);
+		_memoryList.swap(n.memoryList);
+		return;
+	}
+
+	// allocate command buffer
+	auto commandPool=
+		device->createCommandPoolUnique(
+			vk::CommandPoolCreateInfo(
+				vk::CommandPoolCreateFlagBits::eTransient,  // flags
+				_renderer->graphicsQueueFamily()  // queueFamilyIndex
+			)
+		);
+	vk::CommandBuffer cb=
+		device->allocateCommandBuffers(
+			vk::CommandBufferAllocateInfo(
+				commandPool.get(),  // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1  // commandBufferCount
+			)
+		)[0];
+
+	// start recording
+	device->beginCommandBuffer(
+		cb,  // commandBuffer
+		vk::CommandBufferBeginInfo(
+			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+			nullptr  // pInheritanceInfo
+		)
+	);
+
+	// create new buffers and deviceMemories
 	vk::BufferCreateInfo bufferInfo;
 	bufferInfo.flags=vk::BufferCreateFlags();
-	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst;
+	bufferInfo.usage=vk::BufferUsageFlagBits::eVertexBuffer|
+	                 vk::BufferUsageFlagBits::eTransferSrc|vk::BufferUsageFlagBits::eTransferDst;
 	bufferInfo.sharingMode=vk::SharingMode::eExclusive;
 	bufferInfo.queueFamilyIndexCount=0;
 	bufferInfo.pQueueFamilyIndices=nullptr;
-	VulkanDevice* device=_renderer->device();
+	for(uint32_t i=0; i<numAttribs; i++) {
 
-	for(uint32_t i=0; i<numBuffers(); i++) {
-
-		// store safely old buffer
-		struct OldHandles {
-			vk::Buffer buffer;
-			vk::DeviceMemory memory;
-			VulkanDevice* device;
-			OldHandles(vk::Buffer b,vk::DeviceMemory m,VulkanDevice* d) : buffer(b), memory(m), device(d)  {}
-			~OldHandles()  { device->destroy(buffer); device->destroy(memory); }
-		};
-		OldHandles oldHandles(_bufferList[i],_memoryList[i],device);
-		_bufferList[i]=nullptr;
-		_memoryList[i]=nullptr;
-
-		// create new buffer
 		uint8_t attribSize=_attribSizeList[i];
-		vk::Buffer b;
 		if(attribSize!=0) {
-			bufferInfo.size=attribSize*newNumVertices;
-			b=device->createBuffer(bufferInfo);
-			_bufferList[i]=b;
-		}
 
-		// allocate memory
-		vk::DeviceMemory m;
-		if(newNumVertices!=0) {
-			m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
+			// create new buffer
+			bufferInfo.size=attribSize*newNumVertices;
+			vk::Buffer b=device->createBuffer(bufferInfo);
+			_bufferList[i]=b;
+
+			// allocate memory
+			vk::DeviceMemory m=_renderer->allocateMemory(b,vk::MemoryPropertyFlagBits::eDeviceLocal);
 			_memoryList[i]=m;
+
+			// bind memory
 			device->bindBufferMemory(
 					b,  // buffer
 					m,  // memory
 					0   // memoryOffset
 				);
+
+			// copy content
+			size_t copySize=min(bufferInfo.size,attribSize*size_t(_allocationManager.capacity()));
+			device->cmdCopyBuffer(cb,_bufferList[i],b,vk::BufferCopy(0,0,copySize));
 		}
 	}
-	
-	if(newNumVertices>0) {
 
-	}
+	// submit command buffer
+	device->endCommandBuffer(cb);
+	auto fence=device->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()});
+	device->queueSubmit(
+		_renderer->graphicsQueue(),  // queue
+		vk::SubmitInfo(  // submits (vk::ArrayProxy)
+			0,nullptr,nullptr,  // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
+			1,&cb,  // commandBufferCount,pCommandBuffers
+			0,nullptr  // signalSemaphoreCount,pSignalSemaphores
+		),
+		fence.get()  // fence
+	);
+
+	// wait for work to complete
+	vk::Result r=device->waitForFences(
+		fence.get(),   // fences (vk::ArrayProxy)
+		VK_TRUE,       // waitAll
+		uint64_t(3e9)  // timeout (3s)
+	);
+	if(r==vk::Result::eTimeout)
+		throw std::runtime_error("GPU timeout. Task is probably hanging.");
+
+	// commit changes
+	_allocationManager.setCapacity(newNumVertices);
+	_bufferList.swap(n.bufferList);
+	_memoryList.swap(n.memoryList);
 }
 
 
 #if 0
-void AttribStorage::render(const std::vector<RenderingCommandData>& renderingDataList)
+void VertexStorage::render(const std::vector<RenderingCommandData>& renderingDataList)
 {
    // bind VAO
    bind();
@@ -415,10 +488,10 @@ void AttribStorage::render(const std::vector<RenderingCommandData>& renderingDat
 #endif
 
 
-void AttribStorage::cancelAllAllocations()
+void VertexStorage::cancelAllAllocations()
 {
 #if 0
-	// break all Mesh references to this AttribStorage
+	// break all Mesh references to this VertexStorage
 	for(auto it=_allocationManager.begin(); it!=_allocationManager.end(); it++)
 		if(it->owner)
 			it->owner->_attribStorage=nullptr;
@@ -429,24 +502,24 @@ void AttribStorage::cancelAllAllocations()
 }
 
 
-// AttribStorage documentation
+// VertexStorage documentation
 // note: brief description is with the class declaration
-/** \class cd::AttribStorage
+/** \class cd::VertexStorage
  *
- *  It is benefical to store all the vertex attributes in only few AttribStorage
+ *  It is benefical to store all the vertex attributes in only few VertexStorage
  *  objects because only few OpenGL vertex array objects (VAO) are required,
  *  number of culling and rendering optimizations can be deployed
  *  and the whole scene can be drawn using only few draw calls.
  *
- *  Each AttribStorage object can store vertex attributes of the same format only.
+ *  Each VertexStorage object can store vertex attributes of the same format only.
  *  For instance, vertex attributes composed of coordinates and colors are
- *  stored in different AttribStorage than vertex attributes composed of
+ *  stored in different VertexStorage than vertex attributes composed of
  *  coordinates, normals and texture coordinates. Format of a particular
  *  attribute must be the same too. For instance, colors stored as RGBA8
- *  are stored in different AttribStorage than colors stored as three floats.
+ *  are stored in different VertexStorage than colors stored as three floats.
  *
- *  AttribStorage is expected to be used with one graphics context only and
- *  that context is expected to be current when working with the AttribStorage.
+ *  VertexStorage is expected to be used with one graphics context only and
+ *  that context is expected to be current when working with the VertexStorage.
  *  The easiest rule is that whenever you are processing your scene graph
  *  and perform any changes that may change the scene geometry, including adding
  *  and removing objects, have your graphics context current.
@@ -457,7 +530,7 @@ void AttribStorage::cancelAllAllocations()
  *  various reasons, including closing of the window or power-saving reasons
  *  on mobile devices. In such cases, the user is expected to call
  *  RenderingContext::contextLost() before any further scene graph processing.
- *  RenderingContext::contextLost() will forward the call to all AttribStorages,
+ *  RenderingContext::contextLost() will forward the call to all VertexStorages,
  *  calling their contextLost(). This will clear all internal structures
  *  as if no data would be uploaded to graphics context yet. This could be performed
  *  even without active graphics context, after it was lost or destroyed.

@@ -1,8 +1,8 @@
 #include <CadR/Renderer.h>
-#include <CadR/AttribStorage.h>
 #include <CadR/AllocationManagers.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/StagingBuffer.h>
+#include <CadR/VertexStorage.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 
@@ -28,8 +28,8 @@ Renderer::Renderer(bool makeDefault)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 	, _drawableAllocationManager(128,0)  // capacity, num null objects
 {
-	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
-	_emptyStorage=&_attribStorages.begin()->second.front();
+	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty VertexStorage for empty AttribSizeList (no attributes)
+	_emptyStorage=&_vertexStorages.begin()->second.front();
 	if(makeDefault)
 		Renderer::set(this);
 }
@@ -44,8 +44,8 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
 	, _drawableAllocationManager(128,0)  // capacity, num null objects
 {
-	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
-	_emptyStorage=&_attribStorages.begin()->second.front();
+	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty VertexStorage for empty AttribSizeList (no attributes)
+	_emptyStorage=&_vertexStorages.begin()->second.front();
 	init(device,instance,physicalDevice,graphicsQueueFamily,makeDefault);
 }
 
@@ -454,9 +454,9 @@ void Renderer::finalize()
 	assert(_drawableAllocationManager.numItems()==0 && "Renderer::_drawableAllocationManager still contains elements during Renderer's destruction.");
 
 	// clear attrib storages
-	_attribStorages.clear();
-	_attribStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty AttribStorage for empty AttribSizeList (no attributes)
-	_emptyStorage=&_attribStorages.begin()->second.front();
+	_vertexStorages.clear();
+	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty VertexStorage for empty AttribSizeList (no attributes)
+	_emptyStorage=&_vertexStorages.begin()->second.front();
 
 	// clear allocation managers
 	_indexAllocationManager.clear();
@@ -509,7 +509,7 @@ void Renderer::finalize()
 void Renderer::leakResources()
 {
 	// intentionally avoid all destructors
-	_attribStorages.swap(*new decltype(_attribStorages));
+	_vertexStorages.swap(*new decltype(_vertexStorages));
 	_device=nullptr;
 }
 
@@ -616,12 +616,12 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet* st
 }
 
 
-AttribStorage* Renderer::getOrCreateAttribStorage(const AttribSizeList& attribSizeList)
+VertexStorage* Renderer::getOrCreateVertexStorage(const AttribSizeList& attribSizeList)
 {
-	std::list<AttribStorage>& attribStorageList=_attribStorages[attribSizeList];
-	if(attribStorageList.empty())
-		attribStorageList.emplace_front(AttribStorage(this,attribSizeList));
-	return &attribStorageList.front();
+	std::list<VertexStorage>& vertexStorageList=_vertexStorages[attribSizeList];
+	if(vertexStorageList.empty())
+		vertexStorageList.emplace_front(VertexStorage(this,attribSizeList));
+	return &vertexStorageList.front();
 }
 
 

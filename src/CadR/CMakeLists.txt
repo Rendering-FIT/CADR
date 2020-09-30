@@ -19,7 +19,6 @@ endif()
 set(CADR_PUBLIC_HEADERS
     AllocationManagers.h
     AttribSizeList.h
-    AttribStorage.h
     CallbackList.h
     Drawable.h
     Errors.h
@@ -31,6 +30,7 @@ set(CADR_PUBLIC_HEADERS
     RenderPass.h
     StagingBuffer.h
     StateSet.h
+    VertexStorage.h
     VulkanDevice.h
     VulkanInstance.h
     VulkanLibrary.h
@@ -43,7 +43,6 @@ set(CADR_PRIVATE_HEADERS
 # sources
 set(CADR_SOURCES
     AllocationManagers.cpp
-    AttribStorage.cpp
     Drawable.cpp
     Geometry.cpp
     Pipeline.cpp
@@ -52,6 +51,7 @@ set(CADR_SOURCES
     RenderPass.cpp
     StagingBuffer.cpp
     StateSet.cpp
+    VertexStorage.cpp
     VulkanDevice.cpp
     VulkanInstance.cpp
     VulkanLibrary.cpp
