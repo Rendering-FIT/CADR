@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <sstream>
 
 using namespace std;
 
@@ -1053,7 +1054,7 @@ static void generateSharedVertexTriangles(
 
 
 // allocate memory for buffers
-static tuple<vk::UniqueDeviceMemory,size_t> allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags,unsigned memorySizeDivisor)
+static tuple<vk::UniqueDeviceMemory,size_t> allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags,size_t memorySizeDivisor)
 {
 	vk::MemoryRequirements memoryRequirements=device->getBufferMemoryRequirements(buffer);
 	if(memorySizeDivisor!=1)
@@ -8059,7 +8060,7 @@ static void testMemoryAllocationPerformance(vk::BufferCreateFlags bufferFlags,un
 				for(size_t i=0; i<numBuffers; i++)
 					bufferBinds.emplace_back(
 						bufferList[i].get(),  // buffer
-						numMemoryObjectsPerBuffer,  // bindCount
+						uint32_t(numMemoryObjectsPerBuffer),  // bindCount
 						memoryBinds.data()+(i*numMemoryObjectsPerBuffer)  // pBinds
 					);
 
@@ -8136,7 +8137,7 @@ static void testMemoryAllocationPerformance(vk::BufferCreateFlags bufferFlags,un
 	double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
 
 	auto printTime=
-		[](float t) -> string {
+		[](double t) -> string {
 			stringstream ss;
 			ss<<setprecision(3);
 			if(t>=1)
