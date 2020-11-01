@@ -1,19 +1,20 @@
 <h1>Vulkan tutoriál: Inicializace (1. díl)</h1>
 
 <p>Vulkan je moderní grafické a vypočetní API. Ve svém oboru se stalo
-prakticky nejžhavějším API co se týká rozšiřování, novinek a vylepšení.
+prakticky nejžhavějším API, ke kterému se obrací jak herní tak profesionální počítačová grafika.
 Toto je první díl tutoriálu, který nás do Vulkan API uvede.</p>
 
-<p>Vulkan 1.0 přišel na svět v roce 2016. Je tedy o 25 let modernější API než OpenGL.
-Před 25 lety byly mainstreamové grafické karty, zjednodušeně řečeno, pouze zobrazovadlo:
+<p>Vulkan 1.0 přišel na svět v roce 2016. Je tedy o 25 let modernějším API v porovnání s OpenGL.
+Před 25 lety, zjednodušeně řečeno, byly mainstreamové grafické karty pouze zobrazovadlo:
 paměť, ke které byl připojen výstup na monitor. Co jste do paměti zapsali, to se objevilo
 na obrazovce. Dnes je grafická karta programovatelný vysoce paralelizovaný vypočetní stroj,
-který může svým hrubým vypočetním výkonem nahradit desítky i stovky dnešních procesorů.
-Vulkan je navržen tak, aby poskytoval větší flexibilitu pro využití potenciálu,
-který tkví v dnešních grafických kartách.</p>
+který může svým hrubým vypočetním výkonem nahradit desítky i stovky moderních procesorů.
+Vulkan je navržen tak, aby poskytoval větší flexibilitu pro využití tohoto potenciálu,
+který dřímá v dnešních grafických kartách.</p>
 
 <p>Další pohled: Před 25 lety měly téměř všechny počítače jen jeden procesor s jedním jádrem.
-Toto odpovídalo konceptu jednoho aktivního grafického kontextu v OpenGL.
+Toto odpovídalo konceptu jednoho aktivního grafického kontextu v OpenGL, který ne úplně odpovídá tomu, 
+co bychom očekávali od moderního rozhranní podporující vícevláknové zpracování.
 Dnes je vícejádrový počítač standardem a není tedy divu, že Vulkanu je od svého počátku
 navržen tak, aby umožňoval přirozenou parallelní spolupráci mnoha jader procesoru
 jak s jednou, tak i s několika parallelně pracujícími grafickými kartami.</p>
@@ -32,8 +33,8 @@ a efektivně pracovat s vypočetními zdroji a hromadu věcí optimalizovat až 
 Avšak je zde i druhá stránka věci: Na co v OpenGL stačilo pár řádků kódu,
 ve Vulkanu jich potřebujeme občas desítky, někdy i stovky. Ty sice přinášejí
 novou flexibilitu a možnosti, ale člověk by se jimi mohl cítit zaskočen.
-A zde přichází náš tutoriál, aby nám ulehčil práci a osvětlil základní principy,
-na kterých je Vulkan postaven.</p>
+A zde přichází náš tutoriál, aby nám ulehčil práci a osvětlil základní přístupy
+a základní principy, na kterých je Vulkan postaven.</p>
 
 <p>Ve všech našich tutoriálech budeme používat moderní C++. To se týká i Vulkan API.
 Nebudeme tedy používat standardní Vulkan include &lt;vulkan/vulkan.h&gt;,
@@ -49,9 +50,9 @@ a zpřehledňují kód. A je to docela logické: Použití vyjímek nám totiž 
 odstraní velké množství podmínek, které vyhodnocují návratové chybové kódy
 a předávají je dále do nadřazených volajících funkcí, které opět vyhodnocují
 návratové chybové kódy, atd. Použití vyjímek odstraní tyto podmínky z našeho kódu
-a kód je tímpádem rychlejší. Kompilátor namísto těchto podmínek vytvoří tabulky,
+a kód je tím pádem rychlejší. Kompilátor namísto těchto podmínek vytvoří tabulky,
 které řídí, co se stane, když vznikne vyjímka. Ve svém důsledku je kód
-přehlednější, máme důvod očekávat, že i rychlejší, a i vývoj je z pohledu
+přehlednější. Máme důvod očekávat, že je i rychlejší, a že i vývoj je z pohledu
 obsluhy chyb podstatně zjednodušen. Proti případnému argumentu, že vyhození vyjímky
 je velmi pomalé, odpovídám, že vyjímka se tak jmenuje od toho, že se jedná
 o vyjímečnou situaci, kterou typicky ošetřujeme chybovou hláškou nebo
@@ -75,7 +76,7 @@ které něco dělají s Vulkanem, a už se nebudou volat žádné další Vulkan
 
 <p>VkInstance je ale C-čkové rozhranní a my jsme si říkali, že budeme používat C++.
 Hlavička vulkan.hpp nám nabízí třídu vk::Instance, která zapouzdřuje veškerou
-standardizovanou funkcionalitu vkInstance.
+standardizovanou funkcionalitu VkInstance.
 Kvůli správě paměti však samotnou třídu vk::Instance nepoužijeme.
 Protože používáme vyjímky, měli bychom se držet programovacího idiomu
 <a href="https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization">RAII</a>.
@@ -110,7 +111,7 @@ Ta ale vrací pouze vk::Instance, nikoliv vk::UniqueInstance, kterou potřebujem
 
 <p>vk::createInstanceUnique() bere jako jediný povinný parametr ukazatel na strukturu
 vk::InstanceCreateInfo. A toto bude naše hlavní zkušenost s Vulkan funkcemi:
-místo toho, aby Vulkanové funkce braly neskutečné množství parametrů, berou jako hlavní parametr
+místo toho, aby Vulkanové funkce měly neskutečné množství parametrů, berou jako hlavní parametr
 ukazatel či referenci na strukturu, která obsahuje všechna potřebná data.
 Většina struktur pak obsahuje i pointer pNext, který může ukazovat na rozšiřující
 struktury s dalšími daty. Tímto způsobem Vulkan roste a místo nových API funkcí
@@ -188,8 +189,9 @@ Prozatím prozradím, že kromě <a href=>zdrojáků</a>,
 je potřeba ještě cmake. Na Windows doporučuji
 <a href="https://vulkan.lunarg.com/sdk/home">Vulkan SDK</a>.
 Na Linuxech totéž, či alespoň development balíčky Vulkanu.
-Na Windows budeme používat Visual C++ 2017/19, na Linuxech g++,
-odborníci i cokoliv jiného.</p>
+Na Windows budeme používat Visual C++ 2017/19, na Linuxech g++.
+Odborníci i cokoliv jiného mohou zkusit i své oblíbené nástroje,
+už ale bez asistence našeho tutoriálu.</p>
 
 <p>Soubory ke stažení:</p>
 <ul>

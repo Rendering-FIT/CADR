@@ -11,11 +11,11 @@ s jedním zařízením od jednoho výrobce a použítí více vláken bylo poně
 Podpora více zařízení od více výrobců teoreticky přišla s knihovnou
 <a href="https://github.com/freedesktop/glvnd">glvnd</a> (GL Vendor-Neutral Dispatch),
 ale těžko říci, jak moc je opravdu používána. Určitě se ale shodneme, že je ideální mít API
-navržené se všemi funkcemi hned od počátku, tak jak je tomu u Vulkan,
+navržené se všemi funkcemi hned od počátku tak, jak je tomu u Vulkan,
 a mít tak naději na vyšší efektivitu, konzistentnost a přehlednost rozhranní.</p>
 
 <p>Abychom nechodili dlouho kolem, můžeme si stáhnout
-<a href="">zdrojové kódy</a> tohoto dílu a zkusit je zkompilovat.
+<a href="">zdrojové kódy</a> tohoto dílu a zkusit si je zkompilovat.
 Po spuštění můžeme vidět různé výstupy, podle grafických karet,
 které máme v počítači, a podle operačního systému, na kterém pracujeme.
 Příklad výslupů:</p>
@@ -86,12 +86,14 @@ vk::UniqueInstance instance(
 		}));
 </pre>
 
-<p>A tak jako vk::Instance vytváříme před jakýmikoliv dalšími Vulkanními objekty,
-podobně vk::Instanci rušíme až po uvolnění všech těchto objektů. Není povoleno
-používat nebo uvolňovat Vulkanní objekty po zrušení vk::Instance. Dokonce pokud
-ukončujeme aplikaci bez řádného uvolnění všech objektů, např. náhlým voláním exit()
-po nějaké aplikační chybě, a hrozí, že v paměti zůstaly neuvolněné Vulkanní objekty,
-může být vhodnější i vynechání uvolnění vk::Instance.</p>
+<p>S rušením vk::Instnce je to podobně jako s vytvářením:
+vk::Instanci rušíme až po uvolnění všech těchto objektů.
+Není povoleno volat jakékoliv Vulkan funkce a to jen s několika nepodstatnými vyjímkami.
+Jinými slovy, není dovoleno používat ani uvolňovat Vulkanní objekty po zrušení vk::Instance.
+A dokonce pokud ukončujeme aplikaci bez řádného uvolnění všech objektů, např. náhlým voláním exit()
+po nějaké kritické aplikační chybě, a v paměti zůstalo množství neuvolněných Vulkan objektů,
+může být lépe vynechat i destrukci vk::Instance, alespoň z pohledu ladících nástrojů a validačních vrstev,
+což je ale pokročilejší téma, kterému se dnes nebudeme věnovat.</p>
 
 <h3>Fyzická zařízení</h3>
 
@@ -121,13 +123,13 @@ vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 </pre>
 
 <p>Jak vidíme, je použito slovíčko enumerate, nikoliv createPhysicalDevices.
-vk::PhysicalDevices nevytváříme (create), ale &quot;enumerujeme&quot;,
-to znamená, že si uděláme jejich výčet.
+vk::PhysicalDevices nevytváříme (create), ale &quot;enumerujeme&quot;.
+To znamená, že si uděláme jejich výčet.
 Toto enumerate jako by nám naznačovalo, co jsem zmínil výše,
 že není naší zodpovědností uvolňovat VkPhysicalDevices po použití.
 Proto vk::PhysicalDevice nemá metodu destroy()
 a nic jako vk::UniquePhysicalDevice neexistuje.
-Uvolnění VkPhysicalDevice je prostě odpovědnost instance.</p>
+Uvolnění VkPhysicalDevice je odpovědnost vk::Instance.</p>
 
 <p>Nyní tedy máme seznam fyzických zařízení. Co s tím můžeme dělat?
 Můžeme například vypsat jejich názvy, což jsme už udělali posledně:</p>
@@ -163,7 +165,7 @@ vk::UniqueDevice device=
 	);
 </pre>
 
-<p>Když už jsme tedy vytvořili z fyzického zařízení logické, co je to to logické zařízení (logical device)?
+<p>Když už jsme tedy vytvořili z fyzického zařízení logické, co že to vůbec je to logické zařízení (logical device)?
 Logické zařízení je to, co budeme používat drtivou většinu času při práci s Vulkan API.
 Logická zařízení používáme k vytváření většiny Vulkanních objektů,
 rendrování, počítání a hromadě dalších věcí. Vukan reprezentuje logické zařízení handlem VkDevice
@@ -174,7 +176,7 @@ logické zařízení. Pokud budeme hovořit o fyzickém zařízení, použijeme 
 <p>A proč Vulkan pojal toto rozdělení na fyzická a logická zařízení?
 Jedna výhoda je, že jsme schopni si zařízení nejprve vybrat a říci, kolik front (queues)
 a jakých na něm chceme alokovat. Druhá je pak třeba ta, že jsme schopni vytvořit jedno
-logické zařízení z více fyzických zařízení ve SLI módu.</p>
+logické zařízení z více fyzických zařízení, například spřáhnout dvě karty ve SLI módu do jednoho logického zařízení.</p>
 
 <h3>Ukazatele na Vulkan funkce</h3>
 
@@ -190,7 +192,7 @@ nazvaných ICD (Installable Client Driver).
 Podle toho, na kterém fyzickém zařízení je naše logické zařízení vytvořeno,
 podle toho se zavolá odpovídající ICD obsluhující dané fyzické zařízení.
 Na Windows je to např. nvoglv64.dll pro karty nvidie, amdvlk64.dll pro AMD, a igvk64.dll pro Intel.
-ICD pak ve svém důsledku obyčejně komunikuje s fyzickým hardware, který vykoná požadovanou práci.</p>
+ICD pak obyčejně komunikuje s fyzickým hardware, kterému zadá k výkonání požadovanou práci.</p>
 
 <p>Kromě statického volání Vulkan loaderu můžeme některé, popřípadě všechny,
 Vulkanní funkce volat dynamicky. A proč bychom to chtěli dělat?
@@ -215,16 +217,16 @@ Toto jsou funkce z instance-level funkcionality a neexistují na úrovni device.
 
 <p>V našem tutoriálu nebudeme komplikovat náš kód pointery na Vulkanní funkce kromě
 případů, kdy budeme používat Vulkanní rozšíření (extensions).
-Pro zájemce však bude ke standardnímu kódu k dispozici i optimalizovaná implementace
+Pro zájemce však bude ke standardnímu kódu našeho tutoriálu k dispozici i optimalizovaná implementace
 přes pointery na funkce, kterou si budou moci prohlédnout a prostudovat.
 Pro zájemce o více detailů k pointerům na Vulkanní funkce, Vulkan loader architekturu a ICD drivery
-odkazuji dokument <a href="https://github.com/KhronosGroup/Vulkan-Loader/blob/master/loader/LoaderAndLayerInterface.md">
+odkazuji na dokument <a href="https://github.com/KhronosGroup/Vulkan-Loader/blob/master/loader/LoaderAndLayerInterface.md">
 Architecture of the Vulkan Loader Interfaces</a> publikovaný konsorciem Khronos
 a na <a href="https://www.khronos.org/registry/vulkan/#apispecs">Vulkan dokumentaci</a>.
 Z Vulkan dokumentace bych pro začátek doporučoval spíše verzi &quot;Core API&quot;,
 případně &quot;Core API + Khronos extensions&quot;, neboť verze &quot;Core API + all extensions&quot;
 vnáší do textu příliš specialit a odboček, které mohou začátečníka
-zbytečně mást a zatemňovat podstatu.
+zbytečně mást a zatemňovat podstatu Vulkan API.
 
 <h3>Závěr</h3>
 
