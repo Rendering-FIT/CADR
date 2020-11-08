@@ -8087,14 +8087,27 @@ static void testMemoryAllocationPerformance(vk::BufferCreateFlags bufferFlags,un
 	// perform test
 	constexpr unsigned repeatCount=3;
 	auto testData=
-		(bufferFlags&vk::BufferCreateFlagBits::eSparseBinding)
+		!(bufferFlags&vk::BufferCreateFlagBits::eSparseBinding)
 			? vector{
-				// numBuffers, memObjPerBuffer, numMemBlocksPerMemObj
 				tuple{1,1,   1}, // to warm up caches, will be not included in results
 				tuple{1,1,   1}, // to warm up caches, will be not included in results
 				tuple{1,1,   1},
 				tuple{1,1,   2},
 				tuple{1,1,  32},
+				tuple{1,1, 512},
+				tuple{1,1,1024},
+				tuple{32,1, 32},
+				tuple{1024,1,1},
+			}
+			: vector{
+				// numBuffers, memObjPerBuffer, numMemBlocksPerMemObj
+				tuple{1,1,   1}, // to warm up caches, this will not be included in the results
+				tuple{1,1,   1}, // to warm up caches, this will not be included in the results
+				tuple{1,1,   1},
+				tuple{1,1,   2},
+				tuple{1,1,   8},
+				tuple{1,1,  32},
+				tuple{1,1,  64},
 				tuple{1,1, 128},
 				tuple{1,1, 512},
 				tuple{1,1,1024},
@@ -8105,22 +8118,7 @@ static void testMemoryAllocationPerformance(vk::BufferCreateFlags bufferFlags,un
 				tuple{1,256, 1},
 				tuple{2,1, 128},
 				tuple{16,1, 16},
-				tuple{128,1, 2},
-				tuple{256,1, 1},
-				tuple{128,2, 1},
-				tuple{16,16, 1},
 				tuple{4,4,  16},
-			}
-			: vector{
-				tuple{1,1,   1}, // to warm up caches, will be not included in results
-				tuple{1,1,   1}, // to warm up caches, will be not included in results
-				tuple{1,1,   1},
-				tuple{1,1,   2},
-				tuple{1,1,  32},
-				tuple{1,1, 512},
-				tuple{1,1,1024},
-				tuple{32,1, 32},
-				tuple{1024,1,1},
 			};
 	vector<double> bufferCreationResults(testData.size(),numeric_limits<double>::max());
 	vector<double> memoryCreationResults(testData.size(),numeric_limits<double>::max());
