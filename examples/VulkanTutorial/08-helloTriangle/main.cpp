@@ -99,10 +99,8 @@ int main(int,char**)
 		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 		// create device
-		device.reset(  // Move assignment and physicalDevice.createDeviceUnique() does not work here because of bug
-		               // in vulkan.hpp until VK_HEADER_VERSION 73 (bug was fixed on 2018-03-05 in vulkan.hpp git).
-		               // Unfortunately, Ubuntu 18.04 carries still broken vulkan.hpp of VK_HEADER_VERSION 70.
-			physicalDevice.createDevice(
+		device=
+			physicalDevice.createDeviceUnique(
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
 					1,                        // queueCreateInfoCount
@@ -116,8 +114,7 @@ int main(int,char**)
 					0,nullptr,  // number of enabled extensions, enabled extension names
 					nullptr,    // enabled features
 				}
-			)
-		);
+			);
 
 		// get queues
 		graphicsQueue=device->getQueue(graphicsQueueFamily,0);
