@@ -13,10 +13,40 @@ const ParentChildListOffsets StateSet::parentChildListOffsets{
 };
 
 
-void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const
+void StateSet::removeDrawableUnsafe(Drawable& d)
 {
-	// optimization (need not to be here if you do not like it)
-	if(_numDrawables==0 && childList.empty())
+	auto i=d._indexIntoStateSet;
+	size_t lastIndex=_drawableDataList.size()-1;
+	if(i==lastIndex) {
+		_drawableDataList.pop_back();
+		_drawableList.pop_back();
+	}
+	else {
+		_drawableDataList[i]=_drawableDataList[lastIndex];
+		_drawableDataList.pop_back();
+		Drawable* movedDrawable=_drawableList[lastIndex];
+		_drawableList[i]=movedDrawable;
+		_drawableList.pop_back();
+		movedDrawable->_indexIntoStateSet=i;
+	}
+}
+
+
+size_t StateSet::prepareRecording()
+{
+	size_t numDrawables=_drawableDataList.size();
+	for(StateSet& ss : childList)
+		numDrawables+=ss.prepareRecording();
+	_skipRecording=(numDrawables==0);
+	return numDrawables;
+}
+
+
+void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounter)
+{
+	// optimization
+	// to not process StateSet subgraphs that does not have any Drawables
+	if(_skipRecording)
 		return;
 
 	// bind pipeline
@@ -36,9 +66,16 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 		);
 	}
 
-	if(_numDrawables!=0) {
+	if(numDrawables()!=0) {
 
 		assert(_vertexStorage && "VertexStorage have to be assigned before calling StateSet::recordToCommandBuffer() if StateSet has associated Drawables.");
+
+		// copy drawable data
+		memcpy(
+			&_renderer->drawableStagingData()[drawableCounter],  // dst
+			_drawableDataList.data(),  // src
+			_drawableDataList.size()*sizeof(DrawableGpuData)  // size
+		);
 
 		// bind attributes
 		size_t numAttributes=_vertexStorage->bufferList().size();
@@ -55,17 +92,16 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indire
 		device->cmdDrawIndexedIndirect(
 			cb,  // commandBuffer
 			_renderer->drawIndirectBuffer(),  // buffer
-			indirectBufferOffset,  // offset
-			uint32_t(_numDrawables),  // drawCount
+			drawableCounter*sizeof(vk::DrawIndexedIndirectCommand),  // offset
+			uint32_t(numDrawables()),  // drawCount
 			sizeof(vk::DrawIndexedIndirectCommand)  // stride
 		);
 
-		// update rendering data
-		_renderer->stateSetStagingData()[_id]=uint32_t(indirectBufferOffset/4);
-		indirectBufferOffset+=_numDrawables*sizeof(vk::DrawIndexedIndirectCommand);
+		// update drawableCounter
+		drawableCounter+=numDrawables();
 	}
 
 	// record child StateSets
-	for(const StateSet& child : childList)
-		child.recordToCommandBuffer(cb, indirectBufferOffset);
+	for(StateSet& child : childList)
+		child.recordToCommandBuffer(cb,drawableCounter);
 }

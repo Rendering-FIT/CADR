@@ -4,19 +4,6 @@
 #include <vulkan/vulkan.hpp>
 #include <tuple>
 
-#if VK_HEADER_VERSION<149 && VK_HEADER_VERSION>=136
-# error "Vulkan headers error: The current version contains known problems. Please, upgrade your Vulkan SDK or Vulkan development packages."
-// Known problems:
-// - vk::Device::createGraphicsPipelinesUnique(), createComputePipelinesUnique() and probably few others are broken
-//   (compilation fails) since Vulkan version 1.2.136. The problem was fixed in git on 2020-07-20. The first working release is 1.2.149.
-// - vk::Device::createGraphicsPipelinesUnique() and createComputePipeline() used to return vk::Pipeline
-//   while now it returns vk::ResultValue<vk::Pipeline>. The change comes from two success values instead of one returned from
-//   vkCreateGraphicsPipelines() and vkCreateComputePipelines() introduced in Vulkan version 1.2.135.
-//   The change did not affect vulkan.hpp in the version 1.2.135, but the following version 1.2.136.
-//   The first Vulkan SDK affected was 1.2.141.0.
-#endif
-
-
 namespace CadR {
 
 class VulkanInstance;
@@ -169,6 +156,7 @@ public:
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
 	inline vk::Result bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
 	inline vk::Result resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
+	inline vk::Result resetCommandPool(vk::CommandPool commandPool,vk::CommandPoolResetFlags flags) const  { return _device.resetCommandPool(commandPool,flags,*this); }
 	inline vk::Result endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
 	inline vk::Result queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::Result waitIdle() const  { return _device.waitIdle(*this); }
@@ -209,6 +197,7 @@ public:
 	inline void destroyDescriptorSetLayout(vk::DescriptorSetLayout descriptorSetLayout,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyDescriptorSetLayout(descriptorSetLayout,allocator,*this); }
 	inline void destroy(vk::DescriptorSetLayout descriptorSetLayout,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyDescriptorSetLayout(descriptorSetLayout,allocator,*this); }
 	inline vk::ResultValueType<vk::DescriptorPool>::type createDescriptorPool(const vk::DescriptorPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createDescriptorPool(createInfo,allocator,*this); }
+	inline vk::ResultValueType<void>::type resetCommandPool(vk::CommandPool commandPool,vk::CommandPoolResetFlags flags) const  { return _device.resetCommandPool(commandPool,flags,*this); }
 	inline void destroyDescriptorPool(vk::DescriptorPool descriptorPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyDescriptorPool(descriptorPool,allocator,*this); }
 	inline void destroy(vk::DescriptorPool descriptorPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(descriptorPool,allocator,*this); }
 	inline vk::ResultValueType<void>::type resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
@@ -423,6 +412,7 @@ public:
 	PFN_vkCreateSemaphore vkCreateSemaphore;
 	PFN_vkDestroySemaphore vkDestroySemaphore;
 	PFN_vkCreateCommandPool vkCreateCommandPool;
+	PFN_vkResetCommandPool vkResetCommandPool;
 	PFN_vkDestroyCommandPool vkDestroyCommandPool;
 	PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
 	PFN_vkFreeCommandBuffers vkFreeCommandBuffers;

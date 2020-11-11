@@ -1,4 +1,7 @@
-#pragma once
+// handle circular include
+#include <CadR/Drawable.h>
+#ifndef CADR_STATESET_H
+#define CADR_STATESET_H
 
 #include <vulkan/vulkan.hpp>
 #include <boost/intrusive/list.hpp>
@@ -10,13 +13,13 @@ class Pipeline;
 class Renderer;
 class VertexStorage;
 
-
 class CADR_EXPORT StateSet final {
 protected:
-	Renderer* _renderer;
-	uint32_t _id;
-	size_t _numDrawables = 0;
-	VertexStorage* _vertexStorage = nullptr;
+	Renderer* _renderer;  ///< Renderer associated with this Stateset.
+	bool _skipRecording;  ///< The flag optimizing the rendering. It is set by prepareRecording() and used by recordToCommandBuffer() to skip StateSets that does not contain any Drawables.
+	std::vector<DrawableGpuData> _drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
+	std::vector<Drawable*> _drawableList;  ///< List of Drawables attached to this StateSet.
+	VertexStorage* _vertexStorage = nullptr;  ///< VertexStorage used by all Drawables attached to this StateSet.
 public:
 
 	// pipeline to bind
@@ -46,18 +49,20 @@ public:
 	StateSet& operator=(StateSet&&) = delete;
 
 	Renderer* renderer() const;
-	uint32_t id() const;
 	VertexStorage* vertexStorage() const;
 
 	size_t numDrawables() const;
-	void setNumDrawables(size_t num);
-	void incrementNumDrawables(ptrdiff_t increment=1);
-	void decrementNumDrawables(ptrdiff_t decrement=1);
+	void appendDrawable(Drawable& d,DrawableGpuData gpuData);
+	void removeDrawable(Drawable& d);
+	void appendDrawableUnsafe(Drawable& d,DrawableGpuData gpuData);
+	void removeDrawableUnsafe(Drawable& d);
 
-	void recordToCommandBuffer(vk::CommandBuffer cb,vk::DeviceSize& indirectBufferOffset) const;
+	size_t prepareRecording();
+	void recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounter);
 
 	void setVertexStorage(VertexStorage* vertexStorage);  ///< Sets the VertexStorage that will be bound when rendering this StateSet. It should not be changed if you have already Drawables using this StateSet as StateSet would then use different VertexStorage than Drawables leading to undefined behaviour.
 
+	friend Drawable;
 };
 
 
@@ -69,23 +74,24 @@ public:
 #include <cassert>
 namespace CadR {
 
-inline StateSet::StateSet() : _renderer(Renderer::get()), _vertexStorage(nullptr)  { _id=_renderer->allocateStateSetId(); }
-inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _vertexStorage(nullptr)  { _id=_renderer->allocateStateSetId(); }
+inline StateSet::StateSet() : _renderer(Renderer::get()), _vertexStorage(nullptr)  {}
+inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _vertexStorage(nullptr)  {}
 inline StateSet::StateSet(VertexStorage* vertexStorage)
-	: _renderer(Renderer::get()), _vertexStorage(vertexStorage)  { _id=_renderer->allocateStateSetId(); }
+	: _renderer(Renderer::get()), _vertexStorage(vertexStorage)  {}
 inline StateSet::StateSet(Renderer* renderer,VertexStorage* vertexStorage)
-	: _renderer(renderer), _vertexStorage(vertexStorage)  { _id=_renderer->allocateStateSetId(); }
-inline StateSet::~StateSet()  { assert(_numDrawables==0 && "Do not destroy StateSet while some Drawables still use it."); _renderer->releaseStateSetId(_id); }
+	: _renderer(renderer), _vertexStorage(vertexStorage)  {}
+inline StateSet::~StateSet()  { assert(_drawableDataList.empty() && "Do not destroy StateSet while some Drawables still use it."); }
 
 inline Renderer* StateSet::renderer() const  { return _renderer; }
-inline uint32_t StateSet::id() const  { return _id; }
 inline VertexStorage* StateSet::vertexStorage() const  { return _vertexStorage; }
 
-inline size_t StateSet::numDrawables() const  { return _numDrawables; }
-inline void StateSet::setNumDrawables(size_t num)  { _numDrawables=num; }
-inline void StateSet::incrementNumDrawables(ptrdiff_t increment)  { _numDrawables+=increment; }
-inline void StateSet::decrementNumDrawables(ptrdiff_t decrement)  { _numDrawables-=decrement; }
+inline size_t StateSet::numDrawables() const  { return _drawableDataList.size(); }
+inline void StateSet::appendDrawableUnsafe(Drawable& d,DrawableGpuData gpuData)  { d._stateSet=this; d._indexIntoStateSet=uint32_t(_drawableDataList.size()); _drawableDataList.emplace_back(gpuData); _drawableList.emplace_back(&d); }
+inline void StateSet::appendDrawable(Drawable& d,DrawableGpuData gpuData)  { if(d._indexIntoStateSet!=~0) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData); }
+inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0; }
 
-inline void StateSet::setVertexStorage(VertexStorage* vertexStorage)  { assert(_numDrawables==0 && "Cannot change VertexStorage while there are attached Drawables."); _vertexStorage=vertexStorage; }
+inline void StateSet::setVertexStorage(VertexStorage* vertexStorage)  { assert(_drawableDataList.empty() && "Cannot change VertexStorage while there are attached Drawables."); _vertexStorage=vertexStorage; }
 
 }
+
+#endif /* CADR_STATESET_H */

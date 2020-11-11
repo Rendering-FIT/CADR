@@ -11,38 +11,39 @@ class StagingBuffer;
 class StateSet;
 
 
-/** DrawableGpuData contains data associated with Drawable that are stored in GPU buffers,
- *  usually in Renderer::drawCommandBuffer().
- *  Allocation management of DrawableGpuData buffer is usually provided
- *  by Renderer::drawableAllocationManager().
+/** DrawableGpuData contains data associated with the Drawable
+ *  that are used by GPU during rendering.
+ *  It is stored inside StateSet in the host memory 
+ *  and uploaded to GPU during rendering for all drawables expected to be rendered.
  */
 struct DrawableGpuData final {
 	uint32_t primitiveSetOffset4;
 	uint32_t shaderDataOffset4;
-	uint32_t stateSetOffset4;
-	uint32_t userData;  ///< Provides 16-byte structure alignment.
 
 	DrawableGpuData()  {}
-	DrawableGpuData(uint32_t primitiveSetOffset4,uint32_t shaderDataOffset4,uint32_t stateSetOffset4);
-	constexpr DrawableGpuData(uint32_t primitiveSetOffset4,uint32_t shaderDataOffset4,
-	                          uint32_t stateSetOffset4,uint32_t userData);
+	constexpr DrawableGpuData(uint32_t primitiveSetOffset4,uint32_t shaderDataOffset4);
 };
 
 
+/** Drawable makes PrimitiveSet rendered.
+ *  Drawable is connected with Geometry and one of its PrimitiveSets.
+ *  It is also associated with shaderData that are passed to the shaders in the pipeline
+ *  to be used during rendering.
+ */
 class CADR_EXPORT Drawable final {
 protected:
-	ItemAllocation _gpuAllocation;
-	uint32_t _shaderDataID;
-	StateSet* _stateSet;
+	StateSet* _stateSet;  ///< StateSet that renders this Drawable if _indexIntoStateSet is valid (any value except ~0). If _indexIntoStateSet is not valid, _stateSet keeps the last value that was written there. This allows Drawable association with the StateSet and render it only later.
+	uint32_t _indexIntoStateSet;  ///< Index to StateSet data where this Drawable is stored or ~0 if no StateSet attached. The index might be changing as other Drawables are removed and appended to the StateSet.
+	uint32_t _shaderDataID;  ///< ShaderData that will be passed to shaders during rendering.
 public:
 	boost::intrusive::list_member_hook<
 		boost::intrusive::link_mode<boost::intrusive::auto_unlink>
 	> _drawableListHook;  ///< List hook of Geometry::_drawableList. Geometry::_drawableList contains all Drawables that render the Geometry.
 public:
 
-	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling create().
+	Drawable();  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many of its functions until you initialize it by calling create().
 	Drawable(uint32_t shaderDataID,StateSet& stateSet);
-	Drawable(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet& stateSet,uint32_t userData=0);
+	Drawable(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet& stateSet);
 	Drawable(Drawable&& other);
 	Drawable& operator=(Drawable&& rhs);
 	~Drawable();
@@ -50,19 +51,16 @@ public:
 	Drawable(const Drawable&) = delete;
 	Drawable& operator=(const Drawable&) = delete;
 
-	void create(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet& stateSet,uint32_t userData=0);
-	void create(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t userData=0);
+	void create(Geometry& geometry,uint32_t primitiveSetIndex,uint32_t shaderDataID,StateSet& stateSet);
+	void create(Geometry& geometry,uint32_t primitiveSetIndex);
 	void destroy();
 	bool isValid() const;
 
 	Renderer* renderer() const;
-	const ItemAllocation& allocation() const;
-	uint32_t shaderDataID() const;
 	StateSet* stateSet() const;
+	uint32_t shaderDataID() const;
 
-	void upload(const DrawableGpuData& drawableData);
-	StagingBuffer createStagingBuffer();
-
+	friend StateSet;
 };
 
 
@@ -86,25 +84,16 @@ typedef boost::intrusive::list<
 #include <CadR/StateSet.h>
 namespace CadR {
 
-inline constexpr DrawableGpuData::DrawableGpuData(uint32_t primitiveSetOffset4_,uint32_t shaderDataOffset4_,uint32_t stateSetOffset4_,uint32_t userData_)
-	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_), stateSetOffset4(stateSetOffset4_), userData(userData_)  {}
-inline Drawable::Drawable(uint32_t shaderDataID,StateSet& stateSet) : _shaderDataID(shaderDataID), _stateSet(&stateSet)  {}
-inline Drawable::~Drawable()  { destroy(); }
-inline void Drawable::destroy()
-{
-	if(!_gpuAllocation.isValid())
-		return;
-	_gpuAllocation.free(renderer()->drawableAllocationManager());
-	_drawableListHook.unlink();
-	_stateSet->decrementNumDrawables();
-}
-inline bool Drawable::isValid() const  { return _gpuAllocation.isValid(); }
+inline constexpr DrawableGpuData::DrawableGpuData(uint32_t primitiveSetOffset4_,uint32_t shaderDataOffset4_)
+	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_)  {}
+inline Drawable::Drawable() : _indexIntoStateSet(~0)  {}
+inline Drawable::Drawable(uint32_t shaderDataID,StateSet& stateSet) : _stateSet(&stateSet), _indexIntoStateSet(~0), _shaderDataID(shaderDataID)  {}
+inline Drawable::~Drawable()  { if(_indexIntoStateSet!=~0) _stateSet->removeDrawableUnsafe(*this); _drawableListHook.unlink(); }
+inline void Drawable::destroy()  { _stateSet->removeDrawable(*this); _drawableListHook.unlink(); }
+inline bool Drawable::isValid() const  { return _indexIntoStateSet!=~0; }
 
 inline Renderer* Drawable::renderer() const  { return _stateSet->renderer(); }
-inline const ItemAllocation& Drawable::allocation() const  { return _gpuAllocation; }
-inline uint32_t Drawable::shaderDataID() const  { return _shaderDataID; }
 inline StateSet* Drawable::stateSet() const  { return _stateSet; }
-inline void Drawable::upload(const DrawableGpuData& drawableData)  { renderer()->uploadDrawable(*this,drawableData); }
-inline StagingBuffer Drawable::createStagingBuffer()  { return renderer()->createDrawableStagingBuffer(*this); }
+inline uint32_t Drawable::shaderDataID() const  { return _shaderDataID; }
 
 }

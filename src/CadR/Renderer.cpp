@@ -10,8 +10,8 @@ using namespace std;
 using namespace CadR;
 
 // shader code in SPIR-V binary
-static const uint32_t processDrawCommandsShaderSpirv[]={
-#include "shaders/processDrawCommands.comp.spv"
+static const uint32_t processDrawablesShaderSpirv[]={
+#include "shaders/processDrawables.comp.spv"
 };
 
 
@@ -24,9 +24,8 @@ Renderer::Renderer(bool makeDefault)
 	, _graphicsQueueFamily(0xffffffff)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
-	, _dataStorageAllocationManager(2048,0)  // set capacity to 2048, zero-sized null object (on index 0)
+	, _dataStorageAllocationManager(4096,0)  // set capacity to 4096, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
-	, _drawableAllocationManager(128,0)  // capacity, num null objects
 {
 	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty VertexStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_vertexStorages.begin()->second.front();
@@ -40,9 +39,8 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _emptyStorage(nullptr)
 	, _indexAllocationManager(1024,0)  // set capacity to 1024, zero-sized null object (on index 0)
-	, _dataStorageAllocationManager(2048,0)  // set capacity to 2048, zero-sized null object (on index 0)
+	, _dataStorageAllocationManager(4096,0)  // set capacity to 4096, zero-sized null object (on index 0)
 	, _primitiveSetAllocationManager(128,0)  // capacity, size of null object (on index 0)
-	, _drawableAllocationManager(128,0)  // capacity, num null objects
 {
 	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList()); // create empty VertexStorage for empty AttribSizeList (no attributes)
 	_emptyStorage=&_vertexStorages.begin()->second.front();
@@ -103,7 +101,7 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 		_device->createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),      // flags
-				2048,                         // size
+				4096,                         // size
 				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
 				0,                            // queueFamilyIndexCount
@@ -136,25 +134,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 			0  // memoryOffset
 		);
 
-	// drawable buffer
-	_drawableBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				128*sizeof(DrawableGpuData),  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_drawableBufferMemory=allocateMemory(_drawableBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	_device->bindBufferMemory(
-			_drawableBuffer,  // buffer
-			_drawableBufferMemory,  // memory
-			0  // memoryOffset
-		);
-
 	// matrixListControl
 	_matrixListControlBuffer=
 		_device->createBuffer(
@@ -174,95 +153,8 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 			0  // memoryOffset
 		);
 
-	// draw indirect buffer
-	_drawIndirectBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				128*sizeof(vk::DrawIndexedIndirectCommand),  // size
-				vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eStorageBuffer,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_drawIndirectBufferMemory=allocateMemory(_drawIndirectBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	_device->bindBufferMemory(
-			_drawIndirectBuffer,  // buffer
-			_drawIndirectBufferMemory,  // memory
-			0  // memoryOffset
-		);
-
-	// stateSet buffer
-	_stateSetBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				128*sizeof(4),  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_stateSetBufferMemory=allocateMemory(_stateSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	_device->bindBufferMemory(
-			_stateSetBuffer,  // buffer
-			_stateSetBufferMemory,  // memory
-			0  // memoryOffset
-		);
-
-	// stateSet staging buffer
-	_stateSetStagingBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				128*sizeof(4),  // size
-				vk::BufferUsageFlagBits::eTransferSrc,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_stateSetStagingMemory=allocateMemory(_stateSetStagingBuffer,vk::MemoryPropertyFlagBits::eHostVisible|vk::MemoryPropertyFlagBits::eHostCached);
-	_device->bindBufferMemory(
-			_stateSetStagingBuffer,  // buffer
-			_stateSetStagingMemory,  // memory
-			0  // memoryOffset
-		);
-	_stateSetStagingData=reinterpret_cast<uint32_t*>(_device->mapMemory(_stateSetStagingMemory,0,VK_WHOLE_SIZE));
-
-	// compute indirect buffer
-	_computeIndirectBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				3*sizeof(4),  // size
-				vk::BufferUsageFlagBits::eIndirectBuffer,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_computeIndirectBufferMemory=allocateMemory(_computeIndirectBuffer,vk::MemoryPropertyFlagBits::eHostVisible);
-	_device->bindBufferMemory(
-			_computeIndirectBuffer,  // buffer
-			_computeIndirectBufferMemory,  // memory
-			0  // memoryOffset
-		);
-	_computeIndirectBufferData=reinterpret_cast<uint32_t*>(_device->mapMemory(_computeIndirectBufferMemory,0,VK_WHOLE_SIZE));
-
-	// command pool used by StateSets
-	_stateSetCommandPool=
-		_device->createCommandPool(
-			vk::CommandPoolCreateInfo(
-				vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
-				_graphicsQueueFamily  // queueFamilyIndex
-			)
-		);
-
 	// descriptor pool
-	_drawCommandDescriptorPool=
+	_drawableDescriptorPool=
 		_device->createDescriptorPool(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
@@ -271,19 +163,19 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						5  // descriptorCount
+						4  // descriptorCount
 					),
 				}.data()
 			)
 		);
 
 	// descriptor set layout
-	auto descriptorSetLayout=
-		_device->createDescriptorSetLayoutUnique(
+	_drawableDescriptorSetLayout=
+		_device->createDescriptorSetLayout(
 			vk::DescriptorSetLayoutCreateInfo(  // createInfo
 				vk::DescriptorSetLayoutCreateFlags(),  // flags
-				5,  // bindingCount
-				array<vk::DescriptorSetLayoutBinding,5>{  // pBindings
+				4,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,4>{  // pBindings
 					vk::DescriptorSetLayoutBinding(
 						0,  // binding
 						vk::DescriptorType::eStorageBuffer,  // descriptorType
@@ -312,73 +204,27 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 						vk::ShaderStageFlagBits::eCompute,  // stageFlags
 						nullptr  // pImmutableSamplers
 					),
-					vk::DescriptorSetLayoutBinding(
-						4,  // binding
-						vk::DescriptorType::eStorageBuffer,  // descriptorType
-						1,  // descriptorCount
-						vk::ShaderStageFlagBits::eCompute,  // stageFlags
-						nullptr  // pImmutableSamplers
-					)
 				}.data()
 			)
 		);
 
 	// allocate and update descriptor set
-	_drawCommandDescriptorSet=
+	_drawableDescriptorSet=
 		_device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
-				_drawCommandDescriptorPool,  // descriptorPool
+				_drawableDescriptorPool,  // descriptorPool
 				1,  // descriptorSetCount
-				&descriptorSetLayout.get()  // pSetLayouts
+				&_drawableDescriptorSetLayout  // pSetLayouts
 			)
 		)[0];
-	_device->updateDescriptorSets(
-		vk::WriteDescriptorSet(  // descriptorWrites
-			_drawCommandDescriptorSet,  // dstSet
-			0,  // dstBinding
-			0,  // dstArrayElement
-			5,  // descriptorCount
-			vk::DescriptorType::eStorageBuffer,  // descriptorType
-			nullptr,  // pImageInfo
-			array<vk::DescriptorBufferInfo,5>{  // pBufferInfo
-				vk::DescriptorBufferInfo(
-					_primitiveSetBuffer,  // buffer
-					0,  // offset
-					VK_WHOLE_SIZE  // range
-				),
-				vk::DescriptorBufferInfo(
-					_drawableBuffer,  // buffer
-					0,  // offset
-					VK_WHOLE_SIZE  // range
-				),
-				vk::DescriptorBufferInfo(
-					_matrixListControlBuffer,  // buffer
-					0,  // offset
-					VK_WHOLE_SIZE  // range
-				),
-				vk::DescriptorBufferInfo(
-					_drawIndirectBuffer,  // buffer
-					0,  // offset
-					VK_WHOLE_SIZE  // range
-				),
-				vk::DescriptorBufferInfo(
-					_stateSetBuffer,  // buffer
-					0,  // offset
-					VK_WHOLE_SIZE  // range
-				),
-			}.data(),
-			nullptr  // pTexelBufferView
-		),
-		nullptr  // descriptorCopies
-	);
 
-	// processDrawCommands shader and pipeline stuff
-	_drawCommandShader=
+	// processDrawables shader and pipeline stuff
+	_drawableShader=
 		_device->createShaderModule(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(processDrawCommandsShaderSpirv),  // codeSize
-				processDrawCommandsShaderSpirv  // pCode
+				sizeof(processDrawablesShaderSpirv),  // codeSize
+				processDrawablesShaderSpirv  // pCode
 			)
 		);
 	_pipelineCache=
@@ -389,17 +235,17 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				nullptr  // pInitialData
 			)
 		);
-	_drawCommandPipelineLayout=
+	_drawablePipelineLayout=
 		_device->createPipelineLayout(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				1,       // setLayoutCount
-				&descriptorSetLayout.get(), // pSetLayouts
+				&_drawableDescriptorSetLayout, // pSetLayouts
 				0,       // pushConstantRangeCount
 				nullptr  // pPushConstantRanges
 			}
 		);
-	_drawCommandPipeline=
+	_drawablePipeline=
 		_device->createComputePipeline(
 			_pipelineCache,  // pipelineCache
 			vk::ComputePipelineCreateInfo(  // createInfo
@@ -407,11 +253,11 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				vk::PipelineShaderStageCreateInfo(  // stage
 					vk::PipelineShaderStageCreateFlags(),  // flags
 					vk::ShaderStageFlagBits::eCompute,  // stage
-					_drawCommandShader,  // module
+					_drawableShader,  // module
 					"main",  // pName
 					nullptr  // pSpecializationInfo
 				),
-				_drawCommandPipelineLayout,  // layout
+				_drawablePipelineLayout,  // layout
 				nullptr,  // basePipelineHandle
 				-1  // basePipelineIndex
 			)
@@ -451,7 +297,6 @@ void Renderer::finalize()
 		return;
 
 	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Geometry::allocAttribs() without specifying AttribSizeList.");
-	assert(_drawableAllocationManager.numItems()==0 && "Renderer::_drawableAllocationManager still contains elements during Renderer's destruction.");
 
 	// clear attrib storages
 	_vertexStorages.clear();
@@ -462,17 +307,14 @@ void Renderer::finalize()
 	_indexAllocationManager.clear();
 	_dataStorageAllocationManager.clear();
 	_primitiveSetAllocationManager.clear();
-	_drawableAllocationManager.clear();
 
 	// destroy shaders, pipelines,...
-	_device->destroy(_drawCommandShader);
-	_device->destroy(_drawCommandDescriptorPool);
-	_device->destroy(_drawCommandPipelineLayout);
-	_device->destroy(_drawCommandPipeline);
+	_device->destroy(_drawableShader);
+	_device->destroy(_drawableDescriptorPool);
+	_device->destroy(_drawableDescriptorSetLayout);
+	_device->destroy(_drawablePipelineLayout);
+	_device->destroy(_drawablePipeline);
 	_device->destroy(_pipelineCache);
-
-	// destroy StateSet CommandPool
-	_device->destroy(_stateSetCommandPool);
 
 	// clean up uploading operations
 	_device->endCommandBuffer(_uploadingCommandBuffer);
@@ -488,20 +330,14 @@ void Renderer::finalize()
 	_device->freeMemory(_primitiveSetBufferMemory);
 	_device->destroy(_drawableBuffer);
 	_device->freeMemory(_drawableBufferMemory);
+	_drawableBufferSize=0;
+	_device->destroy(_drawableStagingBuffer);
+	_device->freeMemory(_drawableStagingMemory);
 	_device->destroy(_matrixListControlBuffer);
 	_device->freeMemory(_matrixListControlBufferMemory);
 	_device->destroy(_drawIndirectBuffer);
-	_device->freeMemory(_drawIndirectBufferMemory);
-	_device->destroy(_stateSetBuffer);
-	_device->freeMemory(_stateSetBufferMemory);
-	_device->destroy(_stateSetStagingBuffer);
-	_device->freeMemory(_stateSetStagingMemory);  // no need to unmap memory as vkFreeMemory handles that
-	_device->destroy(_computeIndirectBuffer);
-	_device->freeMemory(_computeIndirectBufferMemory);  // no need to unmap memory as vkFreeMemory handles that
+	_device->freeMemory(_drawIndirectMemory);
 
-	_highestAllocatedSsId=-1;
-	_releasedSsIds.clear();
-	_stateSetStagingData=nullptr;
 	_device=nullptr;
 }
 
@@ -514,17 +350,146 @@ void Renderer::leakResources()
 }
 
 
-void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
+size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 {
+	// prepare recording
+	// and get number of drawables we will render
+	size_t numDrawables=stateSetRoot.prepareRecording();
+
+	// reallocate drawable buffer
+	// if too small
+	if(_drawableBufferSize<numDrawables*sizeof(DrawableGpuData))
+	{
+		size_t n=size_t(numDrawables*1.2f);  // get extra 20% to avoid frequent reallocations when space needs are growing slowly with time
+		_drawableBufferSize=n*sizeof(DrawableGpuData);
+		size_t drawIndirectBufferSize=n*sizeof(vk::DrawIndexedIndirectCommand);
+
+		// free previous buffers (if any)
+		_device->destroy(_drawableBuffer);
+		_device->free(_drawableBufferMemory);
+		_device->destroy(_drawableStagingBuffer);
+		_device->free(_drawableStagingMemory);
+		_device->destroy(_drawIndirectBuffer);
+		_device->free(_drawIndirectMemory);
+
+		// alloc new drawable buffer
+		_drawableBuffer=
+			_device->createBuffer(
+				vk::BufferCreateInfo(
+					vk::BufferCreateFlags(),      // flags
+					_drawableBufferSize,          // size
+					vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr                       // pQueueFamilyIndices
+				)
+			);
+		_drawableBufferMemory=allocateMemory(_drawableBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+		_device->bindBufferMemory(
+			_drawableBuffer,  // buffer
+			_drawableBufferMemory,  // memory
+			0  // memoryOffset
+		);
+
+		// alloc new drawable staging buffer
+		_drawableStagingBuffer=
+			_device->createBuffer(
+				vk::BufferCreateInfo(
+					vk::BufferCreateFlags(),      // flags
+					_drawableBufferSize,          // size
+					vk::BufferUsageFlagBits::eTransferSrc,  // usage
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr                       // pQueueFamilyIndices
+				)
+			);
+		_drawableStagingMemory=
+			allocateMemory(
+				_drawableStagingBuffer,  // buffer
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent |
+					vk::MemoryPropertyFlagBits::eHostCached  // requiredFlags
+			);
+		_device->bindBufferMemory(
+			_drawableStagingBuffer,  // buffer
+			_drawableStagingMemory,  // memory
+			0  // memoryOffset
+		);
+		_drawableStagingData=reinterpret_cast<DrawableGpuData*>(_device->mapMemory(_drawableStagingMemory,0,_drawableBufferSize));
+
+		// alloc new draw indirect buffer
+		_drawIndirectBuffer=
+			_device->createBuffer(
+				vk::BufferCreateInfo(
+					vk::BufferCreateFlags(),      // flags
+					drawIndirectBufferSize,       // size
+					vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eStorageBuffer,  // usage
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr                       // pQueueFamilyIndices
+				)
+			);
+		_drawIndirectMemory=allocateMemory(_drawIndirectBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+		_device->bindBufferMemory(
+			_drawIndirectBuffer,  // buffer
+			_drawIndirectMemory,  // memory
+			0  // memoryOffset
+		);
+
+		// update descriptor with the new buffer
+		_device->updateDescriptorSets(
+			vk::WriteDescriptorSet(  // descriptorWrites
+				_drawableDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				4,  // descriptorCount
+				vk::DescriptorType::eStorageBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,4>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						_primitiveSetBuffer,  // buffer
+						0,  // offset
+						VK_WHOLE_SIZE  // range
+					),
+					vk::DescriptorBufferInfo(
+						_drawableBuffer,  // buffer
+						0,  // offset
+						VK_WHOLE_SIZE  // range
+					),
+					vk::DescriptorBufferInfo(
+						_matrixListControlBuffer,  // buffer
+						0,  // offset
+						VK_WHOLE_SIZE  // range
+					),
+					vk::DescriptorBufferInfo(
+						_drawIndirectBuffer,  // buffer
+						0,  // offset
+						VK_WHOLE_SIZE  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			),
+			nullptr  // descriptorCopies
+		);
+	}
+
+	return numDrawables;
+}
+
+
+void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t numDrawables)
+{
+	if(numDrawables==0)
+		return;
+
 	// fill StateSet buffer with content
 	_device->cmdCopyBuffer(
 		commandBuffer,  // commandBuffer
-		stateSetStagingBuffer(),  // srcBuffer
-		stateSetBuffer(),  // dstBuffer
+		_drawableStagingBuffer,  // srcBuffer
+		_drawableBuffer,  // dstBuffer
 		vk::BufferCopy(
 			0,  // srcOffset
 			0,  // dstOffset
-			numStateSetIds()*sizeof(uint32_t)  // size
+			numDrawables*sizeof(DrawableGpuData)  // size
 		)  // pRegions
 	);
 	_device->cmdPipelineBarrier(
@@ -541,16 +506,16 @@ void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
 	);
 
 	// dispatch drawCommand compute pipeline
-	_device->cmdBindPipeline(commandBuffer,vk::PipelineBindPoint::eCompute,drawCommandPipeline());
+	_device->cmdBindPipeline(commandBuffer,vk::PipelineBindPoint::eCompute,drawablePipeline());
 	_device->cmdBindDescriptorSets(
 		commandBuffer,  // commandBuffer
 		vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
-		drawCommandPipelineLayout(),  // layout
+		drawablePipelineLayout(),  // layout
 		0,  // firstSet
-		drawCommandDescriptorSet(),  // descriptorSets
+		drawableDescriptorSet(),  // descriptorSets
 		nullptr  // dynamicOffsets
 	);
-	_device->cmdDispatchIndirect(commandBuffer,computeIndirectBuffer(),0);
+	_device->cmdDispatch(commandBuffer,uint32_t(numDrawables),1,1);
 	_device->cmdPipelineBarrier(
 		commandBuffer,  // commandBuffer
 		vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
@@ -566,7 +531,7 @@ void Renderer::recordDrawCommandProcessing(vk::CommandBuffer commandBuffer)
 }
 
 
-void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet* stateSetRoot,vk::RenderPass renderPass,
+void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& stateSetRoot,vk::RenderPass renderPass,
                                     vk::Framebuffer framebuffer,const vk::Rect2D& renderArea,
                                     uint32_t clearValueCount,const vk::ClearValue* clearValues)
 {
@@ -590,29 +555,12 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet* st
 	);
 
 	// execute all StateSets
-	vk::DeviceSize indirectBufferOffset=0;
-	stateSetRoot->recordToCommandBuffer(commandBuffer,indirectBufferOffset);
-	size_t numDrawCommands=indirectBufferOffset/sizeof(vk::DrawIndexedIndirectCommand);
-	_device->flushMappedMemoryRanges(
-		vk::MappedMemoryRange(
-			stateSetStagingMemory(),  // memory
-			0,  // offset
-			(numStateSetIds()*sizeof(uint32_t)+nonCoherentAtom_addition)&nonCoherentAtom_mask  // size - rounded up to next nonCoherentAtomSize
-		)
-	);
-	_device->cmdEndRenderPass(commandBuffer);
+	size_t drawableCounter=0;
+	stateSetRoot.recordToCommandBuffer(commandBuffer,drawableCounter);
+	assert(drawableCounter<=_drawableBufferSize/sizeof(DrawableGpuData) && "Buffer overflow. This should not happen.");
 
-	// update compute indirect data
-	computeIndirectBufferData()[0]=uint32_t(numDrawCommands);
-	computeIndirectBufferData()[1]=1;
-	computeIndirectBufferData()[2]=1;
-	_device->flushMappedMemoryRanges(
-		vk::MappedMemoryRange(
-			computeIndirectBufferMemory(),  // memory
-			0,  // offset
-			VK_WHOLE_SIZE  // size
-		)
-	);
+	// end render pass
+	_device->cmdEndRenderPass(commandBuffer);
 }
 
 
@@ -675,8 +623,11 @@ void Renderer::executeCopyOperations()
 		VK_TRUE,       // waitAll
 		uint64_t(3e9)  // timeout (3s)
 	);
-	if(r==vk::Result::eTimeout)
-		throw std::runtime_error("GPU timeout. Task is probably hanging.");
+	if(r!=vk::Result::eSuccess) {
+		if(r==vk::Result::eTimeout)
+			throw std::runtime_error("GPU timeout. Task is probably hanging.");
+		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
+	}
 
 	purgeObjectsToDeleteAfterCopyOperation();
 
@@ -817,62 +768,4 @@ void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>&
 	StagingBuffer sb(createPrimitiveSetStagingBuffer(g,dstPrimitiveSetIndex,primitiveSetData.size()));
 	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));
 	sb.submit();
-}
-
-
-StagingBuffer Renderer::createDrawableStagingBuffer(Drawable& d)
-{
-	assert(d.isValid() && "Can not create StagingBuffer for Drawable without allocated GPU data. Call Drawable::create().");
-	return StagingBuffer(
-			_drawableBuffer,  // dstBuffer
-			d.allocation().index()*sizeof(DrawableGpuData),  // dstOffset
-			sizeof(DrawableGpuData),  // size
-			this  // renderer
-		);
-}
-
-
-void Renderer::uploadDrawable(Drawable& d,const DrawableGpuData& drawableData)
-{
-	// create StagingBuffer and submit it
-	StagingBuffer sb(createDrawableStagingBuffer(d));
-	memcpy(sb.data(),&drawableData,sizeof(DrawableGpuData));
-	sb.submit();
-}
-
-
-uint32_t Renderer::allocateStateSetId()
-{
-	uint32_t r;
-	if(_releasedSsIds.empty()) {
-		_highestAllocatedSsId++;
-		r=_highestAllocatedSsId;
-	} else {
-		r=_releasedSsIds.back();
-		_releasedSsIds.pop_back();
-	}
-	return r;
-}
-
-
-void Renderer::releaseStateSetId(uint32_t id)
-{
-	if(id!=_highestAllocatedSsId)
-
-		// just put the offset into the queue of released offsets
-		_releasedSsIds.push_back(id);
-
-	else {
-
-		// remove all highest released offsets
-		while(true) {
-			_highestAllocatedSsId--;
-			auto it=std::max_element(_releasedSsIds.begin(),_releasedSsIds.end());
-			if(it==_releasedSsIds.end() || *it!=_highestAllocatedSsId)
-				break;
-			*it=_releasedSsIds.back();
-			_releasedSsIds.pop_back();
-		}
-
-	}
 }

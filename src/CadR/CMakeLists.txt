@@ -59,7 +59,7 @@ set(CADR_SOURCES
 
 # shaders
 set(CADR_SHADERS
-    shaders/processDrawCommands.comp
+    shaders/processDrawables.comp
    )
 
 # CADR library

@@ -24,8 +24,8 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkBindBufferMemory   =getProcAddr<PFN_vkBindBufferMemory   >("vkBindBufferMemory");
 	vkBindImageMemory    =getProcAddr<PFN_vkBindImageMemory    >("vkBindImageMemory");
 	vkFreeMemory         =getProcAddr<PFN_vkFreeMemory         >("vkFreeMemory");
-	vkGetBufferMemoryRequirements=getProcAddr<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
-	vkGetImageMemoryRequirements =getProcAddr<PFN_vkGetImageMemoryRequirements >("vkGetImageMemoryRequirements");
+	vkGetBufferMemoryRequirements =getProcAddr<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
+	vkGetImageMemoryRequirements  =getProcAddr<PFN_vkGetImageMemoryRequirements >("vkGetImageMemoryRequirements");
 	vkMapMemory          =getProcAddr<PFN_vkMapMemory          >("vkMapMemory");
 	vkUnmapMemory        =getProcAddr<PFN_vkUnmapMemory        >("vkUnmapMemory");
 	vkFlushMappedMemoryRanges=getProcAddr<PFN_vkFlushMappedMemoryRanges>("vkFlushMappedMemoryRanges");
@@ -55,6 +55,7 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkCreateSemaphore    =getProcAddr<PFN_vkCreateSemaphore    >("vkCreateSemaphore");
 	vkDestroySemaphore   =getProcAddr<PFN_vkDestroySemaphore   >("vkDestroySemaphore");
 	vkCreateCommandPool  =getProcAddr<PFN_vkCreateCommandPool  >("vkCreateCommandPool");
+	vkResetCommandPool   =getProcAddr<PFN_vkResetCommandPool   >("vkResetCommandPool");
 	vkDestroyCommandPool =getProcAddr<PFN_vkDestroyCommandPool >("vkDestroyCommandPool");
 	vkAllocateCommandBuffers =getProcAddr<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
 	vkFreeCommandBuffers =getProcAddr<PFN_vkFreeCommandBuffers >("vkFreeCommandBuffers");

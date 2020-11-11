@@ -16,9 +16,9 @@ static struct NullItemFinalizer {
 
 
 
-ItemAllocationManager::ItemAllocationManager(uint32_t capacity,uint32_t numNullItems)
+ItemAllocationManager::ItemAllocationManager(size_t capacity,uint32_t numNullItems)
 	: _pointerList(new ItemAllocation*[capacity]),
-	  _capacity(capacity), _available(capacity-numNullItems),
+	  _capacity(uint32_t(capacity)), _available(uint32_t(capacity-numNullItems)),
 	  _firstItemAvailableAtTheEnd(numNullItems), _numNullItems(numNullItems)
 {
 	assert(capacity>numNullItems && "No space for null items.");
@@ -27,7 +27,7 @@ ItemAllocationManager::ItemAllocationManager(uint32_t capacity,uint32_t numNullI
 }
 
 
-void ItemAllocationManager::setCapacity(uint32_t newCapacity)
+void ItemAllocationManager::setCapacity(size_t newCapacity)
 {
 	if(newCapacity==_capacity)
 		return;
@@ -42,7 +42,7 @@ void ItemAllocationManager::setCapacity(uint32_t newCapacity)
 	}
 	delete[] _pointerList;
 	_pointerList=newPointerList;
-	_capacity=newCapacity;
+	_capacity=uint32_t(newCapacity);
 }
 
 

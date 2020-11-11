@@ -129,3 +129,9 @@ void StagingBuffer::submit()
 	// They will be released after copy operation is completed.)
 	_renderer->scheduleCopyOperation(*this);
 }
+
+
+void StagingBuffer::scheduleCopy(vk::CommandBuffer cb)
+{
+	_renderer->device()->cmdCopyBuffer(cb,_stgBuffer,_dstBuffer,vk::BufferCopy(0,_dstOffset,_size));
+}
