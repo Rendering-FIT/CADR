@@ -34,7 +34,7 @@ macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
 
 	# try path from the linked library
 	get_target_property(found_where ${TARGET_NAME} INTERFACE_LINK_LIBRARIES)
-	if(NOT EXISTS ${found_where})
+	if(NOT EXISTS "${found_where}")
 		set(found_where "")
 	endif()
 
