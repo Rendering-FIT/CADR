@@ -98,9 +98,13 @@ public:
 	inline void freeMemory(vk::DeviceMemory memory,const vk::AllocationCallbacks* pAllocator) const  { _device.freeMemory(memory,pAllocator,*this); }
 	inline void free(vk::DeviceMemory memory,const vk::AllocationCallbacks* pAllocator) const  { _device.freeMemory(memory,pAllocator,*this); }
 	inline void getBufferMemoryRequirements(vk::Buffer buffer,vk::MemoryRequirements* pMemoryRequirements) const  { _device.getBufferMemoryRequirements(buffer,pMemoryRequirements,*this); }
+	inline void getImageMemoryRequirements(vk::Image image,vk::MemoryRequirements* pMemoryRequirements) const  { _device.getImageMemoryRequirements(image,pMemoryRequirements,*this); }
 	inline vk::Result mapMemory(vk::DeviceMemory memory,vk::DeviceSize offset,vk::DeviceSize size,vk::MemoryMapFlags flags,void** ppData) const  { return _device.mapMemory(memory,offset,size,flags,ppData,*this); }
 	inline void unmapMemory(vk::DeviceMemory memory) const  { _device.unmapMemory(memory,*this); }
 	inline vk::Result flushMappedMemoryRanges(uint32_t memoryRangeCount,const vk::MappedMemoryRange* pMemoryRanges) const  { return _device.flushMappedMemoryRanges(memoryRangeCount,pMemoryRanges,*this); }
+	inline vk::Result createImage(const vk::ImageCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Image* pImage) const  { return _device.createImage(pCreateInfo,pAllocator,pImage,*this); }
+	inline void destroyImage(vk::Image image,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyImage(image,pAllocator,*this); }
+	inline void destroy(vk::Image image,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(image,pAllocator,*this); }
 	inline vk::Result createImageView(const vk::ImageViewCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::ImageView* pView) const  { return _device.createImageView(pCreateInfo,pAllocator,pView,*this); }
 	inline void destroyImageView(vk::ImageView imageView,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyImageView(imageView,pAllocator,*this); }
 	inline void destroy(vk::ImageView imageView,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(imageView,pAllocator,*this); }
@@ -163,6 +167,7 @@ public:
 	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
 #ifdef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
+	inline vk::Result bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
 	inline vk::Result resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
 	inline vk::Result endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
 	inline vk::Result queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
@@ -181,11 +186,16 @@ public:
 	inline void destroy(vk::Buffer buffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyBuffer(buffer,allocator,*this); }
 	inline vk::ResultValueType<vk::DeviceMemory>::type allocateMemory(const vk::MemoryAllocateInfo& allocateInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.allocateMemory(allocateInfo,allocator,*this); }
 	inline vk::ResultValueType<void>::type bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
+	inline vk::ResultValueType<void>::type bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
 	inline void freeMemory(vk::DeviceMemory memory,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.freeMemory(memory,allocator,*this); }
 	inline void free(vk::DeviceMemory memory,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.free(memory,allocator,*this); }
 	inline vk::MemoryRequirements getBufferMemoryRequirements(vk::Buffer buffer) const  { return _device.getBufferMemoryRequirements(buffer,*this); }
+	inline vk::MemoryRequirements getImageMemoryRequirements(vk::Image image) const  { return _device.getImageMemoryRequirements(image,*this); }
 	inline vk::ResultValueType<void*>::type mapMemory(vk::DeviceMemory memory,vk::DeviceSize offset,vk::DeviceSize size,vk::MemoryMapFlags flags=vk::MemoryMapFlags()) const  { return _device.mapMemory(memory,offset,size,flags,*this); }
 	inline vk::ResultValueType<void>::type flushMappedMemoryRanges(vk::ArrayProxy<const vk::MappedMemoryRange> memoryRanges) const  { return _device.flushMappedMemoryRanges(memoryRanges,*this); }
+	inline vk::ResultValueType<vk::Image>::type createImage(const vk::ImageCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImage(createInfo,allocator,*this); }
+	inline void destroyImage(vk::Image image,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyImage(image,allocator,*this); }
+	inline void destroy(vk::Image image,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(image,allocator,*this); }
 	inline vk::ResultValueType<vk::ImageView>::type createImageView(const vk::ImageViewCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageView(createInfo,allocator,*this); }
 	inline void destroyImageView(vk::ImageView imageView,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyImageView(imageView,allocator,*this); }
 	inline void destroy(vk::ImageView imageView,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(imageView,allocator,*this); }
@@ -264,14 +274,14 @@ public:
 	inline void destroyCommandPool(vk::CommandPool commandPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyCommandPool(commandPool,allocator,*this); }
 	inline void destroy(vk::CommandPool commandPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(commandPool,allocator,*this); }
 	template<typename Allocator = std::allocator<vk::CommandBuffer>>
-	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo) const  { return _device.allocateCommandBuffers<Allocator>(allocateInfo,*this); }
+	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo) const  { return _device.allocateCommandBuffers(allocateInfo,*this); }
 	template<typename Allocator = std::allocator<vk::CommandBuffer>>
-	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateCommandBuffers<Allocator>(allocateInfo,vectorAllocator,*this); }
+	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateCommandBuffers(allocateInfo,vectorAllocator,*this); }
 	void freeCommandBuffers(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBuffers,*this); }
 	void free(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.free(commandPool,commandBuffers,*this); }
 	inline vk::ResultValueType<void>::type beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo& beginInfo) const  { return commandBuffer.begin(beginInfo,*this); }
 	inline vk::ResultValueType<void>::type endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
-	template<typename T> inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,vk::ArrayProxy<const T> values) const  { commandBuffer.pushConstants<T>(layout,stageFlags,offset,values,*this); }
+	template<typename T> inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,vk::ArrayProxy<const T> values) const  { commandBuffer.pushConstants<T,VulkanDevice>(layout,stageFlags,offset,values,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo& renderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(renderPassBegin,contents,*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,vk::ArrayProxy<const vk::CommandBuffer> secondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBuffers,*this); }
 	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,vk::ArrayProxy<const vk::BufferCopy> regions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regions,*this); }
@@ -289,6 +299,7 @@ public:
 	inline vk::ResultValueType<vk::UniqueHandle<vk::RenderPass,VulkanDevice>>::type createRenderPassUnique(const vk::RenderPassCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createRenderPassUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Buffer,VulkanDevice>>::type createBufferUnique(const vk::BufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createBufferUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::DeviceMemory,VulkanDevice>>::type allocateMemoryUnique(const vk::MemoryAllocateInfo& allocateInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.allocateMemoryUnique(allocateInfo,allocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::Image,VulkanDevice>>::type createImageUnique(const vk::ImageCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::ImageView,VulkanDevice>>::type createImageViewUnique(const vk::ImageViewCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageViewUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Framebuffer,VulkanDevice>>::type createFramebufferUnique(const vk::FramebufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFramebufferUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::ShaderModule,VulkanDevice>>::type createShaderModuleUnique(const vk::ShaderModuleCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createShaderModuleUnique(createInfo,allocator,*this); }
@@ -379,11 +390,15 @@ public:
 	PFN_vkDestroyBuffer vkDestroyBuffer;
 	PFN_vkAllocateMemory vkAllocateMemory;
 	PFN_vkBindBufferMemory vkBindBufferMemory;
+	PFN_vkBindImageMemory vkBindImageMemory;
 	PFN_vkFreeMemory vkFreeMemory;
 	PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements;
+	PFN_vkGetImageMemoryRequirements vkGetImageMemoryRequirements;
 	PFN_vkMapMemory vkMapMemory;
 	PFN_vkUnmapMemory vkUnmapMemory;
 	PFN_vkFlushMappedMemoryRanges vkFlushMappedMemoryRanges;
+	PFN_vkCreateImage vkCreateImage;
+	PFN_vkDestroyImage vkDestroyImage;
 	PFN_vkCreateImageView vkCreateImageView;
 	PFN_vkDestroyImageView vkDestroyImageView;
 	PFN_vkCreateFramebuffer vkCreateFramebuffer;

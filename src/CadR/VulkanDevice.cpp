@@ -22,11 +22,15 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkDestroyBuffer      =getProcAddr<PFN_vkDestroyBuffer      >("vkDestroyBuffer");
 	vkAllocateMemory     =getProcAddr<PFN_vkAllocateMemory     >("vkAllocateMemory");
 	vkBindBufferMemory   =getProcAddr<PFN_vkBindBufferMemory   >("vkBindBufferMemory");
+	vkBindImageMemory    =getProcAddr<PFN_vkBindImageMemory    >("vkBindImageMemory");
 	vkFreeMemory         =getProcAddr<PFN_vkFreeMemory         >("vkFreeMemory");
-	vkGetBufferMemoryRequirements =getProcAddr<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
+	vkGetBufferMemoryRequirements=getProcAddr<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements");
+	vkGetImageMemoryRequirements =getProcAddr<PFN_vkGetImageMemoryRequirements >("vkGetImageMemoryRequirements");
 	vkMapMemory          =getProcAddr<PFN_vkMapMemory          >("vkMapMemory");
 	vkUnmapMemory        =getProcAddr<PFN_vkUnmapMemory        >("vkUnmapMemory");
 	vkFlushMappedMemoryRanges=getProcAddr<PFN_vkFlushMappedMemoryRanges>("vkFlushMappedMemoryRanges");
+	vkCreateImage        =getProcAddr<PFN_vkCreateImage        >("vkCreateImage");
+	vkDestroyImage       =getProcAddr<PFN_vkDestroyImage       >("vkDestroyImage");
 	vkCreateImageView    =getProcAddr<PFN_vkCreateImageView    >("vkCreateImageView");
 	vkDestroyImageView   =getProcAddr<PFN_vkDestroyImageView   >("vkDestroyImageView");
 	vkCreateFramebuffer  =getProcAddr<PFN_vkCreateFramebuffer  >("vkCreateFramebuffer");
