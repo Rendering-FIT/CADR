@@ -758,7 +758,7 @@ int main(int argc,char** argv) {
 			sb.submit();
 
 			// create Drawable
-			drawableDB.emplace_back(g,0,0,ss,0);
+			drawableDB.emplace_back(g,0,0,ss);
 		}
 
 		// upload all staging buffers
@@ -779,13 +779,21 @@ int main(int argc,char** argv) {
 			);
 
 		// primaryCommandBuffers
-		vector<vk::UniqueHandle<vk::CommandBuffer,CadR::VulkanDevice>> primaryCommandBuffers;
+		auto commandPool=
+			device.createCommandPoolUnique(
+				vk::CommandPoolCreateInfo(
+					vk::CommandPoolCreateFlagBits::eTransient|vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
+					graphicsQueueFamily  // queueFamilyIndex
+				)
+			);
+		vector<vk::CommandBuffer> primaryCommandBuffers;
 		window.resizeCallbacks.append(
-			[&device,&renderer,&window,&primaryCommandBuffers]() {
+			[&device,&window,&commandPool,&primaryCommandBuffers]() {
+				device.resetCommandPool(commandPool.get(),vk::CommandPoolResetFlags());
 				primaryCommandBuffers=
-					device.allocateCommandBuffersUnique<std::allocator<vk::UniqueHandle<vk::CommandBuffer,CadR::VulkanDevice>>>(
+					device.allocateCommandBuffers(
 						vk::CommandBufferAllocateInfo(
-							renderer.stateSetCommandPool(),    // commandPool
+							commandPool.get(),                 // commandPool
 							vk::CommandBufferLevel::ePrimary,  // level
 							window.imageCount()                // commandBufferCount
 						)
@@ -848,9 +856,9 @@ int main(int argc,char** argv) {
 				continue;
 
 			// record primary command buffer
-			vk::CommandBuffer cb=primaryCommandBuffers[imageIndex].get();
+			vk::CommandBuffer commandBuffer=primaryCommandBuffers[imageIndex];
 			device.beginCommandBuffer(
-				cb,  // commandBuffer
+				commandBuffer,  // commandBuffer
 				vk::CommandBufferBeginInfo(
 					vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 					nullptr  // pInheritanceInfo
@@ -880,7 +888,7 @@ int main(int argc,char** argv) {
 				)
 			);
 			device.cmdPushConstants(
-				cb,  // commandBuffer
+				commandBuffer,  // commandBuffer
 				pipelineLayout.get(),  // pipelineLayout
 				vk::ShaderStageFlagBits::eVertex,  // stageFlags
 				0,  // offset
@@ -888,24 +896,25 @@ int main(int argc,char** argv) {
 				&perspectiveMatrix  // pValues
 			);
 			device.cmdPushConstants(
-				cb,  // commandBuffer
+				commandBuffer,  // commandBuffer
 				pipelineLayout.get(),  // pipelineLayout
 				vk::ShaderStageFlagBits::eVertex,  // stageFlags
 				64,  // offset
 				16*sizeof(float),  // size
 				&viewMatrix  // pValues
 			);
-			renderer.recordDrawCommandProcessing(cb);
+			size_t numDrawables=renderer.prepareSceneRendering(stateSetRoot);
+			renderer.recordDrawableProcessing(commandBuffer,numDrawables);
 			renderer.recordSceneRendering(
-				cb,  // commandBuffer
-				&stateSetRoot,  // stateSetRoot
+				commandBuffer,  // commandBuffer
+				stateSetRoot,  // stateSetRoot
 				window.renderPass(),  // renderPass
 				window.framebuffers()[imageIndex],  // framebuffer
 				vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
 				1,  // clearValueCount
 				&(const vk::ClearValue&)vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f})  // clearValues
 			);
-			device.endCommandBuffer(cb);
+			device.endCommandBuffer(commandBuffer);
 
 			// render
 			device.queueSubmit(
@@ -913,7 +922,7 @@ int main(int argc,char** argv) {
 				vk::SubmitInfo(
 					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
 					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					1,&cb,                               // commandBufferCount+pCommandBuffers
+					1,&commandBuffer,                    // commandBufferCount+pCommandBuffers
 					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
 				),
 				vk::Fence(nullptr)  // fence
