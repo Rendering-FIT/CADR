@@ -87,8 +87,8 @@ inline VertexStorage* StateSet::vertexStorage() const  { return _vertexStorage; 
 
 inline size_t StateSet::numDrawables() const  { return _drawableDataList.size(); }
 inline void StateSet::appendDrawableUnsafe(Drawable& d,DrawableGpuData gpuData)  { d._stateSet=this; d._indexIntoStateSet=uint32_t(_drawableDataList.size()); _drawableDataList.emplace_back(gpuData); _drawableList.emplace_back(&d); }
-inline void StateSet::appendDrawable(Drawable& d,DrawableGpuData gpuData)  { if(d._indexIntoStateSet!=~0) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData); }
-inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0; }
+inline void StateSet::appendDrawable(Drawable& d,DrawableGpuData gpuData)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData); }
+inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0u) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0; }
 
 inline void StateSet::setVertexStorage(VertexStorage* vertexStorage)  { assert(_drawableDataList.empty() && "Cannot change VertexStorage while there are attached Drawables."); _vertexStorage=vertexStorage; }
 

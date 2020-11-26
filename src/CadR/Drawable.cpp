@@ -36,7 +36,7 @@ Drawable::Drawable(Drawable&& other)
 
 Drawable& Drawable::operator=(Drawable&& rhs)
 {
-	if(_indexIntoStateSet!=~0)
+	if(_indexIntoStateSet!=~0u)
 		_stateSet->removeDrawableUnsafe(*this);
 	_stateSet=rhs._stateSet;
 	_indexIntoStateSet=rhs._indexIntoStateSet;
@@ -53,7 +53,7 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
 {
 	geometry._drawableList.push_back(*this);
 	_shaderDataID=shaderDataID;
-	if(_indexIntoStateSet!=~0)
+	if(_indexIntoStateSet!=~0u) {
 		if(_stateSet==&stateSet) {
 			_stateSet->_drawableDataList[_indexIntoStateSet]=
 				DrawableGpuData(
@@ -64,6 +64,7 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
 		}
 		else
 			_stateSet->removeDrawableUnsafe(*this);
+	}
 
 	_stateSet=&stateSet;
 	_stateSet->appendDrawableUnsafe(
@@ -79,7 +80,7 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
 void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex)
 {
 	geometry._drawableList.push_back(*this);
-	if(_indexIntoStateSet!=~0) {
+	if(_indexIntoStateSet!=~0u) {
 		_stateSet->_drawableDataList[_indexIntoStateSet]=
 			DrawableGpuData(
 				(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4

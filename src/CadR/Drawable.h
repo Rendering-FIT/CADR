@@ -13,7 +13,7 @@ class StateSet;
 
 /** DrawableGpuData contains data associated with the Drawable
  *  that are used by GPU during rendering.
- *  It is stored inside StateSet in the host memory 
+ *  It is stored inside StateSet in the host memory
  *  and uploaded to GPU during rendering for all drawables expected to be rendered.
  */
 struct DrawableGpuData final {
@@ -86,9 +86,9 @@ inline constexpr DrawableGpuData::DrawableGpuData(uint32_t primitiveSetOffset4_,
 	: primitiveSetOffset4(primitiveSetOffset4_), shaderDataOffset4(shaderDataOffset4_)  {}
 inline Drawable::Drawable() : _indexIntoStateSet(~0)  {}
 inline Drawable::Drawable(uint32_t shaderDataID,StateSet& stateSet) : _stateSet(&stateSet), _indexIntoStateSet(~0), _shaderDataID(shaderDataID)  {}
-inline Drawable::~Drawable()  { if(_indexIntoStateSet!=~0) _stateSet->removeDrawableUnsafe(*this); _drawableListHook.unlink(); }
+inline Drawable::~Drawable()  { if(_indexIntoStateSet!=~0u) _stateSet->removeDrawableUnsafe(*this); _drawableListHook.unlink(); }
 inline void Drawable::destroy()  { _stateSet->removeDrawable(*this); _drawableListHook.unlink(); }
-inline bool Drawable::isValid() const  { return _indexIntoStateSet!=~0; }
+inline bool Drawable::isValid() const  { return _indexIntoStateSet!=~0u; }
 
 inline Renderer* Drawable::renderer() const  { return _stateSet->renderer(); }
 inline StateSet* Drawable::stateSet() const  { return _stateSet; }
