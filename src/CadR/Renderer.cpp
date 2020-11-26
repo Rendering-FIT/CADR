@@ -153,6 +153,10 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 			0  // memoryOffset
 		);
 
+	// create general purpose fence
+	_fence=
+		_device->createFence(vk::FenceCreateInfo{vk::FenceCreateFlags()});
+
 	// descriptor pool
 	_drawableDescriptorPool=
 		_device->createDescriptorPool(
@@ -279,15 +283,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				1                                  // commandBufferCount
 			)
 		)[0];
-
-	// start recording
-	_device->beginCommandBuffer(
-		_uploadingCommandBuffer,  // commandBuffer
-		vk::CommandBufferBeginInfo(
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-			nullptr  // pInheritanceInfo
-		)
-	);
 }
 
 
@@ -308,6 +303,11 @@ void Renderer::finalize()
 	_dataStorageAllocationManager.clear();
 	_primitiveSetAllocationManager.clear();
 
+	// delete staging managers
+	_indexStagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
+	_dataStorageStagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
+	_primitiveSetStagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
+
 	// destroy shaders, pipelines,...
 	_device->destroy(_drawableShader);
 	_device->destroy(_drawableDescriptorPool);
@@ -317,9 +317,10 @@ void Renderer::finalize()
 	_device->destroy(_pipelineCache);
 
 	// clean up uploading operations
-	_device->endCommandBuffer(_uploadingCommandBuffer);
 	_device->destroy(_transientCommandPool);  // no need to destroy commandBuffers as destroying command pool frees all command buffers allocated from the pool
-	purgeObjectsToDeleteAfterCopyOperation();
+
+	// destroy fence
+	_device->destroy(_fence);
 
 	// destroy buffers
 	_device->destroy(_indexBuffer);
@@ -568,7 +569,7 @@ VertexStorage* Renderer::getOrCreateVertexStorage(const AttribSizeList& attribSi
 {
 	std::list<VertexStorage>& vertexStorageList=_vertexStorages[attribSizeList];
 	if(vertexStorageList.empty())
-		vertexStorageList.emplace_front(VertexStorage(this,attribSizeList));
+		vertexStorageList.emplace_front(this,attribSizeList);
 	return &vertexStorageList.front();
 }
 
@@ -590,23 +591,32 @@ vk::DeviceMemory Renderer::allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFl
 }
 
 
-void Renderer::scheduleCopyOperation(StagingBuffer& sb)
-{
-	_device->cmdCopyBuffer(_uploadingCommandBuffer,sb._stgBuffer,sb._dstBuffer,
-	                       vk::BufferCopy(0,sb._dstOffset,sb._size));
-	_objectsToDeleteAfterCopyOperation.emplace_back(sb._stgBuffer,sb._stgMemory);
-	sb._stgBuffer=nullptr;
-	sb._stgMemory=nullptr;
-}
-
-
 void Renderer::executeCopyOperations()
 {
+	// start recording
+	_device->beginCommandBuffer(
+		_uploadingCommandBuffer,  // commandBuffer
+		vk::CommandBufferBeginInfo(
+			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+			nullptr  // pInheritanceInfo
+		)
+	);
+
+	// record command buffer
+	for(auto& mapItem : _vertexStorages)
+		for(VertexStorage& vs : mapItem.second) {
+			StagingManagerList& sml=vs.stagingManagerList();
+			for(StagingManager& sm : sml)
+				sm.record(_uploadingCommandBuffer);
+		}
+	for(StagingManager& sm : _indexStagingManagerList)        sm.record(_uploadingCommandBuffer);
+	for(StagingManager& sm : _dataStorageStagingManagerList)  sm.record(_uploadingCommandBuffer);
+	for(StagingManager& sm : _primitiveSetStagingManagerList) sm.record(_uploadingCommandBuffer);
+
 	// end recording
 	_device->endCommandBuffer(_uploadingCommandBuffer);
 
 	// submit command buffer
-	auto fence=_device->createFenceUnique(vk::FenceCreateInfo{vk::FenceCreateFlags()});
 	_device->queueSubmit(
 		_graphicsQueue,  // queue
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
@@ -614,12 +624,12 @@ void Renderer::executeCopyOperations()
 			1,&_uploadingCommandBuffer,  // commandBufferCount,pCommandBuffers
 			0,nullptr                    // signalSemaphoreCount,pSignalSemaphores
 		),
-		fence.get()  // fence
+		_fence  // fence
 	);
 
 	// wait for work to complete
 	vk::Result r=_device->waitForFences(
-		fence.get(),   // fences (vk::ArrayProxy)
+		_fence,        // fences (vk::ArrayProxy)
 		VK_TRUE,       // waitAll
 		uint64_t(3e9)  // timeout (3s)
 	);
@@ -629,143 +639,176 @@ void Renderer::executeCopyOperations()
 		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
 	}
 
-	purgeObjectsToDeleteAfterCopyOperation();
-
-	// start new recoding
-	_device->beginCommandBuffer(
-		_uploadingCommandBuffer,  // commandBuffer
-		vk::CommandBufferBeginInfo(
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-			nullptr  // pInheritanceInfo
-		)
-	);
+	// dispose staging buffers and staging managers
+	auto disposeStagingManagers=
+		[](StagingManagerList& l,ArrayAllocationManager& m) {
+			for(StagingManager& sm : l) {
+				assert(m[sm.allocationID()].stagingManager==&sm && "Broken data integrity.");
+				m[sm.allocationID()].stagingManager=nullptr;
+			}
+			l.clear_and_dispose([](StagingManager* sm){delete sm;});
+		};
+	for(auto& mapItem : _vertexStorages)
+		for(VertexStorage& vs : mapItem.second) {
+			disposeStagingManagers(vs.stagingManagerList(),vs.allocationManager());
+		}
+	disposeStagingManagers(_indexStagingManagerList,_indexAllocationManager);
+	disposeStagingManagers(_dataStorageStagingManagerList,_dataStorageAllocationManager);
+	disposeStagingManagers(_primitiveSetStagingManagerList,_primitiveSetAllocationManager);
 }
 
 
-void Renderer::purgeObjectsToDeleteAfterCopyOperation()
+StagingBuffer& Renderer::createIndexStagingBuffer(Geometry& g)
 {
-	for(auto item:_objectsToDeleteAfterCopyOperation) {
-		_device->destroy(std::get<0>(item));
-		_device->freeMemory(std::get<1>(item));
-	}
-	_objectsToDeleteAfterCopyOperation.clear();
-}
-
-
-StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g)
-{
-	const ArrayAllocation<Geometry>& a=indexAllocation(g.indexDataID());
-	return StagingBuffer(
+	ArrayAllocation& a=indexAllocation(g);
+	StagingManager& sm=StagingManager::getOrCreate(a,g.indexDataID(),indexStagingManagerList());
+	return
+		sm.createStagingBuffer(
+			this,  // renderer
 			_indexBuffer,  // dstBuffer
 			a.startIndex*sizeof(uint32_t),  // dstOffset
-			a.numItems*sizeof(uint32_t),  // size
-			this  // renderer
+			a.numItems*sizeof(uint32_t)  // size
 		);
 }
 
 
-StagingBuffer Renderer::createIndexStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices)
+StagingBuffer& Renderer::createIndexSubsetStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices)
 {
-	const ArrayAllocation<Geometry>& a=indexAllocation(g.indexDataID());
-	assert(a.numItems>=numIndices && "Renderer::createIndexStagingBuffer(): Parameter numIndices is bigger than allocated space in Geometry.");
-	return StagingBuffer(
+	ArrayAllocation& a=indexAllocation(g);
+	if(firstIndex+numIndices>a.numItems)
+		throw std::out_of_range("Renderer::createIndexSubsetStagingBuffer(): Parameter firstIndex and numIndices define range that is not completely inside allocated space of Geometry.");
+	StagingManager& sm=StagingManager::getOrCreate(a,g.indexDataID(),indexStagingManagerList());
+	return
+		sm.createStagingBuffer(
+			this,  // renderer
 			_indexBuffer,  // dstBuffer
 			(a.startIndex+firstIndex)*sizeof(uint32_t),  // dstOffset
-			numIndices*sizeof(uint32_t),  // size
-			this  // renderer
+			numIndices*sizeof(uint32_t)  // size
 		);
 }
 
 
-void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>& indexData,size_t dstIndex)
+void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>& indexData)
 {
 	if(indexData.empty()) return;
 
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createIndexStagingBuffer(g,dstIndex,indexData.size()));
-	memcpy(sb.data(),indexData.data(),indexData.size()*sizeof(uint32_t));
-	sb.submit();
+	StagingBuffer& sb=createIndexStagingBuffer(g);
+	if(indexData.size()*sizeof(uint32_t)!=sb.size())
+		throw std::out_of_range("Renderer::uploadIndices(): size of indexData must match allocated space for indices inside Geometry.");
+	memcpy(sb.data(),indexData.data(),sb.size());
 }
 
 
-StagingBuffer Renderer::createDataStorageStagingBuffer(uint32_t id)
+void Renderer::uploadIndicesSubset(Geometry& g,std::vector<uint32_t>& indexData,size_t firstIndex)
 {
-	const ArrayAllocation<uint32_t>& a=dataStorageAllocation(id);
-	return StagingBuffer(
-			_dataStorageBuffer,  // dstBuffer
-			a.startIndex,  // dstOffset
-			a.numItems,  // size
-			this  // renderer
-		);
-}
-
-
-StagingBuffer Renderer::createDataStorageStagingBuffer(uint32_t id,size_t offset,size_t size)
-{
-	const ArrayAllocation<uint32_t>& a=dataStorageAllocation(id);
-	assert(a.numItems>=size && "Renderer::createDataStorageStagingBuffer(): Parameter size is bigger than allocated space.");
-	return StagingBuffer(
-			_dataStorageBuffer,  // dstBuffer
-			a.startIndex+offset,  // dstOffset
-			size,  // size
-			this  // renderer
-		);
-}
-
-
-void Renderer::uploadDataStorage(uint32_t id,std::vector<uint8_t>& data,size_t dstIndex)
-{
-	if(data.empty()) return;
+	if(indexData.empty()) return;
 
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createDataStorageStagingBuffer(id,dstIndex,data.size()));
-	memcpy(sb.data(),data.data(),data.size());
-	sb.submit();
+	StagingBuffer& sb=createIndexSubsetStagingBuffer(g,firstIndex,indexData.size());
+	memcpy(sb.data(),indexData.data(),sb.size());
 }
 
 
-void Renderer::uploadDataStorage(uint32_t id,const void* data,size_t size,size_t dstIndex)
+StagingBuffer& Renderer::createDataStorageStagingBuffer(uint32_t id)
+{
+	ArrayAllocation& a=dataStorageAllocation(id);
+	StagingManager& sm=StagingManager::getOrCreate(a,id,dataStorageStagingManagerList());
+	return
+		sm.createStagingBuffer(
+			this,  // renderer
+			_dataStorageBuffer,  // dstBuffer
+			a.startIndex,  // dstOffset
+			a.numItems  // size
+		);
+}
+
+
+StagingBuffer& Renderer::createDataStorageSubsetStagingBuffer(uint32_t id,size_t offset,size_t size)
+{
+	ArrayAllocation& a=dataStorageAllocation(id);
+	if(offset+size>a.numItems)
+		throw std::out_of_range("Renderer::createDataStorageSubsetStagingBuffer(): Parameter offset and size define range that is not completely inside allocated space of id allocation.");
+	StagingManager& sm=StagingManager::getOrCreate(a,id,dataStorageStagingManagerList());
+	return
+		sm.createStagingBuffer(
+			this,  // renderer
+			_dataStorageBuffer,  // dstBuffer
+			a.startIndex+offset,  // dstOffset
+			size  // size
+		);
+}
+
+
+void Renderer::uploadDataStorage(uint32_t id,const void* data,size_t size)
 {
 	if(size==0) return;
 
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createDataStorageStagingBuffer(id,dstIndex,size));
+	StagingBuffer& sb=createDataStorageStagingBuffer(id);
+	if(size!=sb.size())
+		throw std::out_of_range("Renderer::uploadDataStorage(): Size of allocation given by id and size of data does not match.");
 	memcpy(sb.data(),data,size);
-	sb.submit();
 }
 
 
-StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g)
+void Renderer::uploadDataStorageSubset(uint32_t id,const void* data,size_t size,size_t offset)
 {
-	const ArrayAllocation<Geometry>& a=primitiveSetAllocation(g.primitiveSetDataID());
-	return StagingBuffer(
+	if(size==0) return;
+
+	// create StagingBuffer and submit it
+	StagingBuffer& sb=createDataStorageSubsetStagingBuffer(id,offset,size);
+	memcpy(sb.data(),data,size);
+}
+
+
+StagingBuffer& Renderer::createPrimitiveSetStagingBuffer(Geometry& g)
+{
+	ArrayAllocation& a=primitiveSetAllocation(g);
+	StagingManager& sm=StagingManager::getOrCreate(a,g.primitiveSetDataID(),primitiveSetStagingManagerList());
+	return
+		sm.createStagingBuffer(
+			this,  // renderer
 			_primitiveSetBuffer,  // dstBuffer
 			a.startIndex*sizeof(PrimitiveSetGpuData),  // dstOffset
-			a.numItems*sizeof(PrimitiveSetGpuData),  // size
-			this  // renderer
+			a.numItems*sizeof(PrimitiveSetGpuData)  // size
 		);
 }
 
 
-StagingBuffer Renderer::createPrimitiveSetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets)
+StagingBuffer& Renderer::createPrimitiveSetSubsetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets)
 {
-	const ArrayAllocation<Geometry>& a=primitiveSetAllocation(g.primitiveSetDataID());
-	assert(a.numItems>=numPrimitiveSets && "Renderer::createPrimitiveSetStagingBuffer(): Parameter numPrimitiveSets is bigger than allocated space in Geometry.");
-	return StagingBuffer(
+	ArrayAllocation& a=primitiveSetAllocation(g);
+	if(firstPrimitiveSet+numPrimitiveSets>a.numItems)
+		throw std::out_of_range("Renderer::createPrimitiveSetSubsetStagingBuffer(): Parameter firstPrimitiveSet and numPrimitiviveSets define range that is not completely inside allocated space of primitiveSet allocation.");
+	StagingManager& sm=StagingManager::getOrCreate(a,g.primitiveSetDataID(),primitiveSetStagingManagerList());
+	return
+		sm.createStagingBuffer(
+			this,  // renderer
 			_primitiveSetBuffer,  // dstBuffer
 			(a.startIndex+firstPrimitiveSet)*sizeof(PrimitiveSetGpuData),  // dstOffset
-			numPrimitiveSets*sizeof(PrimitiveSetGpuData),  // size
-			this  // renderer
+			numPrimitiveSets*sizeof(PrimitiveSetGpuData)  // size
 		);
 }
 
 
-void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t dstPrimitiveSetIndex)
+void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData)
 {
 	if(primitiveSetData.empty()) return;
 
 	// create StagingBuffer and submit it
-	StagingBuffer sb(createPrimitiveSetStagingBuffer(g,dstPrimitiveSetIndex,primitiveSetData.size()));
-	memcpy(sb.data(),primitiveSetData.data(),primitiveSetData.size()*sizeof(PrimitiveSetGpuData));
-	sb.submit();
+	StagingBuffer& sb=createPrimitiveSetStagingBuffer(g);
+	if(primitiveSetData.size()*sizeof(PrimitiveSetGpuData)!=sb.size())
+		throw std::out_of_range("Renderer::uploadPrimitiveSets(): size of primitiveSetData must match allocated space for primitiveSets inside Geometry.");
+	memcpy(sb.data(),primitiveSetData.data(),sb.size());
+}
+
+
+void Renderer::uploadPrimitiveSetsSubset(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t firstPrimitiveSetIndex)
+{
+	if(primitiveSetData.empty()) return;
+
+	// create StagingBuffer and submit it
+	StagingBuffer& sb=createPrimitiveSetSubsetStagingBuffer(g,firstPrimitiveSetIndex,primitiveSetData.size());
+	memcpy(sb.data(),primitiveSetData.data(),sb.size());
 }

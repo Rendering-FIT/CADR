@@ -7,6 +7,7 @@
 namespace CadR {
 
 class ItemAllocationManager;
+class StagingManager;
 
 
 /** ArrayAllocation represents a single allocation of memory.
@@ -22,14 +23,14 @@ class ItemAllocationManager;
  *  for allocating just ID. All the items in the array are expected to be
  *  of the same size. The smallest item size is 1 byte.
  */
-template<typename Owner>
 struct ArrayAllocation {
 	uint32_t startIndex;       ///< Index of the start of the allocated array. The real offset is startIndex multiplied by the size of the array item.
 	uint32_t numItems;         ///< Number of items in the array. The real size is numItems multiplied by the size of the item.
 	uint32_t nextRec;          ///< \brief Index of ArrayAllocation whose allocated memory follows the current block's memory.
-	Owner*   owner;            ///< Object that owns the allocated array. Null indicates free memory block.
+	void*    owner;            ///< Object that owns the allocated array. Null indicates free memory block.
+	StagingManager* stagingManager;
 	ArrayAllocation()  {}  ///< Default constructor. It does nothing.
-	ArrayAllocation(uint32_t startIndex,uint32_t numItems,uint32_t nextRec,Owner* owner);  ///< Constructs object by the given values.
+	ArrayAllocation(uint32_t startIndex,uint32_t numItems,uint32_t nextRec,void* owner);  ///< Constructs object by the given values.
 };
 
 
@@ -55,11 +56,10 @@ struct ArrayAllocation {
  *  just for allocation of ID. The largest allocation
  *  is equal to the largest available continuous block.
  */
-template<typename Owner>
 class ArrayAllocationManager {
 protected:
 
-	std::vector<ArrayAllocation<Owner>> _allocations;  ///< Array containing allocation info for all allocations. It is indexed by id. Zero id is reserved for invalid id.
+	std::vector<ArrayAllocation> _allocations;  ///< Array containing allocation info for all allocations. It is indexed by id. Zero id is reserved for invalid id.
 	uint32_t _capacity;                    ///< Total number of items (allocated and unallocated).
 	uint32_t _available;                   ///< Number of items available for allocation.
 	uint32_t _numItemsAvailableAtTheEnd;   ///< Number of available items at the end of the managed memory, e.g. number of items in the block at the end.
@@ -68,9 +68,10 @@ protected:
 
 public:
 
-	typedef Owner AllocationOwner;
-	typedef typename std::vector<ArrayAllocation<Owner>>::iterator iterator;
-	typedef typename std::vector<ArrayAllocation<Owner>>::const_iterator const_iterator;
+	typedef typename std::vector<ArrayAllocation>::iterator iterator;
+	typedef typename std::vector<ArrayAllocation>::const_iterator const_iterator;
+
+	static inline constexpr const uint32_t invalidID = 0;
 
 	ArrayAllocationManager(size_t capacity=0);
 	ArrayAllocationManager(size_t capacity,uint32_t numItemsOfNullObject);
@@ -83,8 +84,8 @@ public:
 	uint32_t idOfArrayAtTheEnd() const;          ///< Returns id (index to std::vector\<ArrayAllocation\>) of the last allocated array at the end of the managed memory.
 	uint32_t numNullItems() const;               ///< Returns the number of null items. Null items are stored in the array with Id 0 and always placed on the beginning of the allocated memory or buffer.
 
-	ArrayAllocation<Owner>& operator[](uint32_t id);
-	const ArrayAllocation<Owner>& operator[](uint32_t id) const;
+	ArrayAllocation& operator[](uint32_t id);
+	const ArrayAllocation& operator[](uint32_t id) const;
 	size_t numIDs() const;
 	iterator begin();
 	iterator end();
@@ -92,7 +93,7 @@ public:
 	const_iterator end() const;
 
 	bool canAllocate(uint32_t numItems) const;
-	uint32_t alloc(uint32_t numItems,Owner* owner);  ///< Allocates number of items. Returns id or zero on failure.
+	uint32_t alloc(uint32_t numItems,void* owner);  ///< Allocates number of items. Returns id or zero on failure.
 	void free(uint32_t id);  ///< Frees allocated items. Id must be valid. Zero id is allowed and safely ignored.
 	void clear();
 
@@ -210,11 +211,10 @@ public:
 #include <CadR/Errors.h>
 namespace CadR {
 
-template<typename Owner> inline ArrayAllocation<Owner>::ArrayAllocation(uint32_t startIndex,uint32_t numItems,uint32_t nextRec,Owner* owner)
-{ this->startIndex=startIndex; this->numItems=numItems; this->nextRec=nextRec; this->owner=owner; }
+inline ArrayAllocation::ArrayAllocation(uint32_t startIndex,uint32_t numItems,uint32_t nextRec,void* owner)
+{ this->startIndex=startIndex; this->numItems=numItems; this->nextRec=nextRec; this->owner=owner; this->stagingManager=nullptr; }
 
-template<typename Owner>
-inline ArrayAllocationManager<Owner>::ArrayAllocationManager(size_t capacity)
+inline ArrayAllocationManager::ArrayAllocationManager(size_t capacity)
 	: _capacity(uint32_t(capacity)), _available(uint32_t(capacity)), _numItemsAvailableAtTheEnd(uint32_t(capacity)),
 	  _firstItemAvailableAtTheEnd(0), _idOfArrayAtTheEnd(0)
 {
@@ -222,8 +222,7 @@ inline ArrayAllocationManager<Owner>::ArrayAllocationManager(size_t capacity)
 	// and it serves as Null object (Null object design pattern)
 	_allocations.emplace_back(0,0,0,nullptr);
 }
-template<typename Owner>
-inline ArrayAllocationManager<Owner>::ArrayAllocationManager(size_t capacity,uint32_t numItemsOfNullObject)
+inline ArrayAllocationManager::ArrayAllocationManager(size_t capacity,uint32_t numItemsOfNullObject)
 	: _capacity(uint32_t(capacity)), _available(uint32_t(capacity-numItemsOfNullObject)),
 	  _numItemsAvailableAtTheEnd(uint32_t(capacity-numItemsOfNullObject)),
 	  _firstItemAvailableAtTheEnd(numItemsOfNullObject), _idOfArrayAtTheEnd(0)
@@ -232,15 +231,14 @@ inline ArrayAllocationManager<Owner>::ArrayAllocationManager(size_t capacity,uin
 	// and it serves as Null object (Null object design pattern)
 	_allocations.emplace_back(0,numItemsOfNullObject,0,nullptr);
 }
-template<typename Owner> void ArrayAllocationManager<Owner>::setCapacity(size_t newCapacity)
+inline void ArrayAllocationManager::setCapacity(size_t newCapacity)
 {
 	int32_t delta=int32_t(newCapacity)-_capacity;
 	_capacity=uint32_t(newCapacity);
 	_available+=delta;
 	_numItemsAvailableAtTheEnd+=delta;
 }
-template<typename Owner>
-void ArrayAllocationManager<Owner>::clear()
+inline void ArrayAllocationManager::clear()
 {
 	auto numItemsOfNullArray=numNullItems();
 	_allocations.clear();
@@ -259,29 +257,29 @@ inline ItemAllocationManager::~ItemAllocationManager()
 	delete[] _pointerList;
 }
 
-template<typename Owner> inline size_t ArrayAllocationManager<Owner>::capacity() const  { return _capacity; }
-template<typename Owner> inline size_t ArrayAllocationManager<Owner>::available() const  { return _available; }
-template<typename Owner> inline size_t ArrayAllocationManager<Owner>::largestAvailable() const  { return _numItemsAvailableAtTheEnd; }
-template<typename Owner> inline size_t ArrayAllocationManager<Owner>::numItemsAvailableAtTheEnd() const  { return _numItemsAvailableAtTheEnd; }
-template<typename Owner> inline uint32_t ArrayAllocationManager<Owner>::firstItemAvailableAtTheEnd() const  { return _firstItemAvailableAtTheEnd; }
-template<typename Owner> inline uint32_t ArrayAllocationManager<Owner>::idOfArrayAtTheEnd() const  { return _idOfArrayAtTheEnd; }
-template<typename Owner> inline uint32_t ArrayAllocationManager<Owner>::numNullItems() const  { return _allocations[0].numItems; }
+inline size_t ArrayAllocationManager::capacity() const  { return _capacity; }
+inline size_t ArrayAllocationManager::available() const  { return _available; }
+inline size_t ArrayAllocationManager::largestAvailable() const  { return _numItemsAvailableAtTheEnd; }
+inline size_t ArrayAllocationManager::numItemsAvailableAtTheEnd() const  { return _numItemsAvailableAtTheEnd; }
+inline uint32_t ArrayAllocationManager::firstItemAvailableAtTheEnd() const  { return _firstItemAvailableAtTheEnd; }
+inline uint32_t ArrayAllocationManager::idOfArrayAtTheEnd() const  { return _idOfArrayAtTheEnd; }
+inline uint32_t ArrayAllocationManager::numNullItems() const  { return _allocations[0].numItems; }
 inline size_t ItemAllocationManager::capacity() const  { return _capacity; }
 inline size_t ItemAllocationManager::available() const  { return _available; }
 inline size_t ItemAllocationManager::numItems() const  { return _firstItemAvailableAtTheEnd-_numNullItems; }
 inline uint32_t ItemAllocationManager::firstItemAvailableAtTheEnd() const  { return _firstItemAvailableAtTheEnd; }
 inline uint32_t ItemAllocationManager::numNullItems() const  { return _numNullItems; }
 
-template<typename Owner> inline ArrayAllocation<Owner>& ArrayAllocationManager<Owner>::operator[](uint32_t id)  { return _allocations[id]; }
-template<typename Owner> inline const ArrayAllocation<Owner>& ArrayAllocationManager<Owner>::operator[](uint32_t id) const  { return _allocations[id]; }
-template<typename Owner> inline size_t ArrayAllocationManager<Owner>::numIDs() const  { return _allocations.size(); }
-template<typename Owner> inline typename ArrayAllocationManager<Owner>::iterator ArrayAllocationManager<Owner>::begin()
+inline ArrayAllocation& ArrayAllocationManager::operator[](uint32_t id)  { return _allocations[id]; }
+inline const ArrayAllocation& ArrayAllocationManager::operator[](uint32_t id) const  { return _allocations[id]; }
+inline size_t ArrayAllocationManager::numIDs() const  { return _allocations.size(); }
+inline typename ArrayAllocationManager::iterator ArrayAllocationManager::begin()
 { return _allocations.begin()+1; } // there is always null object in the list, so we increment by one to skip it
-template<typename Owner> inline typename ArrayAllocationManager<Owner>::iterator ArrayAllocationManager<Owner>::end()
+inline typename ArrayAllocationManager::iterator ArrayAllocationManager::end()
 { return _allocations.end(); }
-template<typename Owner> inline typename ArrayAllocationManager<Owner>::const_iterator ArrayAllocationManager<Owner>::begin() const
+inline typename ArrayAllocationManager::const_iterator ArrayAllocationManager::begin() const
 { return _allocations.begin()+1; } // there is always null object in the list, so we increment by one to skip it
-template<typename Owner> inline typename ArrayAllocationManager<Owner>::const_iterator ArrayAllocationManager<Owner>::end() const
+inline typename ArrayAllocationManager::const_iterator ArrayAllocationManager::end() const
 { return _allocations.end(); }
 inline ItemAllocation*& ItemAllocationManager::operator[](uint32_t id)  { return _pointerList[id]; }
 inline ItemAllocation*const& ItemAllocationManager::operator[](uint32_t id) const  { return _pointerList[id]; }
@@ -293,16 +291,15 @@ inline ItemAllocationManager::const_iterator ItemAllocationManager::end() const 
 inline uint32_t ItemAllocationManager::firstID() const  { return _numNullItems; }
 inline uint32_t ItemAllocationManager::lastID() const  { return _firstItemAvailableAtTheEnd-1; }
 
-template<typename Owner> inline bool ArrayAllocationManager<Owner>::canAllocate(uint32_t numItems) const
+inline bool ArrayAllocationManager::canAllocate(uint32_t numItems) const
 { return _numItemsAvailableAtTheEnd>=numItems; }
 inline bool ItemAllocationManager::canAllocate(uint32_t numItems) const
 { return _capacity-_firstItemAvailableAtTheEnd>=numItems; }
 
-template<typename Owner>
-uint32_t ArrayAllocationManager<Owner>::alloc(uint32_t numItems,Owner* owner)
+inline uint32_t ArrayAllocationManager::alloc(uint32_t numItems,void* owner)
 {
 	if(_numItemsAvailableAtTheEnd<numItems)
-		throw CadR::OutOfResources("ArrayAllocationManager<Owner>::alloc(): Can not allocate Array. Not enough free space.");
+		throw CadR::OutOfResources("ArrayAllocationManager::alloc(): Can not allocate Array. Not enough free space.");
 
 	uint32_t id=uint32_t(_allocations.size());
 	_allocations.emplace_back(_firstItemAvailableAtTheEnd,numItems,0,owner);
@@ -313,7 +310,7 @@ uint32_t ArrayAllocationManager<Owner>::alloc(uint32_t numItems,Owner* owner)
 	_idOfArrayAtTheEnd=id;
 	return id;
 }
-template<typename Owner> inline void ArrayAllocationManager<Owner>::free(uint32_t id)  { _allocations.operator[](id).owner=nullptr; }
+inline void ArrayAllocationManager::free(uint32_t id)  { _allocations.operator[](id).owner=nullptr; }
 template<typename It>
 void ItemAllocationManager::alloc(It start,It end)
 {

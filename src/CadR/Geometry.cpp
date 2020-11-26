@@ -15,9 +15,9 @@ Geometry::Geometry(Geometry&& g)
 	g._vertexDataID=0;
 	g._indexDataID=0;
 	g._primitiveSetDataID=0;
-	_vertexStorage->allocation(_vertexDataID).owner=this;
-	r->indexAllocation(_indexDataID).owner=this;
-	r->primitiveSetAllocation(_primitiveSetDataID).owner=this;
+	vertexAllocation().owner=this;
+	indexAllocation().owner=this;
+	primitiveSetAllocation().owner=this;
 }
 
 
@@ -33,8 +33,8 @@ Geometry& Geometry::operator=(Geometry&& g)
 	g._vertexDataID=0;
 	g._indexDataID=0;
 	g._primitiveSetDataID=0;
-	_vertexStorage->allocation(_vertexDataID).owner=this;
-	r->indexAllocation(_indexDataID).owner=this;
-	r->primitiveSetAllocation(_primitiveSetDataID).owner=this;
+	vertexAllocation().owner=this;
+	indexAllocation().owner=this;
+	primitiveSetAllocation().owner=this;
 	return *this;
 }

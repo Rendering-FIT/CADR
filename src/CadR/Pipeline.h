@@ -20,6 +20,7 @@ public:
 	Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
 	Pipeline(Renderer* r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
 
+	void destroy();
 	void destroyPipeline();
 	void destroyPipelineLayout();
 	void destroyDescriptorSetLayouts();
@@ -48,6 +49,7 @@ inline Pipeline::Pipeline() : _renderer(Renderer::get())  {}
 inline Pipeline::Pipeline(Renderer* r) : _renderer(r)  {}
 inline Pipeline::Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts) : Pipeline(Renderer::get(), pipeline, pipelineLayout, descriptorSetLayouts)  {}
 inline Pipeline::Pipeline(Renderer* r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts) : _renderer(r), _pipeline(pipeline), _pipelineLayout(pipelineLayout), _descriptorSetLayouts(descriptorSetLayouts)  {}
+inline void Pipeline::destroy()  { destroyPipeline(); destroyPipelineLayout(); destroyDescriptorSetLayouts(); }
 inline void Pipeline::destroyPipeline()  { _renderer->device()->destroy(_pipeline); }
 inline void Pipeline::destroyPipelineLayout()  { _renderer->device()->destroy(_pipelineLayout); }
 inline void Pipeline::destroyDescriptorSetLayouts()  { if(_descriptorSetLayouts==nullptr) return; for(auto d : *_descriptorSetLayouts) _renderer->device()->destroy(d); _descriptorSetLayouts->clear(); }

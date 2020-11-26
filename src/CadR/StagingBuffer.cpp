@@ -94,7 +94,7 @@ StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs) noexcept
 }
 
 
-void StagingBuffer::reset(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer)
+void StagingBuffer::reset(Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size)
 {
 	// release any allocated resources
 	cleanUp();
@@ -110,28 +110,12 @@ void StagingBuffer::reset(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Rend
 }
 
 
-void StagingBuffer::submit()
+void StagingBuffer::record(vk::CommandBuffer commandBuffer)
 {
 	// handle zero-sized buffer (Vulkan does not like it)
 	if(!_stgBuffer)
 		return;
 
-	// double submission
-	if(_data==nullptr)
-		throw std::runtime_error("StagingBuffer::submit() called on already submitted buffer.");
-
-	// unmap memory
-	_renderer->device()->unmapMemory(_stgMemory);
-	_data=nullptr;
-
-	// schedule copy operation
-	// (This will transfer _stgBuffer and _stgMemory ownership to _renderer.
-	// They will be released after copy operation is completed.)
-	_renderer->scheduleCopyOperation(*this);
-}
-
-
-void StagingBuffer::scheduleCopy(vk::CommandBuffer cb)
-{
-	_renderer->device()->cmdCopyBuffer(cb,_stgBuffer,_dstBuffer,vk::BufferCopy(0,_dstOffset,_size));
+	// record the copy operation into the commandBuffer
+	_renderer->device()->cmdCopyBuffer(commandBuffer,_stgBuffer,_dstBuffer,vk::BufferCopy(0,_dstOffset,_size));
 }

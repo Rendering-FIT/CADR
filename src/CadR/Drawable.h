@@ -79,8 +79,6 @@ typedef boost::intrusive::list<
 
 
 // inline methods
-#include <CadR/Renderer.h>
-#include <CadR/StagingBuffer.h>
 #include <CadR/StateSet.h>
 namespace CadR {
 

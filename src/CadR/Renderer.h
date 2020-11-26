@@ -2,17 +2,15 @@
 #define CADR_RENDERER_H
 
 #include <CadR/AllocationManagers.h>
+#include <CadR/StagingManager.h>
 #include <vulkan/vulkan.hpp>
 #include <list>
 #include <map>
-#include <memory>
 
 namespace CadR {
 
 class AttribSizeList;
-class Drawable;
 class Geometry;
-class StagingBuffer;
 class StateSet;
 class VertexStorage;
 class VulkanDevice;
@@ -49,13 +47,16 @@ private:
 	vk::DeviceMemory _matrixListControlBufferMemory;
 	vk::Buffer       _drawIndirectBuffer;
 	vk::DeviceMemory _drawIndirectMemory;
-	ArrayAllocationManager<Geometry> _indexAllocationManager;  ///< Allocation manager for index data.
-	ArrayAllocationManager<uint32_t> _dataStorageAllocationManager;  ///< Allocation manager for data storage.
-	ArrayAllocationManager<Geometry> _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
+	ArrayAllocationManager _indexAllocationManager;  ///< Allocation manager for index data.
+	ArrayAllocationManager _dataStorageAllocationManager;  ///< Allocation manager for data storage.
+	ArrayAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
 
+	StagingManagerList _indexStagingManagerList;
+	StagingManagerList _dataStorageStagingManagerList;
+	StagingManagerList _primitiveSetStagingManagerList;
 	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
-	std::list<std::tuple<vk::Buffer,vk::DeviceMemory>> _objectsToDeleteAfterCopyOperation;
+	vk::Fence _fence;  ///< Fence for general synchronization.
 
 	vk::PipelineCache _pipelineCache;
 	vk::ShaderModule _drawableShader;
@@ -113,44 +114,51 @@ public:
 	CADR_EXPORT VertexStorage* emptyStorage();
 
 	CADR_EXPORT vk::DeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags);
-	CADR_EXPORT vk::CommandBuffer uploadingCommandBuffer() const;
-	CADR_EXPORT void scheduleCopyOperation(StagingBuffer& stagingBuffer);
 	CADR_EXPORT void executeCopyOperations();
 
-	CADR_EXPORT const ArrayAllocation<Geometry>& indexAllocation(uint32_t id) const;  ///< Returns index allocation for particular id.
-	CADR_EXPORT ArrayAllocation<Geometry>& indexAllocation(uint32_t id);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
-	CADR_EXPORT const ArrayAllocationManager<Geometry>& indexAllocationManager() const;
-	CADR_EXPORT ArrayAllocationManager<Geometry>& indexAllocationManager();
+	CADR_EXPORT const ArrayAllocation& indexAllocation(const Geometry& g) const;  ///< Returns index allocation for particular Geometry.
+	CADR_EXPORT ArrayAllocation& indexAllocation(Geometry& g);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocationManager& indexAllocationManager() const;
+	CADR_EXPORT ArrayAllocationManager& indexAllocationManager();
 
-	CADR_EXPORT void uploadIndices(Geometry& g,std::vector<uint32_t>& indexData,size_t dstIndex=0);
-	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Geometry& g);
-	CADR_EXPORT StagingBuffer createIndexStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices);
+	CADR_EXPORT void uploadIndices(Geometry& g,std::vector<uint32_t>& indexData);
+	CADR_EXPORT void uploadIndicesSubset(Geometry& g,std::vector<uint32_t>& indexData,size_t firstIndex);
+	CADR_EXPORT StagingBuffer& createIndexStagingBuffer(Geometry& g);
+	CADR_EXPORT StagingBuffer& createIndexSubsetStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices);
 
-	CADR_EXPORT const ArrayAllocation<uint32_t>& dataStorageAllocation(uint32_t id) const;  ///< Returns dataStorage allocation for particular id.
-	CADR_EXPORT ArrayAllocation<uint32_t>& dataStorageAllocation(uint32_t id);   ///< Returns dataStorage allocation for particular id. Modify the returned data only with caution.
-	CADR_EXPORT const ArrayAllocationManager<uint32_t>& dataStorageAllocationManager() const;
-	CADR_EXPORT ArrayAllocationManager<uint32_t>& dataStorageAllocationManager();
+	CADR_EXPORT const ArrayAllocation& dataStorageAllocation(uint32_t id) const;  ///< Returns dataStorage allocation for particular id.
+	CADR_EXPORT ArrayAllocation& dataStorageAllocation(uint32_t id);   ///< Returns dataStorage allocation for particular id. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocationManager& dataStorageAllocationManager() const;
+	CADR_EXPORT ArrayAllocationManager& dataStorageAllocationManager();
 
-	CADR_EXPORT void uploadDataStorage(uint32_t id,std::vector<uint8_t>& data,size_t dstIndex=0);
-	CADR_EXPORT void uploadDataStorage(uint32_t id,const void* data,size_t size,size_t dstIndex=0);
-	CADR_EXPORT StagingBuffer createDataStorageStagingBuffer(uint32_t id);
-	CADR_EXPORT StagingBuffer createDataStorageStagingBuffer(uint32_t id,size_t offset,size_t size);
+	CADR_EXPORT void uploadDataStorage(uint32_t id,std::vector<uint8_t>& data);
+	CADR_EXPORT void uploadDataStorage(uint32_t id,const void* data,size_t size);
+	CADR_EXPORT void uploadDataStorageSubset(uint32_t id,std::vector<uint8_t>& data,size_t offset);
+	CADR_EXPORT void uploadDataStorageSubset(uint32_t id,const void* data,size_t size,size_t offset);
+	CADR_EXPORT StagingBuffer& createDataStorageStagingBuffer(uint32_t id);
+	CADR_EXPORT StagingBuffer& createDataStorageSubsetStagingBuffer(uint32_t id,size_t offset,size_t size);
 
-	CADR_EXPORT const ArrayAllocation<Geometry>& primitiveSetAllocation(uint32_t id) const;  ///< Returns primitiveSet allocation for particular id.
-	CADR_EXPORT ArrayAllocation<Geometry>& primitiveSetAllocation(uint32_t id);   ///< Returns primitiveSet allocation for particular id. Modify the returned data only with caution.
-	CADR_EXPORT const ArrayAllocationManager<Geometry>& primitiveSetAllocationManager() const;
-	CADR_EXPORT ArrayAllocationManager<Geometry>& primitiveSetAllocationManager();
+	CADR_EXPORT const ArrayAllocation& primitiveSetAllocation(const Geometry& g) const;  ///< Returns primitiveSet allocation for particular Geometry.
+	CADR_EXPORT ArrayAllocation& primitiveSetAllocation(Geometry& g);   ///< Returns primitiveSet allocation for particular Geometry. Modify the returned data only with caution.
+	CADR_EXPORT const ArrayAllocationManager& primitiveSetAllocationManager() const;
+	CADR_EXPORT ArrayAllocationManager& primitiveSetAllocationManager();
 
-	CADR_EXPORT void uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t dstPrimitiveSetIndex=0);
-	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Geometry& g);
-	CADR_EXPORT StagingBuffer createPrimitiveSetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets);
+	CADR_EXPORT void uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData);
+	CADR_EXPORT void uploadPrimitiveSetsSubset(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t firstPrimitiveSetIndex);
+	CADR_EXPORT StagingBuffer& createPrimitiveSetStagingBuffer(Geometry& g);
+	CADR_EXPORT StagingBuffer& createPrimitiveSetSubsetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets);
 
-protected:
-	CADR_EXPORT void purgeObjectsToDeleteAfterCopyOperation();
+	CADR_EXPORT StagingManagerList& indexStagingManagerList();
+	CADR_EXPORT StagingManagerList& dataStorageStagingManagerList();
+	CADR_EXPORT StagingManagerList& primitiveSetStagingManagerList();
+
 };
 
 
+}
+
 // inline methods
+namespace CadR {
 inline Renderer* Renderer::get()  { return _defaultRenderer; }
 inline void Renderer::set(Renderer* r)  { _defaultRenderer=r; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
@@ -173,21 +181,20 @@ inline vk::Pipeline Renderer::drawablePipeline() const  { return _drawablePipeli
 inline std::map<AttribSizeList,std::list<VertexStorage>>& Renderer::getVertexStorages()  { return _vertexStorages; }
 inline const VertexStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
 inline VertexStorage* Renderer::emptyStorage()  { return _emptyStorage; }
-inline const ArrayAllocation<Geometry>& Renderer::indexAllocation(uint32_t id) const  { return _indexAllocationManager[id]; }
-inline ArrayAllocation<Geometry>& Renderer::indexAllocation(uint32_t id)  { return _indexAllocationManager[id]; }
-inline const ArrayAllocationManager<Geometry>& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }
-inline ArrayAllocationManager<Geometry>& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
-inline const ArrayAllocation<uint32_t>& Renderer::dataStorageAllocation(uint32_t id) const  { return _dataStorageAllocationManager[id]; }
-inline ArrayAllocation<uint32_t>& Renderer::dataStorageAllocation(uint32_t id)  { return _dataStorageAllocationManager[id]; }
-inline const ArrayAllocationManager<uint32_t>& Renderer::dataStorageAllocationManager() const  { return _dataStorageAllocationManager; }
-inline ArrayAllocationManager<uint32_t>& Renderer::dataStorageAllocationManager()  { return _dataStorageAllocationManager; }
-inline const ArrayAllocation<Geometry>& Renderer::primitiveSetAllocation(uint32_t id) const  { return _primitiveSetAllocationManager[id]; }
-inline ArrayAllocation<Geometry>& Renderer::primitiveSetAllocation(uint32_t id)  { return _primitiveSetAllocationManager[id]; }
-inline const ArrayAllocationManager<Geometry>& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
-inline ArrayAllocationManager<Geometry>& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
-inline vk::CommandBuffer Renderer::uploadingCommandBuffer() const  { return _uploadingCommandBuffer; }
+inline const ArrayAllocationManager& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }
+inline ArrayAllocationManager& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
+inline const ArrayAllocation& Renderer::dataStorageAllocation(uint32_t id) const  { return _dataStorageAllocationManager[id]; }
+inline ArrayAllocation& Renderer::dataStorageAllocation(uint32_t id)  { return _dataStorageAllocationManager[id]; }
+inline const ArrayAllocationManager& Renderer::dataStorageAllocationManager() const  { return _dataStorageAllocationManager; }
+inline ArrayAllocationManager& Renderer::dataStorageAllocationManager()  { return _dataStorageAllocationManager; }
+inline const ArrayAllocationManager& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
+inline ArrayAllocationManager& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
+inline void Renderer::uploadDataStorage(uint32_t id,std::vector<uint8_t>& data)  { uploadDataStorage(id,data.data(),data.size()); }
+inline void Renderer::uploadDataStorageSubset(uint32_t id,std::vector<uint8_t>& data,size_t offset)  { uploadDataStorageSubset(id,data.data(),data.size(),offset); }
+inline StagingManagerList& Renderer::indexStagingManagerList()  { return _indexStagingManagerList; }
+inline StagingManagerList& Renderer::dataStorageStagingManagerList()  { return _dataStorageStagingManagerList; }
+inline StagingManagerList& Renderer::primitiveSetStagingManagerList()  { return _primitiveSetStagingManagerList; }
 
 }
-
 
 #endif /* CADR_RENDERER_H */

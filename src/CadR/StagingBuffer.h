@@ -5,6 +5,7 @@
 namespace CadR {
 
 class Renderer;
+class StagingManager;
 
 
 class CADR_EXPORT StagingBuffer final {
@@ -24,8 +25,9 @@ public:
 
 	StagingBuffer() = delete;
 	StagingBuffer(Renderer* renderer);
-	StagingBuffer(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer);
+	StagingBuffer(Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size);
 	~StagingBuffer();
+	void destroy();
 
 	StagingBuffer(const StagingBuffer&) = delete;
 	StagingBuffer(StagingBuffer&& other) noexcept;
@@ -35,27 +37,26 @@ public:
 	uint8_t* data() const;
 	size_t size() const;
 
-	void submit();
-	void scheduleCopy(vk::CommandBuffer cb);
-	void reset(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer);
-	void destroy();
+	void reset(Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size);
+	void record(vk::CommandBuffer cb);
 
 protected:
 	void init();
 	void cleanUp();
+	friend StagingManager;
 };
 
 
 // inline methods
 inline StagingBuffer::StagingBuffer(Renderer* renderer)
 	: _renderer(renderer), _data(nullptr), _size(0)  {}
-inline StagingBuffer::StagingBuffer(vk::Buffer dstBuffer,size_t dstOffset,size_t size,Renderer* renderer)
+inline StagingBuffer::StagingBuffer(Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size)
 	: _renderer(renderer), _size(size), _dstBuffer(dstBuffer), _dstOffset(dstOffset)  { init(); }
 inline StagingBuffer::~StagingBuffer()  { cleanUp(); }
+inline void StagingBuffer::destroy()  { cleanUp(); }
 
 inline uint8_t* StagingBuffer::data() const  { return _data; }
 inline size_t StagingBuffer::size() const  { return _size; }
 
-inline void StagingBuffer::destroy()  { cleanUp(); }
 
 }

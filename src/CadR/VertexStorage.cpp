@@ -68,8 +68,9 @@ VertexStorage::VertexStorage(Renderer* renderer,const AttribSizeList& attribSize
 
 VertexStorage::~VertexStorage()
 {
-	// invalidate all allocations and clean up
-	cancelAllAllocations();
+	// free allocations and destroy staging stuff
+	_allocationManager.clear();
+	_stagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
 
 	// destroy buffers
 	VulkanDevice* device=_renderer->device();
@@ -223,83 +224,112 @@ void VertexStorage::uploadVertices(Drawable* /*d*/,std::vector<Buffer>&& /*verte
 #endif
 
 
-StagingBuffer VertexStorage::createStagingBuffer(Geometry& g,unsigned attribIndex)
+StagingBuffer& VertexStorage::createStagingBuffer(Geometry& g,unsigned attribIndex)
 {
 	if(attribIndex>_bufferList.size())
 		throw std::out_of_range("VertexStorage::createStagingBuffer() called with invalid attribIndex.");
 
-	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
+	ArrayAllocation& a=allocation(g);
 	const unsigned s=_attribSizeList[attribIndex];
-	return StagingBuffer(
+	StagingManager& sm=StagingManager::getOrCreate(a,g.vertexDataID(),_stagingManagerList,unsigned(_bufferList.size()));
+	return
+		sm.createStagingBuffer(
+			attribIndex, // stagingBufferIndex
+			_renderer,  // renderer
 			_bufferList[attribIndex],  // dstBuffer
 			a.startIndex*s,  // dstOffset
-			a.numItems*s,  // size
-			_renderer  // renderer
+			a.numItems*s  // size
 		);
 }
 
 
-StagingBuffer VertexStorage::createStagingBuffer(Geometry& g,unsigned attribIndex,size_t firstVertex,size_t numVertices)
+StagingBuffer& VertexStorage::createSubsetStagingBuffer(Geometry& g,unsigned attribIndex,size_t firstVertex,size_t numVertices)
 {
 	if(attribIndex>_bufferList.size())
-		throw std::out_of_range("VertexStorage::createStagingBuffer() called with invalid attribIndex.");
+		throw std::out_of_range("VertexStorage::createSubsetStagingBuffer() called with invalid attribIndex.");
 
-	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
+	ArrayAllocation& a=allocation(g);
 	if(firstVertex+numVertices>a.numItems)
-		throw std::out_of_range("VertexStorage::createStagingBuffer() called with size and dstOffset that specify the range hitting outside of Geometry preallocated space.");
+		throw std::out_of_range("VertexStorage::createSubsetStagingBuffer() called with firstVertex and numVertices that specify the range hitting outside of Geometry preallocated space.");
 
 	const unsigned s=_attribSizeList[attribIndex];
-	return StagingBuffer(
+	StagingManager& sm=StagingManager::getOrCreateForSubsetUpdates(a,g.vertexDataID(),_stagingManagerList);
+	return
+		sm.createStagingBuffer(
+			_renderer,  // renderer
 			_bufferList[attribIndex],  // dstBuffer
 			(a.startIndex+firstVertex)*s,  // dstOffset
-			numVertices*s,  // size
-			_renderer  // renderer
+			numVertices*s  // size
 		);
 }
 
 
-vector<StagingBuffer> VertexStorage::createStagingBuffers(Geometry& g)
+vector<StagingBuffer*> VertexStorage::createStagingBuffers(Geometry& g)
 {
-	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
-	vector<StagingBuffer> v;
-	v.reserve(_bufferList.size());
+	vector<StagingBuffer*> r;
+	r.reserve(_bufferList.size());
+
+	ArrayAllocation& a=allocation(g);
+	StagingManager& sm=StagingManager::getOrCreate(a,g.vertexDataID(),_stagingManagerList,unsigned(_bufferList.size()));
 
 	for(size_t i=0,e=_bufferList.size(); i<e; i++) {
 		vk::Buffer b=_bufferList[i];
 		const unsigned s=_attribSizeList[i];
-		v.emplace_back(
+		StagingBuffer& sb=
+			sm.createStagingBuffer(
+				unsigned(i),  // stagingBufferIndex
+				_renderer,  // renderer
 				b,  // dstBuffer
 				a.startIndex*s,  // dstOffset
-				a.numItems*s,  // size
-				_renderer  // renderer
+				a.numItems*s  // size
 			);
+		r.emplace_back(&sb);
 	}
-	return v;
+	return r;
 }
 
 
-vector<StagingBuffer> VertexStorage::createStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices)
+vector<StagingBuffer*> VertexStorage::createSubsetStagingBuffers(Geometry& g,size_t firstVertex,size_t numVertices)
 {
-	const ArrayAllocation<Geometry>& a=allocation(g.vertexDataID());
-	assert(a.numItems>=numVertices && "VertexStorage::createStagingBuffers(): Parameter numVertices is bigger than allocated space in Geometry.");
-	vector<StagingBuffer> v;
-	v.reserve(_bufferList.size());
+	vector<StagingBuffer*> r;
+	r.reserve(_bufferList.size());
+
+	ArrayAllocation& a=allocation(g);
+	if(firstVertex+numVertices>a.numItems)
+		throw std::out_of_range("VertexStorage::createSubsetStagingBuffers(): Parameter firstVertex and numVertices define range that is not completely inside allocated space of Geometry.");
+	StagingManager& sm=StagingManager::getOrCreateForSubsetUpdates(a,g.vertexDataID(),_stagingManagerList);
 
 	for(size_t i=0,e=_bufferList.size(); i<e; i++) {
 		vk::Buffer b=_bufferList[i];
 		const unsigned s=_attribSizeList[i];
-		v.emplace_back(
+		StagingBuffer& sb=
+			sm.createStagingBuffer(
+				_renderer,  // renderer
 				b,  // dstBuffer
 				(a.startIndex+firstVertex)*s,  // dstOffset
-				numVertices*s,  // size
-				_renderer  // renderer
+				numVertices*s  // size
 			);
+		r.emplace_back(&sb);
 	}
-	return v;
+	return r;
 }
 
 
-void VertexStorage::upload(Geometry& g,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
+void VertexStorage::upload(Geometry& g,unsigned attribIndex,const std::vector<uint8_t>& attribData)
+{
+	// attribIndex bound check
+	if(attribIndex>_bufferList.size())
+		throw std::out_of_range("VertexStorage::upload() called with invalid attribIndex.");
+
+	// create StagingBuffer and submit it
+	StagingBuffer& sb=createStagingBuffer(g,attribIndex);
+	if(attribData.size()!=sb.size())
+		throw std::out_of_range("VertexStorage::upload(): size of attribData must match Geometry allocated space.");
+	memcpy(sb.data(),attribData.data(),attribData.size());
+}
+
+
+void VertexStorage::uploadSubset(Geometry& g,unsigned attribIndex,const std::vector<uint8_t>& attribData,size_t firstVertex)
 {
 	// attribIndex bound check
 	if(attribIndex>_bufferList.size())
@@ -309,13 +339,12 @@ void VertexStorage::upload(Geometry& g,unsigned attribIndex,const std::vector<ui
 
 	// create StagingBuffer and submit it
 	size_t numVertices=attribData.size()/_attribSizeList[attribIndex];
-	StagingBuffer sb(createStagingBuffer(g,attribIndex,firstVertex,numVertices));
+	StagingBuffer& sb=createSubsetStagingBuffer(g,attribIndex,firstVertex,numVertices);
 	memcpy(sb.data(),attribData.data(),attribData.size());
-	sb.submit();
 }
 
 
-void VertexStorage::upload(Geometry& g,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
+void VertexStorage::upload(Geometry& g,const vector<vector<uint8_t>>& vertexData)
 {
 	// check parameters validity
 	if(vertexData.size()!=_bufferList.size())
@@ -330,15 +359,29 @@ void VertexStorage::upload(Geometry& g,const vector<vector<uint8_t>>& vertexData
 
 	// create StagingBuffers and submit them
 	for(size_t i=0,e=vertexData.size(); i<e; i++) {
+		StagingBuffer& sb=createStagingBuffer(g,unsigned(i));
+		memcpy(sb.data(),vertexData[i].data(),sb.size());
+	}
+}
 
-		// skip empty attributes
-		const auto& attribData=vertexData[i];
-		if(attribData.empty()) continue;
 
-		// upload attribute
-		StagingBuffer sb=move(createStagingBuffer(g,unsigned(i),firstVertex,numVertices));
-		memcpy(sb.data(),attribData.data(),attribData.size());
-		sb.submit();
+void VertexStorage::uploadSubset(Geometry& g,const vector<vector<uint8_t>>& vertexData,size_t firstVertex)
+{
+	// check parameters validity
+	if(vertexData.size()!=_bufferList.size())
+		throw std::out_of_range("VertexStorage::uploadAttribs() called with invalid vertexData.");
+	if(vertexData.size()==0)
+		return;
+	size_t numVertices=vertexData[0].size()/_attribSizeList[0];
+	for(size_t i=1,e=vertexData.size(); i<e; i++)
+		if(vertexData[i].size()!=numVertices*_attribSizeList[i])
+			throw std::out_of_range("VertexStorage::uploadAttribs() called with invalid vertexData.");
+	if(numVertices==0) return;
+
+	// create StagingBuffers and submit them
+	for(size_t i=0,e=vertexData.size(); i<e; i++) {
+		StagingBuffer& sb=createSubsetStagingBuffer(g,unsigned(i),firstVertex,numVertices);
+		memcpy(sb.data(),vertexData[i].data(),sb.size());
 	}
 }
 
