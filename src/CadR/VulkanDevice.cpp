@@ -56,10 +56,11 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkDestroySemaphore   =getProcAddr<PFN_vkDestroySemaphore   >("vkDestroySemaphore");
 	vkCreateCommandPool  =getProcAddr<PFN_vkCreateCommandPool  >("vkCreateCommandPool");
 	vkDestroyCommandPool =getProcAddr<PFN_vkDestroyCommandPool >("vkDestroyCommandPool");
-	vkAllocateCommandBuffers =getProcAddr<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
+	vkAllocateCommandBuffers=getProcAddr<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
 	vkFreeCommandBuffers =getProcAddr<PFN_vkFreeCommandBuffers >("vkFreeCommandBuffers");
 	vkBeginCommandBuffer =getProcAddr<PFN_vkBeginCommandBuffer >("vkBeginCommandBuffer");
 	vkEndCommandBuffer   =getProcAddr<PFN_vkEndCommandBuffer   >("vkEndCommandBuffer");
+	vkResetCommandPool   =getProcAddr<PFN_vkResetCommandPool   >("vkResetCommandPool");
 	vkCmdPushConstants   =getProcAddr<PFN_vkCmdPushConstants   >("vkCmdPushConstants");
 	vkCmdBeginRenderPass =getProcAddr<PFN_vkCmdBeginRenderPass >("vkCmdBeginRenderPass");
 	vkCmdEndRenderPass   =getProcAddr<PFN_vkCmdEndRenderPass   >("vkCmdEndRenderPass");

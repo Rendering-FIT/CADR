@@ -210,28 +210,28 @@ int main(int,char**)
 			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 
 		// choose device
-		vk::PhysicalDevice pd;
+		vk::PhysicalDevice physicalDevice;
 		uint32_t graphicsQueueFamily,presentationQueueFamily;
 		if(compatibleDevicesSingleQueue.size()>0) {
 			auto t=compatibleDevicesSingleQueue.front();
-			pd=get<0>(t);
+			physicalDevice=get<0>(t);
 			graphicsQueueFamily=get<1>(t);
 			presentationQueueFamily=graphicsQueueFamily;
 		}
 		else if(compatibleDevicesTwoQueues.size()>0) {
 			auto t=compatibleDevicesTwoQueues.front();
-			pd=get<0>(t);
+			physicalDevice=get<0>(t);
 			graphicsQueueFamily=get<1>(t);
 			presentationQueueFamily=get<2>(t);
 		}
 		else
 			throw runtime_error("No compatible devices.");
 		cout<<"Using device:\n"
-		      "   "<<pd.getProperties().deviceName<<endl;
+		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
 		// create device
-		vk::UniqueDevice device(
-			pd.createDevice(
+		vk::UniqueDevice device=
+			physicalDevice.createDeviceUnique(
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
 					compatibleDevicesSingleQueue.size()>0?uint32_t(1):uint32_t(2),  // queueCreateInfoCount
@@ -254,15 +254,14 @@ int main(int,char**)
 					array<const char*,1>{"VK_KHR_swapchain"}.data(),  // enabled extension names
 					nullptr,    // enabled features
 				}
-			)
-		);
+			);
 
 		// get queues
 		vk::Queue graphicsQueue=device->getQueue(graphicsQueueFamily,0);
 		vk::Queue presentationQueue=device->getQueue(presentationQueueFamily,0);
 
 		// choose surface format
-		vector<vk::SurfaceFormatKHR> surfaceFormats=pd.getSurfaceFormatsKHR(surface.get());
+		vector<vk::SurfaceFormatKHR> surfaceFormats=physicalDevice.getSurfaceFormatsKHR(surface.get());
 		const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
 		const vk::SurfaceFormatKHR chosenSurfaceFormat=
 			surfaceFormats.size()==1&&surfaceFormats[0].format==vk::Format::eUndefined
@@ -273,7 +272,7 @@ int main(int,char**)
 					:surfaceFormats[0];
 
 		// create swapchain
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities=pd.getSurfaceCapabilitiesKHR(surface.get());
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
 		vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
 				?surfaceCapabilities.currentExtent
 				:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
@@ -300,7 +299,7 @@ int main(int,char**)
 							return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
 								?vk::PresentModeKHR::eMailbox
 								:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
-						}(pd.getSurfacePresentModesKHR(surface.get())),
+						}(physicalDevice.getSurfacePresentModesKHR(surface.get())),
 					VK_TRUE,  // clipped
 					nullptr   // oldSwapchain
 				)

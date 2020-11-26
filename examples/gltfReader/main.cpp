@@ -313,6 +313,7 @@ int main(int argc,char** argv) {
 			CadR::Pipeline pipeline;
 			CadR::StateSet stateSet;
 			PipelineAndStateSet(CadR::Renderer* r) : pipeline(r), stateSet(r)  {}
+			~PipelineAndStateSet()  { pipeline.destroyPipeline(); }
 		};
 		array<map<CadR::AttribSizeList,PipelineAndStateSet>,10> pipelineDB;
 
@@ -527,11 +528,10 @@ int main(int argc,char** argv) {
 				f.exceptions(ifstream::badbit|ifstream::failbit);
 
 				// read buffer file
-				CadR::StagingBuffer sb=g.createStagingBuffer(i);
+				CadR::StagingBuffer& sb=g.createStagingBuffer(i);
 				f.seekg(std::get<1>(uriAndOffset));
 				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
 				f.close();
-				sb.submit();
 				i++;
 			}
 
@@ -548,7 +548,7 @@ int main(int argc,char** argv) {
 				f.exceptions(ifstream::badbit|ifstream::failbit);
 
 				// read buffer file
-				CadR::StagingBuffer sb=g.createIndexStagingBuffer();
+				CadR::StagingBuffer& sb=g.createIndexStagingBuffer();
 				f.seekg(indicesFileOffset);
 				if(indicesComponentType==5125)  // UNSIGNED_INT
 					f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
@@ -567,18 +567,16 @@ int main(int argc,char** argv) {
 						b[i]=tmp[i];
 				}
 				f.close();
-				sb.submit();
 			}
 			else {
 
 				// generate indices
 				if(numIndices>=size_t(~uint32_t(0)))
 					throw gltfError("Too large primitive. Index out of 32-bit integer range.");
-				CadR::StagingBuffer sb=g.createIndexStagingBuffer();
+				CadR::StagingBuffer& sb=g.createIndexStagingBuffer();
 				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
 				for(uint32_t i=0,e=uint32_t(numIndices); i<e; i++)
 					b[i]=i;
-				sb.submit();
 			}
 
 			// select pipeline
@@ -747,7 +745,7 @@ int main(int argc,char** argv) {
 			}
 
 			// generate one PrimitiveSet
-			CadR::StagingBuffer sb=g.createPrimitiveSetStagingBuffer();
+			CadR::StagingBuffer& sb=g.createPrimitiveSetStagingBuffer();
 			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
 			b[0]=CadR::PrimitiveSetGpuData{
 					uint32_t(numIndices),  // count
@@ -755,7 +753,6 @@ int main(int argc,char** argv) {
 					g.vertexAllocation().startIndex,  // vertexOffset
 					0,  // userData
 				};
-			sb.submit();
 
 			// create Drawable
 			drawableDB.emplace_back(g,0,0,ss);

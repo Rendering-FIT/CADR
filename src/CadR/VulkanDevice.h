@@ -156,6 +156,7 @@ public:
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
 	inline vk::Result bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
 	inline vk::Result resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
+	inline vk::Result resetCommandPool(vk::CommandPool commandPool,vk::CommandPoolResetFlags flags) const  { return _device.resetCommandPool(commandPool,flags,*this); }
 	inline vk::Result endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
 	inline vk::Result queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::Result waitIdle() const  { return _device.waitIdle(*this); }
@@ -268,6 +269,7 @@ public:
 	void free(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.free(commandPool,commandBuffers,*this); }
 	inline vk::ResultValueType<void>::type beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo& beginInfo) const  { return commandBuffer.begin(beginInfo,*this); }
 	inline vk::ResultValueType<void>::type endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
+	inline vk::ResultValueType<void>::type resetCommandPool(vk::CommandPool commandPool,vk::CommandPoolResetFlags flags) const  { return _device.resetCommandPool(commandPool,flags,*this); }
 	template<typename T> inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,vk::ArrayProxy<const T> values) const  { commandBuffer.pushConstants<T,VulkanDevice>(layout,stageFlags,offset,values,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo& renderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(renderPassBegin,contents,*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,vk::ArrayProxy<const vk::CommandBuffer> secondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBuffers,*this); }
@@ -415,6 +417,7 @@ public:
 	PFN_vkFreeCommandBuffers vkFreeCommandBuffers;
 	PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
 	PFN_vkEndCommandBuffer vkEndCommandBuffer;
+	PFN_vkResetCommandPool vkResetCommandPool;
 	PFN_vkCmdPushConstants vkCmdPushConstants;
 	PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
 	PFN_vkCmdEndRenderPass vkCmdEndRenderPass;

@@ -5,7 +5,7 @@ set(PACKAGES
 	01-deviceList
 	02-developmentSetup
 	03-funcPointers
-	03-funcPointers/dl
+	#03-funcPointers/dl - not compatible with the recent changes in vulkan.hpp
 	04-deviceInfo
 	05-commandSubmission
 	06-simpleImage
