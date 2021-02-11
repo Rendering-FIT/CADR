@@ -322,6 +322,16 @@ int main(int,char**)
 			mappedMemoryDeleter  // deleter
 		);
 
+		// invalidate caches to fetch a new content
+		// (this is required as we might be using non-coherent memory, see vk::MemoryPropertyFlagBits::eHostCoherent)
+		device->invalidateMappedMemoryRanges(
+			vk::MappedMemoryRange(
+				framebufferImageMemory.get(),  // memory
+				0,  // offset
+				VK_WHOLE_SIZE  // size
+			)
+		);
+
 		// get image memory layout
 		vk::SubresourceLayout framebufferImageLayout=
 			device->getImageSubresourceLayout(

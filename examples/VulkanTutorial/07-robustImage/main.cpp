@@ -140,8 +140,16 @@ int main(int,char**)
 						0,        // preserveAttachmentCount
 						nullptr   // pPreserveAttachments
 					),
-					0,  // dependencyCount
-					nullptr  // pDependencies
+					1,  // dependencyCount
+					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
+						0,  // srcSubpass
+						VK_SUBPASS_EXTERNAL,  // dstSubpass
+						vk::PipelineStageFlagBits::eColorAttachmentOutput, // srcStageMask
+						vk::PipelineStageFlagBits::eTransfer,     // dstStageMask
+						vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
+						vk::AccessFlagBits::eTransferRead,  // dstAccessMask
+						vk::DependencyFlags()  // dependencyFlags
+					)
 				)
 			);
 
@@ -201,7 +209,8 @@ int main(int,char**)
 				throw std::runtime_error("No suitable memory type found for image.");
 			};
 		framebufferImageMemory=allocateMemory(framebufferImage.get(),vk::MemoryPropertyFlagBits::eDeviceLocal);
-		hostVisibleImageMemory=allocateMemory(hostVisibleImage.get(),vk::MemoryPropertyFlagBits::eHostVisible);
+		hostVisibleImageMemory=allocateMemory(hostVisibleImage.get(),vk::MemoryPropertyFlagBits::eHostVisible|
+		                                                             vk::MemoryPropertyFlagBits::eHostCached);
 		device->bindImageMemory(
 			framebufferImage.get(),        // image
 			framebufferImageMemory.get(),  // memory
@@ -298,10 +307,10 @@ int main(int,char**)
 			nullptr,  // bufferMemoryBarriers
 			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
 				vk::ImageMemoryBarrier{
-					vk::AccessFlags(),                     // srcAccessMask
-					vk::AccessFlagBits::eTransferWrite,    // dstAccessMask
-					vk::ImageLayout::eUndefined,           // oldLayout
-					vk::ImageLayout::eTransferDstOptimal,  // newLayout
+					vk::AccessFlags(),                   // srcAccessMask
+					vk::AccessFlagBits::eTransferWrite,  // dstAccessMask
+					vk::ImageLayout::eUndefined,         // oldLayout
+					vk::ImageLayout::eGeneral,           // newLayout
 					0,                          // srcQueueFamilyIndex
 					0,                          // dstQueueFamilyIndex
 					hostVisibleImage.get(),     // image
@@ -319,7 +328,7 @@ int main(int,char**)
 		// copy framebufferImage to hostVisibleImage
 		commandBuffer->copyImage(
 			framebufferImage.get(),vk::ImageLayout::eTransferSrcOptimal,  // srcImage,srcImageLayout
-			hostVisibleImage.get(),vk::ImageLayout::eTransferDstOptimal,  // dstImage,dstImageLayout
+			hostVisibleImage.get(),vk::ImageLayout::eGeneral,  // dstImage,dstImageLayout
 			vk::ImageCopy(
 				vk::ImageSubresourceLayers(  // srcSubresource
 					vk::ImageAspectFlagBits::eColor,  // aspectMask
@@ -337,33 +346,6 @@ int main(int,char**)
 				vk::Offset3D(0,0,0),         // dstOffset
 				vk::Extent3D(imageExtent.width,imageExtent.height,1)  // extent
 			)
-		);
-
-		// hostVisibleImage layout to General
-		commandBuffer->pipelineBarrier(
-			vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
-			vk::PipelineStageFlagBits::eHost,      // dstStageMask
-			vk::DependencyFlags(),  // dependencyFlags
-			nullptr,  // memoryBarriers
-			nullptr,  // bufferMemoryBarriers
-			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
-				vk::ImageMemoryBarrier{
-					vk::AccessFlagBits::eTransferWrite,    // srcAccessMask
-					vk::AccessFlagBits::eHostRead,         // dstAccessMask
-					vk::ImageLayout::eTransferDstOptimal,  // oldLayout
-					vk::ImageLayout::eGeneral,  // newLayout
-					0,                          // srcQueueFamilyIndex
-					0,                          // dstQueueFamilyIndex
-					hostVisibleImage.get(),     // image
-					vk::ImageSubresourceRange{  // subresourceRange
-						vk::ImageAspectFlagBits::eColor,  // aspectMask
-						0,  // baseMipLevel
-						1,  // levelCount
-						0,  // baseArrayLayer
-						1   // layerCount
-					}
-				}
-			}
 		);
 
 		// end command buffer
@@ -407,6 +389,16 @@ int main(int,char**)
 		unique_ptr<void,MappedMemoryDeleter> m(
 			device->mapMemory(hostVisibleImageMemory.get(),0,VK_WHOLE_SIZE,vk::MemoryMapFlags()),  // pointer
 			mappedMemoryDeleter  // deleter
+		);
+
+		// invalidate caches to fetch a new content
+		// (this is required as we might be using non-coherent memory, see vk::MemoryPropertyFlagBits::eHostCoherent)
+		device->invalidateMappedMemoryRanges(
+			vk::MappedMemoryRange(
+				hostVisibleImageMemory.get(),  // memory
+				0,  // offset
+				VK_WHOLE_SIZE  // size
+			)
 		);
 
 		// get image memory layout
