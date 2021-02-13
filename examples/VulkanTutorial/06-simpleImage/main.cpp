@@ -85,13 +85,10 @@ int main(int,char**)
 			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
 
 		// choose device
-		if(compatibleDevices.size()>0) {
-			auto t=compatibleDevices.front();
-			physicalDevice=get<0>(t);
-			graphicsQueueFamily=get<1>(t);
-		}
-		else
+		if(compatibleDevices.empty())
 			throw runtime_error("No compatible devices.");
+		physicalDevice=get<0>(compatibleDevices.front());
+		graphicsQueueFamily=get<1>(compatibleDevices.front());
 		cout<<"Using device:\n"
 		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
@@ -101,7 +98,7 @@ int main(int,char**)
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
 					1,                        // queueCreateInfoCount
-					array {                   // pQueueCreateInfos
+					array{                    // pQueueCreateInfos
 						vk::DeviceQueueCreateInfo{
 							vk::DeviceQueueCreateFlags(),  // flags
 							graphicsQueueFamily,  // queueFamilyIndex
@@ -259,7 +256,7 @@ int main(int,char**)
 				)
 			)[0]);
 
-		// begin record command buffer
+		// begin command buffer
 		commandBuffer->begin(
 			vk::CommandBufferBeginInfo(
 				vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
