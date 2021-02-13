@@ -361,14 +361,10 @@ int main(int,char**)
 
 		// submit work
 		graphicsQueue.submit(
-			vk::ArrayProxy<const vk::SubmitInfo>(
-				1,
-				&(const vk::SubmitInfo&)vk::SubmitInfo(
-					0,nullptr,                       // waitSemaphoreCount, pWaitSemaphores
-					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					1,&commandBuffer.get(),          // commandBufferCount, pCommandBuffers
-					0,nullptr                        // signalSemaphoreCount, pSignalSemaphores
-				)
+			vk::SubmitInfo(  // submits
+				0,nullptr,nullptr,       // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
+				1,&commandBuffer.get(),  // commandBufferCount, pCommandBuffers
+				0,nullptr                // signalSemaphoreCount, pSignalSemaphores
 			),
 			renderingFinishedFence.get()  // fence
 		);

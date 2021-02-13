@@ -141,10 +141,10 @@ int main(int,char**)
 		// submit work
 		cout<<"Submiting work..."<<endl;
 		graphicsQueue.submit(
-			vk::SubmitInfo(  // submits (of vk::ArrayProxy<vk::SubmitInfo> type)
-				0,nullptr,nullptr,               // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
-				1,&commandBuffer.get(),          // commandBufferCount, pCommandBuffers
-				0,nullptr                        // signalSemaphoreCount, pSignalSemaphores
+			vk::SubmitInfo(  // submits
+				0,nullptr,nullptr,       // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
+				1,&commandBuffer.get(),  // commandBufferCount, pCommandBuffers
+				0,nullptr                // signalSemaphoreCount, pSignalSemaphores
 			),
 			renderingFinishedFence.get()  // fence
 		);
