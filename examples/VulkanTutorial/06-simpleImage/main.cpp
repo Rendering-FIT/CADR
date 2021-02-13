@@ -133,7 +133,7 @@ int main(int,char**)
 							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 							vk::ImageLayout::eUndefined,       // initialLayout
 							vk::ImageLayout::eGeneral          // finalLayout
-						)
+						),
 					}.data(),
 					1,  // subpassCount
 					array{  // pSubpasses
@@ -153,7 +153,7 @@ int main(int,char**)
 							nullptr,  // pDepthStencilAttachment
 							0,        // preserveAttachmentCount
 							nullptr   // pPreserveAttachments
-						)
+						),
 					}.data(),
 					0,  // dependencyCount
 					nullptr  // pDependencies

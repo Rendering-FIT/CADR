@@ -47,7 +47,7 @@ int main(int,char**)
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
 						"07-robustImage",        // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
-						"CADR",                  // engine name
+						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
@@ -112,43 +112,49 @@ int main(int,char**)
 				vk::RenderPassCreateInfo(
 					vk::RenderPassCreateFlags(),  // flags
 					1,                            // attachmentCount
-					&(const vk::AttachmentDescription&)vk::AttachmentDescription(  // pAttachments
-						vk::AttachmentDescriptionFlags(),  // flags
-						vk::Format::eR8G8B8A8Unorm,        // format
-						vk::SampleCountFlagBits::e1,       // samples
-						vk::AttachmentLoadOp::eClear,      // loadOp
-						vk::AttachmentStoreOp::eStore,     // storeOp
-						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
-						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
-						vk::ImageLayout::eUndefined,       // initialLayout
-						vk::ImageLayout::eTransferSrcOptimal  // finalLayout
-					),
-					1,  // subpassCount
-					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
-						vk::SubpassDescriptionFlags(),     // flags
-						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-						0,        // inputAttachmentCount
-						nullptr,  // pInputAttachments
-						1,        // colorAttachmentCount
-						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
-							0,  // attachment
-							vk::ImageLayout::eColorAttachmentOptimal  // layout
+					array{  // pAttachments
+						vk::AttachmentDescription(
+							vk::AttachmentDescriptionFlags(),  // flags
+							vk::Format::eR8G8B8A8Unorm,        // format
+							vk::SampleCountFlagBits::e1,       // samples
+							vk::AttachmentLoadOp::eClear,      // loadOp
+							vk::AttachmentStoreOp::eStore,     // storeOp
+							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+							vk::ImageLayout::eUndefined,       // initialLayout
+							vk::ImageLayout::eTransferSrcOptimal  // finalLayout
 						),
-						nullptr,  // pResolveAttachments
-						nullptr,  // pDepthStencilAttachment
-						0,        // preserveAttachmentCount
-						nullptr   // pPreserveAttachments
-					),
+					}.data(),
+					1,  // subpassCount
+					array{  // pSubpasses
+						vk::SubpassDescription(
+							vk::SubpassDescriptionFlags(),     // flags
+							vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+							0,        // inputAttachmentCount
+							nullptr,  // pInputAttachments
+							1,        // colorAttachmentCount
+							&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
+								0,  // attachment
+								vk::ImageLayout::eColorAttachmentOptimal  // layout
+							),
+							nullptr,  // pResolveAttachments
+							nullptr,  // pDepthStencilAttachment
+							0,        // preserveAttachmentCount
+							nullptr   // pPreserveAttachments
+						),
+					}.data(),
 					1,  // dependencyCount
-					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
-						0,  // srcSubpass
-						VK_SUBPASS_EXTERNAL,  // dstSubpass
-						vk::PipelineStageFlagBits::eColorAttachmentOutput, // srcStageMask
-						vk::PipelineStageFlagBits::eTransfer,     // dstStageMask
-						vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
-						vk::AccessFlagBits::eTransferRead,  // dstAccessMask
-						vk::DependencyFlags()  // dependencyFlags
-					)
+					array{  // pDependencies
+						vk::SubpassDependency(
+							0,  // srcSubpass
+							VK_SUBPASS_EXTERNAL,  // dstSubpass
+							vk::PipelineStageFlagBits::eColorAttachmentOutput, // srcStageMask
+							vk::PipelineStageFlagBits::eTransfer,     // dstStageMask
+							vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
+							vk::AccessFlagBits::eTransferRead,  // dstAccessMask
+							vk::DependencyFlags()  // dependencyFlags
+						),
+					}.data()
 				)
 			);
 
