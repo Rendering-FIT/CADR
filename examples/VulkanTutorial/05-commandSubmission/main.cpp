@@ -87,7 +87,7 @@ int main(int,char**)
 							graphicsQueueFamily,  // queueFamilyIndex
 							1,                    // queueCount
 							&(const float&)1.f,   // pQueuePriorities
-						}
+						},
 					}.data(),
 					0,nullptr,  // no layers
 					0,nullptr,  // number of enabled extensions, enabled extension names
