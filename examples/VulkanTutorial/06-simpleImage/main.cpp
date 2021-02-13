@@ -59,8 +59,8 @@ int main(int,char**)
 		vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevices;
 		for(vk::PhysicalDevice pd:deviceList) {
 
-			// check linear tiling support
 		#if 0
+			// check linear tiling support
 			vk::FormatProperties fp=pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
 			if(!(fp.linearTilingFeatures & vk::FormatFeatureFlagBits::eColorAttachment))
 				continue;
@@ -69,7 +69,7 @@ int main(int,char**)
 			// select queue for graphics rendering
 			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
 			for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
-				if(queueFamilyList[i].queueFlags&vk::QueueFlagBits::eGraphics) {
+				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
 					compatibleDevices.emplace_back(pd,i);
 					break;
 				}
