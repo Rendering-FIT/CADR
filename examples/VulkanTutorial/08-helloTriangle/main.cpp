@@ -468,10 +468,10 @@ int main(int,char**)
 			nullptr,  // bufferMemoryBarriers
 			vk::ArrayProxy<const vk::ImageMemoryBarrier>{  // imageMemoryBarriers
 				vk::ImageMemoryBarrier{
-					vk::AccessFlags(),                     // srcAccessMask
-					vk::AccessFlagBits::eTransferWrite,    // dstAccessMask
-					vk::ImageLayout::eUndefined,           // oldLayout
-					vk::ImageLayout::eGeneral,             // newLayout
+					vk::AccessFlags(),                   // srcAccessMask
+					vk::AccessFlagBits::eTransferWrite,  // dstAccessMask
+					vk::ImageLayout::eUndefined,         // oldLayout
+					vk::ImageLayout::eGeneral,           // newLayout
 					0,                          // srcQueueFamilyIndex
 					0,                          // dstQueueFamilyIndex
 					hostVisibleImage.get(),     // image
