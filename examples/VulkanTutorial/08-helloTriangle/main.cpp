@@ -146,10 +146,12 @@ int main(int,char**)
 							0,        // inputAttachmentCount
 							nullptr,  // pInputAttachments
 							1,        // colorAttachmentCount
-							&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
-								0,  // attachment
-								vk::ImageLayout::eColorAttachmentOptimal  // layout
-							),
+							array{    // pColorAttachments
+								vk::AttachmentReference(
+									0,  // attachment
+									vk::ImageLayout::eColorAttachmentOptimal  // layout
+								),
+							}.data(),
 							nullptr,  // pResolveAttachments
 							nullptr,  // pDepthStencilAttachment
 							0,        // preserveAttachmentCount
@@ -433,11 +435,13 @@ int main(int,char**)
 		// begin render pass
 		commandBuffer->beginRenderPass(
 			vk::RenderPassBeginInfo(
-				renderPass.get(),       // renderPass
-				framebuffer.get(),      // framebuffer
+				renderPass.get(),   // renderPass
+				framebuffer.get(),  // framebuffer
 				vk::Rect2D(vk::Offset2D(0,0),imageExtent),  // renderArea
-				1,                      // clearValueCount
-				&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f}))  // pClearValues
+				1,      // clearValueCount
+				array{  // pClearValues
+					vk::ClearValue(array<float,4>{0.f,0.f,0.f,1.f}),
+				}.data()
 			),
 			vk::SubpassContents::eInline
 		);
