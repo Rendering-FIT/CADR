@@ -70,6 +70,11 @@ int main(int,char**)
 				}
 			}
 		}
+
+		// print devices
+		cout<<"Vulkan devices:"<<endl;
+		for(vk::PhysicalDevice pd:deviceList)
+			cout<<"   "<<pd.getProperties().deviceName<<endl;
 		cout<<"Compatible devices:"<<endl;
 		for(auto& t:compatibleDevices)
 			cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
