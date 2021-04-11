@@ -156,13 +156,13 @@ Tato volba je užitečná například pro depth buffer, jehož obsah je po dokon
 a hodnota eDontCare ušetří zbytečný přenos z grafického čipu do paměti.</p>
 
 <p>Parametry stencilLoadOp a stencilStoreOp nás nezajímají, neboť stencil buffer nepoužíváne.
-Další dva parametry udávají layout (čteme lejaut).
+Další dva parametry udávají layout (čteme lejaut, přesněji ˈleɪaʊt), tedy způsob či formát uložení dat.
 InitialLayout udává layout, ve kterém se attachment nachází na začátku render pasu.
 FinalLayout pak specifikuje layout, do kterého je attachment překonvertován na konci render pasu.
 K layoutům si řekneme více příště.
-Dnes se spokojíme pouze s kontatováním, že počáteční layout nás nezajímá, protože z něj nic nečteme.
+Dnes se spokojíme pouze s kontatováním, že počáteční layout nás nezajímá, protože z attachmentu nic nečteme.
 Proto nastavíme jeho hodnotu na eUndefined.
-Pro finální layout použujeme obecný layout eGeneral, protože ten je čitelný i pro procesor,
+Pro finální layout použijeme obecný layout eGeneral, protože ten je čitelný i pro procesor,
 což potřebujeme pro uložení výsledného obrázku do souboru.</p>
 
 <p>Následuje seznam subpasů. My použijeme jeden.
