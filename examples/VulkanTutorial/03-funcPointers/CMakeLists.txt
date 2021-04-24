@@ -18,4 +18,5 @@ if(NOT WIN32)
 	target_link_libraries(${APP_NAME} dl)
 endif()
 
+set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")

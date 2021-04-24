@@ -1,7 +1,9 @@
 #!/bin/sh
 
-if test -f 05-commandSubmission.zip; then
-	rm 05-commandSubmission.zip
+NAME="$(basename "$(dirname "`pwd`")")"
+echo "Testing and packing \"$NAME\" example..."
+if test -f $NAME.zip; then
+	rm $NAME.zip
 fi
 mkdir tmp
 cp ../main.cpp tmp/
@@ -10,10 +12,10 @@ echo >> tmp/CMakeLists.txt
 cat < ../CMakeLists.txt >> tmp/CMakeLists.txt
 cp text.html tmp/
 cd tmp
-zip 05-commandSubmission.zip main.cpp CMakeLists.txt text.html
-mv 05-commandSubmission.zip ..
+zip $NAME.zip main.cpp CMakeLists.txt text.html
+mv $NAME.zip ..
 cmake .
 make
-./05-commandSubmission
+./$NAME
 cd ..
 #rm -r tmp

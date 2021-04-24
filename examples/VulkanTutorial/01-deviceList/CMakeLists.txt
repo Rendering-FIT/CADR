@@ -15,4 +15,5 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
 find_package(Vulkan REQUIRED)
 target_link_libraries(${APP_NAME} Vulkan::Vulkan)
 
+set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")
