@@ -1,0 +1,389 @@
+<h1>Vulkan tutoriál: První trojúhelník (8. díl)</h1>
+
+<p>Dnes si ukážeme, jak vytvořit jednoduché shadery,
+pipeline a jak vyrenrovat první trojúhelník.</p>
+
+<p>Posledně jsme rendrovali obrázek do vk::Image v lokální paměti
+grafického procesoru, a pak jej překopírovali do host-visible vk::Image,
+odkud jej přečetl hlavní procesor a uložil do souboru.
+Obrázek však obsahoval jen zelené pozadí. Dnes to napravíme
+a vyrendujeme první trojúhelník.</p>
+
+<p>Po <a href="">stažení zdrojáků</a> si můžeme otevřít main.cpp.
+Mezi globálními proměnnými nám přibyly vsModule a fsModule,
+což jsou moduly vertex shaderu a fragment shaderu (shader čti šejdr).
+Dále se nám tam objevil pipelineLayout a samotná pipeline.
+K čemu jednotlivé věci slouží, si vysvětlíme v zápětí.</p>
+
+<h3>Shadery a SPIR-V</h3>
+
+<p>Pod deklaracemi standardních proměnných nám přibyly ještě dvě zvláštní: vsSpirv a fsSpirv.
+Toto jsou zdrojové kódy pro naše shadery v jazyce SPIR-V v jeho binární podobě.
+V OpenGL jsme byli zvyklí na GLSL, v DirectX na HLSL. Proč nyní SPIR-V?</p>
+
+<p>SPIR-V je mezijazyk. Na straně vývojáře je jeho program přeložen
+z GLSL či jiného jazyka do SPIR-V a přibalen do finální aplikace.
+Na straně uživatele pak aplikace posílá SPIR-V program do Vulkan zařízení,
+které si jej přeloží pro nativních instrukcí daného grafického či vypočetního procesoru.
+Mezi výhodami tohoto řešení budeme jmenovat tři.
+Za prvé větší rychlost, neboť odpadá překlad z vysokoúrovňového programovacího jazyka.
+Za druhé větší přenositelnost. U GLSL kódu jsme někteří zažili,
+že bylo potřeba jej otestovat typicky na všech platformách,
+kde to mělo fungovat - obyčejně tedy Nvidia, AMD a Intel.
+Ne vždy ale driver druhého výrobce spolknul, co fungovalo u prvního výrobce.
+Se SPIR-V toto z velké části odpadá. Sám vývojář přeloží svůj GLSL kód do SPIR-V
+a SPIR-V je již velmi přenositelný mezi všemi výrobci.
+Poslední výhoda je pak pro ty, kteří hledí na duševní vlastnictví a nechtějí,
+aby se kód jejich shaderů dostal do rukou druhých.
+Kompilace srozumitelného GLSL kódu do nízkoúrovňového mezijazyka tento problém z velké části řeší.
+Nyní se vraťme z teorie do naší aplikace.</p>
+
+<p>Náš projekt si nese zdrojáky shaderů v souborech shader.vert a shader.frag.
+Jak již název napovídá, jedná se o zdrojový kód vertex a fragment shaderu.
+Použitý jazyk těchto zdrojáků je GLSL. Podívejme se nejprve na vertex shader:</p>
+
+<pre>
+#version 450
+
+out gl_PerVertex {
+	vec4 gl_Position;
+};
+
+layout(location = 0) out vec3 outColor;
+
+
+vec2 positions[3] = vec2[](
+	vec2( 0.0,-0.5),
+	vec2( 0.5, 0.5),
+	vec2(-0.5, 0.5)
+);
+
+vec3 colors[3] = vec3[](
+	vec3(1.0,0.0,0.0),
+	vec3(0.0,1.0,0.0),
+	vec3(0.0,0.0,1.0)
+);
+
+
+void main()
+{
+	gl_Position=vec4(positions[gl_VertexIndex],0.0,1.0);
+	outColor=colors[gl_VertexIndex];
+}
+</pre>
+
+<p>Není účelem tohoto tutoriálu studium jazyka GLSL. Na internetu nalezneme dostatek zdrojů
+a na <a href="https://www.khronos.org/opengl/">stránkách khronosu</a> dokumentaci GLSL.
+My se omezíme pouze na shrnutí, že
+vertex shader v proměnné gl_VertexIndex dostává index zpracovávaného vertexu,
+podívá se do pole positions a colors a v proměnných gl_Position a outColor
+vrátí pozici vertexu a jeho barvu.</p>
+
+<p>Vrácená barva v outColor je triviální: tři floaty udávající RGB hodnoty, tedy intenzitu červené,
+zelené a modré v rozsahu 0.0 až 1.0. Pozice v gl_Position je složitější.
+Je to čtyřsložkový vektor se složkami x,y,z a w.
+Hodnotou w se zabývat nebudeme a pouze jí nastavíme na 1.0. Zájemci najdou její význam
+při studiu homogenních souřadnic a mimo jiné nám umožňují umístit bod do nekonečna.
+Zůstávají proměnné x,y a z zadané v normalizovaných souřadnicích zařízení,
+anglicky normalized device coordinates, či zkráceně NDC.
+NDC mají rozsah od -1 do +1 v ose x a y, a 0 až +1 v ose z.
+Vše, co je mimo tyto souřadnice, je mimo pohled kamery a nebude rendrováno.
+V praxi používáme transformační matice (typicky model, view a perspective matrix),
+abychom realné souřadnice scény transformovali do NDC na výstupu vertex shaderu.
+O těchto transformacích však někdy později. Nyní budeme pro jednoduchost pracovat pouze s NDC.</p>
+
+<p>Pozorný čtenář si také možná všimnul, že rozsah NDC je od -1 do +1 v ose x a y a 0 až +1 v ose z.
+Osa x míří vpravo. Souřadnice -1 tedy odpovídá levému rohu našeho vyrendrovaného obrázku,
++1 jeho pravému rohu a 0 středu. Osa y míří dolů. Tedy -1 je na horním okraji a +1 na dolním.
+Toto je přesně opačně, než v OpenGL. Nicméně to více odpovídá tomu, jak pracuje hardware.
+Všimněme si, že souřadnice obrazovky i okna se počítají od levého horního rohu, nikoliv od spodního.
+Komu se to nelíbí, snadno tuto osu otočí odpovídající transformací ve vertex shaderu,
+nebo negativní výškou viewportu. Druhou možnost nám přinesla extension VK_KHR_maintenance1
+a následně Vulkan 1.1.</p>
+
+<p>Zbývá poslední otázka, proč je rozsah z od 0 do +1, když x i y ho mají od -1 do +1?
+Proč je to jinak než třeba v OpenGL? Důvod je technický. Čísla v plovoucí řádové čárce
+poskytují mnohem větší přesnost kolem čísla 0, než kolem čísla -1. S rostoucí absolutní hodnotou
+uloženého čísla klesá jeho přesnost. Depth buffer typicky poskytuje nejvyšší přesnost právě u kamery
+a se vzdáleností klesá. Je tedy nejvhodnější umístit nejblíže ke kameře z hodnotu 0, aby přesnost výpočtu
+a přesnost uložené hodnoty byly podobné.</p>
+
+<p>Tímto jsme hotovi s vertex shaderem a můžeme se podívat na fragment shader:</p>
+
+<pre>
+#version 450
+
+layout(location = 0) in vec3 inColor;
+
+layout(location = 0) out vec4 outColor;
+
+
+void main()
+{
+	outColor=vec4(inColor,1.0);
+}
+</pre>
+
+<p>Vidíme, že fragment shader je triviální. Pouze přiřadí výslednou barvu.
+Barvu převezme z proměnné inColor a pouze alfa hodnotu nastaví na 1.0,
+avšak jakákoliv hodnota zde by fungovala, protože průhlednost ani jiný efekt
+založený na alfa-kanálu nepoužíváme. A kde se vzala hodnota inColor?
+Vygeneroval ji vertex shader do jeho proměnné outColor. A protože každý vertex
+dostal jinou hodnotu outColor, byla mezi nimi interpolována. Podle vzdálenosti
+k jednotlivým vertexům dostane daný fragment odpovídající vážený průměr z jejich barev.</p>
+
+<h3>Kompilace GLSL do SPIR-V</h3>
+
+<p>Jak nyní zkompilovat naše shadery do SPIR-V? K tomu slouží utilita glslangValidator.
+V projektu přibyl soubor FindVulkan.cmake, který nám kromě Vulkan knihovny a headerů
+najde i glslangValidator. Navíc nám definuje add_shaders makro, které můžeme použít
+v CMakeLists.txt pro konverzi GLSL shaderů do SPIR-V. Pokud byste po zkompilování
+chtěli SPIR-V soubory najít a prohlédnout si je, jsou ve složce, kam se ukládají
+zkompilované soubory. Tyto soubory se jmenují shader.vert.spv a shader.frag.spv.
+V našem projektu je následně includujeme a jejich obsah bude uložen v proměnných
+vsSpirv a fsSpirv, jak můžeme vidět v kódu:</p>
+
+<pre>
+// shader code in SPIR-V binary
+static const uint32_t vsSpirv[]={
+#include "shader.vert.spv"
+};
+static const uint32_t fsSpirv[]={
+#include "shader.frag.spv"
+};
+</pre>
+
+<h3>Vytvoření shader modulů a pipeline layoutu</h3>
+
+<p>Shader moduly vytvoříme následujícím kódem:</p>
+
+<pre>
+// create shader modules
+vsModule=device->createShaderModuleUnique(
+	vk::ShaderModuleCreateInfo(
+		vk::ShaderModuleCreateFlags(),  // flags
+		sizeof(vsSpirv),  // codeSize
+		vsSpirv  // pCode
+	)
+);
+fsModule=device->createShaderModuleUnique(
+	vk::ShaderModuleCreateInfo(
+		vk::ShaderModuleCreateFlags(),  // flags
+		sizeof(fsSpirv),  // codeSize
+		fsSpirv  // pCode
+	)
+);
+</pre>
+
+<p>Pouze předáme ukazatel na SPIR-V kód a velikost tohoto kódu.
+Dále potřebujeme vytvořit objekt pipeline layoutu, který budeme
+potřebovat pro vytvoření samotné pipeline:</p>
+
+<pre>
+// pipeline layout
+pipelineLayout=device-&gt;createPipelineLayoutUnique(
+	vk::PipelineLayoutCreateInfo{
+		vk::PipelineLayoutCreateFlags(),  // flags
+		0,       // setLayoutCount
+		nullptr, // pSetLayouts
+		0,       // pushConstantRangeCount
+		nullptr  // pPushConstantRanges
+	}
+);
+</pre>
+
+<p>Layout je velmi jednoduchý a říká, že nepoužíváme žádné descriptor sety
+(setLayoutCount je 0) a že nepoužíváme žádné push konstanty (pushConstantRangeCount je 0).
+K descriptor setům a push konstantám se vrátíme v budoucnosti. Nyní vytvoříme naši pipeline.</p>
+
+<h3>Pipeline</h3>
+
+<p>Pipeline (čti: pajplajn) definuje, jakým postupem je zpracovávána práce, kterou odešleme na zařízení.
+Pipeline jsou dvou druhů - vypočetní a grafické. Pro rendrování tedy budeme používat grafické pipelines.</p>
+
+<p>Vytvoření pipeline vyžaduje poměrně mnoho informací, proto i kód je dosti dlouhý.
+Proto si jej rozebereme po částech.</p>
+
+<pre>
+// pipeline
+tie(ignore,pipeline)=
+	device-&gt;createGraphicsPipelineUnique(
+		nullptr,  // pipelineCache
+		vk::GraphicsPipelineCreateInfo(
+			vk::PipelineCreateFlags(),  // flags
+
+			// <b>shader stages</b>
+			2,  // stageCount
+			array{  // pStages
+				vk::PipelineShaderStageCreateInfo{
+					vk::PipelineShaderStageCreateFlags(),  // flags
+					vk::ShaderStageFlagBits::eVertex,      // stage
+					vsModule.get(),  // module
+					"main",  // pName
+					nullptr  // pSpecializationInfo
+				},
+				vk::PipelineShaderStageCreateInfo{
+					vk::PipelineShaderStageCreateFlags(),  // flags
+					vk::ShaderStageFlagBits::eFragment,    // stage
+					fsModule.get(),  // module
+					"main",  // pName
+					nullptr  // pSpecializationInfo
+				},
+			}.data(),
+
+			// <b>vertex input</b>
+			&amp;(const vk::PipelineVertexInputStateCreateInfo&amp;)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+				vk::PipelineVertexInputStateCreateFlags(),  // flags
+				0,        // vertexBindingDescriptionCount
+				nullptr,  // pVertexBindingDescriptions
+				0,        // vertexAttributeDescriptionCount
+				nullptr   // pVertexAttributeDescriptions
+			},
+
+			// <b>input assembly</b>
+			&amp;(const vk::PipelineInputAssemblyStateCreateInfo&amp;)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+				vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+				vk::PrimitiveTopology::eTriangleList,  // topology
+				VK_FALSE  // primitiveRestartEnable
+			},
+
+			// <b>tessellation</b>
+			nullptr, // pTessellationState
+
+			// <b>viewport</b>
+			&amp;(const vk::PipelineViewportStateCreateInfo&amp;)vk::PipelineViewportStateCreateInfo{  // pViewportState
+				vk::PipelineViewportStateCreateFlags(),  // flags
+				1,  // viewportCount
+				array{  // pViewports
+					vk::Viewport(0.f,0.f,float(imageExtent.width),float(imageExtent.height),0.f,1.f),
+				}.data(),
+				1,  // scissorCount
+				array{  // pScissors
+					vk::Rect2D(vk::Offset2D(0,0),imageExtent)
+				}.data(),
+			},
+
+			// <b>rasterization</b>
+			&amp;(const vk::PipelineRasterizationStateCreateInfo&amp;)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+				vk::PipelineRasterizationStateCreateFlags(),  // flags
+				VK_FALSE,  // depthClampEnable
+				VK_FALSE,  // rasterizerDiscardEnable
+				vk::PolygonMode::eFill,  // polygonMode
+				vk::CullModeFlagBits::eNone,  // cullMode
+				vk::FrontFace::eCounterClockwise,  // frontFace
+				VK_FALSE,  // depthBiasEnable
+				0.f,  // depthBiasConstantFactor
+				0.f,  // depthBiasClamp
+				0.f,  // depthBiasSlopeFactor
+				1.f   // lineWidth
+			},
+
+			// <b>multisampling</b>
+			&amp;(const vk::PipelineMultisampleStateCreateInfo&amp;)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+				vk::PipelineMultisampleStateCreateFlags(),  // flags
+				vk::SampleCountFlagBits::e1,  // rasterizationSamples
+				VK_FALSE,  // sampleShadingEnable
+				0.f,       // minSampleShading
+				nullptr,   // pSampleMask
+				VK_FALSE,  // alphaToCoverageEnable
+				VK_FALSE   // alphaToOneEnable
+			},
+
+			// <b>depth and stencil</b>
+			nullptr,  // pDepthStencilState
+
+			// <b>blending</b>
+			&amp;(const vk::PipelineColorBlendStateCreateInfo&amp;)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+				vk::PipelineColorBlendStateCreateFlags(),  // flags
+				VK_FALSE,  // logicOpEnable
+				vk::LogicOp::eClear,  // logicOp
+				1,  // attachmentCount
+				array{  // pAttachments
+					vk::PipelineColorBlendAttachmentState{
+						VK_FALSE,  // blendEnable
+						vk::BlendFactor::eZero,  // srcColorBlendFactor
+						vk::BlendFactor::eZero,  // dstColorBlendFactor
+						vk::BlendOp::eAdd,       // colorBlendOp
+						vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+						vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+						vk::BlendOp::eAdd,       // alphaBlendOp
+						vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+							vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+					},
+				}.data(),
+				array&lt;float,4&gt;{0.f,0.f,0.f,0.f}  // blendConstants
+			},
+
+			nullptr,  // pDynamicState
+			pipelineLayout.get(),  // layout
+			renderPass.get(),  // renderPass
+			0,  // subpass
+			vk::Pipeline(nullptr),  // basePipelineHandle
+			-1 // basePipelineIndex
+		)
+	).asTuple();
+</pre>
+
+<p>Jak vidíme, celou pipeline v její komplexitě vytváříme naráz jediným příkazem createGraphicsPipelineUnique().
+Na nejvyšší úrovni předáváme jako parametr strukturu vk::GraphicsPipelineCreateInfo.
+Tato struktura pak obsahuje množství pointerů na další struktury,
+které obsahují parametry pro tvorbu jednotlivých bloků pipeline.</p>
+
+<p>První z těchto bloků nese informaci o "shader stages", tedy o shaderech.
+My používáme dva - vertex a fragment shader. Detailní popis všech datových položek struktur
+opět nalezneme v dokumentaci. Nicméně vidíme, že tam předáváme naše shader moduly,
+které jsme si dříve vytvořili.</p>
+
+<p>Další dva bloky jsou vertex input a input assembly. Vertex input popisuje vertex attributy,
+tedy data, která dostane typicky vertex shader pro každý zpracovávaný vertex.
+My vertex attributy budeme používat až v budoucích dílech, proto je v tuto chvíli struktura prázdná.
+Input assembly blok obsahuje jeden důležitý parametr a to, že rendrujeme triangle list.
+Triangle list znamená, že každé tři následně zpracovávané vertexy způsobí vykreslení
+jednoho trojúhelníku.</p>
+
+<p>Teselaci nepoužíváme, proto je pro teselační blok předáváme nullptr. Další v pořadí je viewport,
+tedy transformace do souřadnic okna, či přesněji řečeno do souřadnic framebufferu.
+Zde specifikujeme velikost viewportu a případně scissors, tedy "nůžky", kterými
+můžeme rendrování omezit pouze na podoblast framebufferu.</p>
+
+<p>Dalším blokem je rasterizace, kde vidíme parametry jako polygon mode,
+cull mode a depth bias nazývaný v OpenGL spíše polygon offset.
+Pak následuje blok dat pro multisampling. My pro jednoduchost použijeme
+jediný sample.</p>
+
+<p>Blok depth a stencil testu nastavíme na nullptr, neboť ani jedno z toho nebudeme u našeho prvního
+trojúhelníku potřebovat. Struktura blendingových dat je povinná, pokud používáme color attachmenty,
+navzdory tomu, že žádný blending neprovádíme. To explicitně vyjádříme v proměnné blendEnable.</p>
+
+<p>A dostáváme se k posledním několika parametrům, mezi které patří render pass a nedávno vytvořený
+pipeline layout. Na závěr si necháme zavoláním metody asTuple() vrátit výsledek jako tuple.
+Metoda createGraphicsPipelineUnique() totiž nevrací pouze vytvořenou pipeline typu vk::UniquePipeline,
+ale i návratovou hodnotu. Je více návratových hodnot značících úspěch a to skrze extension
+VK_EXT_pipeline_creation_cache_control, kterou my ale nevyužíváme. Návratovou hodnotu tedy
+v přiřazení tie(ignore, pipeline) = device-&gt;createGraphicsPipelineUnique(...) ignorujeme.</p>
+
+<h3>Nabindování pipeline a draw call</h3>
+
+<p>Poslední dvě věci, které potřebujeme k vykreslení trojúhelníku je
+nabindovat pipeline, laicky řečeno - aktivovat ji. A pak provést příkaz vykreslení.
+Oba příkazy uložíme do command bufferu tímto kódem:</p>
+
+<pre>
+// rendering commands
+commandBuffer->bindPipeline(vk::PipelineBindPoint::eGraphics,pipeline.get());  // bind pipeline
+commandBuffer->draw(3,1,0,0);  // draw single triangle
+</pre>
+
+<p>První parametr bindPipeline() říká, že bindujeme grafickou pipeline, a druhý parametr je
+samotná pipeline. Její nabindování způsobí, že následující příkazy budou využívat tuto pipeline.
+Následně zavoláme draw(). První parametr říká, že chceme rendrovat tři vertexy.
+Druhý udává počet instancí rendrované geometrie. My tento trojúhelník nechceme instancovat,
+proto tento parametr nastavíme na jedničku, tedy jedna instance trojúhelníku.
+Třetí parametr udává číslo prvního vertexu a čtvrtý první instance. My oba necháme na nule.</p>
+
+<p>Tím jsme hotovi. Při spuštění tohoto příkladu je nyní do command bufferu zaznamenáno nabindování
+pipeline a následný příkaz pro vykreslení trojúhelníku. Po odeslání command bufferu k provedení
+grafická karta zapracuje a provede vykreslení tohoto trojúhelníku do framebufferu.
+Výsledný obrázek je uložen do souboru, kde si jej můžeme prohlédnout.</p>
+
+
