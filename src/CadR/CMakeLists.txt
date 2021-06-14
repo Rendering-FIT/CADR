@@ -22,6 +22,7 @@ set(CADR_PUBLIC_HEADERS
     CallbackList.h
     Drawable.h
     Errors.h
+    FrameInfo.h
     Geometry.h
     ParentChildList.h
     Pipeline.h

@@ -27,10 +27,22 @@ public:
 	             const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	             const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	VulkanDevice(VulkanInstance& instance,
+	             vk::PhysicalDevice physicalDevice,
+	             uint32_t graphicsQueueFamily,
+	             uint32_t presentationQueueFamily,
+	             const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	             const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	             const vk::PhysicalDeviceFeatures2* enabledFeatures = nullptr);
+	VulkanDevice(VulkanInstance& instance,
 	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	             const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	             const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	VulkanDevice(VulkanInstance& instance,
+	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+	             const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	             const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	             const vk::PhysicalDeviceFeatures2* enabledFeatures = nullptr);
 	~VulkanDevice();
 
 	// move constructor and move assignment
@@ -48,11 +60,44 @@ public:
 	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	            const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
 	void create(VulkanInstance& instance,
+	            vk::PhysicalDevice physicalDevice,
+	            uint32_t graphicsQueueFamily,
+	            uint32_t presentationQueueFamily,
+	            const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	            const vk::PhysicalDeviceFeatures2* enabledFeatures = nullptr);
+	void create(VulkanInstance& instance,
 	            std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	            const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
 	            const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	void create(VulkanInstance& instance,
+	            std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+	            const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	            const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	            const vk::PhysicalDeviceFeatures2* enabledFeatures = nullptr);
 	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device);
+	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo);
+	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
+	          uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
+	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
+	          uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
+	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	          const vk::PhysicalDeviceFeatures2* enabledFeatures = nullptr);
+	void init(VulkanInstance& instance,
+	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	          const vk::PhysicalDeviceFeatures* enabledFeatures = nullptr);
+	void init(VulkanInstance& instance,
+	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
+	          const vk::ArrayProxy<const char*const> enabledLayers = nullptr,
+	          const vk::ArrayProxy<const char*const> enabledExtensions = nullptr,
+	          const vk::PhysicalDeviceFeatures2* enabledFeatures = nullptr);
 	bool initialized() const;
 	void destroy();
 
@@ -149,9 +194,19 @@ public:
 	inline void cmdDispatch(vk::CommandBuffer commandBuffer,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatch(groupCountX,groupCountY,groupCountZ,*this); }
 	inline void cmdDispatchIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset) const  { commandBuffer.dispatchIndirect(buffer,offset,*this); }
 	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,uint32_t memoryBarrierCount,const vk::MemoryBarrier* pMemoryBarriers,uint32_t bufferMemoryBarrierCount,const vk::BufferMemoryBarrier* pBufferMemoryBarriers,uint32_t imageMemoryBarrierCount,const vk::ImageMemoryBarrier* pImageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarrierCount,pMemoryBarriers,bufferMemoryBarrierCount,pBufferMemoryBarriers,imageMemoryBarrierCount,pImageMemoryBarriers,*this); }
+	inline void cmdSetDepthBias(vk::CommandBuffer commandBuffer,float constantFactor,float clamp,float slopeFactor) const  { commandBuffer.setDepthBias(constantFactor,clamp,slopeFactor,*this); }
+	inline void cmdSetLineWidth(vk::CommandBuffer commandBuffer,float lineWidth) const  { commandBuffer.setLineWidth(lineWidth,*this); }
+	inline void cmdSetLineStippleEXT(vk::CommandBuffer commandBuffer,uint32_t factor,uint16_t pattern) const  { commandBuffer.setLineStippleEXT(factor,pattern,*this); }
 	inline vk::Result queueSubmit(vk::Queue queue,uint32_t submitCount,const vk::SubmitInfo* pSubmits,vk::Fence fence) const  { return queue.submit(submitCount,pSubmits,fence,*this); }
 	inline vk::Result waitForFences(uint32_t fenceCount,const vk::Fence* pFences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fenceCount,pFences,waitAll,timeout,*this); }
-	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
+	inline vk::Result resetFences(uint32_t fenceCount,const vk::Fence* pFences) const  { return _device.resetFences(fenceCount,pFences,*this); }
+	inline vk::Result getCalibratedTimestampsEXT(uint32_t timestampCount,const vk::CalibratedTimestampInfoEXT* pTimestampInfos,uint64_t* pTimestamps,uint64_t* pMaxDeviation) const  { return _device.getCalibratedTimestampsEXT(timestampCount,pTimestampInfos,pTimestamps,pMaxDeviation,*this); }
+	inline vk::Result createQueryPool(const vk::QueryPoolCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::QueryPool* pQueryPool) const  { return _device.createQueryPool(pCreateInfo,pAllocator,pQueryPool,*this); }
+	inline void destroyQueryPool(vk::QueryPool queryPool,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyQueryPool(queryPool,pAllocator,*this); }
+	inline void destroy(vk::QueryPool queryPool,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(queryPool,pAllocator,*this); }
+	inline void cmdResetQueryPool(vk::CommandBuffer commandBuffer,vk::QueryPool queryPool,uint32_t firstQuery,uint32_t queryCount) const  { commandBuffer.resetQueryPool(queryPool,firstQuery,queryCount,*this); }
+	inline void cmdWriteTimestamp(vk::CommandBuffer commandBuffer,vk::PipelineStageFlagBits pipelineStage,vk::QueryPool queryPool, uint32_t query) const  { commandBuffer.writeTimestamp(pipelineStage,queryPool,query,*this); }
+	inline vk::Result getQueryPoolResults(vk::QueryPool queryPool,uint32_t firstQuery,uint32_t queryCount,size_t dataSize,void* pData,vk::DeviceSize stride,vk::QueryResultFlags flags) const  { return _device.getQueryPoolResults(queryPool,firstQuery,queryCount,dataSize,pData,stride,flags,*this); }
 #ifdef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
 	inline vk::Result bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
@@ -160,6 +215,7 @@ public:
 	inline vk::Result endCommandBuffer(vk::CommandBuffer commandBuffer) const  { return commandBuffer.end(*this); }
 	inline vk::Result queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::Result waitIdle() const  { return _device.waitIdle(*this); }
+	inline void cmdWriteTimestamp(vk::CommandBuffer commandBuffer,vk::PipelineStageFlagBits pipelineStage,vk::QueryPool queryPool,uint32_t query) const  { commandBuffer.writeTimestamp(pipelineStage,queryPool,query,*this); }
 #endif
 
 #ifndef VULKAN_HPP_DISABLE_ENHANCED_MODE
@@ -281,8 +337,16 @@ public:
 	inline void cmdBindVertexBuffers(vk::CommandBuffer commandBuffer,uint32_t firstBinding,vk::ArrayProxy<const vk::Buffer> buffers,vk::ArrayProxy<const vk::DeviceSize> offsets) const  { commandBuffer.bindVertexBuffers(firstBinding,buffers,offsets,*this); }
 	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,vk::ArrayProxy<const vk::MemoryBarrier> memoryBarriers,vk::ArrayProxy<const vk::BufferMemoryBarrier> bufferMemoryBarriers,vk::ArrayProxy<const vk::ImageMemoryBarrier> imageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarriers,bufferMemoryBarriers,imageMemoryBarriers,*this); }
 	inline vk::ResultValueType<void>::type queueSubmit(vk::Queue queue,vk::ArrayProxy<const vk::SubmitInfo> submits,vk::Fence fence) const  { return queue.submit(submits,fence,*this); }
+	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
+	inline vk::ResultValueType<void>::type resetFences(vk::ArrayProxy<const vk::Fence> fences) const  { return _device.resetFences(fences,*this); }
 	inline vk::ResultValueType<void>::type queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::ResultValueType<void>::type waitIdle() const  { return _device.waitIdle(*this); }
+	inline vk::ResultValueType<uint64_t>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t> timestamps) const  { return _device.getCalibratedTimestampsEXT(timestampInfos,timestamps,*this); }
+	inline vk::ResultValueType<vk::QueryPool>::type createQueryPool(const vk::QueryPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createQueryPool(createInfo,allocator,*this); }
+	inline void destroyQueryPool(vk::QueryPool queryPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(queryPool,allocator,*this); }
+	inline void destroy(vk::QueryPool queryPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(queryPool,allocator,*this); }
+	template<typename T>
+	inline vk::Result getQueryPoolResults(vk::QueryPool queryPool,uint32_t firstQuery,uint32_t queryCount,vk::ArrayProxy<T> data,vk::DeviceSize stride,vk::QueryResultFlags flags) const  { return _device.getQueryPoolResults(queryPool,firstQuery,queryCount,data,stride,flags,*this); }
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE
 	inline vk::ResultValueType<vk::UniqueHandle<vk::RenderPass,VulkanDevice>>::type createRenderPassUnique(const vk::RenderPassCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createRenderPassUnique(createInfo,allocator,*this); }
@@ -367,6 +431,7 @@ public:
 		return _device.allocateCommandBuffersUnique<Allocator,VulkanDevice>(allocateInfo,vectorAllocator,*this); }
 #endif
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Fence,VulkanDevice>>::type createFenceUnique(const vk::FenceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFenceUnique(createInfo,allocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::QueryPool,VulkanDevice>>::type createQueryPoolUnique(const vk::QueryPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createQueryPoolUnique(createInfo,allocator,*this); }
 #endif
 #endif
 
@@ -435,10 +500,20 @@ public:
 	PFN_vkCmdDispatch vkCmdDispatch;
 	PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect;
 	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
+	PFN_vkCmdSetDepthBias vkCmdSetDepthBias;
+	PFN_vkCmdSetLineWidth vkCmdSetLineWidth;
+	PFN_vkCmdSetLineStippleEXT vkCmdSetLineStippleEXT;
 	PFN_vkQueueSubmit vkQueueSubmit;
 	PFN_vkWaitForFences vkWaitForFences;
+	PFN_vkResetFences vkResetFences;
 	PFN_vkQueueWaitIdle vkQueueWaitIdle;
 	PFN_vkDeviceWaitIdle vkDeviceWaitIdle;
+	PFN_vkCmdResetQueryPool vkCmdResetQueryPool;
+	PFN_vkCmdWriteTimestamp vkCmdWriteTimestamp;
+	PFN_vkGetCalibratedTimestampsEXT vkGetCalibratedTimestampsEXT;
+	PFN_vkCreateQueryPool vkCreateQueryPool;
+	PFN_vkDestroyQueryPool vkDestroyQueryPool;
+	PFN_vkGetQueryPoolResults vkGetQueryPoolResults;
 
 private:
 	VulkanDevice(const VulkanDevice&) = default;  ///< Private copy contructor. Object copies not allowed. Only internal use.
@@ -448,12 +523,18 @@ private:
 
 // inline methods
 inline VulkanDevice::VulkanDevice() : _version(0)  { vkGetDeviceProcAddr=nullptr; vkDestroyDevice=nullptr; }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { create(instance,physicalDevice,createInfo); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)  { init(instance,physicalDevice,createInfo); }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device)  { init(instance,physicalDevice,device); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { create(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,physicalDevice,graphicsQueueFamily,presentationQueueFamily,enabledLayers,enabledExtensions,enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures2* enabledFeatures)  { init(instance,physicalDevice,graphicsQueueFamily,presentationQueueFamily,enabledLayers,enabledExtensions,enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures2* enabledFeatures)  { init(instance,physicalDeviceAndQueueFamilies,enabledLayers,enabledExtensions,enabledFeatures); }
 inline VulkanDevice::~VulkanDevice()  { destroy(); }
 
 inline void VulkanDevice::create(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { create(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
+inline void VulkanDevice::create(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures2* enabledFeatures)  { create(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
+inline void VulkanDevice::init(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures* enabledFeatures)  { init(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
+inline void VulkanDevice::init(VulkanInstance& instance,std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,const vk::ArrayProxy<const char*const> enabledLayers,const vk::ArrayProxy<const char*const> enabledExtensions,const vk::PhysicalDeviceFeatures2* enabledFeatures)  { init(instance,std::get<0>(physicalDeviceAndQueueFamilies),std::get<1>(physicalDeviceAndQueueFamilies),std::get<2>(physicalDeviceAndQueueFamilies),enabledLayers,enabledExtensions,enabledFeatures); }
 inline bool VulkanDevice::initialized() const  { return _device.operator bool(); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }

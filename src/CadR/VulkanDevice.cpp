@@ -78,37 +78,37 @@ void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevi
 	vkCmdDispatch        =getProcAddr<PFN_vkCmdDispatch        >("vkCmdDispatch");
 	vkCmdDispatchIndirect=getProcAddr<PFN_vkCmdDispatchIndirect>("vkCmdDispatchIndirect");
 	vkCmdPipelineBarrier =getProcAddr<PFN_vkCmdPipelineBarrier >("vkCmdPipelineBarrier");
+	vkCmdSetDepthBias    =getProcAddr<PFN_vkCmdSetDepthBias    >("vkCmdSetDepthBias");
+	vkCmdSetLineWidth    =getProcAddr<PFN_vkCmdSetLineWidth    >("vkCmdSetLineWidth");
+	vkCmdSetLineStippleEXT=getProcAddr<PFN_vkCmdSetLineStippleEXT>("vkCmdSetLineStippleEXT");
 	vkQueueSubmit        =getProcAddr<PFN_vkQueueSubmit        >("vkQueueSubmit");
 	vkWaitForFences      =getProcAddr<PFN_vkWaitForFences      >("vkWaitForFences");
+	vkResetFences        =getProcAddr<PFN_vkResetFences        >("vkResetFences");
 	vkQueueWaitIdle      =getProcAddr<PFN_vkQueueWaitIdle      >("vkQueueWaitIdle");
 	vkDeviceWaitIdle     =getProcAddr<PFN_vkDeviceWaitIdle     >("vkDeviceWaitIdle");
+	vkCmdResetQueryPool  =getProcAddr<PFN_vkCmdResetQueryPool  >("vkCmdResetQueryPool");
+	vkCmdWriteTimestamp  =getProcAddr<PFN_vkCmdWriteTimestamp  >("vkCmdWriteTimestamp");
+	vkGetCalibratedTimestampsEXT=getProcAddr<PFN_vkGetCalibratedTimestampsEXT>("vkGetCalibratedTimestampsEXT");
+	vkCreateQueryPool    =getProcAddr<PFN_vkCreateQueryPool    >("vkCreateQueryPool");
+	vkDestroyQueryPool   =getProcAddr<PFN_vkDestroyQueryPool   >("vkDestroyQueryPool");
+	vkGetQueryPoolResults=getProcAddr<PFN_vkGetQueryPoolResults>("vkGetQueryPoolResults");
 }
 
 
-void VulkanDevice::create(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)
+void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)
 {
-	if(_device)
-		destroy();
-	if(!physicalDevice)
-		return;
-
 	init(instance,physicalDevice,instance.createDevice(physicalDevice,createInfo));
 }
 
 
-void VulkanDevice::create(VulkanInstance& instance,
-                          vk::PhysicalDevice physicalDevice,
-                          uint32_t graphicsQueueFamily,
-                          uint32_t presentationQueueFamily,
-                          const vk::ArrayProxy<const char*const> enabledLayers,
-                          const vk::ArrayProxy<const char*const> enabledExtensions,
-                          const vk::PhysicalDeviceFeatures* enabledFeatures)
+void VulkanDevice::init(VulkanInstance& instance,
+                        vk::PhysicalDevice physicalDevice,
+                        uint32_t graphicsQueueFamily,
+                        uint32_t presentationQueueFamily,
+                        const vk::ArrayProxy<const char*const> enabledLayers,
+                        const vk::ArrayProxy<const char*const> enabledExtensions,
+                        const vk::PhysicalDeviceFeatures* enabledFeatures)
 {
-	if(_device)
-		destroy();
-	if(!physicalDevice)
-		return;
-
 	size_t numQueues=(graphicsQueueFamily==presentationQueueFamily)?1:2;
 	std::array<vk::DeviceQueueCreateInfo,2> queueInfos = {
 		vk::DeviceQueueCreateInfo{
@@ -131,7 +131,87 @@ void VulkanDevice::create(VulkanInstance& instance,
 		enabledExtensions.size(),enabledExtensions.data(),  // enabledExtensions
 		enabledFeatures  // enabledFeatures
 	);
-	create(instance,physicalDevice,createInfo);
+	init(instance,physicalDevice,createInfo);
+}
+
+
+void VulkanDevice::init(VulkanInstance& instance,
+                          vk::PhysicalDevice physicalDevice,
+                          uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,
+                          const vk::ArrayProxy<const char*const> enabledLayers,
+                          const vk::ArrayProxy<const char*const> enabledExtensions,
+                          const vk::PhysicalDeviceFeatures2* enabledFeatures)
+{
+	size_t numQueues=(graphicsQueueFamily==presentationQueueFamily)?1:2;
+	std::array<vk::DeviceQueueCreateInfo,2> queueInfos = {
+		vk::DeviceQueueCreateInfo{
+			vk::DeviceQueueCreateFlags(),  // flags
+			graphicsQueueFamily,  // queueFamilyIndex
+			1,  // queueCount
+			&(const float&)1.f,  // queuePriorities
+		},
+		{
+			vk::DeviceQueueCreateFlags(),  // flags
+			presentationQueueFamily,  // queueFamilyIndex
+			1,  // queueCount
+			&(const float&)1.f,  // queuePriorities
+		},
+	};
+	vk::DeviceCreateInfo createInfo(
+		vk::DeviceCreateFlags(),   // flags
+		uint32_t(numQueues),queueInfos.data(),  // queueCreateInfo
+		enabledLayers.size(),enabledLayers.data(),  // enabledLayersCount
+		enabledExtensions.size(),enabledExtensions.data(),  // enabledExtensions
+		nullptr  // enabledFeatures
+	);
+	createInfo.setPNext(enabledFeatures);
+	init(instance,physicalDevice,createInfo);
+}
+
+
+void VulkanDevice::create(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo)
+{
+	if(_device)
+		destroy();
+	if(!physicalDevice)
+		return;
+
+	init(instance,physicalDevice,createInfo);
+}
+
+
+void VulkanDevice::create(VulkanInstance& instance,
+                          vk::PhysicalDevice physicalDevice,
+                          uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,
+                          const vk::ArrayProxy<const char*const> enabledLayers,
+                          const vk::ArrayProxy<const char*const> enabledExtensions,
+                          const vk::PhysicalDeviceFeatures* enabledFeatures)
+{
+	if(_device)
+		destroy();
+	if(!physicalDevice)
+		return;
+
+	init(instance,physicalDevice,graphicsQueueFamily,presentationQueueFamily,enabledLayers,enabledExtensions,enabledFeatures);
+}
+
+
+void VulkanDevice::create(VulkanInstance& instance,
+                          vk::PhysicalDevice physicalDevice,
+                          uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,
+                          const vk::ArrayProxy<const char*const> enabledLayers,
+                          const vk::ArrayProxy<const char*const> enabledExtensions,
+                          const vk::PhysicalDeviceFeatures2* enabledFeatures)
+{
+	if(_device)
+		destroy();
+	if(!physicalDevice)
+		return;
+
+	init(instance,physicalDevice,graphicsQueueFamily,presentationQueueFamily,enabledLayers,enabledExtensions,enabledFeatures);
 }
 
 

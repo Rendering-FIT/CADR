@@ -32,6 +32,7 @@ public:
 	vk::Pipeline get() const;
 	vk::PipelineLayout layout() const;
 	std::vector<vk::DescriptorSetLayout>& descriptorSetLayouts() const;
+	vk::DescriptorSetLayout descriptorSetLayout(size_t index) const;
 
 };
 
@@ -60,5 +61,6 @@ inline Renderer* Pipeline::renderer() const  { return _renderer; }
 inline vk::Pipeline Pipeline::get() const  { return _pipeline; }
 inline vk::PipelineLayout Pipeline::layout() const  { return _pipelineLayout; }
 inline std::vector<vk::DescriptorSetLayout>& Pipeline::descriptorSetLayouts() const  { return *_descriptorSetLayouts; }
+inline vk::DescriptorSetLayout Pipeline::descriptorSetLayout(size_t index) const  { return (*_descriptorSetLayouts)[index]; }
 
 }

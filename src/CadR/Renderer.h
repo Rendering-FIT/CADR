@@ -2,6 +2,7 @@
 #define CADR_RENDERER_H
 
 #include <CadR/AllocationManagers.h>
+#include <CadR/FrameInfo.h>
 #include <CadR/StagingManager.h>
 #include <vulkan/vulkan.hpp>
 #include <list>
@@ -56,6 +57,9 @@ private:
 	StagingManagerList _primitiveSetStagingManagerList;
 	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
+	vk::CommandPool _precompiledCommandPool;
+	vk::CommandBuffer _readTimestampCommandBuffer;
+	vk::QueryPool _readTimestampQueryPool;
 	vk::Fence _fence;  ///< Fence for general synchronization.
 
 	vk::PipelineCache _pipelineCache;
@@ -66,12 +70,30 @@ private:
 	vk::PipelineLayout _drawablePipelineLayout;
 	vk::Pipeline _drawablePipeline;
 
+	size_t _frameNumber = ~size_t(0);  ///< Monotonically increasing frame number. The first frame is 0. The initial value is -1, marking pre-first frame time.
+	double _cpuTimestampPeriod;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
+	float _gpuTimestampPeriod;  ///< The time period of gpu timestamp being incremented by 1. The period is given in seconds.
+	bool _collectFrameInfo = false;  ///< True if frame timing information collecting is enabled.
+	bool _useCalibratedTimestamps;  ///< True if use of calibrated timestamps is enabled. It requires VK_EXT_calibrated_timestamps Vulkan extension to be present and enabled.
+	vk::TimeDomainEXT _timestampHostTimeDomain;  ///< Time domain used for the cpu timestamps.
+	struct FrameInfoStuff {
+		FrameInfo info;  ///< FrameInfo data.
+		vk::UniqueHandle<vk::QueryPool,VulkanDevice> timestampPool;  ///< QueryPool for timestamps that are collected during frame rendering.
+	};
+	std::list<FrameInfoStuff> _inProgressFrameInfoList;  ///< List of FrameInfo structures whose data are still being collected.
+	std::list<FrameInfo> _completedFrameInfoList;  ///< List of FrameInfo structures whose data are complete and ready to be handed to the user.
+	uint32_t _timestampIndex;  ///< Timestamp index used during recording of frame to track the index of the next timestamp that will be recorded to the command buffer.
+
 	static Renderer* _defaultRenderer;
 
 public:
 
 	CADR_EXPORT static Renderer* get();
 	CADR_EXPORT static void set(Renderer* r);
+	CADR_EXPORT static size_t initialVertexStorageCapacity;
+	CADR_EXPORT static size_t initialIndexStorageCapacity;
+	CADR_EXPORT static size_t initialDataStorageCapacity;
+	CADR_EXPORT static size_t initialPrimitiveSetStorageCapacity;
 
 	CADR_EXPORT Renderer(bool makeDefault=true);
 	CADR_EXPORT Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
@@ -82,16 +104,30 @@ public:
 	CADR_EXPORT void finalize();
 	CADR_EXPORT void leakResources();
 
+	CADR_EXPORT size_t beginFrame();  ///< Call this method to mark the beginning of the frame rendering. It returns the frame number assigned to this frame. It is the same number as frameNumber() will return from now on until the next call to beginFrame().
+	CADR_EXPORT void beginRecording(vk::CommandBuffer commandBuffer);  ///< Start recording of the command buffer.
 	CADR_EXPORT size_t prepareSceneRendering(StateSet& stateSetRoot);
 	CADR_EXPORT void recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t numDrawables);
 	CADR_EXPORT void recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& stateSetRoot,vk::RenderPass renderPass,
 	                                      vk::Framebuffer framebuffer,const vk::Rect2D& renderArea,
 	                                      uint32_t clearValueCount, const vk::ClearValue* clearValues);
+	CADR_EXPORT void endRecording(vk::CommandBuffer commandBuffer);  ///< Finish recording of the command buffer.
+	CADR_EXPORT void endFrame();  ///< Mark the end of frame recording. This is usually called after the command buffer is submitted to gpu for execution.
 
 	CADR_EXPORT VulkanDevice* device() const;
 	CADR_EXPORT uint32_t graphicsQueueFamily() const;
 	CADR_EXPORT vk::Queue graphicsQueue() const;
 	CADR_EXPORT const vk::PhysicalDeviceMemoryProperties& memoryProperties() const;
+
+	CADR_EXPORT size_t frameNumber() const;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
+	CADR_EXPORT bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
+	CADR_EXPORT void setCollectFrameInfo(bool on, bool useCalibratedTimestamps = false);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
+	CADR_EXPORT void setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::TimeDomainEXT timestampHostTimeDomain);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
+	CADR_EXPORT std::list<FrameInfo> getFrameInfos();  ///< Returns list of FrameInfo for the frames whose collecting of information already completed. Some info is collected as gpu progresses on the frame rendering. The method returns info only about those frames whose collecting of information already finished. To avoid unnecessary memory consumption, unretrieved FrameInfos are deleted after some time. To avoid lost FrameInfos, it is enough to call getFrameInfos() once between each endFrame() and beginFrame() of two consecutive frames.
+	CADR_EXPORT double cpuTimestampPeriod() const;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
+	CADR_EXPORT float gpuTimestampPeriod() const;  ///< The time period of gpu timestamp being incremented by 1. The period is given in seconds.
+	CADR_EXPORT uint64_t getCpuTimestamp() const;  ///< Returns the cpu timestamp.
+	CADR_EXPORT uint64_t getGpuTimestamp() const;  ///< Returns the gpu timestamp.
 
 	CADR_EXPORT vk::Buffer indexBuffer() const;
 	CADR_EXPORT vk::Buffer dataStorageBuffer() const;
@@ -165,6 +201,10 @@ inline VulkanDevice* Renderer::device() const  { return _device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
 inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }
 inline const vk::PhysicalDeviceMemoryProperties& Renderer::memoryProperties() const  { return _memoryProperties; }
+inline size_t Renderer::frameNumber() const  { return _frameNumber; }
+inline bool Renderer::collectFrameInfo() const  { return _collectFrameInfo; }
+inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
+inline float Renderer::gpuTimestampPeriod() const  { return _gpuTimestampPeriod; }
 inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::dataStorageBuffer() const  { return _dataStorageBuffer; }
 inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }

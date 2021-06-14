@@ -42,7 +42,7 @@ size_t StateSet::prepareRecording()
 }
 
 
-void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounter)
+void StateSet::recordToCommandBuffer(vk::CommandBuffer cmdBuffer,size_t& drawableCounter)
 {
 	// optimization
 	// to not process StateSet subgraphs that does not have any Drawables
@@ -52,12 +52,12 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounte
 	// bind pipeline
 	VulkanDevice* device=_renderer->device();
 	if(pipeline)
-		device->cmdBindPipeline(cb,vk::PipelineBindPoint::eGraphics,pipeline->get());
+		device->cmdBindPipeline(cmdBuffer,vk::PipelineBindPoint::eGraphics,pipeline->get());
 
 	// bind descriptor sets
 	if(!descriptorSets.empty()) {
 		device->cmdBindDescriptorSets(
-			cb,  // commandBuffer
+			cmdBuffer,  // commandBuffer
 			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
 			pipelineLayout,  // layout
 			descriptorSetNumber,  // firstSet
@@ -65,6 +65,10 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounte
 			dynamicOffsets  // dynamicOffsets
 		);
 	}
+
+	// call user-registered functions
+	for(auto& f : callList)
+		f(this,cmdBuffer);
 
 	if(numDrawables()!=0) {
 
@@ -81,7 +85,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounte
 		size_t numAttributes=_vertexStorage->bufferList().size();
 		vector<vk::DeviceSize> zeros(numAttributes,0);
 		device->cmdBindVertexBuffers(
-			cb,  // commandBuffer
+			cmdBuffer,  // commandBuffer
 			0,  // firstBinding
 			uint32_t(numAttributes),  // bindingCount
 			_vertexStorage->bufferList().data(),  // pBuffers
@@ -90,7 +94,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounte
 
 		// draw command
 		device->cmdDrawIndexedIndirect(
-			cb,  // commandBuffer
+			cmdBuffer,  // commandBuffer
 			_renderer->drawIndirectBuffer(),  // buffer
 			drawableCounter*sizeof(vk::DrawIndexedIndirectCommand),  // offset
 			uint32_t(numDrawables()),  // drawCount
@@ -103,5 +107,5 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounte
 
 	// record child StateSets
 	for(StateSet& child : childList)
-		child.recordToCommandBuffer(cb,drawableCounter);
+		child.recordToCommandBuffer(cmdBuffer,drawableCounter);
 }

@@ -31,6 +31,9 @@ public:
 	std::vector<vk::DescriptorSet> descriptorSets;
 	std::vector<uint32_t> dynamicOffsets;
 
+	// list of functions that will be called during StateSet recording into command buffer
+	std::vector<std::function<void(StateSet*,vk::CommandBuffer)>> callList;
+
 	// parent-child relation
 	static const ParentChildListOffsets parentChildListOffsets;
 	ChildList<StateSet,parentChildListOffsets> childList;
@@ -58,7 +61,7 @@ public:
 	void removeDrawableUnsafe(Drawable& d);
 
 	size_t prepareRecording();
-	void recordToCommandBuffer(vk::CommandBuffer cb,size_t& drawableCounter);
+	void recordToCommandBuffer(vk::CommandBuffer cmdBuffer,size_t& drawableCounter);
 
 	void setVertexStorage(VertexStorage* vertexStorage);  ///< Sets the VertexStorage that will be bound when rendering this StateSet. It should not be changed if you have already Drawables using this StateSet as StateSet would then use different VertexStorage than Drawables leading to undefined behaviour.
 

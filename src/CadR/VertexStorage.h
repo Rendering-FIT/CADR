@@ -30,8 +30,8 @@ protected:
 
 public:
 
-	VertexStorage(const AttribSizeList& attribSizeList,size_t initialNumVertices=1024);
-	VertexStorage(Renderer* r,const AttribSizeList& attribSizeList,size_t initialNumVertices=1024);
+	VertexStorage(const AttribSizeList& attribSizeList,size_t initialNumVertices=131072);
+	VertexStorage(Renderer* r,const AttribSizeList& attribSizeList,size_t initialNumVertices=131072);
 	~VertexStorage();
 
 	VertexStorage() = delete;

@@ -73,6 +73,9 @@ public:
 	inline void getPhysicalDeviceFormatProperties(vk::PhysicalDevice physicalDevice,vk::Format format,vk::FormatProperties* pFormatProperties) const noexcept  { physicalDevice.getFormatProperties(format,pFormatProperties,*this); }
 	inline void getPhysicalDeviceMemoryProperties(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceMemoryProperties* pMemoryProperties) const noexcept  { physicalDevice.getMemoryProperties(pMemoryProperties,*this); }
 	inline void getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,uint32_t* pQueueFamilyPropertyCount,vk::QueueFamilyProperties* pQueueFamilyProperties) const noexcept  { physicalDevice.getQueueFamilyProperties(pQueueFamilyPropertyCount,pQueueFamilyProperties,*this); }
+	inline void getPhysicalDeviceFeatures(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceFeatures* pFeatures) const  { physicalDevice.getFeatures(pFeatures,*this); }
+	inline void getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceFeatures2* pFeatures) const  { physicalDevice.getFeatures2(pFeatures,*this); }
+	inline vk::Result getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,uint32_t* pTimeDomainCount,vk::TimeDomainEXT* pTimeDomains) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(pTimeDomainCount,pTimeDomains,*this); }
 
 #ifndef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline void destroy(vk::Optional<const vk::AllocationCallbacks> allocator) const noexcept  { _instance.destroy(allocator,*this); }
@@ -95,6 +98,14 @@ public:
 	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getQueueFamilyProperties(*this); }
 	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
 	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getQueueFamilyProperties(vectorAllocator,*this); }
+	inline vk::PhysicalDeviceFeatures getPhysicalDeviceFeatures(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures(*this); }
+	inline vk::PhysicalDeviceFeatures2 getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures2(*this); }
+	template<typename X,typename Y,typename ...Z>
+	inline vk::StructureChain<X,Y,Z...> getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures2<X,Y,Z...>(*this); }
+	template<typename Allocator=std::allocator<vk::TimeDomainEXT>>
+	inline typename vk::ResultValueType<std::vector<vk::TimeDomainEXT,Allocator>>::type getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(*this); }
+	template<typename Allocator=std::allocator<vk::TimeDomainEXT>>
+	inline typename vk::ResultValueType<std::vector<vk::TimeDomainEXT,Allocator>>::type getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(*this); }
 #endif
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE
@@ -128,6 +139,9 @@ public:
 	PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
 	PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
 	PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
+	PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
+	PFN_vkGetPhysicalDeviceFeatures2 vkGetPhysicalDeviceFeatures2;
+	PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsEXT vkGetPhysicalDeviceCalibrateableTimeDomainsEXT;
 
 private:
 	VulkanInstance(const VulkanInstance&) = default;  ///< Private copy contructor. Object copies not allowed. Only internal use.

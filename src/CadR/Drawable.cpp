@@ -51,10 +51,15 @@ Drawable& Drawable::operator=(Drawable&& rhs)
 void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
                       uint32_t shaderDataID,StateSet& stateSet)
 {
-	geometry._drawableList.push_back(*this);
 	_shaderDataID=shaderDataID;
+	
+	// handle already created internal object
 	if(_indexIntoStateSet!=~0u) {
+		_drawableListHook.unlink();
 		if(_stateSet==&stateSet) {
+
+			// if stateSet remains the same, just update drawableList and DrawableGpuData and return
+			geometry._drawableList.push_back(*this);
 			_stateSet->_drawableDataList[_indexIntoStateSet]=
 				DrawableGpuData(
 					(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
@@ -62,10 +67,15 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
 				);
 			return;
 		}
-		else
+		else {
+
+			// if stateSet is changing, detach from the old stateSet
 			_stateSet->removeDrawableUnsafe(*this);
+		}
 	}
 
+	// create a new internal rendering object
+	geometry._drawableList.push_back(*this);
 	_stateSet=&stateSet;
 	_stateSet->appendDrawableUnsafe(
 		*this,
@@ -79,8 +89,12 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
 
 void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex)
 {
-	geometry._drawableList.push_back(*this);
 	if(_indexIntoStateSet!=~0u) {
+
+		// handle already created internal object
+		// (unlink and insert again into the drawable list (to handle the cases of changing geometry)
+		// and update DrawableGpuData)
+		_drawableListHook.unlink();
 		_stateSet->_drawableDataList[_indexIntoStateSet]=
 			DrawableGpuData(
 				(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
@@ -88,6 +102,8 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex)
 			);
 	}
 	else {
+
+		// create a new internal rendering object
 		_stateSet->appendDrawableUnsafe(
 			*this,
 			DrawableGpuData(
@@ -96,4 +112,6 @@ void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex)
 			)
 		);
 	}
+
+	geometry._drawableList.push_back(*this);
 }
