@@ -258,8 +258,13 @@ public:
 	inline vk::ResultValueType<void>::type resetDescriptorPool(vk::DescriptorPool descriptorPool,vk::DescriptorPoolResetFlags flags) const  { return _device.resetDescriptorPool(descriptorPool,flags,*this); }
 	template<typename Allocator=std::allocator<vk::DescriptorSet>>
 	typename vk::ResultValueType<std::vector<vk::DescriptorSet,Allocator>>::type allocateDescriptorSets(const vk::DescriptorSetAllocateInfo& allocateInfo) const  { return _device.allocateDescriptorSets<Allocator>(allocateInfo,*this); }
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::DescriptorSet>>
+	typename vk::ResultValueType<std::vector<vk::DescriptorSet,Allocator>>::type allocateDescriptorSets(const vk::DescriptorSetAllocateInfo& allocateInfo,Allocator& vectorAllocator) const  { return _device.allocateDescriptorSets<Allocator>(allocateInfo,vectorAllocator,*this); }
+# else
 	template<typename Allocator=std::allocator<vk::DescriptorSet>>
 	typename vk::ResultValueType<std::vector<vk::DescriptorSet,Allocator>>::type allocateDescriptorSets(const vk::DescriptorSetAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateDescriptorSets<Allocator>(allocateInfo,vectorAllocator,*this); }
+# endif
 	inline void updateDescriptorSets(vk::ArrayProxy<const vk::WriteDescriptorSet> descriptorWrites,vk::ArrayProxy<const vk::CopyDescriptorSet> descriptorCopies) const  { _device.updateDescriptorSets(descriptorWrites,descriptorCopies,*this); }
 	inline vk::ResultValueType<void>::type freeDescriptorSets(vk::DescriptorPool descriptorPool,vk::ArrayProxy<const vk::DescriptorSet> descriptorSets) const  { return _device.freeDescriptorSets(descriptorPool,descriptorSets,*this); }
 	inline vk::ResultValueType<void>::type free(vk::DescriptorPool descriptorPool,vk::ArrayProxy<const vk::DescriptorSet> descriptorSets) const  { return _device.free(descriptorPool,descriptorSets,*this); }
@@ -271,44 +276,54 @@ public:
 	inline void destroy(vk::PipelineLayout pipelineLayout,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(pipelineLayout,allocator,*this); }
 	template<typename Allocator = std::allocator<vk::Pipeline>>
 	typename vk::ResultValueType<std::vector<vk::Pipeline,Allocator>>::type createGraphicsPipelines(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::GraphicsPipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createGraphicsPipelines<Allocator>(pipelineCache,createInfos,allocator,*this).value; }
-#else
+# else
 		return _device.createGraphicsPipelines<Allocator>(pipelineCache,createInfos,allocator,*this); }
-#endif
+# endif
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator = std::allocator<vk::Pipeline>>
+	typename vk::ResultValueType<std::vector<vk::Pipeline,Allocator>>::type createGraphicsPipelines(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::GraphicsPipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator& vectorAllocator) const {
+# else
 	template<typename Allocator = std::allocator<vk::Pipeline>>
 	typename vk::ResultValueType<std::vector<vk::Pipeline,Allocator>>::type createGraphicsPipelines(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::GraphicsPipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator const& vectorAllocator) const {
-#if VK_HEADER_VERSION>=136
+# endif
+# if VK_HEADER_VERSION>=136
 		return _device.createGraphicsPipelines<Allocator>(pipelineCache,createInfos,allocator,vectorAllocator,*this).value; }
-#else
+# else
 		return _device.createGraphicsPipelines<Allocator>(pipelineCache,createInfos,allocator,vectorAllocator,*this); }
-#endif
+# endif
 	inline typename vk::ResultValueType<vk::Pipeline>::type createGraphicsPipeline(vk::PipelineCache pipelineCache,const vk::GraphicsPipelineCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createGraphicsPipeline(pipelineCache,createInfo,allocator,*this).value; }
-#else
+# else
 		return _device.createGraphicsPipeline(pipelineCache,createInfo,allocator,*this); }
-#endif
+# endif
 	template<typename Allocator=std::allocator<vk::Pipeline>>
 	typename vk::ResultValueType<std::vector<vk::Pipeline,Allocator>>::type createComputePipelines(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createComputePipelines<Allocator>(pipelineCache,createInfos,allocator,*this).value; }
-#else
+# else
 		return _device.createComputePipelines<Allocator>(pipelineCache,createInfos,allocator,*this); }
-#endif
+# endif
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator = std::allocator<vk::Pipeline>>
+	typename vk::ResultValueType<std::vector<vk::Pipeline,Allocator>>::type createComputePipelines(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator& vectorAllocator) const {
+# else
 	template<typename Allocator = std::allocator<vk::Pipeline>>
 	typename vk::ResultValueType<std::vector<vk::Pipeline,Allocator>>::type createComputePipelines(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator const& vectorAllocator) const {
-#if VK_HEADER_VERSION>=136
+# endif
+# if VK_HEADER_VERSION>=136
 		return _device.createComputePipelines<Allocator>(pipelineCache,createInfos,allocator,vectorAllocator,*this).value; }
-#else
+# else
 		return _device.createComputePipelines<Allocator>(pipelineCache,createInfos,allocator,vectorAllocator,*this); }
-#endif
+# endif
 	inline vk::Pipeline createComputePipeline(vk::PipelineCache pipelineCache,const vk::ComputePipelineCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createComputePipeline(pipelineCache,createInfo,allocator,*this).value; }
-#else
+# else
 		return _device.createComputePipeline(pipelineCache,createInfo,allocator,*this); }
-#endif
+# endif
 	inline void destroyPipeline(vk::Pipeline pipeline,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyPipeline(pipeline,allocator,*this); }
 	inline void destroy(vk::Pipeline pipeline,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(pipeline,allocator,*this); }
 	inline vk::ResultValueType<vk::Semaphore>::type createSemaphore(const vk::SemaphoreCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSemaphore(createInfo,allocator,*this); }
@@ -319,8 +334,13 @@ public:
 	inline void destroy(vk::CommandPool commandPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(commandPool,allocator,*this); }
 	template<typename Allocator = std::allocator<vk::CommandBuffer>>
 	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo) const  { return _device.allocateCommandBuffers(allocateInfo,*this); }
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator = std::allocator<vk::CommandBuffer>>
+	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator& vectorAllocator) const  { return _device.allocateCommandBuffers(allocateInfo,vectorAllocator,*this); }
+# else
 	template<typename Allocator = std::allocator<vk::CommandBuffer>>
 	typename vk::ResultValueType<std::vector<vk::CommandBuffer,Allocator>>::type allocateCommandBuffers(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const  { return _device.allocateCommandBuffers(allocateInfo,vectorAllocator,*this); }
+# endif
 	void freeCommandBuffers(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.freeCommandBuffers(commandPool,commandBuffers,*this); }
 	void free(vk::CommandPool commandPool,vk::ArrayProxy<const vk::CommandBuffer> commandBuffers) const  { _device.free(commandPool,commandBuffers,*this); }
 	inline vk::ResultValueType<void>::type beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo& beginInfo) const  { return commandBuffer.begin(beginInfo,*this); }
@@ -341,7 +361,11 @@ public:
 	inline vk::ResultValueType<void>::type resetFences(vk::ArrayProxy<const vk::Fence> fences) const  { return _device.resetFences(fences,*this); }
 	inline vk::ResultValueType<void>::type queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::ResultValueType<void>::type waitIdle() const  { return _device.waitIdle(*this); }
-	inline vk::ResultValueType<uint64_t>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t> timestamps) const  { return _device.getCalibratedTimestampsEXT(timestampInfos,timestamps,*this); }
+	inline vk::ResultValueType<std::pair<std::vector<uint64_t>, uint64_t>>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t> timestamps) const {
+		std::pair<std::vector<uint64_t>, uint64_t> data(std::piecewise_construct, std::forward_as_tuple(timestampInfos.size()), std::forward_as_tuple(0));
+		vk::Result result = static_cast<vk::Result>(vkGetCalibratedTimestampsEXT(_device, timestampInfos.size(), reinterpret_cast<const VkCalibratedTimestampInfoEXT*>(timestampInfos.data()), data.first.data(), &data.second));
+		return createResultValue(result, data, "vk::Device::getCalibratedTimestampsEXT");
+	}
 	inline vk::ResultValueType<vk::QueryPool>::type createQueryPool(const vk::QueryPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createQueryPool(createInfo,allocator,*this); }
 	inline void destroyQueryPool(vk::QueryPool queryPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(queryPool,allocator,*this); }
 	inline void destroy(vk::QueryPool queryPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(queryPool,allocator,*this); }
@@ -360,76 +384,96 @@ public:
 	inline vk::ResultValueType<vk::UniqueHandle<vk::DescriptorPool,VulkanDevice>>::type createDescriptorPoolUnique(const vk::DescriptorPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createDescriptorPoolUnique(createInfo,allocator,*this); }
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>,Allocator>>::type allocateDescriptorSetsUnique(const vk::DescriptorSetAllocateInfo& allocateInfo) const {
-#if VK_HEADER_VERSION>=149
+# if VK_HEADER_VERSION>=149
 		return _device.allocateDescriptorSetsUnique<VulkanDevice,Allocator>(allocateInfo,*this); }
-#else
+# else
 		return _device.allocateDescriptorSetsUnique<Allocator,VulkanDevice>(allocateInfo,*this); }
-#endif
+# endif
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>>>
+	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>,Allocator>>::type allocateDescriptorSetsUnique(const vk::DescriptorSetAllocateInfo& allocateInfo,Allocator& vectorAllocator) const {
+# else
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>,Allocator>>::type allocateDescriptorSetsUnique(const vk::DescriptorSetAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const {
-#if VK_HEADER_VERSION>=149
+# endif
+# if VK_HEADER_VERSION>=149
 		return _device.allocateDescriptorSetsUnique<VulkanDevice,Allocator>(allocateInfo,vectorAllocator,*this); }
-#else
+# else
 		return _device.allocateDescriptorSetsUnique<Allocator,VulkanDevice>(allocateInfo,vectorAllocator,*this); }
-#endif
+# endif
 	inline vk::ResultValueType<vk::UniqueHandle<vk::PipelineCache,VulkanDevice>>::type createPipelineCacheUnique(const vk::PipelineCacheCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createPipelineCacheUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::PipelineLayout,VulkanDevice>>::type createPipelineLayoutUnique(const vk::PipelineLayoutCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createPipelineLayoutUnique(createInfo,allocator,*this); }
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator>>::type createGraphicsPipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::GraphicsPipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createGraphicsPipelinesUnique<VulkanDevice,Allocator>(pipelineCache,createInfos,allocator,*this).value; }
-#else
+# else
 		return _device.createGraphicsPipelinesUnique<Allocator,VulkanDevice>(pipelineCache,createInfos,allocator,*this); }
-#endif
+# endif
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>>
+	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator>>::type createGraphicsPipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::GraphicsPipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator& vectorAllocator) const {
+# else
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator>>::type createGraphicsPipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::GraphicsPipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator const& vectorAllocator) const {
-#if VK_HEADER_VERSION>=136
+# endif
+# if VK_HEADER_VERSION>=136
 		return _device.createGraphicsPipelinesUnique<VulkanDevice,Allocator>(pipelineCache,createInfos,allocator,vectorAllocator,*this).value; }
-#else
+# else
 		return _device.createGraphicsPipelinesUnique<Allocator,VulkanDevice>(pipelineCache,createInfos,allocator,vectorAllocator,*this); }
-#endif
+# endif
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>::type createGraphicsPipelineUnique(vk::PipelineCache pipelineCache,const vk::GraphicsPipelineCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createGraphicsPipelineUnique(pipelineCache,createInfo,allocator,*this).value; }
-#else
+# else
 		return _device.createGraphicsPipelineUnique(pipelineCache,createInfo,allocator,*this); }
-#endif
+# endif
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>>
 	std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator> createComputePipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createComputePipelinesUnique<VulkanDevice,Allocator>(pipelineCache,createInfos,allocator,*this).value; }
-#else
+# else
 		return _device.createComputePipelinesUnique<Allocator,VulkanDevice>(pipelineCache,createInfos,allocator,*this); }
-#endif
+# endif
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>>
+	std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator> createComputePipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator& vectorAllocator) const {
+# else
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>>
 	std::vector<vk::UniqueHandle<vk::Pipeline,VulkanDevice>,Allocator> createComputePipelinesUnique(vk::PipelineCache pipelineCache,vk::ArrayProxy<const vk::ComputePipelineCreateInfo> createInfos,vk::Optional<const vk::AllocationCallbacks> allocator,Allocator const& vectorAllocator) const {
-#if VK_HEADER_VERSION>=136
+# endif
+# if VK_HEADER_VERSION>=136
 		return _device.createComputePipelinesUnique<VulkanDevice,Allocator>(pipelineCache,createInfos,allocator,vectorAllocator,*this).value; }
-#else
+# else
 		return _device.createComputePipelinesUnique<Allocator,VulkanDevice>(pipelineCache,createInfos,allocator,vectorAllocator,*this); }
-#endif
+# endif
 	inline vk::UniqueHandle<vk::Pipeline,VulkanDevice> createComputePipelineUnique(vk::PipelineCache pipelineCache,const vk::ComputePipelineCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const {
-#if VK_HEADER_VERSION>=136
+# if VK_HEADER_VERSION>=136
 		return _device.createComputePipelineUnique(pipelineCache,createInfo,allocator,*this).value; }
-#else
+# else
 		return _device.createComputePipelineUnique(pipelineCache,createInfo,allocator,*this); }
-#endif
+# endif
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Semaphore,VulkanDevice>>::type createSemaphoreUnique(const vk::SemaphoreCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSemaphoreUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::CommandPool,VulkanDevice>>::type createCommandPoolUnique(const vk::CommandPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createCommandPoolUnique(createInfo,allocator,*this); }
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>,Allocator>>::type allocateCommandBuffersUnique(const vk::CommandBufferAllocateInfo& allocateInfo) const {
-#if VK_HEADER_VERSION>=149
+# if VK_HEADER_VERSION>=149
 		return _device.allocateCommandBuffersUnique<VulkanDevice,Allocator>(allocateInfo,*this); }
-#else
+# else
 		return _device.allocateCommandBuffersUnique<Allocator,VulkanDevice>(allocateInfo,*this); }
-#endif
+# endif
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>>>
+	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>,Allocator>>::type allocateCommandBuffersUnique(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator& vectorAllocator) const {
+# else
 	template<typename Allocator=std::allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>>>
 	typename vk::ResultValueType<std::vector<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>,Allocator>>::type allocateCommandBuffersUnique(const vk::CommandBufferAllocateInfo& allocateInfo,Allocator const& vectorAllocator) const {
-#if VK_HEADER_VERSION>=149
+# endif
+# if VK_HEADER_VERSION>=149
 		return _device.allocateCommandBuffersUnique<VulkanDevice,Allocator>(allocateInfo,vectorAllocator,*this); }
-#else
+# else
 		return _device.allocateCommandBuffersUnique<Allocator,VulkanDevice>(allocateInfo,vectorAllocator,*this); }
-#endif
+# endif
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Fence,VulkanDevice>>::type createFenceUnique(const vk::FenceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFenceUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::QueryPool,VulkanDevice>>::type createQueryPoolUnique(const vk::QueryPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createQueryPoolUnique(createInfo,allocator,*this); }
 #endif

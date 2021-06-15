@@ -82,30 +82,50 @@ public:
 	inline vk::ResultValueType<vk::Device>::type createDevice(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return physicalDevice.createDevice(createInfo,allocator,*this); }
 	template<typename Allocator=std::allocator<vk::PhysicalDevice>>
 	typename vk::ResultValueType<std::vector<vk::PhysicalDevice,Allocator>>::type enumeratePhysicalDevices() const  { return _instance.enumeratePhysicalDevices(*this); }
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::PhysicalDevice>>
+	typename vk::ResultValueType<std::vector<vk::PhysicalDevice,Allocator>>::type enumeratePhysicalDevices(Allocator& vectorAllocator) const  { return _instance.enumeratePhysicalDevices(vectorAllocator,*this); }
+# else
 	template<typename Allocator=std::allocator<vk::PhysicalDevice>>
 	typename vk::ResultValueType<std::vector<vk::PhysicalDevice,Allocator>>::type enumeratePhysicalDevices(Allocator const& vectorAllocator) const  { return _instance.enumeratePhysicalDevices(vectorAllocator,*this); }
+# endif
 	inline vk::PhysicalDeviceProperties getPhysicalDeviceProperties(vk::PhysicalDevice physicalDevice) const noexcept  { return physicalDevice.getProperties(*this); }
 	inline vk::PhysicalDeviceProperties2 getPhysicalDeviceProperties2(vk::PhysicalDevice physicalDevice) const noexcept  { return physicalDevice.getProperties2(*this); }
 	template<typename X,typename Y,typename ...Z>
 	inline vk::StructureChain<X, Y, Z...> getPhysicalDeviceProperties2(vk::PhysicalDevice physicalDevice) const noexcept  { return physicalDevice.getProperties2<X,Y,Z...>(*this); }
 	template<typename Allocator=std::allocator<vk::ExtensionProperties>>
 	typename vk::ResultValueType<std::vector<vk::ExtensionProperties,Allocator>>::type enumerateDeviceExtensionProperties(vk::PhysicalDevice physicalDevice,vk::Optional<const std::string> layerName=nullptr) const  { return physicalDevice.enumerateDeviceExtensionProperties(layerName,*this); }
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::ExtensionProperties>>
+	typename vk::ResultValueType<std::vector<vk::ExtensionProperties,Allocator>>::type enumerateDeviceExtensionProperties(vk::PhysicalDevice physicalDevice,vk::Optional<const std::string> layerName,Allocator& vectorAllocator) const  { return physicalDevice.enumerateDeviceExtensionProperties(layerName,vectorAllocator,*this); }
+# else
 	template<typename Allocator=std::allocator<vk::ExtensionProperties>>
 	typename vk::ResultValueType<std::vector<vk::ExtensionProperties,Allocator>>::type enumerateDeviceExtensionProperties(vk::PhysicalDevice physicalDevice,vk::Optional<const std::string> layerName,Allocator const& vectorAllocator) const  { return physicalDevice.enumerateDeviceExtensionProperties(layerName,vectorAllocator,*this); }
+# endif
 	inline vk::FormatProperties getPhysicalDeviceFormatProperties(vk::PhysicalDevice physicalDevice,vk::Format format) const noexcept  { return physicalDevice.getFormatProperties(format,*this); }
 	inline vk::PhysicalDeviceMemoryProperties getPhysicalDeviceMemoryProperties(vk::PhysicalDevice physicalDevice) const noexcept  { return physicalDevice.getMemoryProperties(*this); }
 	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
 	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getQueueFamilyProperties(*this); }
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
+	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,Allocator& vectorAllocator) const  { return physicalDevice.getQueueFamilyProperties(vectorAllocator,*this); }
+# else
 	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
 	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getQueueFamilyProperties(vectorAllocator,*this); }
+# endif
 	inline vk::PhysicalDeviceFeatures getPhysicalDeviceFeatures(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures(*this); }
 	inline vk::PhysicalDeviceFeatures2 getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures2(*this); }
 	template<typename X,typename Y,typename ...Z>
 	inline vk::StructureChain<X,Y,Z...> getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures2<X,Y,Z...>(*this); }
 	template<typename Allocator=std::allocator<vk::TimeDomainEXT>>
 	inline typename vk::ResultValueType<std::vector<vk::TimeDomainEXT,Allocator>>::type getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(*this); }
+# if VK_HEADER_VERSION>=159
+	template<typename Allocator=std::allocator<vk::TimeDomainEXT>>
+	inline typename vk::ResultValueType<std::vector<vk::TimeDomainEXT,Allocator>>::type getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,Allocator& vectorAllocator) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(*this); }
+# else
 	template<typename Allocator=std::allocator<vk::TimeDomainEXT>>
 	inline typename vk::ResultValueType<std::vector<vk::TimeDomainEXT,Allocator>>::type getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(*this); }
+# endif
 #endif
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE
