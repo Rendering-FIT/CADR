@@ -6231,14 +6231,14 @@ static void recreateSwapchainAndPipeline()
 			   const vector<vk::Buffer>& attributes,const vector<vk::DescriptorSet>& descriptorSets)
 			{
 				cb.pipelineBarrier(
-					vk::PipelineStageFlagBits::eBottomOfPipe,  // srcStageMask
-					vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
+					vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
+					vk::PipelineStageFlagBits::eAllCommands,  // dstStageMask
 					vk::DependencyFlags(),  // dependencyFlags
 					1,
 					array{  // memoryBarrierCount+pMemoryBarriers
 						vk::MemoryBarrier(
-							vk::AccessFlags(),  // srcAccessMask
-							vk::AccessFlags()  // dstAccessMask
+							vk::AccessFlagBits::eMemoryRead|vk::AccessFlagBits::eMemoryWrite,  // srcAccessMask
+							vk::AccessFlagBits::eMemoryRead|vk::AccessFlagBits::eMemoryWrite  // dstAccessMask
 						),
 					}.data(),
 					0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
