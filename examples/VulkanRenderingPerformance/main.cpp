@@ -239,6 +239,7 @@ static vk::UniquePipeline twoPackedAttributesAndMatrixPipeline;
 static vk::UniquePipeline twoPackedBuffersAndMatrixPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
+static vk::UniquePipeline interleavedFourAttributesPipeline;
 static vk::UniquePipeline geometryShaderConstantOutputPipeline;
 static vk::UniquePipeline geometryShaderPipeline;
 static vk::UniquePipeline transformationThreeMatricesPipeline;
@@ -286,6 +287,7 @@ static array<vk::UniqueBuffer,3> vec4Attributes;
 static array<vk::UniqueBuffer,2> vec4u8Attributes;
 static vk::UniqueBuffer packedAttribute1;
 static vk::UniqueBuffer packedAttribute2;
+static vk::UniqueBuffer interleavedFourAttributes;
 static vk::UniqueBuffer packedBuffer1;
 static vk::UniqueBuffer packedBuffer2;
 static vk::UniqueBuffer singlePackedBuffer;
@@ -320,6 +322,7 @@ static array<vk::UniqueDeviceMemory,3> vec4AttributeMemory;
 static array<vk::UniqueDeviceMemory,2> vec4u8AttributeMemory;
 static vk::UniqueDeviceMemory packedAttribute1Memory;
 static vk::UniqueDeviceMemory packedAttribute2Memory;
+static vk::UniqueDeviceMemory interleavedFourAttributesMemory;
 static vk::UniqueDeviceMemory packedBuffer1Memory;
 static vk::UniqueDeviceMemory packedBuffer2Memory;
 static vk::UniqueDeviceMemory singlePackedBufferMemory;
@@ -582,6 +585,7 @@ static vector<Test> tests={
 	Test("Two packed buffers in geom. shader, 1xMatrix"),
 	Test("Four (2xf32,2xu8) attributes"),
 	Test("Four attributes"),
+	Test("Four interleaved attributes"),
 	Test("Four attributes, 1xMatrix"),
 	Test("Transformation 3xMatrix in VS"),
 	Test("Transformation 5xMatrix in VS"),
@@ -1536,16 +1540,8 @@ static void init(size_t deviceIndex)
 					0,        // preserveAttachmentCount
 					nullptr   // pPreserveAttachments
 				),
-				1,  // dependencyCount
-				&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
-					0,                     // srcSubpass
-					0,                     // dstSubpass
-					vk::PipelineStageFlagBits::eAllGraphics,  // srcStageMask
-					vk::PipelineStageFlagBits::eColorAttachmentOutput|vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
-					vk::AccessFlags(),     // srcAccessMask
-					vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
-					vk::DependencyFlags()  // dependencyFlags
-				)
+				0,  // dependencyCount
+				nullptr  // pDependencies
 			)
 		);
 
@@ -2638,6 +2634,7 @@ static void recreateSwapchainAndPipeline()
 	singlePackedBufferPipeline.reset();
 	fourAttributesPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
+	interleavedFourAttributesPipeline.reset();
 	geometryShaderConstantOutputPipeline.reset();
 	geometryShaderPipeline.reset();
 	transformationThreeMatricesPipeline.reset();
@@ -2690,6 +2687,8 @@ static void recreateSwapchainAndPipeline()
 	packedAttribute1Memory.reset();
 	packedAttribute2.reset();
 	packedAttribute2Memory.reset();
+	interleavedFourAttributes.reset();
+	interleavedFourAttributesMemory.reset();
 	packedBuffer1.reset();
 	packedBuffer1Memory.reset();
 	packedBuffer2.reset();
@@ -3379,6 +3378,46 @@ static void recreateSwapchainAndPipeline()
 	fourAttributesAndMatrixPipeline=
 		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &fourAttributesInputState);
+	interleavedFourAttributesPipeline=
+		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               1,  // vertexBindingDescriptionCount
+			               array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
+				               vk::VertexInputBindingDescription(
+					               0,  // binding
+					               16*sizeof(float),  // stride
+					               vk::VertexInputRate::eVertex  // inputRate
+				               ),
+			               }.data(),
+			               4,  // vertexAttributeDescriptionCount
+			               array<const vk::VertexInputAttributeDescription,4>{  // pVertexAttributeDescriptions
+				               vk::VertexInputAttributeDescription(
+					               0,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               1,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               16  // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               2,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               32  // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               3,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               48  // offset
+				               ),
+			               }.data()
+		               });
 	if(enabledFeatures.geometryShader)
 		geometryShaderPipeline=
 			createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersInGSPipelineLayout.get(),currentSurfaceExtent,
@@ -3882,6 +3921,7 @@ static void recreateSwapchainAndPipeline()
 	size_t texCoordBufferSize=size_t(numTriangles)*3*2*sizeof(float);
 	size_t vec4u8BufferSize=size_t(numTriangles)*3*4;
 	size_t packedDataBufferSize=size_t(numTriangles)*3*16; // ~48MB
+	size_t interleavedFourAttributeBufferSize=size_t(numTriangles)*3*64; // ~192MB
 	size_t indexBufferSize=size_t(numTriangles)*3*4;
 	size_t primitiveRestartIndexBufferSize=size_t(numTriangles)*4*4;
 	size_t stripIndexBufferSize=getIndexBufferSize(numTriangles/triStripLength,triStripLength);
@@ -3909,6 +3949,7 @@ static void recreateSwapchainAndPipeline()
 		createBuffer(vec4u8Attributes[i],vec4u8AttributeMemory[i],vec4u8BufferSize, true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedAttribute1,  packedAttribute1Memory,  packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedAttribute2,  packedAttribute2Memory,  packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(interleavedFourAttributes,interleavedFourAttributesMemory,interleavedFourAttributeBufferSize,true,vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedBuffer1,     packedBuffer1Memory,     packedDataBufferSize,  true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedBuffer2,     packedBuffer2Memory,     packedDataBufferSize,  true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(singlePackedBuffer,singlePackedBufferMemory,packedDataBufferSize*2,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
@@ -4051,6 +4092,7 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer vec4u8AttributeStagingBuffer(vec4u8BufferSize);
 	StagingBuffer packedAttribute1StagingBuffer(packedDataBufferSize);
 	StagingBuffer packedAttribute2StagingBuffer(packedDataBufferSize);
+	StagingBuffer interleavedFourAttributeStagingBuffer(interleavedFourAttributeBufferSize);
 	StagingBuffer singlePackedBufferStagingBuffer(packedDataBufferSize*2);
 	StagingBuffer packedDAttribute1StagingBuffer(packedDataBufferSize);
 	StagingBuffer packedDAttribute2StagingBuffer(packedDataBufferSize);
@@ -4088,12 +4130,33 @@ static void recreateSwapchainAndPipeline()
 			sharedVertexPackedDataBufferSize+sameVertexPackedDataBufferSize+
 			sameVertexPackedDataBufferSize)/1024/1024<<"MiB"<<endl;
 #endif
+	float* coords=reinterpret_cast<float*>(coordinateStagingBuffer.map());
 	generateCoordinates(
-		reinterpret_cast<float*>(coordinateStagingBuffer.map()),numTriangles,triangleSize,
+		coords,numTriangles,triangleSize,
 		renderingExtent.width,renderingExtent.height,true,
 		2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
+	float* pfloat=reinterpret_cast<float*>(interleavedFourAttributeStagingBuffer.map());
+	for(size_t i=0; i<numTriangles*3; i++) {
+		pfloat[i*16+0]=coords[i*4+0];
+		pfloat[i*16+1]=coords[i*4+1];
+		pfloat[i*16+2]=coords[i*4+2];
+		pfloat[i*16+3]=coords[i*4+3];
+		pfloat[i*16+4]=-2.f;
+		pfloat[i*16+5]=-2.f;
+		pfloat[i*16+6]=-2.f;
+		pfloat[i*16+7]=-2.f;
+		pfloat[i*16+8]=-2.f;
+		pfloat[i*16+9]=-2.f;
+		pfloat[i*16+10]=-2.f;
+		pfloat[i*16+11]=-2.f;
+		pfloat[i*16+12]=4.f;
+		pfloat[i*16+13]=4.f;
+		pfloat[i*16+14]=4.f;
+		pfloat[i*16+15]=4.f;
+	}
+	interleavedFourAttributeStagingBuffer.unmap();
 	coordinateStagingBuffer.unmap();
-	float* pfloat=reinterpret_cast<float*>(normalStagingBuffer.map());
+	pfloat=reinterpret_cast<float*>(normalStagingBuffer.map());
 	for(size_t i=0,c=size_t(numTriangles)*3*3; i<c; i++)
 		pfloat[i]=1.f;
 	normalStagingBuffer.unmap();
@@ -4360,6 +4423,12 @@ static void recreateSwapchainAndPipeline()
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,packedDataBufferSize)  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
+		interleavedFourAttributeStagingBuffer.buffer.get(),  // srcBuffer
+		interleavedFourAttributes.get(),                     // dstBuffer
+		1,                                                   // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,interleavedFourAttributeBufferSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
 		singlePackedBufferStagingBuffer.buffer.get(),  // srcBuffer
 		singlePackedBuffer.get(),                      // dstBuffer
 		1,                                             // regionCount
@@ -4529,6 +4598,7 @@ static void recreateSwapchainAndPipeline()
 	vec4u8AttributeStagingBuffer.reset();
 	packedAttribute1StagingBuffer.reset();
 	packedAttribute2StagingBuffer.reset();
+	interleavedFourAttributeStagingBuffer.reset();
 	singlePackedBufferStagingBuffer.reset();
 	packedDAttribute1StagingBuffer.reset();
 	packedDAttribute2StagingBuffer.reset();
@@ -6154,6 +6224,20 @@ static void recreateSwapchainAndPipeline()
 			   vk::Pipeline pipeline,vk::PipelineLayout pipelineLayout,
 			   const vector<vk::Buffer>& attributes,const vector<vk::DescriptorSet>& descriptorSets)
 			{
+				cb.pipelineBarrier(
+					vk::PipelineStageFlagBits::eBottomOfPipe,  // srcStageMask
+					vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
+					vk::DependencyFlags(),  // dependencyFlags
+					1,
+					array{  // memoryBarrierCount+pMemoryBarriers
+						vk::MemoryBarrier(
+							vk::AccessFlags(),  // srcAccessMask
+							vk::AccessFlags()  // dstAccessMask
+						),
+					}.data(),
+					0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
+					0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
+				);
 				cb.beginRenderPass(
 					vk::RenderPassBeginInfo(
 						renderPass.get(),         // renderPass
@@ -6183,14 +6267,6 @@ static void recreateSwapchainAndPipeline()
 						attributes.data(),  // pBuffers
 						vector<vk::DeviceSize>(attributes.size(),0).data()  // pOffsets
 					);
-				cb.pipelineBarrier(
-					vk::PipelineStageFlagBits::eBottomOfPipe,  // srcStageMask
-					vk::PipelineStageFlagBits::eTopOfPipe,  // dstStageMask
-					vk::DependencyFlags(),  // dependencyFlags
-					0,nullptr,  // memoryBarrierCount+pMemoryBarriers
-					0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
-					0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
-				);
 			};
 
 		// render something to put GPU out of power saving states
@@ -6706,6 +6782,24 @@ static void recreateSwapchainAndPipeline()
 		          fourAttributesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
 		                              vec4Attributes[1].get(),vec4Attributes[2].get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// interleaved four attributes test, no transformation
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          interleavedFourAttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ interleavedFourAttributes.get() },
 		          vector<vk::DescriptorSet>());
 		cb.writeTimestamp(
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
@@ -8390,6 +8484,7 @@ int main(int argc,char** argv)
 
 				// device with sparse memory support
 				vk::UniqueDevice sparseDevice;
+				vk::UniqueDevice sparseResidencyDevice;
 				vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
 				if(physicalFeatures.sparseBinding) {
 					vk::PhysicalDeviceFeatures enabledFeatures;
@@ -8426,6 +8521,42 @@ int main(int argc,char** argv)
 								&enabledFeatures,  // enabled features
 							}
 						);
+					if(physicalFeatures.sparseResidencyBuffer) {
+						enabledFeatures.setSparseResidencyBuffer(true);
+						enabledFeatures.setSparseResidencyAliased(physicalFeatures.sparseResidencyAliased);
+						sparseResidencyDevice=
+							physicalDevice.createDeviceUnique(
+								vk::DeviceCreateInfo{
+									vk::DeviceCreateFlags(),  // flags
+									(presentationQueueFamily==graphicsQueueFamily && sparseQueueFamily==graphicsQueueFamily)  // queueCreateInfoCount
+										?uint32_t(1):uint32_t(3),
+									array<const vk::DeviceQueueCreateInfo,3>{  // pQueueCreateInfos
+										vk::DeviceQueueCreateInfo{
+											vk::DeviceQueueCreateFlags(),
+											graphicsQueueFamily,
+											1,
+											&(const float&)1.f,
+										},
+										vk::DeviceQueueCreateInfo{
+											vk::DeviceQueueCreateFlags(),
+											presentationQueueFamily,
+											1,
+											&(const float&)1.f,
+										},
+										vk::DeviceQueueCreateInfo{
+											vk::DeviceQueueCreateFlags(),
+											sparseQueueFamily,
+											1,
+											&(const float&)1.f,
+										},
+									}.data(),
+									0,nullptr,  // no layers
+									1,          // number of enabled extensions
+									array<const char*,1>{"VK_KHR_swapchain"}.data(),  // enabled extension names
+									&enabledFeatures,  // enabled features
+								}
+							);
+					}
 				}
 
 				// print memory alignment
@@ -8459,7 +8590,9 @@ int main(int argc,char** argv)
 					cout<<"Sparse residency image2D:   "<<physicalFeatures.sparseResidencyImage2D<<endl;
 					cout<<"Sparse residency 4samples:  "<<physicalFeatures.sparseResidency4Samples<<endl;
 					cout<<"Sparse residency aliased:   "<<physicalFeatures.sparseResidencyAliased<<endl;
-					cout<<"Sparse buffer page size:    "<<getMemoryAlignment(sparseDevice.get(),1,vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency|vk::BufferCreateFlagBits::eSparseAliased)<<endl;
+					cout<<"Sparse buffer page size:    "<<getMemoryAlignment(sparseResidencyDevice.get(),1,
+						vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency|
+							(physicalFeatures.sparseResidencyAliased?vk::BufferCreateFlagBits::eSparseAliased:vk::BufferCreateFlags()))<<endl;
 					vk::SparseImageFormatProperties imageFormatProperties=
 						[]() {
 							auto l=physicalDevice.getSparseImageFormatProperties(vk::Format::eR8G8B8A8Uint,vk::ImageType::e2D,vk::SampleCountFlagBits::e1,vk::ImageUsageFlagBits::eSampled,vk::ImageTiling::eOptimal);
