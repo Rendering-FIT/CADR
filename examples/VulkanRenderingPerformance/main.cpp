@@ -1351,12 +1351,18 @@ static void init(size_t deviceIndex)
 	{
 		vk::PhysicalDeviceMemoryProperties memoryProperties=physicalDevice.getMemoryProperties();
 		for(uint32_t i=0; i<memoryProperties.memoryHeapCount; i++)
+			if(memoryProperties.memoryHeaps[i].flags&vk::MemoryHeapFlagBits::eDeviceLocal)
+				gpuMemory+=memoryProperties.memoryHeaps[i].size;
+		cout<<"GPU memory:  "<<(((gpuMemory+512)/1024+512)/1024+512)/1024<<"GiB  (";
+		bool first=true;
+		for(uint32_t i=0; i<memoryProperties.memoryHeapCount; i++)
 			if(memoryProperties.memoryHeaps[i].flags&vk::MemoryHeapFlagBits::eDeviceLocal) {
-				gpuMemory=memoryProperties.memoryHeaps[i].size;
-				break;
+				if(first)  first=false;
+				else  cout<<" + ";
+				cout<<((memoryProperties.memoryHeaps[i].size+512)/1024+512)/1024<<"MiB";
 			}
+		cout<<")"<<endl;
 	}
-	cout<<"GPU memory:  "<<gpuMemory/1024/1024/1024<<" GiB"<<endl;
 	cout<<"Max memory allocations: "<<pdProperties.limits.maxMemoryAllocationCount<<endl;
 
 	switch(sparseMode) {
@@ -3993,7 +3999,7 @@ static void recreateSwapchainAndPipeline()
 		}
 		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
 		cout<<"   Standard binding: "<<totalMeasurementTime*1000<<"ms"<<endl;
-		cout<<"   (total amount of memory: "<<totalMemorySize/1024/1024<<"MiB, number of memory allocations: "<<bindInfoList.size()<<")"<<endl;
+		cout<<"   (total amount of memory: "<<((totalMemorySize+512)/1024+512)/1024<<"MiB, number of memory allocations: "<<bindInfoList.size()<<")"<<endl;
 		bindInfoList.clear();
 	}
 	else
@@ -4691,7 +4697,7 @@ static void recreateSwapchainAndPipeline()
 		}
 		double totalMeasurementTime=chrono::duration<double>(chrono::high_resolution_clock::now()-startTime).count();
 		cout<<"   Standard binding: "<<totalMeasurementTime*1000<<"ms"<<endl;
-		cout<<"   (total amount of memory: "<<totalMemorySize/1024/1024<<"MiB, number of memory allocations: "<<bindInfoList.size()<<")"<<endl;
+		cout<<"   (total amount of memory: "<<((totalMemorySize+512)/1024+512)/1024<<"MiB, number of memory allocations: "<<bindInfoList.size()<<")"<<endl;
 		bindInfoList.clear();
 	}
 	else
@@ -6177,7 +6183,7 @@ static void recreateSwapchainAndPipeline()
 	timestampPeriod_ns=
 		physicalDevice.getProperties().limits.timestampPeriod;
 	cout<<"Timestamp number of bits:  "<<timestampValidBits<<endl;
-	cout<<"Timestamp period:          "<<timestampPeriod_ns<<" ns\n"<<endl;
+	cout<<"Timestamp period:          "<<timestampPeriod_ns<<"ns\n"<<endl;
 	if(timestampValidBits==0)
 		throw runtime_error("Timestamps are not supported.");
 
@@ -8584,7 +8590,7 @@ int main(int argc,char** argv)
 				if(sparseDevice) {
 					vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
 					cout<<"Sparse address space:       0x"<<std::hex<<physicalDevice.getProperties().limits.sparseAddressSpaceSize<<std::dec<<
-						" ("<<physicalDevice.getProperties().limits.sparseAddressSpaceSize/1024/1024/1024<<" GiB)"<<endl;
+						" ("<<(((physicalDevice.getProperties().limits.sparseAddressSpaceSize+512)/1024+512)/1024+512)/1024<<"GiB)"<<endl;
 					cout<<"Sparse binding:             "<<physicalFeatures.sparseBinding<<endl;
 					cout<<"Sparse residency buffer:    "<<physicalFeatures.sparseResidencyBuffer<<endl;
 					cout<<"Sparse residency image2D:   "<<physicalFeatures.sparseResidencyImage2D<<endl;
