@@ -12,8 +12,9 @@ namespace CadR {
 
 class AttribSizeList;
 class Geometry;
+class GeometryMemory;
+class GeometryStorage;
 class StateSet;
-class VertexStorage;
 class VulkanDevice;
 class VulkanInstance;
 struct DrawableGpuData;
@@ -27,17 +28,15 @@ private:
 	uint32_t _graphicsQueueFamily;
 	vk::Queue _graphicsQueue;
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
-	vk::DeviceSize nonCoherentAtom_addition;
-	vk::DeviceSize nonCoherentAtom_mask;
+	vk::DeviceSize _standardBufferAlignment;  ///< Memory alignment of a standard buffer. It is used for optimization purposes like putting more small buffers into one large buffer.
+	vk::DeviceSize nonCoherentAtom_addition;  ///< Serves for memory alignment purposes. It is equivalent to PhysicalDeviceLimits::nonCoherentAtomSize-1.
+	vk::DeviceSize nonCoherentAtom_mask;  ///< Serves for memory alignment purposes. It is equivalent to bitwise negation of nonCoherentAtom_addition value.
 
-	std::map<AttribSizeList,std::list<VertexStorage>> _vertexStorages;
-	VertexStorage*   _emptyStorage;
-	vk::Buffer       _indexBuffer;
-	vk::DeviceMemory _indexBufferMemory;
+	std::map<AttribSizeList, GeometryStorage> _geometryStorageMap;
+	GeometryStorage* _emptyStorage;
+	GeometryMemory*  _emptyGeometryMemory;
 	vk::Buffer       _dataStorageBuffer;
 	vk::DeviceMemory _dataStorageMemory;
-	vk::Buffer       _primitiveSetBuffer;
-	vk::DeviceMemory _primitiveSetBufferMemory;
 	vk::Buffer       _drawableBuffer;
 	vk::DeviceMemory _drawableBufferMemory;
 	size_t           _drawableBufferSize = 0;
@@ -48,13 +47,9 @@ private:
 	vk::DeviceMemory _matrixListControlBufferMemory;
 	vk::Buffer       _drawIndirectBuffer;
 	vk::DeviceMemory _drawIndirectMemory;
-	ArrayAllocationManager _indexAllocationManager;  ///< Allocation manager for index data.
 	ArrayAllocationManager _dataStorageAllocationManager;  ///< Allocation manager for data storage.
-	ArrayAllocationManager _primitiveSetAllocationManager;  ///< Allocation manager for primitiveSet data.
 
-	StagingManagerList _indexStagingManagerList;
 	StagingManagerList _dataStorageStagingManagerList;
-	StagingManagerList _primitiveSetStagingManagerList;
 	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
 	vk::CommandPool _precompiledCommandPool;
@@ -90,10 +85,7 @@ public:
 
 	CADR_EXPORT static Renderer* get();
 	CADR_EXPORT static void set(Renderer* r);
-	CADR_EXPORT static size_t initialVertexStorageCapacity;
-	CADR_EXPORT static size_t initialIndexStorageCapacity;
 	CADR_EXPORT static size_t initialDataStorageCapacity;
-	CADR_EXPORT static size_t initialPrimitiveSetStorageCapacity;
 
 	CADR_EXPORT Renderer(bool makeDefault=true);
 	CADR_EXPORT Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
@@ -118,6 +110,9 @@ public:
 	CADR_EXPORT uint32_t graphicsQueueFamily() const;
 	CADR_EXPORT vk::Queue graphicsQueue() const;
 	CADR_EXPORT const vk::PhysicalDeviceMemoryProperties& memoryProperties() const;
+	CADR_EXPORT size_t standardBufferAlignment() const;
+	CADR_EXPORT size_t alignStandardBuffer(size_t offset) const;
+	CADR_EXPORT size_t getVertexCapacityForBuffer(const AttribSizeList& attribSizeList,size_t bufferSize) const;
 
 	CADR_EXPORT size_t frameNumber() const;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
 	CADR_EXPORT bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
@@ -129,9 +124,7 @@ public:
 	CADR_EXPORT uint64_t getCpuTimestamp() const;  ///< Returns the cpu timestamp.
 	CADR_EXPORT uint64_t getGpuTimestamp() const;  ///< Returns the gpu timestamp.
 
-	CADR_EXPORT vk::Buffer indexBuffer() const;
 	CADR_EXPORT vk::Buffer dataStorageBuffer() const;
-	CADR_EXPORT vk::Buffer primitiveSetBuffer() const;
 	CADR_EXPORT vk::Buffer drawableBuffer() const;
 	CADR_EXPORT size_t drawableBufferSize() const;
 	CADR_EXPORT vk::Buffer drawableStagingBuffer() const;
@@ -144,23 +137,16 @@ public:
 	CADR_EXPORT vk::PipelineLayout drawablePipelineLayout() const;
 	CADR_EXPORT vk::Pipeline drawablePipeline() const;
 
-	CADR_EXPORT VertexStorage* getOrCreateVertexStorage(const AttribSizeList& attribSizeList);
-	CADR_EXPORT std::map<AttribSizeList,std::list<VertexStorage>>& getVertexStorages();
-	CADR_EXPORT const VertexStorage* emptyStorage() const;
-	CADR_EXPORT VertexStorage* emptyStorage();
+	CADR_EXPORT GeometryStorage* getOrCreateGeometryStorage(const AttribSizeList& attribSizeList);
+	CADR_EXPORT std::map<AttribSizeList,GeometryStorage>& geometryStorageMap();
+	CADR_EXPORT GeometryStorage* emptyStorage();
+	CADR_EXPORT const GeometryStorage* emptyStorage() const;
+	CADR_EXPORT GeometryMemory* emptyGeometryMemory();
+	CADR_EXPORT const GeometryMemory* emptyGeometryMemory() const;
 
 	CADR_EXPORT vk::DeviceMemory allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags);
+	CADR_EXPORT vk::DeviceMemory allocatePointerAccessMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags);
 	CADR_EXPORT void executeCopyOperations();
-
-	CADR_EXPORT const ArrayAllocation& indexAllocation(const Geometry& g) const;  ///< Returns index allocation for particular Geometry.
-	CADR_EXPORT ArrayAllocation& indexAllocation(Geometry& g);   ///< Returns index allocation for particular id. Modify the returned data only with caution.
-	CADR_EXPORT const ArrayAllocationManager& indexAllocationManager() const;
-	CADR_EXPORT ArrayAllocationManager& indexAllocationManager();
-
-	CADR_EXPORT void uploadIndices(Geometry& g,std::vector<uint32_t>& indexData);
-	CADR_EXPORT void uploadIndicesSubset(Geometry& g,std::vector<uint32_t>& indexData,size_t firstIndex);
-	CADR_EXPORT StagingBuffer& createIndexStagingBuffer(Geometry& g);
-	CADR_EXPORT StagingBuffer& createIndexSubsetStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices);
 
 	CADR_EXPORT const ArrayAllocation& dataStorageAllocation(uint32_t id) const;  ///< Returns dataStorage allocation for particular id.
 	CADR_EXPORT ArrayAllocation& dataStorageAllocation(uint32_t id);   ///< Returns dataStorage allocation for particular id. Modify the returned data only with caution.
@@ -174,19 +160,7 @@ public:
 	CADR_EXPORT StagingBuffer& createDataStorageStagingBuffer(uint32_t id);
 	CADR_EXPORT StagingBuffer& createDataStorageSubsetStagingBuffer(uint32_t id,size_t offset,size_t size);
 
-	CADR_EXPORT const ArrayAllocation& primitiveSetAllocation(const Geometry& g) const;  ///< Returns primitiveSet allocation for particular Geometry.
-	CADR_EXPORT ArrayAllocation& primitiveSetAllocation(Geometry& g);   ///< Returns primitiveSet allocation for particular Geometry. Modify the returned data only with caution.
-	CADR_EXPORT const ArrayAllocationManager& primitiveSetAllocationManager() const;
-	CADR_EXPORT ArrayAllocationManager& primitiveSetAllocationManager();
-
-	CADR_EXPORT void uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData);
-	CADR_EXPORT void uploadPrimitiveSetsSubset(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t firstPrimitiveSetIndex);
-	CADR_EXPORT StagingBuffer& createPrimitiveSetStagingBuffer(Geometry& g);
-	CADR_EXPORT StagingBuffer& createPrimitiveSetSubsetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets);
-
-	CADR_EXPORT StagingManagerList& indexStagingManagerList();
 	CADR_EXPORT StagingManagerList& dataStorageStagingManagerList();
-	CADR_EXPORT StagingManagerList& primitiveSetStagingManagerList();
 
 };
 
@@ -201,13 +175,13 @@ inline VulkanDevice* Renderer::device() const  { return _device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
 inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }
 inline const vk::PhysicalDeviceMemoryProperties& Renderer::memoryProperties() const  { return _memoryProperties; }
+inline size_t Renderer::standardBufferAlignment() const  { return _standardBufferAlignment; }
+inline size_t Renderer::alignStandardBuffer(size_t offset) const  { size_t a=_standardBufferAlignment-1; return (offset+a)&(~a); }
 inline size_t Renderer::frameNumber() const  { return _frameNumber; }
 inline bool Renderer::collectFrameInfo() const  { return _collectFrameInfo; }
 inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
 inline float Renderer::gpuTimestampPeriod() const  { return _gpuTimestampPeriod; }
-inline vk::Buffer Renderer::indexBuffer() const  { return _indexBuffer; }
 inline vk::Buffer Renderer::dataStorageBuffer() const  { return _dataStorageBuffer; }
-inline vk::Buffer Renderer::primitiveSetBuffer() const  { return _primitiveSetBuffer; }
 inline vk::Buffer Renderer::drawableBuffer() const  { return _drawableBuffer; }
 inline size_t Renderer::drawableBufferSize() const  { return _drawableBufferSize; }
 inline vk::Buffer Renderer::drawableStagingBuffer() const  { return _drawableStagingBuffer; }
@@ -218,22 +192,18 @@ inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCach
 inline vk::DescriptorSet Renderer::drawableDescriptorSet() const  { return _drawableDescriptorSet; }
 inline vk::PipelineLayout Renderer::drawablePipelineLayout() const  { return _drawablePipelineLayout; }
 inline vk::Pipeline Renderer::drawablePipeline() const  { return _drawablePipeline; }
-inline std::map<AttribSizeList,std::list<VertexStorage>>& Renderer::getVertexStorages()  { return _vertexStorages; }
-inline const VertexStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
-inline VertexStorage* Renderer::emptyStorage()  { return _emptyStorage; }
-inline const ArrayAllocationManager& Renderer::indexAllocationManager() const  { return _indexAllocationManager; }
-inline ArrayAllocationManager& Renderer::indexAllocationManager()  { return _indexAllocationManager; }
+inline std::map<AttribSizeList, GeometryStorage>& Renderer::geometryStorageMap()  { return _geometryStorageMap; }
+inline GeometryStorage* Renderer::emptyStorage()  { return _emptyStorage; }
+inline const GeometryStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
+inline GeometryMemory* Renderer::emptyGeometryMemory()  { return _emptyGeometryMemory; }
+inline const GeometryMemory* Renderer::emptyGeometryMemory() const  { return _emptyGeometryMemory; }
 inline const ArrayAllocation& Renderer::dataStorageAllocation(uint32_t id) const  { return _dataStorageAllocationManager[id]; }
 inline ArrayAllocation& Renderer::dataStorageAllocation(uint32_t id)  { return _dataStorageAllocationManager[id]; }
 inline const ArrayAllocationManager& Renderer::dataStorageAllocationManager() const  { return _dataStorageAllocationManager; }
 inline ArrayAllocationManager& Renderer::dataStorageAllocationManager()  { return _dataStorageAllocationManager; }
-inline const ArrayAllocationManager& Renderer::primitiveSetAllocationManager() const  { return _primitiveSetAllocationManager; }
-inline ArrayAllocationManager& Renderer::primitiveSetAllocationManager()  { return _primitiveSetAllocationManager; }
 inline void Renderer::uploadDataStorage(uint32_t id,std::vector<uint8_t>& data)  { uploadDataStorage(id,data.data(),data.size()); }
 inline void Renderer::uploadDataStorageSubset(uint32_t id,std::vector<uint8_t>& data,size_t offset)  { uploadDataStorageSubset(id,data.data(),data.size(),offset); }
-inline StagingManagerList& Renderer::indexStagingManagerList()  { return _indexStagingManagerList; }
 inline StagingManagerList& Renderer::dataStorageStagingManagerList()  { return _dataStorageStagingManagerList; }
-inline StagingManagerList& Renderer::primitiveSetStagingManagerList()  { return _primitiveSetStagingManagerList; }
 
 }
 

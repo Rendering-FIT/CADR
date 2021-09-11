@@ -528,7 +528,7 @@ int main(int argc,char** argv) {
 				f.exceptions(ifstream::badbit|ifstream::failbit);
 
 				// read buffer file
-				CadR::StagingBuffer& sb=g.createStagingBuffer(i);
+				CadR::StagingBuffer& sb=g.createVertexStagingBuffer(i);
 				f.seekg(std::get<1>(uriAndOffset));
 				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
 				f.close();
@@ -608,7 +608,7 @@ int main(int argc,char** argv) {
 
 				stateSetRoot.childList.append(ss);
 				ss.pipeline=pipeline;
-				ss.setVertexStorage(g.vertexStorage());
+				ss.setGeometryStorage(g.geometryStorage());
 
 				window.resizeCallbacks.append(
 						[&device,&window,pipeline,

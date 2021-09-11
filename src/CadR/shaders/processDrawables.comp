@@ -1,39 +1,50 @@
 #version 450
-#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_buffer_reference : enable
 
 
-layout(local_size_x=1,local_size_y=1,local_size_z=1) in;
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
 
-layout(std430,binding=0) restrict readonly buffer PrimitiveSetBuffer {
-   uint primitiveBuffer[];
+
+layout(buffer_reference, std430, buffer_reference_align=16) buffer PrimitiveSetReference {
+   uint count;
+   uint first;
+   uint vertexOffset;
+   uint vertexData;
 };
-layout(std430,binding=1) restrict readonly buffer DrawableBuffer {
-   uint drawableBuffer[];
+
+struct DrawableGpuData {
+   PrimitiveSetReference primitiveSetReference;
+   uint shaderDataOffset4;
+   uint dummy;
 };
-layout(std430,binding=2) restrict readonly buffer MatrixListControlBuffer {
+
+
+layout(std430, binding=0) restrict readonly buffer DrawableBuffer {
+   DrawableGpuData drawableBuffer[];  // one buffer for the whole scene
+};
+layout(std430, binding=1) restrict readonly buffer MatrixListControlBuffer {
    uint matrixListControlBuffer[];
 };
-layout(std430,binding=3) restrict writeonly buffer DrawIndirectBuffer {
-   uint drawIndirectBuffer[];
+layout(std430, binding=2) restrict writeonly buffer DrawIndirectBuffer {
+   uint drawIndirectBuffer[];  // one buffer for the whole scene
 };
 
 
 void main()
 {
    // drawable buffer data
-   uint drawableOffset4=gl_WorkGroupID.x*2;
-   uint primitiveOffset4=drawableBuffer[drawableOffset4+0];
-   uint shaderDataOffset4=drawableBuffer[drawableOffset4+1];
+   PrimitiveSetReference primitiveSetReference = drawableBuffer[gl_WorkGroupID.x].primitiveSetReference;
+   uint shaderDataOffset4 = drawableBuffer[gl_WorkGroupID.x].shaderDataOffset4;
 
    // matrix control data
    //uint matrixListOffset64=0;//matrixListControlBuffer[matrixControlOffset4+0];
    uint numMatrices=1;//matrixListControlBuffer[matrixControlOffset4+1];
 
    // write indirect buffer data
-   uint indirectBufferOffset4=gl_WorkGroupID.x*5;
-   drawIndirectBuffer[indirectBufferOffset4+0]=primitiveBuffer[primitiveOffset4+0]; // indexCount
-   drawIndirectBuffer[indirectBufferOffset4+1]=numMatrices; // instanceCount
-   drawIndirectBuffer[indirectBufferOffset4+2]=primitiveBuffer[primitiveOffset4+1]; // firstIndex
-   drawIndirectBuffer[indirectBufferOffset4+3]=primitiveBuffer[primitiveOffset4+2]; // vertexOffset
-   drawIndirectBuffer[indirectBufferOffset4+4]=shaderDataOffset4; // base instance
+   uint indirectBufferOffset4 = gl_WorkGroupID.x*5;
+   drawIndirectBuffer[indirectBufferOffset4+0] = primitiveSetReference.count; // indexCount
+   drawIndirectBuffer[indirectBufferOffset4+1] = numMatrices; // instanceCount
+   drawIndirectBuffer[indirectBufferOffset4+2] = primitiveSetReference.first; // firstIndex
+   drawIndirectBuffer[indirectBufferOffset4+3] = primitiveSetReference.vertexOffset; // vertexOffset
+   drawIndirectBuffer[indirectBufferOffset4+4] = shaderDataOffset4; // base instance
 }

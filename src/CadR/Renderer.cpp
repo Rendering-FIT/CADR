@@ -1,10 +1,14 @@
 #include <CadR/Renderer.h>
 #include <CadR/AllocationManagers.h>
+#include <CadR/Geometry.h>
+#include <CadR/GeometryMemory.h>
+#include <CadR/GeometryStorage.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/StagingBuffer.h>
-#include <CadR/VertexStorage.h>
+#include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
+#include <numeric>
 
 using namespace std;
 using namespace CadR;
@@ -16,10 +20,7 @@ static const uint32_t processDrawablesShaderSpirv[]={
 
 // global variables
 Renderer* Renderer::_defaultRenderer = nullptr;
-size_t Renderer::initialVertexStorageCapacity = 131072;
-size_t Renderer::initialIndexStorageCapacity = 131072;
 size_t Renderer::initialDataStorageCapacity = 524288;
-size_t Renderer::initialPrimitiveSetStorageCapacity = 16384;
 
 // static functions
 static inline double getCpuTimestampPeriod();
@@ -30,12 +31,20 @@ Renderer::Renderer(bool makeDefault)
 	: _device(nullptr)
 	, _graphicsQueueFamily(0xffffffff)
 	, _emptyStorage(nullptr)
-	, _indexAllocationManager(initialIndexStorageCapacity,0)  // set initial capacity and set size of null object on index 0 to zero
-	, _dataStorageAllocationManager(initialDataStorageCapacity,0)  // set initial capacity and set size of null object on index 0 to zero
-	, _primitiveSetAllocationManager(initialPrimitiveSetStorageCapacity,0)  // set initial capacity and set size of null object on index 0 to zero
+	, _dataStorageAllocationManager(initialDataStorageCapacity, 0)  // set initial capacity and set size of null object on index 0 to zero
 {
-	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList(),0); // create empty VertexStorage for empty AttribSizeList (no attributes)
-	_emptyStorage=&_vertexStorages.begin()->second.front();
+	// create empty GeometryStorage and empty GeometryMemory
+	// (use non-sense AttribSizeList that will probably never be used)
+	AttribSizeList nonSenseAttribSizeList = { 255 };
+	_geometryStorageMap.emplace(
+		std::piecewise_construct,
+		std::forward_as_tuple(nonSenseAttribSizeList),
+		std::forward_as_tuple(this, nonSenseAttribSizeList, 0));
+	_emptyStorage = &_geometryStorageMap.begin()->second;
+	_emptyGeometryMemory = _emptyStorage->geometryMemoryList().emplace_back(
+		make_unique<GeometryMemory>(_emptyStorage, 0)).get();
+
+	// make Renderer default
 	if(makeDefault)
 		Renderer::set(this);
 }
@@ -45,13 +54,21 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	: _device(nullptr)
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _emptyStorage(nullptr)
-	, _indexAllocationManager(initialIndexStorageCapacity,0)  // set intial capacity and set size of null object on index 0 to zero
-	, _dataStorageAllocationManager(initialDataStorageCapacity,0)  // set initial capacity and set size of null object on index 0 to zero
-	, _primitiveSetAllocationManager(initialPrimitiveSetStorageCapacity,0)  // set initial capacity and set size of null object on index 0 to zero
+	, _dataStorageAllocationManager(initialDataStorageCapacity, 0)  // set initial capacity and set size of null object on index 0 to zero
 {
-	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList(),0); // create empty VertexStorage for empty AttribSizeList (no attributes)
-	_emptyStorage=&_vertexStorages.begin()->second.front();
-	init(device,instance,physicalDevice,graphicsQueueFamily,makeDefault);
+	// create empty GeometryStorage and empty GeometryMemory
+	// (use non-sense AttribSizeList that will probably never be used)
+	AttribSizeList nonSenseAttribSizeList;
+	_geometryStorageMap.emplace(
+		std::piecewise_construct,
+		std::forward_as_tuple(nonSenseAttribSizeList),
+		std::forward_as_tuple(this, nonSenseAttribSizeList, 0));
+	_emptyStorage = &_geometryStorageMap.begin()->second;
+	_emptyGeometryMemory = _emptyStorage->geometryMemoryList().emplace_back(
+		make_unique<GeometryMemory>(_emptyStorage, 0)).get();
+
+	// init
+	init(device, instance, physicalDevice, graphicsQueueFamily, makeDefault);
 }
 
 
@@ -77,6 +94,25 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 	_graphicsQueue=_device->getQueue(_graphicsQueueFamily,0);
 	_memoryProperties=instance.getPhysicalDeviceMemoryProperties(physicalDevice);
 
+	// _standardBufferAlignment
+	_standardBufferAlignment=
+		_device->getBufferMemoryRequirements(
+			_device->createBufferUnique(
+				vk::BufferCreateInfo(
+					vk::BufferCreateFlags(),      // flags
+					1,                            // size
+					vk::BufferUsageFlagBits::eVertexBuffer|vk::BufferUsageFlagBits::eIndexBuffer|  // usage
+						vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferSrc|
+						vk::BufferUsageFlagBits::eTransferDst,
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr                       // pQueueFamilyIndices
+				)
+			).get())
+		.alignment;
+	if((_standardBufferAlignment&(_standardBufferAlignment-1))!=0)  // is it power of two?
+		throw std::runtime_error("Platform problem: standardBufferAlignment is not power of two.");
+
 	// nonCoherentAtomSize
 	vk::PhysicalDeviceProperties p=instance.getPhysicalDeviceProperties(physicalDevice);
 	vk::DeviceSize nonCoherentAtomSize=p.limits.nonCoherentAtomSize;
@@ -88,25 +124,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 	// timestamp periods
 	_gpuTimestampPeriod=p.limits.timestampPeriod*1e-9f;
 	_cpuTimestampPeriod=getCpuTimestampPeriod();
-
-	// index buffer
-	_indexBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				_indexAllocationManager.capacity()*sizeof(uint32_t),  // size
-				vk::BufferUsageFlagBits::eIndexBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_indexBufferMemory=allocateMemory(_indexBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	_device->bindBufferMemory(
-			_indexBuffer,  // buffer
-			_indexBufferMemory,  // memory
-			0  // memoryOffset
-		);
 
 	// data storage
 	_dataStorageBuffer=
@@ -124,25 +141,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 	_device->bindBufferMemory(
 			_dataStorageBuffer,  // buffer
 			_dataStorageMemory,  // memory
-			0  // memoryOffset
-		);
-
-	// primitiveSet buffer
-	_primitiveSetBuffer=
-		_device->createBuffer(
-			vk::BufferCreateInfo(
-				vk::BufferCreateFlags(),      // flags
-				_primitiveSetAllocationManager.capacity()*sizeof(PrimitiveSetGpuData),  // size
-				vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr                       // pQueueFamilyIndices
-			)
-		);
-	_primitiveSetBufferMemory=allocateMemory(_primitiveSetBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
-	_device->bindBufferMemory(
-			_primitiveSetBuffer,  // buffer
-			_primitiveSetBufferMemory,  // memory
 			0  // memoryOffset
 		);
 
@@ -190,8 +188,8 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 		_device->createDescriptorSetLayout(
 			vk::DescriptorSetLayoutCreateInfo(  // createInfo
 				vk::DescriptorSetLayoutCreateFlags(),  // flags
-				4,  // bindingCount
-				array<vk::DescriptorSetLayoutBinding,4>{  // pBindings
+				3,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,3>{  // pBindings
 					vk::DescriptorSetLayoutBinding(
 						0,  // binding
 						vk::DescriptorType::eStorageBuffer,  // descriptorType
@@ -208,13 +206,6 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 					),
 					vk::DescriptorSetLayoutBinding(
 						2,  // binding
-						vk::DescriptorType::eStorageBuffer,  // descriptorType
-						1,  // descriptorCount
-						vk::ShaderStageFlagBits::eCompute,  // stageFlags
-						nullptr  // pImmutableSamplers
-					),
-					vk::DescriptorSetLayoutBinding(
-						3,  // binding
 						vk::DescriptorType::eStorageBuffer,  // descriptorType
 						1,  // descriptorCount
 						vk::ShaderStageFlagBits::eCompute,  // stageFlags
@@ -343,22 +334,23 @@ void Renderer::finalize()
 	if(_device==nullptr)
 		return;
 
-	assert((_emptyStorage==nullptr||_emptyStorage->allocationManager().numIDs()==1) && "Renderer::_emptyStorage is not empty. It is a programmer error to allocate anything there. You probably called Geometry::allocAttribs() without specifying AttribSizeList.");
+	assert((_emptyStorage==nullptr && _emptyGeometryMemory==nullptr) ||
+	       (_emptyGeometryMemory->vertexAllocationManager().numIDs()==1 &&
+	        _emptyGeometryMemory->indexAllocationManager().numIDs()==1 &&
+	        _emptyGeometryMemory->primitiveSetAllocationManager().numIDs()==1) &&
+	       "Renderer::_emptyStorage is not empty. It is the programmer error to allocate anything there.");
 
-	// clear attrib storages
-	_vertexStorages.clear();
-	_vertexStorages[AttribSizeList()].emplace_back(this,AttribSizeList(),0); // create empty VertexStorage for empty AttribSizeList (no attributes)
-	_emptyStorage=&_vertexStorages.begin()->second.front();
+	// destroy attrib storages, except emptyStorage
+	decltype(_geometryStorageMap) tmpMap;
+	tmpMap.insert(move(_geometryStorageMap.extract(AttribSizeList{255})));
+	_geometryStorageMap.swap(tmpMap);
+	tmpMap.clear();
 
 	// clear allocation managers
-	_indexAllocationManager.clear();
 	_dataStorageAllocationManager.clear();
-	_primitiveSetAllocationManager.clear();
 
 	// delete staging managers
-	_indexStagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
 	_dataStorageStagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
-	_primitiveSetStagingManagerList.clear_and_dispose([](StagingManager* sm){delete sm;});
 
 	// destroy shaders, pipelines,...
 	_device->destroy(_drawableShader);
@@ -379,12 +371,8 @@ void Renderer::finalize()
 	_device->destroy(_fence);
 
 	// destroy buffers
-	_device->destroy(_indexBuffer);
-	_device->freeMemory(_indexBufferMemory);
 	_device->destroy(_dataStorageBuffer);
 	_device->freeMemory(_dataStorageMemory);
-	_device->destroy(_primitiveSetBuffer);
-	_device->freeMemory(_primitiveSetBufferMemory);
 	_device->destroy(_drawableBuffer);
 	_device->freeMemory(_drawableBufferMemory);
 	_drawableBufferSize=0;
@@ -402,7 +390,7 @@ void Renderer::finalize()
 void Renderer::leakResources()
 {
 	// intentionally avoid all destructors
-	_vertexStorages.swap(*new decltype(_vertexStorages));
+	_geometryStorageMap.swap(*new decltype(_geometryStorageMap));
 	_device=nullptr;
 }
 
@@ -497,15 +485,15 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 {
 	// prepare recording
 	// and get number of drawables we will render
-	size_t numDrawables=stateSetRoot.prepareRecording();
+	size_t numDrawables = stateSetRoot.prepareRecording();
 
 	// reallocate drawable buffer
 	// if too small
-	if(_drawableBufferSize<numDrawables*sizeof(DrawableGpuData))
+	if(_drawableBufferSize < numDrawables*sizeof(DrawableGpuData))
 	{
-		size_t n=size_t(numDrawables*1.2f);  // get extra 20% to avoid frequent reallocations when space needs are growing slowly with time
-		_drawableBufferSize=n*sizeof(DrawableGpuData);
-		size_t drawIndirectBufferSize=n*sizeof(vk::DrawIndexedIndirectCommand);
+		size_t n = size_t(numDrawables*1.2f);  // get extra 20% to avoid frequent reallocations when space needs are growing slowly with time
+		_drawableBufferSize = n*sizeof(DrawableGpuData);
+		size_t drawIndirectBufferSize = n*sizeof(vk::DrawIndexedIndirectCommand);
 
 		// free previous buffers (if any)
 		_device->destroy(_drawableBuffer);
@@ -516,18 +504,18 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 		_device->free(_drawIndirectMemory);
 
 		// alloc new drawable buffer
-		_drawableBuffer=
+		_drawableBuffer =
 			_device->createBuffer(
 				vk::BufferCreateInfo(
 					vk::BufferCreateFlags(),      // flags
 					_drawableBufferSize,          // size
-					vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,  // usage
+					vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawableBufferMemory=allocateMemory(_drawableBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+		_drawableBufferMemory = allocateMemory(_drawableBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		_device->bindBufferMemory(
 			_drawableBuffer,  // buffer
 			_drawableBufferMemory,  // memory
@@ -535,7 +523,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 		);
 
 		// alloc new drawable staging buffer
-		_drawableStagingBuffer=
+		_drawableStagingBuffer =
 			_device->createBuffer(
 				vk::BufferCreateInfo(
 					vk::BufferCreateFlags(),      // flags
@@ -546,7 +534,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawableStagingMemory=
+		_drawableStagingMemory =
 			allocateMemory(
 				_drawableStagingBuffer,  // buffer
 				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent |
@@ -557,21 +545,21 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 			_drawableStagingMemory,  // memory
 			0  // memoryOffset
 		);
-		_drawableStagingData=reinterpret_cast<DrawableGpuData*>(_device->mapMemory(_drawableStagingMemory,0,_drawableBufferSize));
+		_drawableStagingData = reinterpret_cast<DrawableGpuData*>(_device->mapMemory(_drawableStagingMemory, 0, _drawableBufferSize));
 
 		// alloc new draw indirect buffer
-		_drawIndirectBuffer=
+		_drawIndirectBuffer =
 			_device->createBuffer(
 				vk::BufferCreateInfo(
 					vk::BufferCreateFlags(),      // flags
 					drawIndirectBufferSize,       // size
-					vk::BufferUsageFlagBits::eIndirectBuffer|vk::BufferUsageFlagBits::eStorageBuffer,  // usage
+					vk::BufferUsageFlagBits::eIndirectBuffer | vk::BufferUsageFlagBits::eStorageBuffer,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawIndirectMemory=allocateMemory(_drawIndirectBuffer,vk::MemoryPropertyFlagBits::eDeviceLocal);
+		_drawIndirectMemory = allocateMemory(_drawIndirectBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		_device->bindBufferMemory(
 			_drawIndirectBuffer,  // buffer
 			_drawIndirectMemory,  // memory
@@ -584,15 +572,10 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 				_drawableDescriptorSet,  // dstSet
 				0,  // dstBinding
 				0,  // dstArrayElement
-				4,  // descriptorCount
+				3,  // descriptorCount
 				vk::DescriptorType::eStorageBuffer,  // descriptorType
 				nullptr,  // pImageInfo
-				array<vk::DescriptorBufferInfo,4>{  // pBufferInfo
-					vk::DescriptorBufferInfo(
-						_primitiveSetBuffer,  // buffer
-						0,  // offset
-						VK_WHOLE_SIZE  // range
-					),
+				array<vk::DescriptorBufferInfo,3>{  // pBufferInfo
 					vk::DescriptorBufferInfo(
 						_drawableBuffer,  // buffer
 						0,  // offset
@@ -690,17 +673,11 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& st
 		),
 		vk::SubpassContents::eInline  // contents
 	);
-	_device->cmdBindIndexBuffer(
-		commandBuffer,  // commandBuffer
-		indexBuffer(),  // buffer
-		0,  // offset
-		vk::IndexType::eUint32  // indexType
-	);
 
 	// execute all StateSets
-	size_t drawableCounter=0;
+	size_t drawableCounter = 0;
 	stateSetRoot.recordToCommandBuffer(commandBuffer,drawableCounter);
-	assert(drawableCounter<=_drawableBufferSize/sizeof(DrawableGpuData) && "Buffer overflow. This should not happen.");
+	assert(drawableCounter <= _drawableBufferSize/sizeof(DrawableGpuData) && "Buffer overflow. This should not happen.");
 
 	// end render pass
 	_device->cmdEndRenderPass(commandBuffer);
@@ -748,12 +725,9 @@ void Renderer::endFrame()
 }
 
 
-VertexStorage* Renderer::getOrCreateVertexStorage(const AttribSizeList& attribSizeList)
+GeometryStorage* Renderer::getOrCreateGeometryStorage(const AttribSizeList& attribSizeList)
 {
-	std::list<VertexStorage>& vertexStorageList=_vertexStorages[attribSizeList];
-	if(vertexStorageList.empty())
-		vertexStorageList.emplace_front(this,attribSizeList,initialVertexStorageCapacity);
-	return &vertexStorageList.front();
+	return &_geometryStorageMap.try_emplace(attribSizeList, this, attribSizeList).first->second;
 }
 
 
@@ -774,6 +748,32 @@ vk::DeviceMemory Renderer::allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFl
 }
 
 
+vk::DeviceMemory Renderer::allocatePointerAccessMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)
+{
+	vk::MemoryRequirements memoryRequirements=_device->getBufferMemoryRequirements(buffer);
+	for(uint32_t i=0; i<_memoryProperties.memoryTypeCount; i++)
+		if(memoryRequirements.memoryTypeBits&(1<<i))
+			if((_memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
+				return
+					_device->allocateMemory(
+						vk::StructureChain<
+							vk::MemoryAllocateInfo,
+							vk::MemoryAllocateFlagsInfo
+						>{
+							vk::MemoryAllocateInfo(
+								memoryRequirements.size,  // allocationSize
+								i                         // memoryTypeIndex
+							),
+							vk::MemoryAllocateFlagsInfo(
+								vk::MemoryAllocateFlagBits::eDeviceAddress,  // flags
+								0  // deviceMask
+							)
+						}.get<vk::MemoryAllocateInfo>()
+					);
+	throw std::runtime_error("No suitable memory type found for the buffer.");
+}
+
+
 void Renderer::executeCopyOperations()
 {
 	// start recording
@@ -786,15 +786,19 @@ void Renderer::executeCopyOperations()
 	);
 
 	// record command buffer
-	for(auto& mapItem : _vertexStorages)
-		for(VertexStorage& vs : mapItem.second) {
-			StagingManagerList& sml=vs.stagingManagerList();
-			for(StagingManager& sm : sml)
+	for(auto& mapItem : _geometryStorageMap) {
+		GeometryStorage& s = mapItem.second;
+		for(unique_ptr<GeometryMemory>& p : s.geometryMemoryList()) {
+			GeometryMemory& m = *p;
+			for(StagingManager& sm : m.vertexStagingManagerList())
+				sm.record(_uploadingCommandBuffer);
+			for(StagingManager& sm : m.indexStagingManagerList())
+				sm.record(_uploadingCommandBuffer);
+			for(StagingManager& sm : m.primitiveSetStagingManagerList())
 				sm.record(_uploadingCommandBuffer);
 		}
-	for(StagingManager& sm : _indexStagingManagerList)        sm.record(_uploadingCommandBuffer);
+	}
 	for(StagingManager& sm : _dataStorageStagingManagerList)  sm.record(_uploadingCommandBuffer);
-	for(StagingManager& sm : _primitiveSetStagingManagerList) sm.record(_uploadingCommandBuffer);
 
 	// end recording
 	_device->endCommandBuffer(_uploadingCommandBuffer);
@@ -832,65 +836,16 @@ void Renderer::executeCopyOperations()
 			}
 			l.clear_and_dispose([](StagingManager* sm){delete sm;});
 		};
-	for(auto& mapItem : _vertexStorages)
-		for(VertexStorage& vs : mapItem.second) {
-			disposeStagingManagers(vs.stagingManagerList(),vs.allocationManager());
+	for(auto& mapItem : _geometryStorageMap) {
+		GeometryStorage& s = mapItem.second;
+		for(unique_ptr<GeometryMemory>& p : s.geometryMemoryList()) {
+			GeometryMemory& m = *p;
+			disposeStagingManagers(m.vertexStagingManagerList(), m.vertexAllocationManager());
+			disposeStagingManagers(m.indexStagingManagerList(), m.indexAllocationManager());
+			disposeStagingManagers(m.primitiveSetStagingManagerList(), m.primitiveSetAllocationManager());
 		}
-	disposeStagingManagers(_indexStagingManagerList,_indexAllocationManager);
+	}
 	disposeStagingManagers(_dataStorageStagingManagerList,_dataStorageAllocationManager);
-	disposeStagingManagers(_primitiveSetStagingManagerList,_primitiveSetAllocationManager);
-}
-
-
-StagingBuffer& Renderer::createIndexStagingBuffer(Geometry& g)
-{
-	ArrayAllocation& a=indexAllocation(g);
-	StagingManager& sm=StagingManager::getOrCreate(a,g.indexDataID(),indexStagingManagerList());
-	return
-		sm.createStagingBuffer(
-			this,  // renderer
-			_indexBuffer,  // dstBuffer
-			a.startIndex*sizeof(uint32_t),  // dstOffset
-			a.numItems*sizeof(uint32_t)  // size
-		);
-}
-
-
-StagingBuffer& Renderer::createIndexSubsetStagingBuffer(Geometry& g,size_t firstIndex,size_t numIndices)
-{
-	ArrayAllocation& a=indexAllocation(g);
-	if(firstIndex+numIndices>a.numItems)
-		throw std::out_of_range("Renderer::createIndexSubsetStagingBuffer(): Parameter firstIndex and numIndices define range that is not completely inside allocated space of Geometry.");
-	StagingManager& sm=StagingManager::getOrCreate(a,g.indexDataID(),indexStagingManagerList());
-	return
-		sm.createStagingBuffer(
-			this,  // renderer
-			_indexBuffer,  // dstBuffer
-			(a.startIndex+firstIndex)*sizeof(uint32_t),  // dstOffset
-			numIndices*sizeof(uint32_t)  // size
-		);
-}
-
-
-void Renderer::uploadIndices(Geometry& g,std::vector<uint32_t>& indexData)
-{
-	if(indexData.empty()) return;
-
-	// create StagingBuffer and submit it
-	StagingBuffer& sb=createIndexStagingBuffer(g);
-	if(indexData.size()*sizeof(uint32_t)!=sb.size())
-		throw std::out_of_range("Renderer::uploadIndices(): size of indexData must match allocated space for indices inside Geometry.");
-	memcpy(sb.data(),indexData.data(),sb.size());
-}
-
-
-void Renderer::uploadIndicesSubset(Geometry& g,std::vector<uint32_t>& indexData,size_t firstIndex)
-{
-	if(indexData.empty()) return;
-
-	// create StagingBuffer and submit it
-	StagingBuffer& sb=createIndexSubsetStagingBuffer(g,firstIndex,indexData.size());
-	memcpy(sb.data(),indexData.data(),sb.size());
 }
 
 
@@ -946,55 +901,68 @@ void Renderer::uploadDataStorageSubset(uint32_t id,const void* data,size_t size,
 }
 
 
-StagingBuffer& Renderer::createPrimitiveSetStagingBuffer(Geometry& g)
+size_t Renderer::getVertexCapacityForBuffer(const AttribSizeList& attribSizeList,size_t bufferSize) const
 {
-	ArrayAllocation& a=primitiveSetAllocation(g);
-	StagingManager& sm=StagingManager::getOrCreate(a,g.primitiveSetDataID(),primitiveSetStagingManagerList());
-	return
-		sm.createStagingBuffer(
-			this,  // renderer
-			_primitiveSetBuffer,  // dstBuffer
-			a.startIndex*sizeof(PrimitiveSetGpuData),  // dstOffset
-			a.numItems*sizeof(PrimitiveSetGpuData)  // size
-		);
-}
+	size_t vertexSize=accumulate(attribSizeList.begin(),attribSizeList.end(),size_t(0));
+	if(vertexSize==0)
 
+		// handle no attributes
+		// return max value of size_t
+		return ~size_t(0);
 
-StagingBuffer& Renderer::createPrimitiveSetSubsetStagingBuffer(Geometry& g,size_t firstPrimitiveSet,size_t numPrimitiveSets)
-{
-	ArrayAllocation& a=primitiveSetAllocation(g);
-	if(firstPrimitiveSet+numPrimitiveSets>a.numItems)
-		throw std::out_of_range("Renderer::createPrimitiveSetSubsetStagingBuffer(): Parameter firstPrimitiveSet and numPrimitiviveSets define range that is not completely inside allocated space of primitiveSet allocation.");
-	StagingManager& sm=StagingManager::getOrCreate(a,g.primitiveSetDataID(),primitiveSetStagingManagerList());
-	return
-		sm.createStagingBuffer(
-			this,  // renderer
-			_primitiveSetBuffer,  // dstBuffer
-			(a.startIndex+firstPrimitiveSet)*sizeof(PrimitiveSetGpuData),  // dstOffset
-			numPrimitiveSets*sizeof(PrimitiveSetGpuData)  // size
-		);
-}
+	else {
 
+		// get numBlocks
+		// (the block is a piece of memory of the size of _standardBufferAlignment)
+		size_t numBlocks=bufferSize/_standardBufferAlignment;
 
-void Renderer::uploadPrimitiveSets(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData)
-{
-	if(primitiveSetData.empty()) return;
-
-	// create StagingBuffer and submit it
-	StagingBuffer& sb=createPrimitiveSetStagingBuffer(g);
-	if(primitiveSetData.size()*sizeof(PrimitiveSetGpuData)!=sb.size())
-		throw std::out_of_range("Renderer::uploadPrimitiveSets(): size of primitiveSetData must match allocated space for primitiveSets inside Geometry.");
-	memcpy(sb.data(),primitiveSetData.data(),sb.size());
-}
-
-
-void Renderer::uploadPrimitiveSetsSubset(Geometry& g,std::vector<PrimitiveSetGpuData>& primitiveSetData,size_t firstPrimitiveSetIndex)
-{
-	if(primitiveSetData.empty()) return;
-
-	// create StagingBuffer and submit it
-	StagingBuffer& sb=createPrimitiveSetSubsetStagingBuffer(g,firstPrimitiveSetIndex,primitiveSetData.size());
-	memcpy(sb.data(),primitiveSetData.data(),sb.size());
+		// create attribData for all attributes
+		// AttribData holds number of blocks used by the attribute
+		// and vertex capacity for that particular number of blocks.
+		struct AttribData {
+			size_t numBlocks;
+			size_t capacity;
+			constexpr AttribData(size_t numBlocks_,size_t capacity_) : numBlocks(numBlocks_), capacity(capacity_)  {}
+		};
+		vector<AttribData> attribData;
+		attribData.reserve(attribSizeList.size());
+		size_t minAttribCapacity=~size_t(0);
+		size_t numUsedBlocks=0;
+		for(auto attribSize : attribSizeList) {
+			size_t attribNumBlocks=(numBlocks*attribSize)/vertexSize;
+			numUsedBlocks+=attribNumBlocks;
+			size_t attribCapacity=(attribNumBlocks*_standardBufferAlignment)/attribSize;
+			if(attribCapacity<minAttribCapacity)
+				minAttribCapacity=attribCapacity;
+			attribData.emplace_back(attribNumBlocks,attribCapacity);
+		}
+		
+		// some blocks might still not be used by any attribute,
+		// so get all the attributes with the smallest capacity
+		// and try to append one available block to each of them,
+		// then recompute the numAttribCapacity and repeat the procedure
+		// until we exhaust available blocks
+		while(true) {
+			if(numUsedBlocks==numBlocks)
+				return minAttribCapacity;
+			for(size_t i=0; i<attribSizeList.size(); i++) {
+				AttribData& d=attribData[i];
+				if(d.capacity==minAttribCapacity) {
+					d.numBlocks++;
+					numUsedBlocks++;
+					d.capacity=(d.numBlocks*_standardBufferAlignment)/attribSizeList[i];
+				}
+			}
+			if(numUsedBlocks>numBlocks)
+				return minAttribCapacity;
+			minAttribCapacity=attribData[0].capacity;
+			for(size_t i=1; i<attribData.size(); i++) {
+				AttribData& d=attribData[i];
+				if(d.capacity<minAttribCapacity)
+					minAttribCapacity=d.capacity;
+			}
+		}
+	}
 }
 
 
@@ -1100,37 +1068,37 @@ uint64_t Renderer::getGpuTimestamp() const
 	_device->queueSubmit(
 		_graphicsQueue,  // queue
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
-			0,nullptr,nullptr,               // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
-			1,&_readTimestampCommandBuffer,  // commandBufferCount,pCommandBuffers
-			0,nullptr                        // signalSemaphoreCount,pSignalSemaphores
+			0, nullptr, nullptr,              // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
+			1, &_readTimestampCommandBuffer,  // commandBufferCount,pCommandBuffers
+			0, nullptr                        // signalSemaphoreCount,pSignalSemaphores
 		),
 		_fence  // fence
 	);
 
 	// wait for work to complete
-	vk::Result r=_device->waitForFences(
+	vk::Result r = _device->waitForFences(
 		_fence,        // fences (vk::ArrayProxy)
 		VK_TRUE,       // waitAll
 		uint64_t(3e9)  // timeout (3s)
 	);
 	_device->resetFences(_fence);
-	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eTimeout)
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eTimeout)
 			throw std::runtime_error("GPU timeout. Task is probably hanging.");
 		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
 	}
 
 	// read timestamp 
 	uint64_t t;
-	r=_device->getQueryPoolResults(
-			_readTimestampQueryPool,  // queryPool
-			0,                    // firstQuery
-			1,  // queryCount
-			1*sizeof(uint64_t),  // dataSize
-			&t,    // pData
-			sizeof(uint64_t),     // stride
-			vk::QueryResultFlagBits::e64  // flags
-		);
+	r = _device->getQueryPoolResults(
+		_readTimestampQueryPool,  // queryPool
+		0,                    // firstQuery
+		1,  // queryCount
+		1*sizeof(uint64_t),  // dataSize
+		&t,    // pData
+		sizeof(uint64_t),     // stride
+		vk::QueryResultFlagBits::e64  // flags
+	);
 
 	// if not ready, something is wrong with Vulkan
 	if(r == vk::Result::eNotReady)

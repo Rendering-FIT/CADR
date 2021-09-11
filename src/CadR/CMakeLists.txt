@@ -21,9 +21,11 @@ set(CADR_PUBLIC_HEADERS
     AttribSizeList.h
     CallbackList.h
     Drawable.h
-    Errors.h
+    Exceptions.h
     FrameInfo.h
     Geometry.h
+    GeometryMemory.h
+    GeometryStorage.h
     ParentChildList.h
     Pipeline.h
     PrimitiveSet.h
@@ -32,7 +34,6 @@ set(CADR_PUBLIC_HEADERS
     StagingBuffer.h
     StagingManager.h
     StateSet.h
-    VertexStorage.h
     VulkanDevice.h
     VulkanInstance.h
     VulkanLibrary.h
@@ -47,6 +48,8 @@ set(CADR_SOURCES
     AllocationManagers.cpp
     Drawable.cpp
     Geometry.cpp
+    GeometryMemory.cpp
+    GeometryStorage.cpp
     Pipeline.cpp
     PrimitiveSet.cpp
     Renderer.cpp
@@ -54,7 +57,6 @@ set(CADR_SOURCES
     StagingBuffer.cpp
     StagingManager.cpp
     StateSet.cpp
-    VertexStorage.cpp
     VulkanDevice.cpp
     VulkanInstance.cpp
     VulkanLibrary.cpp

@@ -4,7 +4,7 @@ using namespace std;
 using namespace CadR;
 
 
-StagingManager::StagingManager(bool subsetUpdateMode,uint32_t allocationID,StagingManagerList& l,unsigned numBuffers) noexcept
+StagingManager::StagingManager(bool subsetUpdateMode,uint32_t allocationID,StagingManagerList& l,size_t numBuffers) noexcept
 {
 	if(subsetUpdateMode) {
 		_state=0x1; // subsetUpdateMode=1, vectorAllocated=0
@@ -68,7 +68,7 @@ StagingBuffer& StagingManager::createStagingBuffer(Renderer* renderer,vk::Buffer
 }
 
 
-StagingBuffer& StagingManager::createStagingBuffer(unsigned stagingBufferIndex,Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size)
+StagingBuffer& StagingManager::createStagingBuffer(size_t stagingBufferIndex,Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size)
 {
 	if(!vectorAllocated())
 		if(stagingBufferIndex==0) {

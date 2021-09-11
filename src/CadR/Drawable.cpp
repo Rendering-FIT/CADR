@@ -2,116 +2,138 @@
 #include <CadR/Geometry.h>
 #include <CadR/PrimitiveSet.h>
 
+using namespace std;
 using namespace CadR;
 
-static_assert(sizeof(DrawableGpuData)==8,
-              "DrawableGpuData size is expected to be 8 bytes.");
+static_assert(sizeof(DrawableGpuData)==16,
+              "DrawableGpuData size is expected to be 16 bytes.");
 
 
-Drawable::Drawable(Geometry& geometry,uint32_t primitiveSetIndex,
-                   uint32_t shaderDataID,StateSet& stateSet)
+Drawable::Drawable(Geometry& geometry, uint32_t primitiveSetIndex,
+                   uint32_t shaderDataID, StateSet& stateSet)
 	: _shaderDataID(shaderDataID)
 {
-	geometry._drawableList.push_back(*this);
+	geometry._drawableList.push_back(*this);  // initializes _drawableListHook
+
+	// append into StateSet
+	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
+	GeometryMemory* m = geometry.geometryMemory();
 	stateSet.appendDrawableUnsafe(
-		*this,
-		DrawableGpuData(
-			(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+		*this,  // drawable
+		DrawableGpuData(  // drawableGpuData
+			m->bufferDeviceAddress() + m->primitiveSetOffset() +
+				(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
+					(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
 			shaderDataID/4  // shaderDataOffset4
-		)
+		),
+		m->id()  // geometryMemoryId
 	);
 }
 
 
 Drawable::Drawable(Drawable&& other)
 {
-	_stateSet=other._stateSet;
-	_indexIntoStateSet=other._indexIntoStateSet;
-	_stateSet->_drawableList[_indexIntoStateSet]=this;
-	other._indexIntoStateSet=~0;
-	_shaderDataID=other._shaderDataID;
-	_drawableListHook=std::move(other._drawableListHook);
+	_stateSetDrawableContainer = other._stateSetDrawableContainer;
+	_indexIntoStateSet = other._indexIntoStateSet;
+	_stateSetDrawableContainer->drawablePtrList[_indexIntoStateSet] = this;
+	other._indexIntoStateSet = ~0;
+	_shaderDataID = other._shaderDataID;
+	_drawableListHook = std::move(other._drawableListHook);
 }
 
 
 Drawable& Drawable::operator=(Drawable&& rhs)
 {
-	if(_indexIntoStateSet!=~0u)
-		_stateSet->removeDrawableUnsafe(*this);
-	_stateSet=rhs._stateSet;
-	_indexIntoStateSet=rhs._indexIntoStateSet;
-	_stateSet->_drawableList[_indexIntoStateSet]=this;
-	rhs._indexIntoStateSet=~0;
-	_shaderDataID=rhs._shaderDataID;
-	_drawableListHook=std::move(rhs._drawableListHook);
+	if(_indexIntoStateSet != ~0u)
+		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
+	_stateSetDrawableContainer = rhs._stateSetDrawableContainer;
+	_indexIntoStateSet = rhs._indexIntoStateSet;
+	_stateSetDrawableContainer->drawablePtrList[_indexIntoStateSet] = this;
+	rhs._indexIntoStateSet = ~0;
+	_shaderDataID = rhs._shaderDataID;
+	_drawableListHook = std::move(rhs._drawableListHook);
 	return *this;
 }
 
 
-void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex,
-                      uint32_t shaderDataID,StateSet& stateSet)
+void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex,
+                      uint32_t shaderDataID, StateSet& stateSet)
 {
-	_shaderDataID=shaderDataID;
-	
-	// handle already created internal object
-	if(_indexIntoStateSet!=~0u) {
-		_drawableListHook.unlink();
-		if(_stateSet==&stateSet) {
+	// bind with new geometry and new shaderDataID
+	geometry._drawableList.push_back(*this);
+	_shaderDataID = shaderDataID;
 
-			// if stateSet remains the same, just update drawableList and DrawableGpuData and return
-			geometry._drawableList.push_back(*this);
-			_stateSet->_drawableDataList[_indexIntoStateSet]=
+	// handle previous bindings 
+	GeometryMemory* m = geometry.geometryMemory();
+	if(_indexIntoStateSet != ~0u)
+		if(_stateSetDrawableContainer->geometryMemory == m) {
+
+			// only update DrawableGpuData
+			_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet]=
 				DrawableGpuData(
-					(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+					m->bufferDeviceAddress() + m->primitiveSetOffset() +
+						(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
+							(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
 					shaderDataID/4  // shaderDataOffset4
 				);
 			return;
-		}
-		else {
 
-			// if stateSet is changing, detach from the old stateSet
-			_stateSet->removeDrawableUnsafe(*this);
 		}
-	}
+		else
+			_stateSetDrawableContainer->removeDrawableUnsafe(*this);
 
-	// create a new internal rendering object
-	geometry._drawableList.push_back(*this);
-	_stateSet=&stateSet;
-	_stateSet->appendDrawableUnsafe(
-		*this,
-		DrawableGpuData(
-			(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+	// append into StateSet
+	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
+	stateSet.appendDrawableUnsafe(
+		*this,  // drawable
+		DrawableGpuData(  // drawableGpuData
+			m->bufferDeviceAddress() + m->primitiveSetOffset() +
+				(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
+					(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
 			shaderDataID/4  // shaderDataOffset4
-		)
+		),
+		m->id()  // geometryMemoryId
 	);
 }
 
 
-void Drawable::create(Geometry& geometry,uint32_t primitiveSetIndex)
+void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex)
 {
-	if(_indexIntoStateSet!=~0u) {
+	if(_indexIntoStateSet == ~0u)
+		throw runtime_error("Drawable::create(geometry, primitiveSetIndex) can be used only "
+		                    "for replacing geometry and primitiveSetIndex in the valid Drawable. "
+		                    "Use Drawable::create(geometry, primitiveSetIndex, shaderDataID, stateSet) instead.");
 
-		// handle already created internal object
-		// (unlink and insert again into the drawable list (to handle the cases of changing geometry)
-		// and update DrawableGpuData)
-		_drawableListHook.unlink();
-		_stateSet->_drawableDataList[_indexIntoStateSet]=
+	// bind with new geometry
+	geometry._drawableList.push_back(*this);
+
+	// handle previous bindings
+	GeometryMemory* m = geometry.geometryMemory();
+	if(_stateSetDrawableContainer->geometryMemory == m) {
+
+		// update DrawableGpuData
+		_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet]=
 			DrawableGpuData(
-				(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
+				m->bufferDeviceAddress() + m->primitiveSetOffset() +
+					(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
+						(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
 				_shaderDataID/4  // shaderDataOffset4
 			);
-	}
-	else {
+		return;
 
-		// create a new internal rendering object
-		_stateSet->appendDrawableUnsafe(
-			*this,
-			DrawableGpuData(
-				(geometry.primitiveSetAllocation().startIndex+primitiveSetIndex)*(uint32_t(sizeof(CadR::PrimitiveSetGpuData))/4),  // primitiveSetOffset4
-				_shaderDataID/4  // shaderDataOffset4
-			)
-		);
-	}
+	} else
+		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
 
-	geometry._drawableList.push_back(*this);
+	// append into StateSet
+	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
+	_stateSetDrawableContainer->stateSet->appendDrawableUnsafe(
+		*this,  // drawable
+		DrawableGpuData(  // drawableGpuData
+			m->bufferDeviceAddress() + m->primitiveSetOffset() +
+				(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
+					(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
+			_shaderDataID/4  // shaderDataOffset4
+		),
+		m->id()  // geometryMemoryId
+	);
 }

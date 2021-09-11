@@ -60,7 +60,7 @@ void ItemAllocationManager::alloc(ItemAllocation& a)
 }
 
 
-void ItemAllocationManager::alloc(ItemAllocation* a,uint32_t numItems)
+void ItemAllocationManager::alloc(ItemAllocation* a,size_t numItems)
 {
 	if(_capacity-_firstItemAvailableAtTheEnd<numItems)
 		throw CadR::OutOfResources("ItemAllocationManager::alloc(): Can not allocate items. Not enough free space.");
@@ -90,9 +90,9 @@ void ItemAllocationManager::free(ItemAllocation& a)
 }
 
 
-void ItemAllocationManager::free(ItemAllocation* a,uint32_t numItems)
+void ItemAllocationManager::free(ItemAllocation* a,size_t numItems)
 {
-	for(uint32_t j=0; j<numItems; j++) {
+	for(size_t j=0; j<numItems; j++) {
 		uint32_t i=a[j]._index;
 		if(i!=invalidID) {
 			a[j]._index=invalidID;

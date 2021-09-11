@@ -126,6 +126,7 @@ public:
 	inline vk::Result createBuffer(const vk::BufferCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Buffer* pBuffer) const  { return _device.createBuffer(pCreateInfo,pAllocator,pBuffer,*this); }
 	inline void destroyBuffer(vk::Buffer buffer,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyBuffer(buffer,pAllocator,*this); }
 	inline void destroy(vk::Buffer buffer,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyBuffer(buffer,pAllocator,*this); }
+	inline vk::DeviceAddress getBufferDeviceAddress(const vk::BufferDeviceAddressInfo* pInfo) const  { return _device.getBufferAddress(pInfo,*this); }
 	inline vk::Result allocateMemory(const vk::MemoryAllocateInfo* pAllocateInfo,const vk::AllocationCallbacks* pAllocator,vk::DeviceMemory* pMemory) const  { return _device.allocateMemory(pAllocateInfo,pAllocator,pMemory,*this); }
 	inline void freeMemory(vk::DeviceMemory memory,const vk::AllocationCallbacks* pAllocator) const  { _device.freeMemory(memory,pAllocator,*this); }
 	inline void free(vk::DeviceMemory memory,const vk::AllocationCallbacks* pAllocator) const  { _device.freeMemory(memory,pAllocator,*this); }
@@ -228,6 +229,7 @@ public:
 	inline vk::ResultValueType<vk::Buffer>::type createBuffer(const vk::BufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createBuffer(createInfo,allocator,*this); }
 	inline void destroyBuffer(vk::Buffer buffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyBuffer(buffer,allocator,*this); }
 	inline void destroy(vk::Buffer buffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyBuffer(buffer,allocator,*this); }
+	inline vk::DeviceAddress getBufferDeviceAddress(const vk::BufferDeviceAddressInfo& info) const  { return _device.getBufferAddress(info,*this); }
 	inline vk::ResultValueType<vk::DeviceMemory>::type allocateMemory(const vk::MemoryAllocateInfo& allocateInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.allocateMemory(allocateInfo,allocator,*this); }
 	inline vk::ResultValueType<void>::type bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
 	inline vk::ResultValueType<void>::type bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
@@ -486,6 +488,7 @@ public:
 	PFN_vkDestroyRenderPass vkDestroyRenderPass;
 	PFN_vkCreateBuffer vkCreateBuffer;
 	PFN_vkDestroyBuffer vkDestroyBuffer;
+	PFN_vkGetBufferDeviceAddress vkGetBufferDeviceAddress;
 	PFN_vkAllocateMemory vkAllocateMemory;
 	PFN_vkBindBufferMemory vkBindBufferMemory;
 	PFN_vkBindImageMemory vkBindImageMemory;

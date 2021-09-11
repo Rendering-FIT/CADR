@@ -4,22 +4,37 @@
 #define CADR_STATESET_H
 
 #include <vulkan/vulkan.hpp>
-#include <boost/intrusive/list.hpp>
 #include <CadR/ParentChildList.h>
 
 namespace CadR {
 
+class GeometryMemory;
+class GeometryStorage;
 class Pipeline;
 class Renderer;
-class VertexStorage;
 
-class CADR_EXPORT StateSet final {
+
+struct CADR_EXPORT StateSetDrawableContainer {
+	StateSet* stateSet;
+	GeometryMemory* geometryMemory;
+	std::vector<DrawableGpuData> drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
+	std::vector<Drawable*> drawablePtrList;  ///< List of Drawables attached to this StateSet.
+
+	StateSetDrawableContainer(StateSet* s, GeometryMemory* m);
+	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData);
+	void removeDrawableUnsafe(Drawable& d);
+};
+
+
+class CADR_EXPORT StateSet {
 protected:
+
 	Renderer* _renderer;  ///< Renderer associated with this Stateset.
 	bool _skipRecording;  ///< The flag optimizing the rendering. It is set by prepareRecording() and used by recordToCommandBuffer() to skip StateSets that does not contain any Drawables.
-	std::vector<DrawableGpuData> _drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
-	std::vector<Drawable*> _drawableList;  ///< List of Drawables attached to this StateSet.
-	VertexStorage* _vertexStorage = nullptr;  ///< VertexStorage used by all Drawables attached to this StateSet.
+	size_t _numDrawables = 0;
+	GeometryStorage* _geometryStorage = nullptr;  ///< GeometryStorage used by all Drawables attached to this StateSet.
+	std::vector<std::unique_ptr<StateSetDrawableContainer>> _drawableContainerList;
+
 public:
 
 	// pipeline to bind
@@ -32,40 +47,48 @@ public:
 	std::vector<uint32_t> dynamicOffsets;
 
 	// list of functions that will be called during StateSet recording into command buffer
-	std::vector<std::function<void(StateSet*,vk::CommandBuffer)>> callList;
+	std::vector<std::function<void(StateSet*, vk::CommandBuffer)>> callList;
 
 	// parent-child relation
 	static const ParentChildListOffsets parentChildListOffsets;
-	ChildList<StateSet,parentChildListOffsets> childList;
-	ParentList<StateSet,parentChildListOffsets> parentList;
+	ChildList<StateSet, parentChildListOffsets> childList;
+	ParentList<StateSet, parentChildListOffsets> parentList;
 
 public:
 
+	// construction and destruction
 	StateSet();
 	StateSet(Renderer* renderer);
-	StateSet(VertexStorage* vertexStorage);
-	StateSet(Renderer* renderer,VertexStorage* vertexStorage);
+	StateSet(GeometryStorage* geometryStorage);
+	StateSet(Renderer* renderer, GeometryStorage* geometryStorage);
+	~StateSet();
+
+	// deleted constructors and operators
 	StateSet(const StateSet&) = delete;
 	StateSet(StateSet&&) = delete;
-	~StateSet();
 	StateSet& operator=(const StateSet&) = delete;
 	StateSet& operator=(StateSet&&) = delete;
 
+	// getters
 	Renderer* renderer() const;
-	VertexStorage* vertexStorage() const;
+	GeometryStorage* geometryStorage() const;
 
+	// drawable methods
 	size_t numDrawables() const;
-	void appendDrawable(Drawable& d,DrawableGpuData gpuData);
+	void appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId);
 	void removeDrawable(Drawable& d);
-	void appendDrawableUnsafe(Drawable& d,DrawableGpuData gpuData);
+	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId);
 	void removeDrawableUnsafe(Drawable& d);
 
+	// rendering methods
 	size_t prepareRecording();
-	void recordToCommandBuffer(vk::CommandBuffer cmdBuffer,size_t& drawableCounter);
+	void recordToCommandBuffer(vk::CommandBuffer cb, size_t& drawableCounter);
 
-	void setVertexStorage(VertexStorage* vertexStorage);  ///< Sets the VertexStorage that will be bound when rendering this StateSet. It should not be changed if you have already Drawables using this StateSet as StateSet would then use different VertexStorage than Drawables leading to undefined behaviour.
+	// geometry storage
+	void setGeometryStorage(GeometryStorage* geometryStorage);  ///< Sets the GeometryStorage that will be bound when rendering this StateSet. It must not be changed if you have already Drawables using this StateSet as StateSet would then use different GeometryStorage than Drawables, leading to undefined behaviour.
 
 	friend Drawable;
+	friend StateSetDrawableContainer;
 };
 
 
@@ -77,23 +100,25 @@ public:
 #include <cassert>
 namespace CadR {
 
-inline StateSet::StateSet() : _renderer(Renderer::get()), _vertexStorage(nullptr)  {}
-inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _vertexStorage(nullptr)  {}
-inline StateSet::StateSet(VertexStorage* vertexStorage)
-	: _renderer(Renderer::get()), _vertexStorage(vertexStorage)  {}
-inline StateSet::StateSet(Renderer* renderer,VertexStorage* vertexStorage)
-	: _renderer(renderer), _vertexStorage(vertexStorage)  {}
-inline StateSet::~StateSet()  { assert(_drawableDataList.empty() && "Do not destroy StateSet while some Drawables still use it."); }
+inline StateSetDrawableContainer::StateSetDrawableContainer(StateSet* s, GeometryMemory* m) : stateSet(s), geometryMemory(m)  {}
+
+inline StateSet::StateSet() : _renderer(Renderer::get()), _geometryStorage(nullptr)  {}
+inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _geometryStorage(nullptr)  {}
+inline StateSet::StateSet(GeometryStorage* geometryStorage)
+	: _renderer(Renderer::get()), _geometryStorage(geometryStorage)  {}
+inline StateSet::StateSet(Renderer* renderer, GeometryStorage* geometryStorage)
+	: _renderer(renderer), _geometryStorage(geometryStorage)  {}
+inline StateSet::~StateSet()  { assert(_numDrawables==0 && "Do not destroy StateSet while some Drawables still use it."); }
 
 inline Renderer* StateSet::renderer() const  { return _renderer; }
-inline VertexStorage* StateSet::vertexStorage() const  { return _vertexStorage; }
+inline GeometryStorage* StateSet::geometryStorage() const  { return _geometryStorage; }
 
-inline size_t StateSet::numDrawables() const  { return _drawableDataList.size(); }
-inline void StateSet::appendDrawableUnsafe(Drawable& d,DrawableGpuData gpuData)  { d._stateSet=this; d._indexIntoStateSet=uint32_t(_drawableDataList.size()); _drawableDataList.emplace_back(gpuData); _drawableList.emplace_back(&d); }
-inline void StateSet::appendDrawable(Drawable& d,DrawableGpuData gpuData)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData); }
-inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0u) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0; }
+inline size_t StateSet::numDrawables() const  { return _numDrawables; }
+inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData,geometryMemoryId); }
+inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0u) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0u; }
+inline void StateSet::removeDrawableUnsafe(Drawable& d)  { d._stateSetDrawableContainer->removeDrawableUnsafe(d); }
 
-inline void StateSet::setVertexStorage(VertexStorage* vertexStorage)  { assert(_drawableDataList.empty() && "Cannot change VertexStorage while there are attached Drawables."); _vertexStorage=vertexStorage; }
+inline void StateSet::setGeometryStorage(GeometryStorage* geometryStorage)  { assert(_numDrawables==0 && "Cannot change GeometryStorage while there are attached Drawables."); _geometryStorage=geometryStorage; }
 
 }
 
