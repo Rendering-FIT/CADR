@@ -13,10 +13,10 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
 	# find Vulkan include path
 	find_path(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR vulkan/vulkan.h
+		"$ENV{VULKAN_SDK}/Include"
 		/usr/include
 		/usr/local/include
 		/opt/local/include
-		"$ENV{VULKAN_SDK}/Include"
 		${THIRD_PARTY_DIR}/Vulkan/include
 	)
 
@@ -25,13 +25,24 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		NAMES
 			vulkan vulkan-1
 		PATHS
+			"$ENV{VULKAN_SDK}/Lib"
 			/usr/lib64
 			/usr/local/lib64
 			/usr/lib
 			/usr/lib/x86_64-linux-gnu
 			/usr/local/lib
-			"$ENV{VULKAN_SDK}/Lib"
 			${THIRD_PARTY_DIR}/Vulkan/lib
+	)
+
+	# find glslangValidator
+	find_program(${CMAKE_FIND_PACKAGE_NAME}_GLSLANG_VALIDATOR_EXECUTABLE
+		NAMES
+			glslangValidator
+		PATHS
+			"$ENV{VULKAN_SDK}/bin"
+			"$ENV{VULKAN_SDK}/bin32"
+			/usr/bin
+			${THIRD_PARTY_DIR}/Vulkan/bin
 	)
 
 	# set *_FOUND flag
@@ -58,6 +69,12 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 				INTERFACE_INCLUDE_DIRECTORIES "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}"
 			)
 		endif()
+	endif()
+
+	# Vulkan::glslangValidator target
+	if(Vulkan_FOUND AND Vulkan_GLSLANG_VALIDATOR_EXECUTABLE AND NOT TARGET Vulkan::glslangValidator)
+		add_executable(Vulkan::glslangValidator IMPORTED)
+		set_property(TARGET Vulkan::glslangValidator PROPERTY IMPORTED_LOCATION "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}")
 	endif()
 
 endif()
