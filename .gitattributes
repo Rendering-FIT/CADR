@@ -9,6 +9,15 @@
 *.cpp text
 *.md text
 *.txt text
+*.vert text
+*.tesc text
+*.tese text
+*.geom text
+*.frag text
+*.comp text
+*.mesh text
+*.task text
+*.glsl text
 
 # Declare files that will always have CRLF line endings on checkout.
 *.sln text eol=crlf
