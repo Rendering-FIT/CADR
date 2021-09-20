@@ -34,6 +34,9 @@ set(APP_SHADERS
 	geometryShader.geom
 	transformationThreeMatrices.vert
 	transformationFiveMatrices.vert
+	transformationFiveMatrices-pushConstants.vert
+	transformationFiveMatrices-specializationConstants.vert
+	transformationFiveMatrices-constants.vert
 	transformationFiveMatricesUsingGS.geom
 	transformationFiveMatricesUsingGSAndAttributes.vert
 	transformationFiveMatricesUsingGSAndAttributes.geom

@@ -11,11 +11,11 @@ layout(std430,binding=1) restrict readonly buffer NormalMatrix {
 	mat3 normalMatrix[];
 };
 
-layout(binding=2) uniform UniformBufferObject {
+layout(push_constant) uniform UniformBufferObject {
 	mat4 viewMatrix;
 	mat4 projectionMatrix;
-	mat3 normalViewMatrix;
 };
+const mat3 normalViewMatrix = mat3(1.);  // this does not fit into 128 bytes of push constants
 
 out gl_PerVertex {
 	vec4 gl_Position;
