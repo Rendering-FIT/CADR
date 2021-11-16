@@ -43,7 +43,7 @@ int main(int,char**)
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
-						VK_API_VERSION_1_1,      // api version
+						VK_API_VERSION_1_1,      // api version <-- need to be 1.1 for vkCmdDispatchBase
 					},
 					0,nullptr,  // no layers
 					0,nullptr,  // no extensions
@@ -96,7 +96,7 @@ int main(int,char**)
 						},
 					}.data(),
 					0,nullptr,  // no layers
-					1,array{"VK_KHR_shader_non_semantic_info"}.data(),  // number of enabled extensions, enabled extension names
+					1,array{"VK_KHR_shader_non_semantic_info"}.data(),  // number of enabled extensions, enabled extension names <-- VK_KHR_shader_non_semantic_info is required by debugPrintfEXT()
 					nullptr,    // enabled features
 				}
 			);
