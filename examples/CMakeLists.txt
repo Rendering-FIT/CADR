@@ -12,6 +12,7 @@ set(PACKAGES
 	VulkanAttributesAndUniforms
 	VulkanRenderingPerformance
 	VulkanDynamicFuncs
+	VulkanComputeShader
 	gltfReader
 	)
 if(UNIX)
