@@ -136,6 +136,8 @@ public:
 	CADR_EXPORT vk::DescriptorSet drawableDescriptorSet() const;
 	CADR_EXPORT vk::PipelineLayout drawablePipelineLayout() const;
 	CADR_EXPORT vk::Pipeline drawablePipeline() const;
+	CADR_EXPORT vk::CommandPool transientCommandPool() const;
+	CADR_EXPORT vk::CommandPool precompiledCommandPool() const;
 
 	CADR_EXPORT GeometryStorage* getOrCreateGeometryStorage(const AttribSizeList& attribSizeList);
 	CADR_EXPORT std::map<AttribSizeList,GeometryStorage>& geometryStorageMap();
@@ -192,6 +194,8 @@ inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCach
 inline vk::DescriptorSet Renderer::drawableDescriptorSet() const  { return _drawableDescriptorSet; }
 inline vk::PipelineLayout Renderer::drawablePipelineLayout() const  { return _drawablePipelineLayout; }
 inline vk::Pipeline Renderer::drawablePipeline() const  { return _drawablePipeline; }
+inline vk::CommandPool Renderer::transientCommandPool() const  { return _transientCommandPool; }
+inline vk::CommandPool Renderer::precompiledCommandPool() const  { return _precompiledCommandPool; }
 inline std::map<AttribSizeList, GeometryStorage>& Renderer::geometryStorageMap()  { return _geometryStorageMap; }
 inline GeometryStorage* Renderer::emptyStorage()  { return _emptyStorage; }
 inline const GeometryStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
