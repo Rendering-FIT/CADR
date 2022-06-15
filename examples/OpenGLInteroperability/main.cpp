@@ -119,6 +119,7 @@ static vk::UniqueSemaphore glDoneSemaphoreVk;
 
 // Vulkan function pointers
 struct VkFuncs {
+	auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 	PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR;
 #if 0
 	PFN_vkGetPhysicalDeviceImageFormatProperties2KHR vkGetPhysicalDeviceImageFormatProperties2KHR;

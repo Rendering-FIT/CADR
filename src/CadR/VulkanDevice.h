@@ -118,6 +118,7 @@ public:
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _device.getProcAddr(pName,*this); }
+	inline auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 	inline void destroy(const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(pAllocator,*this); }
 	inline void getQueue(uint32_t queueFamilyIndex,uint32_t queueIndex,vk::Queue* pQueue) const  { _device.getQueue(queueFamilyIndex,queueIndex,pQueue,*this); }
 	inline vk::Result createRenderPass(const vk::RenderPassCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::RenderPass* pRenderPass) const  { return _device.createRenderPass(pCreateInfo,pAllocator,pRenderPass,*this); }

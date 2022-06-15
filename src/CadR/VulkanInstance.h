@@ -64,6 +64,7 @@ public:
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _instance.getProcAddr(pName,*this); }
+	inline auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 	inline void destroy(const vk::AllocationCallbacks* pAllocator) const noexcept  { _instance.destroy(pAllocator,*this); }
 	inline vk::Result createDevice(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Device* pDevice) const  { return physicalDevice.createDevice(pCreateInfo,pAllocator,pDevice,*this); }
 	inline vk::Result enumeratePhysicalDevices(uint32_t* pPhysicalDeviceCount,vk::PhysicalDevice* pPhysicalDevices) const  { return _instance.enumeratePhysicalDevices(pPhysicalDeviceCount,pPhysicalDevices,*this); }
