@@ -576,41 +576,96 @@ struct Test {
 	Test(const char* resultString_,Type t=Type::VertexThroughput) : resultString(resultString_), type(t)  {}
 };
 static vector<Test> tests={
-	Test("One draw call, attributeless, constant output"),
-	Test("One draw call, attributeless, input indices"),
-	Test("One draw call, attributeless, instancing"),
-	Test("One draw call, geometry shader constant output"),
-	Test("Indirect buffer instancing, attributeless"),
-	Test("Indirect buffer per-triangle record, attr.less"),
-	Test("Indirect buffer per-triangle record"),
-	Test("Per-triangle drawCmd, attr.less, const. output"),
-	Test("Per-triangle drawCmd, coordinates in attr."),
-	Test("Coordinates in attribute"),
-	Test("Coordinates in buffer"),
-	Test("One attribute, constant uniform 1xMatrix"),
-	Test("One attribute, per-triangle 1xMatrix in buffer"),
-	Test("One attribute, per-triangle 1xMatrix in attr."),
-	Test("Two attributes"),
-	Test("Two packed attributes"),
-	Test("Two packed buffers"),
-	Test("Two packed buffers using struct"),
-	Test("Two packed buffers using struct slow"),
-	Test("All-in-one packed buffer"),
-	Test("Two packed attributes, single 1xMatrix"),
-	Test("Two packed attributes, 1xMatrix"),
-	Test("Two packed buffers, 1xMatrix"),
-	Test("Two packed buffers in geom. shader, 1xMatrix"),
-	Test("Four (2xf32,2xu8) attributes"),
-	Test("Four attributes"),
-	Test("Four interleaved attributes"),
-	Test("Four attributes, 1xMatrix"),
-	Test("Transformation 3xMatrix in VS"),
-	Test("Transformation 5xMatrix in VS"),
-	Test("Transformation 5xMatrix in VS using pushConst."),
-	Test("Transformation 5xMatrix in VS using specConst."),
-	Test("Transformation 5xMatrix in VS using constants"),
-	Test("Transformation 5xMatrix in GS, attributes"),
-	Test("Transformation 5xMatrix in GS, buffers"),
+	Test("VS max throughput (one draw call, attributeless,\n"
+	     "      constant VS output):                     "),
+	Test("VS VertexIndex and InstanceIndex forming output\n"
+	     "      (one draw call, attributeless):          "),
+	Test("GS max throughput (geometry shader constant output,\n"
+	     "      one draw call, attributeless):           "),
+	Test("Instancing throughput (single triangle instanced, constant VS output,\n"
+	     "      one draw call, attributeless):           "),
+	Test("Instancing throughput (single triangle instanced, one indirect draw call,\n"
+	     "      one indirect record, attributeless:      "),
+	Test("Draw command throughput (per-triangle draw command in command buffer,\n"
+	     "      attributeless, constant VS output):      "),
+	Test("Draw command throughput (per-triangle draw command in command buffer,\n"
+	     "      vec4 coordinate attribute):              "),
+	Test("Indirect draw command throughput (one indirect draw call,\n"
+	     "      per-triangle record, attributeless):     "),
+	Test("Indirect draw command throughput (one indirect draw call, per-triangle\n"
+	     "      record, vec4 coordiate attribute):       "),
+	Test("Attribute performance, coordinates in vec4 attribute,\n"
+	     "      one draw call:                           "),
+	Test("Buffer performance, coordinates in vec4 buffer,\n"
+	     "      one draw call:                           "),
+	Test("Attribute performance, 2x vec4 attributes,\n"
+	     "      both attributes used:                    "),
+	Test("Attribute performance, 2x uvec4 attribute unpacked into\n"
+	     "      position+normal+color+texCoord:          "),
+	Test("Buffer performance, 2x uvec4 buffers unpacked into\n"
+	     "      position+normal+color+texCoord:          "),
+	Test("Buffer performance, 2x buffer using 16-byte struct unpacked into\n"
+	     "      position+normal+color+texCoord:          "),
+	Test("Buffer performance, 2x buffer using 16-byte struct,\n"
+	     "      accessed multiple times, unpacked into\n"
+	     "      position+normal+color+texCoord:          "),
+	Test("Buffer performance, 1x buffer using 32-byte struct unpacked\n"
+	     "      into position+normal+color+texCoord:     "),
+	Test("Attribute performance, 4x attribute (2x vec4f32 + 2x vec4u8,\n"
+	     "      2x conversion from vec4u8 in memory to vec4 in VS):\n"
+	     "                                               "),
+	Test("Attribute performance, 4x vec4f32 attributes:\n"
+	     "                                               "),
+	Test("Attribute performance, interleaved 4x vec4f32 in single buffer,\n"
+	     "      uninterleaving by array of VertexInputAttributeDescription:\n"
+	     "                                               "),
+	Test("Matrix performance, one uniform Matrix for all triangles read\n"
+	     "      by VS, coordinates in vec4 attribute:    "),
+	Test("Matrix performance, per-triangle Matrix in matrix buffer read\n"
+	     "      by VS, coordinates in vec4 attribute:    "),
+	Test("Matrix performance, per-triangle Matrix in attribute,\n"
+	     "      coordinates in vec4 attribute, each triangle is instanced\n"
+	     "      so it receives different matrix:         "),
+	Test("Matrix performance, single non-changing Matrix in a buffer,\n"
+	     "      two packed attributes:                   "),
+	Test("Matrix performance, per-triangle Matrix in matrix buffer,\n"
+	     "      two packed attributes:                   "),
+	Test("Matrix performance, per-triangle Matrix in matrix buffer,\n"
+	     "      two packed buffers:                      "),
+	Test("Matrix performance, geometry shader reading per-triangle matrix\n"
+	     "      from matrix buffer, two packed buffers read by GS:\n"
+	     "                                               "),
+	Test("Matrix performance, per-triangle matrix in matrix buffer,\n"
+	     "      4x vec4f32 attributes:                   "),
+	Test("Matrix performance, three matrices, 2x uniform Matrix (mat4+mat4) +\n"
+	     "      1x per-triangle matrix read from matrix buffer in VS,\n"
+	     "      two packed attributes unpacked into positions+normals+\n"
+	     "      color+texCoord:                          "),
+	Test("Matrix performance, five matrices, 3x uniform Matrix (mat4+mat4+mat3) +\n"
+	     "      2x per-triangle matrix read from matrix buffer (mat4+mat3)\n"
+	     "      in VS, two packed attributes:            "),
+	Test("Matrix performance, five matrices, 2x single non-changing Matrix in\n"
+	     "      push constants (mat4+mat4) + 1x constant Matrix (mat3) +\n"
+	     "      2x per-triangle Matrix read from matrix buffer (mat4+mat3)\n"
+	     "      in VS, two packed attributes:            "),
+	Test("Matrix performance, five matrices, 2x single non-changing Matrix using\n"
+	     "      specialization constants (mat4+mat4) + 1x constant Matrix\n"
+	     "      (mat3) + 2x per-triangle Matrix read from matrix buffer (mat4+\n"
+	     "      mat3) in VS, two packed attributes:      "),
+	Test("Matrix performance, five matrices, 3x single non-changing Matrix defined\n"
+	     "      by constants in VS code (mat4+mat4+mat3) +\n"
+	     "      2x per-triangle Matrix read from matrix buffer (mat4+mat3),\n"
+	     "      two packed attributes:                   "),
+	Test("Matrix performance, five matrices read in GS,\n"
+	     "      3x uniform Matrix (mat4+mat4+mat3) +\n"
+	     "      2x per-triangle Matrix read from matrix buffer (mat4+mat3)\n"
+	     "      in GS, 2x packed attribute passed through VS:\n"
+	     "                                               "),
+	Test("Matrix performance, five matrices read in GS,\n"
+	     "      3x uniform Matrix (mat4+mat4+mat3) +\n"
+	     "      2x per-triangle Matrix read from matrix buffer (mat4+mat3)\n"
+	     "      in GS, 2x packed data read from buffer in GS:\n"
+	     "                                               "),
 	Test("Phong, texture, four attributes, 5xMatrix"),
 	Test("Phong, texture, four attributes, 3xMatrix"),
 	Test("Phong, texture, 3xMatrix"),
@@ -6447,7 +6502,7 @@ static void recreateSwapchainAndPipeline()
 		cb.draw(3*numTriangles,1,0,0);
 		cb.endRenderPass();
 
-		// attributeless constant output test
+		// VS max throughput (one draw call, attributeless, constant VS output)
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>(),
@@ -6465,7 +6520,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// attributeless input indices test
+		// VS VertexIndex and InstanceIndex forming output (one draw call, attributeless)
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          attributelessInputIndicesPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>(),
@@ -6483,25 +6538,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// attributeless instancing test
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3,numTriangles,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// geometry shader constant output test
+		// GS max throughput (geometry shader constant output, one draw call, attributeless)
 		if(enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          geometryShaderConstantOutputPipeline.get(),simplePipelineLayout.get(),
@@ -6534,7 +6571,25 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// attributeless indirect buffer instancing
+		// Instancing throughput (single triangle instanced, constant VS output, one draw call, attributeless)
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3,numTriangles,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Instancing throughput (single triangle instanced, one indirect draw call, one indirect record, attributeless
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>(),
@@ -6555,55 +6610,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// attributeless indirect buffer per-triangle record
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		if(enabledFeatures.multiDrawIndirect)
-			cb.drawIndirect(indirectBuffer.get(),  // buffer
-			                0,  // offset
-			                numTriangles,  // drawCount
-			                sizeof(vk::DrawIndirectCommand));  // stride
-		else
-			tests[timestampIndex/2].enabled=false;
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// indirect buffer per-triangle record
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		if(enabledFeatures.multiDrawIndirect)
-			cb.drawIndirect(indirectBuffer.get(),  // buffer
-			                0,  // offset
-			                numTriangles,  // drawCount
-			                sizeof(vk::DrawIndirectCommand));  // stride
-		else
-			tests[timestampIndex/2].enabled=false;
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// per-triangle drawCmd in command buffer, attributeless constant output test
+		// Draw command throughput (per-triangle draw command in command buffer, attributeless, constant VS output)
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>(),
@@ -6622,7 +6629,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// per-triangle drawCmd test
+		// Draw command throughput (per-triangle draw command in command buffer, vec4 coordinate attribute)
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
@@ -6641,7 +6648,55 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// coordinate attribute test
+		// Indirect draw command throughput (one indirect draw call, per-triangle record, attributeless)
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          attributelessConstantOutputPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		if(enabledFeatures.multiDrawIndirect)
+			cb.drawIndirect(indirectBuffer.get(),  // buffer
+			                0,  // offset
+			                numTriangles,  // drawCount
+			                sizeof(vk::DrawIndirectCommand));  // stride
+		else
+			tests[timestampIndex/2].enabled=false;
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Indirect draw command throughput (one indirect draw call, per-triangle record, vec4 coordiate attribute)
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		if(enabledFeatures.multiDrawIndirect)
+			cb.drawIndirect(indirectBuffer.get(),  // buffer
+			                0,  // offset
+			                numTriangles,  // drawCount
+			                sizeof(vk::DrawIndirectCommand));  // stride
+		else
+			tests[timestampIndex/2].enabled=false;
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Attribute performance, coordinates in vec4 attribute, one draw call
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
@@ -6659,7 +6714,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// coordinates in buffer test
+		// Buffer performance, coordinates in vec4 buffer, one draw call
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          coordinateBufferPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>(),
@@ -6677,7 +6732,177 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// singleUniformMatrix test
+		// Attribute performance, 2x vec4 attributes, both attributes used
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoAttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Attribute performance, 2x uvec4 attribute unpacked into position+normal+color+texCoord
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedAttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Buffer performance, 2x uvec4 buffers unpacked into position+normal+color+texCoord
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedBuffersPipeline.get(),twoBuffersPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Buffer performance, 2x buffer using 16-byte struct unpacked into
+		// position+normal+color+texCoord
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedBuffersUsingStructPipeline.get(),twoBuffersPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Buffer performance, 2x buffer using 16-byte struct,
+		// accessed multiple times, unpacked into position+normal+color+texCoord
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          twoPackedBuffersUsingStructSlowPipeline.get(),twoBuffersPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Buffer performance, 1x buffer using 32-byte struct unpacked
+		// into position+normal+color+texCoord
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          singlePackedBufferPipeline.get(),oneBufferPipelineLayout.get(),
+		          vector<vk::Buffer>(),
+		          vector<vk::DescriptorSet>{ singlePackedBufferDescriptorSet });
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Attribute performance, 4x attribute (2x vec4f32 + 2x vec4u8,
+		// 2x conversion from vec4u8 in memory to vec4 in VS)
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          two4F32Two4U8AttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
+		                              vec4u8Attributes[0].get(),vec4u8Attributes[1].get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Attribute performance, 4x vec4f32 attributes
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          fourAttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
+		                              vec4Attributes[1].get(),vec4Attributes[2].get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Attribute performance, interleaved 4x vec4f32 in single buffer,
+		// uninterleaving by array of VertexInputAttributeDescription
+		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
+		          interleavedFourAttributesPipeline.get(),simplePipelineLayout.get(),
+		          vector<vk::Buffer>{ interleavedFourAttributes.get() },
+		          vector<vk::DescriptorSet>());
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
+		cb.writeTimestamp(
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+			timestampPool.get(),  // queryPool
+			timestampIndex++      // query
+		);
+		cb.endRenderPass();
+
+		// Matrix performance, one uniform Matrix for all triangles read
+		// by VS, coordinates in vec4 attribute
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          singleMatrixUniformPipeline.get(),oneUniformVSPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
@@ -6695,7 +6920,8 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// matrixBuffer test
+		// Matrix performance, per-triangle Matrix in matrix buffer read
+		// by VS, coordinates in vec4 attribute
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          matrixBufferPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get() },
@@ -6713,7 +6939,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// matrixAttribute test
+		// Matrix performance, per-triangle Matrix in attribute,
+		// coordinates in vec4 attribute, each triangle is instanced
+		// so it receives different matrix
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          matrixAttributePipeline.get(),simplePipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(), transformationMatrixAttribute.get() },
@@ -6732,115 +6960,8 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// two attributes test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          twoAttributesPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// two packed attributes test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          twoPackedAttributesPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// two packed buffers test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          twoPackedBuffersPipeline.get(),twoBuffersPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// two packed buffers using struct test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          twoPackedBuffersUsingStructPipeline.get(),twoBuffersPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// two packed buffers using struct slow test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          twoPackedBuffersUsingStructSlowPipeline.get(),twoBuffersPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// single packed buffer test, no transformations
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          singlePackedBufferPipeline.get(),oneBufferPipelineLayout.get(),
-		          vector<vk::Buffer>(),
-		          vector<vk::DescriptorSet>{ singlePackedBufferDescriptorSet });
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// two packed attributes test, single matrix
+		// Matrix performance, single non-changing Matrix in a buffer,
+		// two packed attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          twoPackedAttributesAndSingleMatrixPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -6858,7 +6979,8 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// two packed attributes test, one matrix
+		// Matrix performance, per-triangle Matrix in matrix buffer,
+		// two packed attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          twoPackedAttributesAndMatrixPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -6876,7 +6998,7 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// two packed buffers test, one matrix
+		// Matrix performance, per-triangle Matrix in matrix buffer, two packed buffers
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          twoPackedBuffersAndMatrixPipeline.get(),threeBuffersPipelineLayout.get(),
 		          vector<vk::Buffer>(),
@@ -6894,7 +7016,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// geometry shader two packed buffers test, one matrix
+		// Matrix performance, geometry shader reading from
+		// two packed buffers and from matrix buffer,
+		// per-triangle matrix
 		if(enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          geometryShaderPipeline.get(),threeBuffersInGSPipelineLayout.get(),
@@ -6927,63 +7051,7 @@ static void recreateSwapchainAndPipeline()
 			);
 		}
 
-		// four attributes (two4F32+two4U8) test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          two4F32Two4U8AttributesPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
-		                              vec4u8Attributes[0].get(),vec4u8Attributes[1].get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// four attributes test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          fourAttributesPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
-		                              vec4Attributes[1].get(),vec4Attributes[2].get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// interleaved four attributes test, no transformation
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          interleavedFourAttributesPipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ interleavedFourAttributes.get() },
-		          vector<vk::DescriptorSet>());
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.draw(3*numTriangles,1,0,0);  // vertexCount,instanceCount,firstVertex,firstInstance
-		cb.writeTimestamp(
-			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-			timestampPool.get(),  // queryPool
-			timestampIndex++      // query
-		);
-		cb.endRenderPass();
-
-		// four attributes test, per-triangle transformation
+		// Matrix performance, 4x vec4f32 attributes, per-triangle matrix in matrix buffer
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          fourAttributesAndMatrixPipeline.get(),oneBufferPipelineLayout.get(),
 		          vector<vk::Buffer>{ coordinateAttribute.get(),vec4Attributes[0].get(),
@@ -7002,7 +7070,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 3 matrices test
+		// Matrix performance, three matrices, 2x uniform Matrix (mat4+mat4) +
+		// 1x per-triangle matrix read from matrix buffer in VS,
+		// two packed attributes unpacked into positions+normals+color+texCoord
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationThreeMatricesPipeline.get(),bufferAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -7020,7 +7090,9 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test
+		// Matrix performance, five matrices, 3x uniform Matrix (mat4+mat4+mat3) +
+		// 2x per-triangle matrix read from matrix buffer (mat4+mat3)
+		// in VS, two packed attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationFiveMatricesPipeline.get(),twoBuffersAndUniformPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -7038,9 +7110,10 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test
-		// while perspective and view matrices are using push constants
-		// and normalViewMatrix is constant (because it does not fit into push constants limit)
+		// Matrix performance, five matrices, 2x single non-changing Matrix in
+		// push constants (mat4+mat4) + 1x constant Matrix (mat3) +
+		// 2x per-triangle Matrix read from matrix buffer (mat4+mat3)
+		// in VS, two packed attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationFiveMatricesPushConstantsPipeline.get(),twoBuffersAndPushConstantsPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -7074,9 +7147,10 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test
-		// while making perspective and view matrices (pseudo)specialization constants
-		// and normalView matrix shader constant
+		// Matrix performance, five matrices, 2x single non-changing Matrix using
+		// specialization constants (mat4+mat4) + 1x constant Matrix
+		// (mat3) + 2x per-triangle Matrix read from matrix buffer (mat4+
+		// mat3) in VS, two packed attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationFiveMatricesSpecializationConstantsPipeline.get(),twoBuffersPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -7094,8 +7168,10 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test
-		// while making perspective, view and normalView matrices shader constants
+		// Matrix performance, five matrices, 3x single non-changing Matrix defined
+		// by constants in VS code (mat4+mat4+mat3) +
+		// 2x per-triangle Matrix read from matrix buffer (mat4+mat3),
+		// two packed attributes
 		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 		          transformationFiveMatricesConstantsPipeline.get(),twoBuffersPipelineLayout.get(),
 		          vector<vk::Buffer>{ packedAttribute1.get(),packedAttribute2.get() },
@@ -7113,7 +7189,10 @@ static void recreateSwapchainAndPipeline()
 		);
 		cb.endRenderPass();
 
-		// transformation 5 matrices test using geometry shader and attributes
+		// Matrix performance, five matrices read in GS,
+		// 3x uniform Matrix (mat4+mat4+mat3) +
+		// 2x per-triangle Matrix read from matrix buffer (mat4+mat3)
+		// in GS, 2x packed attribute passed through VS
 		if(enabledFeatures.geometryShader) {
 			beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
 			          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),twoBuffersAndUniformInGSPipelineLayout.get(),
@@ -8702,7 +8781,7 @@ int main(int argc,char** argv)
 						if(t.enabled) {
 							sort(t.renderingTimes.begin(),t.renderingTimes.end());
 							double time_ns=t.renderingTimes[(t.renderingTimes.size()-1)/2]*timestampPeriod_ns;
-							cout<<"   "<<t.resultString<<": "<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
+							cout<<"   "<<t.resultString<<double(numTriangles)/time_ns*1e9/1e6<<" millions per second"<<endl;
 						}
 						else
 							cout<<"   "<<t.resultString<<": not supported"<<endl;
