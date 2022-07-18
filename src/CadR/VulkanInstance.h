@@ -64,6 +64,7 @@ public:
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _instance.getProcAddr(pName,*this); }
+	inline auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 	inline void destroy(const vk::AllocationCallbacks* pAllocator) const noexcept  { _instance.destroy(pAllocator,*this); }
 	inline vk::Result createDevice(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Device* pDevice) const  { return physicalDevice.createDevice(pCreateInfo,pAllocator,pDevice,*this); }
 	inline vk::Result enumeratePhysicalDevices(uint32_t* pPhysicalDeviceCount,vk::PhysicalDevice* pPhysicalDevices) const  { return _instance.enumeratePhysicalDevices(pPhysicalDeviceCount,pPhysicalDevices,*this); }
@@ -134,14 +135,24 @@ public:
 		vk::Device device;
 		vk::Result result=static_cast<vk::Result>(vkCreateDevice(physicalDevice,reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo),nullptr,reinterpret_cast<VkDevice*>(&device)));
 		vk::ObjectDestroy<vk::NoParent,Dispatch> deleter(nullptr,d);
+	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
 		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
+	#else
+		resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
+		return createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
+	#endif
 	}
 	template<typename Dispatch>
 	typename vk::ResultValueType<vk::UniqueHandle<vk::Device,Dispatch>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator,Dispatch const &d) const  {
 		vk::Device device;
 		vk::Result result=static_cast<vk::Result>(vkCreateDevice(physicalDevice,reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo),reinterpret_cast<const VkAllocationCallbacks*>(static_cast<const vk::AllocationCallbacks*>(allocator)),reinterpret_cast<VkDevice*>(&device)));
 		vk::ObjectDestroy<vk::NoParent,Dispatch> deleter(allocator,d);
+	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
 		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
+	#else
+		resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
+		return createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
+	#endif
 	}
 #endif
 

@@ -1,4 +1,4 @@
-set(APP_NAME 08-helloTriangle)
+set(APP_NAME vulkanComputeShader)
 
 project(${APP_NAME})
 
@@ -10,8 +10,7 @@ set(APP_INCLUDES
    )
 
 set(APP_SHADERS
-    shader.vert
-    shader.frag
+    shader.comp
    )
 
 # dependencies

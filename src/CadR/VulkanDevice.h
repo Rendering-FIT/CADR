@@ -118,6 +118,7 @@ public:
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _device.getProcAddr(pName,*this); }
+	inline auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 	inline void destroy(const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(pAllocator,*this); }
 	inline void getQueue(uint32_t queueFamilyIndex,uint32_t queueIndex,vk::Queue* pQueue) const  { _device.getQueue(queueFamilyIndex,queueIndex,pQueue,*this); }
 	inline vk::Result createRenderPass(const vk::RenderPassCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::RenderPass* pRenderPass) const  { return _device.createRenderPass(pCreateInfo,pAllocator,pRenderPass,*this); }
@@ -141,6 +142,9 @@ public:
 	inline vk::Result createImageView(const vk::ImageViewCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::ImageView* pView) const  { return _device.createImageView(pCreateInfo,pAllocator,pView,*this); }
 	inline void destroyImageView(vk::ImageView imageView,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyImageView(imageView,pAllocator,*this); }
 	inline void destroy(vk::ImageView imageView,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(imageView,pAllocator,*this); }
+	inline vk::Result createSampler(const vk::SamplerCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Sampler* pSampler) const  { return _device.createSampler(pCreateInfo,pAllocator,pSampler,*this); }
+	inline void destroySampler(vk::Sampler sampler,const vk::AllocationCallbacks* pAllocator) const  { _device.destroySampler(sampler,pAllocator,*this); }
+	inline void destroy(vk::Sampler sampler,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(sampler,pAllocator,*this); }
 	inline vk::Result createFramebuffer(const vk::FramebufferCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Framebuffer* pFramebuffer) const  { return _device.createFramebuffer(pCreateInfo,pAllocator,pFramebuffer,*this); }
 	inline void destroyFramebuffer(vk::Framebuffer framebuffer,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyFramebuffer(framebuffer,pAllocator,*this); }
 	inline void destroy(vk::Framebuffer framebuffer,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(framebuffer,pAllocator,*this); }
@@ -194,6 +198,7 @@ public:
 	inline void cmdDraw(vk::CommandBuffer commandBuffer,uint32_t vertexCount,uint32_t instanceCount,uint32_t firstVertex,uint32_t firstInstance) const  { commandBuffer.draw(vertexCount,instanceCount,firstVertex,firstInstance,*this); }
 	inline void cmdDispatch(vk::CommandBuffer commandBuffer,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatch(groupCountX,groupCountY,groupCountZ,*this); }
 	inline void cmdDispatchIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset) const  { commandBuffer.dispatchIndirect(buffer,offset,*this); }
+	inline void cmdDispatchBase(vk::CommandBuffer commandBuffer,uint32_t baseGroupX,uint32_t baseGroupY,uint32_t baseGroupZ,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatchBase(baseGroupX,baseGroupY,baseGroupZ,groupCountX,groupCountY,groupCountZ,*this); }
 	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,uint32_t memoryBarrierCount,const vk::MemoryBarrier* pMemoryBarriers,uint32_t bufferMemoryBarrierCount,const vk::BufferMemoryBarrier* pBufferMemoryBarriers,uint32_t imageMemoryBarrierCount,const vk::ImageMemoryBarrier* pImageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarrierCount,pMemoryBarriers,bufferMemoryBarrierCount,pBufferMemoryBarriers,imageMemoryBarrierCount,pImageMemoryBarriers,*this); }
 	inline void cmdSetDepthBias(vk::CommandBuffer commandBuffer,float constantFactor,float clamp,float slopeFactor) const  { commandBuffer.setDepthBias(constantFactor,clamp,slopeFactor,*this); }
 	inline void cmdSetLineWidth(vk::CommandBuffer commandBuffer,float lineWidth) const  { commandBuffer.setLineWidth(lineWidth,*this); }
@@ -245,6 +250,9 @@ public:
 	inline vk::ResultValueType<vk::ImageView>::type createImageView(const vk::ImageViewCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageView(createInfo,allocator,*this); }
 	inline void destroyImageView(vk::ImageView imageView,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyImageView(imageView,allocator,*this); }
 	inline void destroy(vk::ImageView imageView,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(imageView,allocator,*this); }
+	inline vk::ResultValueType<vk::Sampler>::type createSampler(const vk::SamplerCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSampler(createInfo,allocator,*this); }
+	inline void destroySampler(vk::Sampler sampler,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroySampler(sampler,allocator,*this); }
+	inline void destroy(vk::Sampler sampler,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(sampler,allocator,*this); }
 	inline vk::ResultValueType<vk::Framebuffer>::type createFramebuffer(const vk::FramebufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFramebuffer(createInfo,allocator,*this); }
 	inline void destroyFramebuffer(vk::Framebuffer framebuffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyFramebuffer(framebuffer,allocator,*this); }
 	inline void destroy(vk::Framebuffer framebuffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(framebuffer,allocator,*this); }
@@ -363,10 +371,15 @@ public:
 	inline vk::ResultValueType<void>::type resetFences(vk::ArrayProxy<const vk::Fence> fences) const  { return _device.resetFences(fences,*this); }
 	inline vk::ResultValueType<void>::type queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::ResultValueType<void>::type waitIdle() const  { return _device.waitIdle(*this); }
-	inline vk::ResultValueType<std::pair<std::vector<uint64_t>, uint64_t>>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos) const {
+	inline vk::ResultValueType<std::pair<std::vector<uint64_t>, uint64_t>>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t> timestamps) const {
 		std::pair<std::vector<uint64_t>, uint64_t> data(std::piecewise_construct, std::forward_as_tuple(timestampInfos.size()), std::forward_as_tuple(0));
 		vk::Result result = static_cast<vk::Result>(vkGetCalibratedTimestampsEXT(_device, timestampInfos.size(), reinterpret_cast<const VkCalibratedTimestampInfoEXT*>(timestampInfos.data()), data.first.data(), &data.second));
+	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
 		return createResultValue(result, data, "vk::Device::getCalibratedTimestampsEXT");
+	#else
+		resultCheck(result, "vk::Device::getCalibratedTimestampsEXT");
+		return createResultValueType(result, data);
+	#endif
 	}
 	inline vk::ResultValueType<vk::QueryPool>::type createQueryPool(const vk::QueryPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createQueryPool(createInfo,allocator,*this); }
 	inline void destroyQueryPool(vk::QueryPool queryPool,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(queryPool,allocator,*this); }
@@ -380,6 +393,7 @@ public:
 	inline vk::ResultValueType<vk::UniqueHandle<vk::DeviceMemory,VulkanDevice>>::type allocateMemoryUnique(const vk::MemoryAllocateInfo& allocateInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.allocateMemoryUnique(allocateInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Image,VulkanDevice>>::type createImageUnique(const vk::ImageCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::ImageView,VulkanDevice>>::type createImageViewUnique(const vk::ImageViewCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageViewUnique(createInfo,allocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::Sampler,VulkanDevice>>::type createSamplerUnique(const vk::SamplerCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSamplerUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Framebuffer,VulkanDevice>>::type createFramebufferUnique(const vk::FramebufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFramebufferUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::ShaderModule,VulkanDevice>>::type createShaderModuleUnique(const vk::ShaderModuleCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createShaderModuleUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::DescriptorSetLayout,VulkanDevice>>::type createDescriptorSetLayoutUnique(const vk::DescriptorSetLayoutCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createDescriptorSetLayoutUnique(createInfo,allocator,*this); }
@@ -502,6 +516,8 @@ public:
 	PFN_vkDestroyImage vkDestroyImage;
 	PFN_vkCreateImageView vkCreateImageView;
 	PFN_vkDestroyImageView vkDestroyImageView;
+	PFN_vkCreateSampler vkCreateSampler;
+	PFN_vkDestroySampler vkDestroySampler;
 	PFN_vkCreateFramebuffer vkCreateFramebuffer;
 	PFN_vkDestroyFramebuffer vkDestroyFramebuffer;
 	PFN_vkCreateShaderModule vkCreateShaderModule;
@@ -546,6 +562,7 @@ public:
 	PFN_vkCmdDraw vkCmdDraw;
 	PFN_vkCmdDispatch vkCmdDispatch;
 	PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect;
+	PFN_vkCmdDispatchBase vkCmdDispatchBase;
 	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
 	PFN_vkCmdSetDepthBias vkCmdSetDepthBias;
 	PFN_vkCmdSetLineWidth vkCmdSetLineWidth;

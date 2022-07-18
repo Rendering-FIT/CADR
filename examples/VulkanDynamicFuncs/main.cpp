@@ -32,6 +32,7 @@ public:
 	void reset();
 
 	struct Funcs {
+		auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 		PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
 		PFN_vkCreateInstance vkCreateInstance = nullptr;
 	} funcs;
@@ -122,6 +123,7 @@ public:
 	void reset();
 
 	struct Funcs {
+		auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 		PFN_vkDestroyInstance vkDestroyInstance = nullptr;
 		PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices = nullptr;
 		PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties = nullptr;
@@ -206,6 +208,7 @@ public:
 	void reset();
 
 	struct Funcs {
+		auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 		PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr = nullptr;
 		PFN_vkDestroyDevice vkDestroyDevice = nullptr;
 		PFN_vkCreateDescriptorPool vkCreateDescriptorPool;

@@ -41,6 +41,7 @@ public:
 	std::vector<vk::ExtensionProperties> enumerateInstanceExtensionProperties() const;
 	std::vector<vk::LayerProperties> enumerateInstanceLayerProperties() const;
 
+	auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 	PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 	PFN_vkCreateInstance vkCreateInstance;
 	PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion;

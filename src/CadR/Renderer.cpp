@@ -177,7 +177,7 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						4  // descriptorCount
+						3  // descriptorCount
 					),
 				}.data()
 			)
@@ -319,8 +319,14 @@ void Renderer::init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDe
 			nullptr  // pInheritanceInfo
 		)
 	);
+	_device->cmdResetQueryPool(
+		_readTimestampCommandBuffer,  // commandBuffer
+		_readTimestampQueryPool,  // queryPool
+		0,  // firstQuery
+		1  // queryCount
+	);
 	_device->cmdWriteTimestamp(
-		_readTimestampCommandBuffer, // commandBuffer
+		_readTimestampCommandBuffer,  // commandBuffer
 		vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 		_readTimestampQueryPool,  // queryPool
 		0  // query

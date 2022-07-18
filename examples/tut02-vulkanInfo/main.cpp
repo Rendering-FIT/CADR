@@ -16,6 +16,7 @@ int main(int,char**)
 		// some are introduced by Vulkan 1.1.
 		// vkEnumerateInstanceVersion() is available on Vulkan 1.1+ only. On Vulkan 1.0, it is nullptr.)
 		struct VkFunc {
+			auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 			PFN_vkEnumerateInstanceVersion vkEnumerateInstanceVersion=PFN_vkEnumerateInstanceVersion(vk::Instance().getProcAddr("vkEnumerateInstanceVersion"));
 			PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR;
 			PFN_vkGetPhysicalDeviceDisplayPropertiesKHR vkGetPhysicalDeviceDisplayPropertiesKHR;

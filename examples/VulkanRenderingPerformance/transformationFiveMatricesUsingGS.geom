@@ -31,8 +31,8 @@ out gl_PerVertex {
 };
 
 void main() {
-	mat4 matrix1=transformationMatrix[vertexIndex[0]/3];
-	mat3 matrix2=normalMatrix[vertexIndex[0]/3];
+	mat4 matrix1 = projectionMatrix * viewMatrix * transformationMatrix[vertexIndex[0]/3];
+	mat3 matrix2 = normalViewMatrix * normalMatrix[vertexIndex[0]/3];
 	for(uint i=0; i<3; i++) {
 		uvec4 data1=packedData1[vertexIndex[i]];
 		uvec4 data2=packedData2[vertexIndex[i]];

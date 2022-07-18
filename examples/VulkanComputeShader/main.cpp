@@ -12,12 +12,18 @@ static vk::UniqueInstance instance;
 // (they need to be placed in particular (not arbitrary) order;
 // this is because of their destruction order from bottom to up)
 static vk::PhysicalDevice physicalDevice;
-static uint32_t graphicsQueueFamily;
+static uint32_t computeQueueFamily;
 static vk::UniqueDevice device;
-static vk::Queue graphicsQueue;
+static vk::Queue computeQueue;
 static vk::UniqueCommandPool commandPool;
 static vk::UniqueCommandBuffer commandBuffer;
-static vk::UniqueFence renderingFinishedFence;
+static vk::UniqueFence computeFinishedFence;
+
+// shader code in SPIR-V binary
+static const uint32_t computeShaderSpirv[]={
+#include "shader.comp.spv"
+};
+
 
 
 /// main function of the application
@@ -33,11 +39,11 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"05-commandSubmission",  // application name
+						"vulkanComputeShader",   // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
-						VK_API_VERSION_1_0,      // api version
+						VK_API_VERSION_1_1,      // api version <-- need to be 1.1 for vkCmdDispatchBase
 					},
 					0,nullptr,  // no layers
 					0,nullptr,  // no extensions
@@ -52,7 +58,7 @@ int main(int,char**)
 			// select queue for graphics rendering
 			vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
 			for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i<c; i++) {
-				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
+				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eCompute) {
 					compatibleDevices.emplace_back(pd,i);
 					break;
 				}
@@ -71,7 +77,7 @@ int main(int,char**)
 		if(compatibleDevices.empty())
 			throw runtime_error("No compatible devices.");
 		physicalDevice=get<0>(compatibleDevices.front());
-		graphicsQueueFamily=get<1>(compatibleDevices.front());
+		computeQueueFamily=get<1>(compatibleDevices.front());
 		cout<<"Using device:\n"
 		      "   "<<physicalDevice.getProperties().deviceName<<endl;
 
@@ -84,27 +90,66 @@ int main(int,char**)
 					array{                    // pQueueCreateInfos
 						vk::DeviceQueueCreateInfo{
 							vk::DeviceQueueCreateFlags(),  // flags
-							graphicsQueueFamily,  // queueFamilyIndex
+							computeQueueFamily,  // queueFamilyIndex
 							1,                    // queueCount
 							&(const float&)1.f,   // pQueuePriorities
 						},
 					}.data(),
 					0,nullptr,  // no layers
-					0,nullptr,  // number of enabled extensions, enabled extension names
+					1,array{"VK_KHR_shader_non_semantic_info"}.data(),  // number of enabled extensions, enabled extension names <-- VK_KHR_shader_non_semantic_info is required by debugPrintfEXT()
 					nullptr,    // enabled features
 				}
 			);
 
 		// get queues
-		graphicsQueue=device->getQueue(graphicsQueueFamily,0);
+		computeQueue=device->getQueue(computeQueueFamily,0);
 
+		// shader
+        vk::UniqueShaderModule computeShader =
+            device->createShaderModuleUnique(
+                    vk::ShaderModuleCreateInfo(
+                        vk::ShaderModuleCreateFlags(),  // flags
+                        sizeof(computeShaderSpirv),  // codeSize
+                        computeShaderSpirv  // pCode
+                    )
+                );
+
+		// pipeline
+		vk::UniquePipelineLayout computePipelineLayout =
+			device->createPipelineLayoutUnique(
+				vk::PipelineLayoutCreateInfo{
+					vk::PipelineLayoutCreateFlags(),  // flags
+					0,       // setLayoutCount
+					nullptr, // pSetLayouts
+					0,       // pushConstantRangeCount
+					nullptr  // pPushConstantRanges
+				}
+			);
+		vk::UniquePipeline computePipeline =
+			device->createComputePipelineUnique(
+				nullptr,  // pipelineCache
+				vk::ComputePipelineCreateInfo(  // createInfo
+					vk::PipelineCreateFlags(),  // flags <-- use this for dispatchBase(0,0,0,...) 
+					//vk::PipelineCreateFlagBits::eDispatchBase,  // flags <-- use this for dispatchBase(1,1,1,...)
+					vk::PipelineShaderStageCreateInfo(  // stage
+						vk::PipelineShaderStageCreateFlags(),  // flags
+						vk::ShaderStageFlagBits::eCompute,  // stage
+						computeShader.get(),  // module
+						"main",  // pName
+						nullptr  // pSpecializationInfo
+					),
+					computePipelineLayout.get(),  // layout
+					nullptr,  // basePipelineHandle
+					-1  // basePipelineIndex
+				)
+			).value;
 
 		// command pool
 		commandPool=
 			device->createCommandPoolUnique(
 				vk::CommandPoolCreateInfo(
 					vk::CommandPoolCreateFlags(),  // flags
-					graphicsQueueFamily  // queueFamilyIndex
+					computeQueueFamily  // queueFamilyIndex
 				)
 			);
 
@@ -126,12 +171,17 @@ int main(int,char**)
 			)
 		);
 
+		commandBuffer->bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline.get());
+		//commandBuffer->dispatch(1,1,1); // <-- this works (debugPrintfEXT does its job)
+		commandBuffer->dispatchBase(0,0,0,1,1,1);  // <-- this does not work (debugPrintfEXT does print nothing)
+		//commandBuffer->dispatchBase(1,1,1,1,1,1);  // <-- this does not work as well
+
 		// end command buffer
 		commandBuffer->end();
 
 
 		// fence
-		renderingFinishedFence=
+		computeFinishedFence=
 			device->createFenceUnique(
 				vk::FenceCreateInfo{
 					vk::FenceCreateFlags()  // flags
@@ -140,19 +190,19 @@ int main(int,char**)
 
 		// submit work
 		cout<<"Submiting work..."<<endl;
-		graphicsQueue.submit(
+		computeQueue.submit(
 			vk::SubmitInfo(  // submits
 				0,nullptr,nullptr,       // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
 				1,&commandBuffer.get(),  // commandBufferCount, pCommandBuffers
 				0,nullptr                // signalSemaphoreCount, pSignalSemaphores
 			),
-			renderingFinishedFence.get()  // fence
+			computeFinishedFence.get()  // fence
 		);
 
 		// wait for the work
 		cout<<"Waiting for the work..."<<endl;
 		vk::Result r=device->waitForFences(
-			renderingFinishedFence.get(),  // fences (vk::ArrayProxy)
+			computeFinishedFence.get(),  // fences (vk::ArrayProxy)
 			VK_TRUE,       // waitAll
 			uint64_t(3e9)  // timeout (3s)
 		);

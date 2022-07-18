@@ -15,6 +15,7 @@ class Renderer;
 
 
 struct CADR_EXPORT StateSetDrawableContainer {
+
 	StateSet* stateSet;
 	GeometryMemory* geometryMemory;
 	std::vector<DrawableGpuData> drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
@@ -46,8 +47,17 @@ public:
 	std::vector<vk::DescriptorSet> descriptorSets;
 	std::vector<uint32_t> dynamicOffsets;
 
-	// list of functions that will be called during StateSet recording into command buffer
-	std::vector<std::function<void(StateSet*, vk::CommandBuffer)>> callList;
+	// list of functions that will be called during the preparation for StateSet's command buffer recording
+	std::vector<std::function<void(StateSet*)>> prepareCallList;
+
+	// list of functions that will be called during StateSet recording into the command buffer;
+	// the function is called only if the StateSet is recorded, e.g. only if it contains any drawables
+	std::vector<std::function<void(StateSet*, vk::CommandBuffer)>> recordCallList;
+
+	// list of functions that will be called during recording of each
+	// StateSetDrawableContainer of the StateSet into the command buffer;
+	// the function is called only on containers that are recorded, e.g. only if they contain any drawables
+	std::vector<std::function<void(StateSetDrawableContainer*, vk::CommandBuffer)>> recordContainerCallList;
 
 	// parent-child relation
 	static const ParentChildListOffsets parentChildListOffsets;
@@ -72,6 +82,7 @@ public:
 	// getters
 	Renderer* renderer() const;
 	GeometryStorage* geometryStorage() const;
+	const std::vector<std::unique_ptr<StateSetDrawableContainer>>& drawableContainerList() const;
 
 	// drawable methods
 	size_t numDrawables() const;
@@ -112,6 +123,7 @@ inline StateSet::~StateSet()  { assert(_numDrawables==0 && "Do not destroy State
 
 inline Renderer* StateSet::renderer() const  { return _renderer; }
 inline GeometryStorage* StateSet::geometryStorage() const  { return _geometryStorage; }
+inline const std::vector<std::unique_ptr<StateSetDrawableContainer>>& StateSet::drawableContainerList() const  { return _drawableContainerList; }
 
 inline size_t StateSet::numDrawables() const  { return _numDrawables; }
 inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData,geometryMemoryId); }

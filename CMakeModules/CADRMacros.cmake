@@ -149,7 +149,8 @@ macro(add_shaders nameList depsList)
 		                   MAIN_DEPENDENCY ${name}
 		                   OUTPUT ${name}.spv
 		                   COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} -V -x ${CMAKE_CURRENT_SOURCE_DIR}/${name} -o ${name}.spv)
-		source_group("Shaders" FILES ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
+		source_group("Shaders" FILES ${name})
+		source_group("Shaders/SPIR-V" FILES ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 		list(APPEND ${depsList} ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 	endforeach()
 endmacro()

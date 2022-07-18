@@ -1,5 +1,5 @@
 
-# find Vulkan include path
+# find Vulkan includes
 find_path(Vulkan_INCLUDE_DIR
 	NAMES
 		vulkan/vulkan.h
@@ -8,7 +8,6 @@ find_path(Vulkan_INCLUDE_DIR
 		/usr/include
 		/usr/local/include
 )
-
 
 # find Vulkan library
 find_library(Vulkan_LIBRARY
@@ -24,7 +23,7 @@ find_library(Vulkan_LIBRARY
 		/usr/local/lib
 )
 
-# find Vulkan library
+# find glslangValidator
 find_program(Vulkan_GLSLANG_VALIDATOR_EXECUTABLE
 	NAMES
 		glslangValidator
@@ -34,11 +33,13 @@ find_program(Vulkan_GLSLANG_VALIDATOR_EXECUTABLE
 		/usr/bin
 )
 
+
 set(Vulkan_LIBRARIES ${Vulkan_LIBRARY})
 set(Vulkan_INCLUDE_DIRS ${Vulkan_INCLUDE_DIR})
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Vulkan DEFAULT_MSG Vulkan_LIBRARY Vulkan_INCLUDE_DIR)
+
 
 # Vulkan::Vulkan target
 if(Vulkan_FOUND AND NOT TARGET Vulkan::Vulkan)
@@ -66,7 +67,7 @@ macro(add_shaders nameList depsList)
 		add_custom_command(COMMENT "Converting ${name} to spir-v..."
 		                   MAIN_DEPENDENCY ${name}
 		                   OUTPUT ${name}.spv
-		                   COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} -V -x ${CMAKE_CURRENT_SOURCE_DIR}/${name} -o ${name}.spv)
+		                   COMMAND ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE} --target-env vulkan1.0 -x ${CMAKE_CURRENT_SOURCE_DIR}/${name} -o ${name}.spv)
 		source_group("Shaders" FILES ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 		list(APPEND ${depsList} ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 	endforeach()

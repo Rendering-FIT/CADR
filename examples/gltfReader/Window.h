@@ -119,6 +119,7 @@ public:
 	const std::vector<vk::ImageView> swapchainImageViews() const;
 	const std::vector<vk::Framebuffer>& framebuffers() const;
 
+	auto getVkHeaderVersion() const { return VK_HEADER_VERSION; }
 #ifdef _WIN32
 	PFN_vkCreateWin32SurfaceKHR vkCreateWin32SurfaceKHR;
 #else

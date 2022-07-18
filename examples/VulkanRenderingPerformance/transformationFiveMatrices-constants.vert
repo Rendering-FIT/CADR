@@ -11,11 +11,9 @@ layout(std430,binding=1) restrict readonly buffer NormalMatrix {
 	mat3 normalMatrix[];
 };
 
-layout(binding=2) uniform UniformBufferObject {
-	mat4 viewMatrix;
-	mat4 projectionMatrix;
-	mat3 normalViewMatrix;
-};
+const mat4 viewMatrix = mat4(1.);
+const mat4 projectionMatrix = mat4(1.);
+const mat3 normalViewMatrix = mat3(1.);
 
 out gl_PerVertex {
 	vec4 gl_Position;

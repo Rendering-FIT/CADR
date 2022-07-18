@@ -3,7 +3,6 @@ set(examples_folder_name "Examples")
 
 set(PACKAGES
 	tut02-vulkanInfo
-	tut04-swapChain
 	tut05-resizableWindow
 	tut06-helloTriangle
 	VulkanDepthBuffer
@@ -12,15 +11,10 @@ set(PACKAGES
 	VulkanAttributesAndUniforms
 	VulkanRenderingPerformance
 	VulkanDynamicFuncs
+	VulkanComputeShader
 	gltfReader
 	)
-if(UNIX)
-	list(INSERT PACKAGES 2 tut03-helloWindowX11)
-elseif(WIN32)
-	list(INSERT PACKAGES 2 tut03-helloWindowWin)
-endif()
 
 foreach(pkg ${PACKAGES})
 	add_subdirectory(${pkg})
 endforeach()
-add_subdirectory(VulkanTutorial)

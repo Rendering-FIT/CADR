@@ -63,6 +63,11 @@ void StateSet::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32
 
 size_t StateSet::prepareRecording()
 {
+	// call user-registered functions
+	for(auto& f : prepareCallList)
+		f(this);
+
+	// recursively call child-StateSets and process number of drawables
 	size_t numDrawables = _numDrawables;
 	for(StateSet& ss : childList)
 		numDrawables += ss.prepareRecording();
@@ -96,7 +101,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 	}
 
 	// call user-registered functions
-	for(auto& f : callList)
+	for(auto& f : recordCallList)
 		f(this, commandBuffer);
 
 	if(_numDrawables != 0) {
@@ -110,6 +115,10 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 			size_t numDrawables = container->drawableDataList.size();
 			if(numDrawables == 0)
 				continue;
+
+			// call user-registered functions
+			for(auto& f : recordContainerCallList)
+				f(container, commandBuffer);
 
 			// copy drawable data
 			memcpy(
