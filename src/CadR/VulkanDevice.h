@@ -371,7 +371,7 @@ public:
 	inline vk::ResultValueType<void>::type resetFences(vk::ArrayProxy<const vk::Fence> fences) const  { return _device.resetFences(fences,*this); }
 	inline vk::ResultValueType<void>::type queueWaitIdle(vk::Queue queue) const  { return queue.waitIdle(*this); }
 	inline vk::ResultValueType<void>::type waitIdle() const  { return _device.waitIdle(*this); }
-	inline vk::ResultValueType<std::pair<std::vector<uint64_t>, uint64_t>>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t> timestamps) const {
+	inline vk::ResultValueType<std::pair<std::vector<uint64_t>, uint64_t>>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t>) const {
 		std::pair<std::vector<uint64_t>, uint64_t> data(std::piecewise_construct, std::forward_as_tuple(timestampInfos.size()), std::forward_as_tuple(0));
 		vk::Result result = static_cast<vk::Result>(vkGetCalibratedTimestampsEXT(_device, timestampInfos.size(), reinterpret_cast<const VkCalibratedTimestampInfoEXT*>(timestampInfos.data()), data.first.data(), &data.second));
 	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
