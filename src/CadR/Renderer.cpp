@@ -340,10 +340,10 @@ void Renderer::finalize()
 	if(_device==nullptr)
 		return;
 
-	assert((_emptyStorage==nullptr && _emptyGeometryMemory==nullptr) ||
-	       (_emptyGeometryMemory->vertexAllocationManager().numIDs()==1 &&
-	        _emptyGeometryMemory->indexAllocationManager().numIDs()==1 &&
-	        _emptyGeometryMemory->primitiveSetAllocationManager().numIDs()==1) &&
+	assert(((_emptyStorage==nullptr && _emptyGeometryMemory==nullptr) ||
+	        (_emptyGeometryMemory->vertexAllocationManager().numIDs()==1 &&
+	         _emptyGeometryMemory->indexAllocationManager().numIDs()==1 &&
+	         _emptyGeometryMemory->primitiveSetAllocationManager().numIDs()==1)) &&
 	       "Renderer::_emptyStorage is not empty. It is the programmer error to allocate anything there.");
 
 	// destroy attrib storages, except emptyStorage
@@ -420,7 +420,7 @@ size_t Renderer::beginFrame()
 		_inProgressFrameInfoList.emplace_back();
 		auto& [stats,timestampPool] = _inProgressFrameInfoList.back();
 		stats.frameNumber = _frameNumber;
-			
+
 		// get calibrated timestamps
 		if(_useCalibratedTimestamps) {
 			array<uint64_t,2> ts;
