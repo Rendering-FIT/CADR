@@ -12,12 +12,15 @@ int main(int,char**)
 	instance.getProcAddr<PFN_vkCreateDevice>(string("a"));
 	instance.getProcAddr<PFN_vkCreateDevice>(string("a").c_str());
 	instance.enumeratePhysicalDevices();
-	instance.enumeratePhysicalDevices(vector<vk::PhysicalDevice>::allocator_type());
+	vector<vk::PhysicalDevice>::allocator_type a1;
+	instance.enumeratePhysicalDevices(a1);
 	instance.getPhysicalDeviceProperties2(vk::PhysicalDevice());
 	instance.enumerateDeviceExtensionProperties(vk::PhysicalDevice());
-	instance.enumerateDeviceExtensionProperties(vk::PhysicalDevice(),string(""),vector<vk::ExtensionProperties>::allocator_type());
+	vector<vk::ExtensionProperties>::allocator_type a2;
+	instance.enumerateDeviceExtensionProperties(vk::PhysicalDevice(), string(""), a2);
 	instance.getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice());
-	instance.getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice(),vector<vk::QueueFamilyProperties>::allocator_type());
+	vector<vk::QueueFamilyProperties>::allocator_type a3;
+	instance.getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice(), a3);
 
 	// VulkanInstance unique methods
 	VulkanDevice device;
@@ -29,24 +32,32 @@ int main(int,char**)
 	device.getProcAddr<PFN_vkCreateDevice>(string("a"));
 	device.getProcAddr<PFN_vkCreateDevice>(string("a").c_str());
 	device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo());
-	device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(),vector<vk::DescriptorSet>::allocator_type());
-	device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
-	device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
-	device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
-	device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	vector<vk::DescriptorSet>::allocator_type a4;
+	device.allocateDescriptorSets(vk::DescriptorSetAllocateInfo(), a4);
+	device.createGraphicsPipelines(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}});
+	vector<vk::Pipeline>::allocator_type a5;
+	device.createGraphicsPipelines(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}}, nullptr, a5);
+	device.createComputePipelines(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}});
+	vector<vk::Pipeline>::allocator_type a6;
+	device.createComputePipelines(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}}, nullptr, a6);
 	device.allocateCommandBuffers(vk::CommandBufferAllocateInfo());
-	device.allocateCommandBuffers(vk::CommandBufferAllocateInfo(),vector<vk::CommandBuffer>::allocator_type());
-	device.cmdPushConstants<int>(vk::CommandBuffer(),vk::PipelineLayout(),vk::ShaderStageFlags(),0,array{int()});
+	vector<vk::CommandBuffer>::allocator_type a7;
+	device.allocateCommandBuffers(vk::CommandBufferAllocateInfo(), a7);
+	device.cmdPushConstants<int>(vk::CommandBuffer(), vk::PipelineLayout(), vk::ShaderStageFlags(), 0, array{int()});
 
 	// VulkanDevice unique methods
 	device.allocateDescriptorSetsUnique(vk::DescriptorSetAllocateInfo());
-	device.allocateDescriptorSetsUnique(vk::DescriptorSetAllocateInfo(),allocator<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>>());
-	device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
-	device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
-	device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
-	device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	allocator<vk::UniqueHandle<vk::DescriptorSet,VulkanDevice>> a8;
+	device.allocateDescriptorSetsUnique(vk::DescriptorSetAllocateInfo(), a8);
+	device.createGraphicsPipelinesUnique(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}});
+	allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>> a9;
+	device.createGraphicsPipelinesUnique(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}}, nullptr, a9);
+	device.createComputePipelinesUnique(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}});
+	allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>> a10;
+	device.createComputePipelinesUnique(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}}, nullptr, a10);
 	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo());
-	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo(),allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>>());
+	allocator<vk::UniqueHandle<vk::CommandBuffer,VulkanDevice>> a11;
+	device.allocateCommandBuffersUnique(vk::CommandBufferAllocateInfo(), a11);
 
 	// test return values
 	vk::Result r1;
@@ -56,18 +67,22 @@ int main(int,char**)
 	vk::UniqueHandle<vk::Pipeline,VulkanDevice> r5;
 	r1=device.createGraphicsPipelines(vk::PipelineCache{},0,nullptr,nullptr,nullptr);
 	r2=device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
-	r2=device.createGraphicsPipelines(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	vector<vk::Pipeline>::allocator_type a12;
+	r2=device.createGraphicsPipelines(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}}, nullptr, a12);
 	r3=device.createGraphicsPipeline(vk::PipelineCache{},vk::GraphicsPipelineCreateInfo{});
-	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}});
-	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(),array{vk::GraphicsPipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}});
+	allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>> a13;
+	r4=device.createGraphicsPipelinesUnique(vk::PipelineCache(), array{vk::GraphicsPipelineCreateInfo{}}, nullptr, a13);
 	r5=device.createGraphicsPipelineUnique(vk::PipelineCache(),vk::GraphicsPipelineCreateInfo{});
 	if(r1!=vk::Result::eSuccess)  return 1;
 	r1=device.createComputePipelines(vk::PipelineCache{},0,nullptr,nullptr,nullptr);
 	r2=device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
-	r2=device.createComputePipelines(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,vector<vk::Pipeline>::allocator_type());
+	vector<vk::Pipeline>::allocator_type a14;
+	r2=device.createComputePipelines(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}}, nullptr, a14);
 	r3=device.createComputePipeline(vk::PipelineCache{},vk::ComputePipelineCreateInfo{});
-	r4=device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}});
-	r4=device.createComputePipelinesUnique(vk::PipelineCache(),array{vk::ComputePipelineCreateInfo{}},nullptr,allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>>());
+	r4=device.createComputePipelinesUnique(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}});
+	allocator<vk::UniqueHandle<vk::Pipeline,VulkanDevice>> a15;
+	r4=device.createComputePipelinesUnique(vk::PipelineCache(), array{vk::ComputePipelineCreateInfo{}}, nullptr, a15);
 	r5=device.createComputePipelineUnique(vk::PipelineCache(),vk::ComputePipelineCreateInfo{});
 	if(r1!=vk::Result::eSuccess)  return 1;
 

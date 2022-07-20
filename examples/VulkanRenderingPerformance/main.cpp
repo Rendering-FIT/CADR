@@ -2161,7 +2161,7 @@ static void initTests()
 			sharedVertexPerformanceText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&>(stringstream() << "         strip length " << n << ": ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "         strip length " << n << ": ").str();
 				s.append(28-s.size(), ' ');
 				return s;
 			}(n).c_str(),
@@ -2205,7 +2205,7 @@ static void initTests()
 			indexedSharedVertexPerformanceText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&>(stringstream() << "         strip length " << n << ": ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "         strip length " << n << ": ").str();
 				s.append(28-s.size(), ' ');
 				return s;
 			}(n).c_str(),
@@ -2248,7 +2248,7 @@ static void initTests()
 			triStripPerformanceText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&>(stringstream() << "         strip length " << n << ": ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "         strip length " << n << ": ").str();
 				s.append(28-s.size(), ' ');
 				return s;
 			}(n).c_str(),
@@ -2292,7 +2292,7 @@ static void initTests()
 			indexedTriStripPerformanceText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&>(stringstream() << "         strip length " << n << ": ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "         strip length " << n << ": ").str();
 				s.append(28-s.size(), ' ');
 				return s;
 			}(n).c_str(),
@@ -2339,10 +2339,10 @@ static void initTests()
 			n,
 			[](uint32_t n) {
 				string s = 
-					(n==0) ? static_cast<stringstream&>(stringstream()
+					(n==0) ? static_cast<stringstream&&>(stringstream()
 						         << "         strip length 1000, all strips rendered by single\n"
 						            "            draw command: ").str()
-					       : static_cast<stringstream&>(stringstream()
+					       : static_cast<stringstream&&>(stringstream()
 						         << "         strip length " << n << ":   ").str();
 				if(s.size()<28)
 					s.append(28-s.size(), ' ');
@@ -2399,7 +2399,7 @@ static void initTests()
 			primitiveRestartPerStripDrawCallPerformanceText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&>(stringstream() << "         strip length " << n << ": ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "         strip length " << n << ": ").str();
 				s.append(28-s.size(), ' ');
 				return s;
 			}(n).c_str(),

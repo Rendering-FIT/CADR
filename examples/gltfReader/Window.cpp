@@ -7,6 +7,7 @@
 #ifndef _WIN32
 # include <X11/Xutil.h>
 #endif
+#include <limits>
 #include <stdexcept>
 
 using namespace std;
