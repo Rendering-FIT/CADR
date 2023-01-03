@@ -13,11 +13,14 @@ set(APP_SHADERS
 	attributelessConstantOutput.vert
 	attributelessInputIndices.vert
 	coordinateAttribute.vert
-	coordinateBuffer.vert
+	coordinate4Buffer.vert
+	coordinate3Buffer.vert
 	singleUniformMatrix.vert
 	matrixAttribute.vert
 	matrixBuffer.vert
 	twoAttributes.vert
+	twoBuffers.vert
+	twoBuffer3.vert
 	twoPackedAttributes.vert
 	twoPackedBuffers.vert
 	twoPackedBuffersUsingStruct.vert
@@ -27,6 +30,8 @@ set(APP_SHADERS
 	twoPackedAttributesAndMatrix.vert
 	twoPackedBuffersAndMatrix.vert
 	fourAttributes.vert
+	fourBuffers.vert
+	fourBuffer3.vert
 	fourAttributesAndMatrix.vert
 	geometryShaderConstantOutput.vert
 	geometryShaderConstantOutput.geom
