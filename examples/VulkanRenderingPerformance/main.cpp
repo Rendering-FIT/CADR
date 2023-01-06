@@ -9653,7 +9653,7 @@ int main(int argc,char** argv)
 				}
 			}
 			else
-				physicalDeviceIndex=size_t(max(atoi(argv[1]),0));
+				physicalDeviceIndex=size_t(max(atoi(argv[i]),0));
 		}
 
 		// init Vulkan and open window,
