@@ -393,7 +393,8 @@ static float timestampPeriod_ns=0;
 static const uint32_t numTrianglesStandard=uint32_t(1*1e6);
 static const uint32_t numTrianglesReduced=uint32_t(1*1e5);
 static uint32_t numTriangles;
-static bool quick=false;
+static bool minimalTest=false;
+static bool longTest=false;
 static vk::Extent2D renderingExtent(1366,768);  // HD resultion (it should always fit to FullHD screen, even with window captions, taskbar, etc.)
 static const unsigned triangleSize=0;
 static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad*.vert is still drawing to the clip space (by gl_InstanceIndex)
@@ -4003,7 +4004,7 @@ static void init(size_t deviceIndex)
 
 	// number of triangles
 	// (reduce the number on integrated graphics as it may easily run out of memory)
-	if(quick)
+	if(minimalTest)
 		numTriangles=1000;
 	else {
 		if(gpuMemory>=2.8*1024*1024*1024) // >=2.8GiB
@@ -9478,7 +9479,7 @@ static void testMemoryAllocationPerformance(vk::BufferCreateFlags bufferFlags,un
 		};
 
 	// perform test
-	constexpr unsigned repeatCount=3;
+	unsigned repeatCount=(longTest)?30:3;
 	auto testData=
 		!(bufferFlags&vk::BufferCreateFlagBits::eSparseBinding)
 			? vector{
@@ -9628,12 +9629,25 @@ int main(int argc,char** argv)
 			if(argv[i]==nullptr || argv[i][0]==0)
 				continue;
 			if(argv[i][0]=='-') {
-				if(strcmp(argv[i],"--sparse-none")==0)  sparseMode=SPARSE_NONE; else
-				if(strcmp(argv[i],"--sparse-binding")==0)  sparseMode=SPARSE_BINDING; else
-				if(strcmp(argv[i],"--sparse-residency")==0)  sparseMode=SPARSE_RESIDENCY; else
-				if(strcmp(argv[i],"--sparse-residency-aliased")==0)  sparseMode=SPARSE_RESIDENCY_ALIASED;
-				if(strcmp(argv[i],"--quick")==0)  quick=true;
-				else {
+				if(strcmp(argv[i],"--long")==0)  longTest = true;
+				else if(strcmp(argv[i],"--minimal")==0)  minimalTest=true;
+				else if(strcmp(argv[i],"--sparse-none")==0)  sparseMode=SPARSE_NONE;
+				else if(strcmp(argv[i],"--sparse-binding")==0)  sparseMode=SPARSE_BINDING;
+				else if(strcmp(argv[i],"--sparse-residency")==0)  sparseMode=SPARSE_RESIDENCY;
+				else if(strcmp(argv[i],"--sparse-residency-aliased")==0)  sparseMode=SPARSE_RESIDENCY_ALIASED;
+				else if(strcmp(argv[i],"--help")==0 || strcmp(argv[i],"-h")==0) {
+					cout<<"Usage:\n"
+					      "   "<<argv[0]<<" [options] [gpu index]\n"
+					      "   --long - perform long test; testing time is extended to 20 second\n"
+					      "            from the default of 2 seconds\n"
+					      "   --minimal - perform minimal test; for debugging purposes,\n"
+					      "               number of triangles used for testing is reduced\n"
+					      "   --sparse-none - sparse mode used during the main test\n"
+					      "   --sparse-binding - sparse mode used during the main test\n"
+					      "   --sparse-residency - sparse mode used during the main test\n"
+					      "   --sparse-residency-aliased - sparse mode used during the main test\n"
+					      "   --help or -h - prints the usage information"<<endl;
+				} else {
 					cout<<"Invalid argument: "<<argv[i]<<endl;
 					exit(99);
 				}
@@ -9754,7 +9768,7 @@ int main(int argc,char** argv)
 
 			// print the result at the end
 			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
-			if(totalMeasurementTime>2.) {
+			if(totalMeasurementTime>((longTest)?20.:2.)) {
 				cout<<"Triangle throughput:"<<endl;
 				for(size_t i=0; i<tests.size(); i++) {
 					Test& t = tests[i];
