@@ -20,6 +20,10 @@ set(CADR_PUBLIC_HEADERS
     AllocationManagers.h
     AttribSizeList.h
     CallbackList.h
+    CircularAllocationMemory.h
+    DataAllocation.h
+    DataMemory.h
+    DataStorage.h
     Drawable.h
     Exceptions.h
     FrameInfo.h
@@ -32,6 +36,9 @@ set(CADR_PUBLIC_HEADERS
     Renderer.h
     RenderPass.h
     StagingBuffer.h
+    StagingData.h
+    StagingDataAllocation.h
+    StagingMemory.h
     StagingManager.h
     StateSet.h
     VulkanDevice.h
@@ -46,6 +53,9 @@ set(CADR_PRIVATE_HEADERS
 # sources
 set(CADR_SOURCES
     AllocationManagers.cpp
+    DataAllocation.cpp
+    DataMemory.cpp
+    DataStorage.cpp
     Drawable.cpp
     Geometry.cpp
     GeometryMemory.cpp
@@ -55,6 +65,9 @@ set(CADR_SOURCES
     Renderer.cpp
     RenderPass.cpp
     StagingBuffer.cpp
+    StagingData.cpp
+    StagingDataAllocation.cpp
+    StagingMemory.cpp
     StagingManager.cpp
     StateSet.cpp
     VulkanDevice.cpp

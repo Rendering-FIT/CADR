@@ -35,29 +35,40 @@ protected:
 	uint32_t _highestGeometryMemoryId = ~0u;
 	std::vector<uint32_t> _freeGeometryMemoryIds;
 
+	// GeometryMemory allocations
+	uint64_t _vertexMemoryFractionUnorm;
+	uint64_t _indexMemoryFractionUnorm;
+	uint64_t _primitiveSetMemoryFractionUnorm;
+	friend GeometryMemory;
+
 public:
 
-	GeometryStorage(const AttribSizeList& attribSizeList, size_t initialVertexCapacity = 0);
-	GeometryStorage(Renderer* r, const AttribSizeList& attribSizeList, size_t initialVertexCapacity = 0);
-	GeometryStorage(const AttribSizeList& attribSizeList, size_t initialVertexCapacity, size_t initialIndexCapacity, size_t initialPrimitiveSetCapacity);
-	GeometryStorage(Renderer* r, const AttribSizeList& attribSizeList, size_t initialVertexCapacity, size_t initialIndexCapacity, size_t initialPrimitiveSetCapacity);
+	// construction and destruction
+	GeometryStorage(const AttribSizeList& attribSizeList);
+	GeometryStorage(Renderer* r, const AttribSizeList& attribSizeList);
 	~GeometryStorage();
 
+	// deleted constructors and operators
 	GeometryStorage() = delete;
 	GeometryStorage(const GeometryStorage&) = delete;
 	GeometryStorage& operator=(const GeometryStorage&) = delete;
 	GeometryStorage(GeometryStorage&&) = delete;
 	GeometryStorage& operator=(GeometryStorage&&) = delete;
 
+	// getters
 	std::vector<std::unique_ptr<GeometryMemory>>& geometryMemoryList();  ///< Returns GeometryMemory list. It is generally better to use standard Geometry's alloc/realloc/free methods than trying to modify the list directly.
 	const std::vector<std::unique_ptr<GeometryMemory>>& geometryMemoryList() const;  ///< Returns GeometryMemory list.
 	const AttribSizeList& attribSizeList() const;
 	size_t numAttribs() const;
 	Renderer* renderer() const;
 
+	// methods
 	void render();
 	void cancelAllAllocations();
 
+protected:
+
+	// GeometryMemory interface
 	uint32_t allocGeometryMemoryId() noexcept;
 	void freeGeometryMemoryId(uint32_t id) noexcept;
 

@@ -71,6 +71,32 @@ GeometryMemory::GeometryMemory(GeometryStorage* geometryStorage, size_t vertexCa
 }
 
 
+// multiplication of uint64_t by Unorm
+// (the algorithm core idea comes from Yann Collet, see https://stackoverflow.com/questions/25095741/how-can-i-multiply-64-bit-operands-and-get-128-bit-result-portably)
+static uint64_t multByUnorm(uint64_t lhs, uint64_t rhsUnorm)
+{
+	// cross products
+	uint64_t lo_lo = (lhs & 0xffffffff) * (rhsUnorm & 0xffffffff);
+	uint64_t hi_lo = (lhs >> 32)        * (rhsUnorm & 0xffffffff);
+	uint64_t lo_hi = (lhs & 0xffffffff) * (rhsUnorm >> 32);
+	uint64_t hi_hi = (lhs >> 32)        * (rhsUnorm >> 32);
+
+	// add products together
+	uint64_t cross = (lo_lo >> 32) + (hi_lo & 0xffffffff) + lo_hi;
+	return (hi_lo >> 32) + (cross >> 32)        + hi_hi;
+}
+
+
+GeometryMemory::GeometryMemory(GeometryStorage* geometryStorage, size_t memorySize)
+	: GeometryMemory(
+		geometryStorage,  // geometryStorage
+		multByUnorm(memorySize, geometryStorage->_vertexMemoryFractionUnorm),  // vertexCapacity
+		multByUnorm(memorySize, geometryStorage->_indexMemoryFractionUnorm),  // indexCapacity
+		multByUnorm(memorySize, geometryStorage->_primitiveSetMemoryFractionUnorm))  // primitiveSetCapacity
+{
+}
+
+
 GeometryMemory::~GeometryMemory()
 {
 	// destroy staging stuff

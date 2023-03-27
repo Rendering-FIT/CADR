@@ -11,7 +11,7 @@ namespace std { namespace filesystem { using std::experimental::filesystem::path
 namespace CadR {
 
 
-class CADR_EXPORT VulkanLibrary final {
+class CADR_EXPORT VulkanLibrary {
 protected:
 	void* _lib = nullptr;
 	static const std::filesystem::path _defaultName;

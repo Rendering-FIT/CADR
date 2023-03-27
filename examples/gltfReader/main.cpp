@@ -427,8 +427,9 @@ int main(int argc,char** argv) {
 				size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
 				//size_t bufferViewLength=bv["byteLength"];
 				size_t stride=mapGetWithDefault(bv,"byteStride",0);
-				if(stride!=0)
-					throw gltfError("Unsupported functionality: Stride not zero.");
+				uint32_t attribSize=getStride(componentType,type);
+				if(stride!=0 && stride!=attribSize)
+					throw gltfError("Unsupported functionality: Stride is not zero and not size of the attribute.");
 
 				// buffer
 				auto b=buffers.at(bufferIndex);
@@ -436,7 +437,6 @@ int main(int argc,char** argv) {
 				//size_t bufferLength=b["byteLength"];
 
 				// attribSizeList
-				uint32_t attribSize=getStride(componentType,type);
 				attribSizeList.push_back(attribSize);
 
 				// attribFormatList
@@ -755,7 +755,13 @@ int main(int argc,char** argv) {
 				};
 
 			// create Drawable
-			drawableDB.emplace_back(g,0,0,ss);
+			drawableDB.emplace_back(
+				g,  // geometry
+				0,  // primitiveSetIndex
+				0,  // shaderDataSize
+				1,  // numInstances
+				ss  // stateSet
+			);
 		}
 
 		// upload all staging buffers

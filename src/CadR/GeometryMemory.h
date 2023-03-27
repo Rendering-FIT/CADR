@@ -45,7 +45,7 @@ protected:
 public:
 
 	// construction and destruction
-	GeometryMemory(GeometryStorage* geometryStorage, size_t vertexCapacity);
+	GeometryMemory(GeometryStorage* geometryStorage, size_t memorySize);
 	GeometryMemory(GeometryStorage* geometryStorage, size_t vertexCapacity, size_t indexCapacity, size_t primitiveSetCapacity);
 	~GeometryMemory();
 
@@ -103,8 +103,6 @@ public:
 
 // inline methods
 namespace CadR {
-
-inline GeometryMemory::GeometryMemory(GeometryStorage* geometryStorage, size_t vertexCapacity) : GeometryMemory(geometryStorage, vertexCapacity, vertexCapacity*6, vertexCapacity/8)  {}
 
 inline ArrayAllocationManager& GeometryMemory::vertexAllocationManager()  { return _vertexAllocationManager; }
 inline const ArrayAllocationManager& GeometryMemory::vertexAllocationManager() const  { return _vertexAllocationManager; }

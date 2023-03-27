@@ -18,13 +18,13 @@ struct PrimitiveSetGpuData;
  *
  *  CADR is designed to handle very large number of Geometry objects rendered in real-time.
  *  Hundreds of thousands geometries should be reachable on nowadays hi-end systems.
- *  This is important for many CAD applications, as CAD scenes are often composed
- *  of high number of small parts of various detail.
+ *  This is important for many CAD applications because CAD scenes are often composed
+ *  of very high number of parts of various detail.
  *
  *  Drawable class is used to render Geometry using particular StateSet
  *  and instanced by transformation list.
  */
-class CADR_EXPORT Geometry final {
+class CADR_EXPORT Geometry {
 protected:
 
 	GeometryMemory* _geometryMemory;   ///< Pointer to VertexMemory and indirectly to VertexStorage where vertex attributes are stored.

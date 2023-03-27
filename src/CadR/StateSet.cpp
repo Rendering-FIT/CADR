@@ -14,7 +14,7 @@ const ParentChildListOffsets StateSet::parentChildListOffsets{
 };
 
 
-void StateSetDrawableContainer::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData)
+void StateSetDrawableContainer::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData) noexcept
 {
 	d._stateSetDrawableContainer = this;
 	d._indexIntoStateSet = uint32_t(drawableDataList.size());
@@ -24,7 +24,7 @@ void StateSetDrawableContainer::appendDrawableUnsafe(Drawable& d, DrawableGpuDat
 }
 
 
-void StateSetDrawableContainer::removeDrawableUnsafe(Drawable& d)
+void StateSetDrawableContainer::removeDrawableUnsafe(Drawable& d) noexcept
 {
 	uint32_t i = d._indexIntoStateSet;
 	size_t lastIndex = drawableDataList.size()-1;
@@ -52,7 +52,7 @@ void StateSet::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32
 	if(_drawableContainerList.size() <= geometryMemoryId) {
 		_drawableContainerList.reserve(geometryMemoryId+1);
 		while(_drawableContainerList.size() <= geometryMemoryId)
-			_drawableContainerList.push_back(make_unique<StateSetDrawableContainer>(
+			_drawableContainerList.emplace_back(make_unique<StateSetDrawableContainer>(
 				this, _geometryStorage->geometryMemoryList()[_drawableContainerList.size()].get()));
 	}
 
@@ -64,14 +64,17 @@ void StateSet::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32
 size_t StateSet::prepareRecording()
 {
 	// call user-registered functions
+	_skipRecording = !_forceRecording;
 	for(auto& f : prepareCallList)
 		f(this);
 
 	// recursively call child-StateSets and process number of drawables
 	size_t numDrawables = _numDrawables;
-	for(StateSet& ss : childList)
+	for(StateSet& ss : childList) {
 		numDrawables += ss.prepareRecording();
-	_skipRecording = (numDrawables==0);
+		_skipRecording = _skipRecording && ss._skipRecording;
+	}
+	_skipRecording = _skipRecording && (numDrawables == 0);
 	return numDrawables;
 }
 
@@ -130,14 +133,16 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 			// bind attributes
 			GeometryMemory* m = container->geometryMemory;
 			size_t numAttribs = m->numAttribs();
-			vector<vk::Buffer> buffers(numAttribs, m->buffer());
-			device->cmdBindVertexBuffers(
-				commandBuffer,  // commandBuffer
-				0,  // firstBinding
-				uint32_t(numAttribs),  // bindingCount
-				buffers.data(),  // pBuffers
-				m->attribOffsets().data()  // pOffsets
-			);
+			if(numAttribs > 0) {
+				vector<vk::Buffer> buffers(numAttribs, m->buffer());
+				device->cmdBindVertexBuffers(
+					commandBuffer,  // commandBuffer
+					0,  // firstBinding
+					uint32_t(numAttribs),  // bindingCount
+					buffers.data(),  // pBuffers
+					m->attribOffsets().data()  // pOffsets
+				);
+			}
 
 			// bind indices
 			device->cmdBindIndexBuffer(
@@ -151,7 +156,8 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 			device->cmdDrawIndexedIndirect(
 				commandBuffer,  // commandBuffer
 				_renderer->drawIndirectBuffer(),  // buffer
-				drawableCounter*sizeof(vk::DrawIndexedIndirectCommand),  // offset
+				_renderer->drawIndirectCommandOffset() +  // offset
+					drawableCounter * sizeof(vk::DrawIndexedIndirectCommand),
 				uint32_t(numDrawables),  // drawCount
 				sizeof(vk::DrawIndexedIndirectCommand)  // stride
 			);

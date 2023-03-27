@@ -1,5 +1,6 @@
 #include <CadR/GeometryStorage.h>
 #include <CadR/GeometryMemory.h>
+#include <CadR/PrimitiveSet.h>
 #include <CadR/Renderer.h>
 #include <CadR/StagingBuffer.h>
 #include <CadR/VulkanDevice.h>
@@ -12,33 +13,33 @@ using namespace CadR;
 
 
 
-GeometryStorage::GeometryStorage(const AttribSizeList& attribSizeList, size_t initialVertexCapacity)
-	: GeometryStorage(Renderer::get(), attribSizeList, initialVertexCapacity, initialVertexCapacity*6, initialVertexCapacity/8)
+GeometryStorage::GeometryStorage(const AttribSizeList& attribSizeList)
+	: GeometryStorage(Renderer::get(), attribSizeList)
 {
 }
 
 
-GeometryStorage::GeometryStorage(Renderer* r, const AttribSizeList& attribSizeList, size_t initialVertexCapacity)
-	: GeometryStorage(r, attribSizeList, initialVertexCapacity, initialVertexCapacity*6, initialVertexCapacity/8)
-{
-}
-
-
-GeometryStorage::GeometryStorage(const AttribSizeList& attribSizeList, size_t initialVertexCapacity,
-	                             size_t initialIndexCapacity, size_t initialPrimitiveSetCapacity)
-	: GeometryStorage(Renderer::get(), attribSizeList, initialVertexCapacity, initialIndexCapacity, initialPrimitiveSetCapacity)
-{
-}
-
-
-GeometryStorage::GeometryStorage(Renderer* renderer, const AttribSizeList& attribSizeList,
-	                             size_t initialVertexCapacity, size_t initialIndexCapacity, size_t initialPrimitiveSetCapacity)
+GeometryStorage::GeometryStorage(Renderer* renderer, const AttribSizeList& attribSizeList)
 	: _renderer(renderer)
 	, _attribSizeList(attribSizeList)
 {
-	if(initialVertexCapacity!=0 || initialIndexCapacity!=0 || initialPrimitiveSetCapacity!=0)
-		_geometryMemoryList.emplace_back(make_unique<GeometryMemory>(
-			this, initialVertexCapacity, initialIndexCapacity, initialPrimitiveSetCapacity));
+	// compute amount of memory that each vertex consumes
+	uint64_t vertexAttribSize = accumulate(attribSizeList.begin(), attribSizeList.end(), uint64_t(0));
+	uint64_t vertexIndexSize = sizeof(uint32_t) * 6;
+	uint64_t vertexPrimitiveSetSize = sizeof(PrimitiveSetGpuData) / 8;
+	static_assert(sizeof(PrimitiveSetGpuData) % 8 == 0, "Size of PrimitiveSetGpuData must be divisible by 8, or redesign algorithm bellow.");
+	uint64_t vertexSize = vertexAttribSize + vertexIndexSize + vertexPrimitiveSetSize;
+
+	// compute maximum number of vertices in the largest buffer (2^64 bytes) 
+	uint64_t maxVertices = UINT64_MAX / vertexSize;
+	if(UINT64_MAX % vertexSize == vertexSize-1)  // if there is vertexSize-1 reminder, one more vertex will fit into 0x10000000000000000 (UINT64_MAX+1) sized buffer
+		maxVertices++;
+
+	// compute fractions of memory consumed by vertices, by indices and by primitiveSets
+	// (this is stored as Unorm, e.g. although number is 0..2^64-1, it represents the value in 0..1 range)
+	_vertexMemoryFractionUnorm = vertexAttribSize * maxVertices;
+	_indexMemoryFractionUnorm = vertexIndexSize * maxVertices;
+	_primitiveSetMemoryFractionUnorm = vertexPrimitiveSetSize * maxVertices;
 }
 
 

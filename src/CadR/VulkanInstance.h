@@ -8,7 +8,7 @@ namespace CadR {
 class VulkanLibrary;
 
 
-class CADR_EXPORT VulkanInstance final {
+class CADR_EXPORT VulkanInstance {
 protected:
 	vk::Instance _instance;
 	uint32_t _version;

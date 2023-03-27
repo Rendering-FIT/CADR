@@ -9,7 +9,7 @@ namespace CadR {
 class VulkanInstance;
 
 
-class CADR_EXPORT VulkanDevice final {
+class CADR_EXPORT VulkanDevice {
 protected:
 	vk::Device _device;
 	uint32_t _version;

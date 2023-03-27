@@ -124,17 +124,21 @@ tuple<vk::PhysicalDevice,uint32_t,uint32_t> VulkanInstance::chooseDeviceAndQueue
 		// skip devices without surface formats and presentation modes
 		uint32_t formatCount;
 		uint32_t presentationModeCount;
-	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
+#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
 		vk::createResultValue(
 			pd.getSurfaceFormatsKHR(surface,&formatCount,nullptr,*this),
 			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
 		vk::createResultValue(
 			pd.getSurfacePresentModesKHR(surface,&presentationModeCount,nullptr,*this),
 			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
-	#else
-		resultCheck(pd.getSurfaceFormatsKHR(surface,&formatCount,nullptr,*this),"vk::PhysicalDevice::getSurfaceFormatsKHR");
-		resultCheck(pd.getSurfacePresentModesKHR(surface,&presentationModeCount,nullptr,*this),"vk::PhysicalDevice::getSurfacePresentModesKHR");
-	#endif
+#else
+		vk::resultCheck(
+			pd.getSurfaceFormatsKHR(surface,&formatCount,nullptr,*this),
+			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
+		vk::resultCheck(
+			pd.getSurfacePresentModesKHR(surface,&presentationModeCount,nullptr,*this),
+			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
+#endif
 		if(formatCount==0||presentationModeCount==0)
 			continue;
 
