@@ -4,6 +4,17 @@
 
 using namespace CadR;
 
+vk::PhysicalDeviceFeatures2 VulkanDevice::_defaultFeatures;
+vk::PhysicalDeviceVulkan12Features vulkan12Features;
+static struct CadR::VulkanDeviceStaticInitializer {
+	VulkanDeviceStaticInitializer() {
+		VulkanDevice::_defaultFeatures.pNext = &vulkan12Features;
+		VulkanDevice::_defaultFeatures.features.shaderInt64 = true;
+		vulkan12Features.bufferDeviceAddress = true;
+	}
+} initializer;
+
+
 
 void VulkanDevice::init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,vk::Device device)
 {
@@ -140,12 +151,12 @@ void VulkanDevice::init(VulkanInstance& instance,
 
 
 void VulkanDevice::init(VulkanInstance& instance,
-                          vk::PhysicalDevice physicalDevice,
-                          uint32_t graphicsQueueFamily,
-                          uint32_t presentationQueueFamily,
-                          const vk::ArrayProxy<const char*const> enabledLayers,
-                          const vk::ArrayProxy<const char*const> enabledExtensions,
-                          const vk::PhysicalDeviceFeatures2* enabledFeatures)
+                        vk::PhysicalDevice physicalDevice,
+                        uint32_t graphicsQueueFamily,
+                        uint32_t presentationQueueFamily,
+                        const vk::ArrayProxy<const char*const> enabledLayers,
+                        const vk::ArrayProxy<const char*const> enabledExtensions,
+                        const vk::PhysicalDeviceFeatures2* enabledFeatures)
 {
 	size_t numQueues=(graphicsQueueFamily==presentationQueueFamily)?1:2;
 	std::array<vk::DeviceQueueCreateInfo,2> queueInfos = {

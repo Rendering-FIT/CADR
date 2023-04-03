@@ -81,7 +81,7 @@ inline vk::DeviceMemory DataMemory::memory() const  { return _memory; }
 inline vk::DeviceAddress DataMemory::bufferDeviceAddress() const  { return _bufferStartAddress; }
 inline size_t DataMemory::usedBytes() const  { return _usedBytes; }
 inline DataAllocation* DataMemory::alloc(size_t numBytes, MoveCallback& moveCallback, void* moveCallbackUserData)  { return allocInternal(numBytes, numBytes, this, moveCallback, moveCallbackUserData); }
-inline void DataMemory::free(DataAllocation* a)  { a->dataMemory().freeInternal(a); }
+inline void DataMemory::free(DataAllocation* a)  { if(a) a->dataMemory().freeInternal(a); }
 
 // functions moved from DataAllocation.h to avoid circular include dependency
 // (allowed by include CadR/DataAllocation.h on the top of this file)

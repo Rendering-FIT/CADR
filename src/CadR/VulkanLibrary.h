@@ -57,7 +57,7 @@ private:
 // inline and template methods
 inline const std::filesystem::path& VulkanLibrary::defaultName()  { return _defaultName; }
 inline VulkanLibrary::VulkanLibrary()  { vkGetInstanceProcAddr=nullptr; vkCreateInstance=nullptr; }
-inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath)  { load(libPath); }
+inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath) : VulkanLibrary()  { load(libPath); }
 inline VulkanLibrary::~VulkanLibrary()  { unload(); }
 
 template<typename T> T VulkanLibrary::getProcAddr(const char* name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name)); }

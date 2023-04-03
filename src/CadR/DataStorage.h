@@ -1,7 +1,7 @@
 #pragma once
 
 #include <array>
-#include <memory>
+#include <list>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 #include <boost/intrusive/list.hpp>
@@ -44,7 +44,7 @@ public:
 protected:
 
 	Renderer* _renderer;  ///< Rendering context associated with the DataStorage.
-	std::vector<std::unique_ptr<DataMemory>> _dataMemoryList;
+	std::vector<DataMemory*> _dataMemoryList;
 	DataMemory* _firstAllocMemory = nullptr;
 	DataMemory* _secondAllocMemory = nullptr;
 	std::array<StagingMemory*, 3> _stagingMemoryList = {};
@@ -58,7 +58,7 @@ public:
 
 	// construction and destruction
 	DataStorage();
-	DataStorage(Renderer* r);
+	DataStorage(Renderer& r);
 	~DataStorage() noexcept;
 	void destroy() noexcept;
 
@@ -69,8 +69,8 @@ public:
 	DataStorage& operator=(DataStorage&&) = delete;
 
 	// getters
-	std::vector<std::unique_ptr<DataMemory>>& dataMemoryList();  ///< Returns DataMemory list. It is generally better to use standard Geometry's alloc/realloc/free methods than trying to modify the list directly.
-	const std::vector<std::unique_ptr<DataMemory>>& dataMemoryList() const;  ///< Returns DataMemory list.
+	std::vector<DataMemory*>& dataMemoryList();  ///< Returns DataMemory list. It is generally better to use standard Geometry's alloc/realloc/free methods than trying to modify the list directly.
+	const std::vector<DataMemory*>& dataMemoryList() const;  ///< Returns DataMemory list.
 	Renderer* renderer() const;
 
 	// methods
@@ -91,8 +91,8 @@ public:
 #include <CadR/DataMemory.h>
 namespace CadR {
 
-inline std::vector<std::unique_ptr<DataMemory>>& DataStorage::dataMemoryList()  { return _dataMemoryList; }
-inline const std::vector<std::unique_ptr<DataMemory>>& DataStorage::dataMemoryList() const  { return _dataMemoryList; }
+inline std::vector<DataMemory*>& DataStorage::dataMemoryList()  { return _dataMemoryList; }
+inline const std::vector<DataMemory*>& DataStorage::dataMemoryList() const  { return _dataMemoryList; }
 inline Renderer* DataStorage::renderer() const  { return _renderer; }
 
 inline void DataStorage::free(DataAllocation* a)  { DataMemory::free(a); }

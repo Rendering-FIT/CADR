@@ -220,16 +220,13 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 template<typename Allocation, size_t AllocationsPerBlock>
 void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocation(Allocation* a)
 {
-	if(a == nullptr)
-		return;
-
 	SpecialAllocation* aThis = reinterpret_cast<SpecialAllocation*>(a);
 	SpecialAllocation* aPrev = reinterpret_cast<SpecialAllocation*>(a - 1);
 	assert(aThis->magicValue < UINT64_MAX-2 && "Allocation is already freed.");
 
 	// mark this allocation as free by setting its magicValue member to UINT64_MAX;
-	// the value UINT64_MAX-1 is used instead of UINT64_MAX if all the allocations
-	// until the end of the current AllocationBlock are free,
+	// the value UINT64_MAX-1 is used instead of UINT64_MAX if all previous allocations
+	// from the beginning of the current AllocationBlock are free (e.g. they are marked with UINT64_MAX-1),
 	// the value UINT64_MAX-2 is used as stopper for some algorithms on the Allocation
 	// that will be allocated as the next one
 	if(aPrev->magicValue != UINT64_MAX-1)
@@ -246,25 +243,27 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 		// iterate over following free allocations having magicValue set to UINT64_MAX,
 		// iterating possibly until the end of AllocationBlock,
 		// while setting magicValue to UINT64_MAX-1
-		Allocation* p = a+1;
-		SpecialAllocation* pThis = reinterpret_cast<SpecialAllocation*>(p);
-		SpecialAllocation* pPrev = reinterpret_cast<SpecialAllocation*>(p-1);
-		while(pThis->magicValue == UINT64_MAX) {
-			pThis->magicValue = UINT64_MAX-1;
-			pThis->index = pPrev->index+1;
-			pThis->circularAllocationMemory = m;
-			pPrev = pThis;
-			p++;
-			pThis = reinterpret_cast<SpecialAllocation*>(p);
+		Allocation* fwd = a+1;
+		SpecialAllocation* fwdThis = reinterpret_cast<SpecialAllocation*>(fwd);
+		SpecialAllocation* fwdPrev = reinterpret_cast<SpecialAllocation*>(fwd-1);
+		while(fwdThis->magicValue == UINT64_MAX) {
+			fwdThis->magicValue = UINT64_MAX-1;
+			fwdThis->index = fwdPrev->index+1;
+			fwdThis->circularAllocationMemory = m;
+			fwdPrev = fwdThis;
+			fwd++;
+			fwdThis = reinterpret_cast<SpecialAllocation*>(fwd);
 		}
 
-		// update _usedBlock[1|2]StartAddress
+		// test if freeing the first allocation in the block
+		// (on the address of _usedBlock[1|2]StartAddress)
 		if(aThis->address == m->_usedBlock2StartAddress || aThis->address == m->_usedBlock1StartAddress)
 		{
-			if(pThis->magicValue == UINT64_MAX-1 && pThis->index == AllocationsPerBlock-1) {
-				// find the _usedBlock[1|2]StartAddress inside the following AllocationBlock
-				p = reinterpret_cast<Allocation*>(reinterpret_cast<LastAllocation*>(pThis)->nextAllocation);
+			// test if free block extends until the end of the current AllocationBlock
+			if(fwdThis->magicValue == UINT64_MAX-1 && fwdThis->index == AllocationsPerBlock-1) {
+				Allocation* p = reinterpret_cast<Allocation*>(reinterpret_cast<LastAllocation*>(fwdThis)->nextAllocation);
 				if(p) {
+					// find the _usedBlock[1|2]StartAddress inside the following AllocationBlock
 					p++;
 					while(reinterpret_cast<SpecialAllocation*>(p)->magicValue >= UINT64_MAX-1)
 						p++;
@@ -274,17 +273,36 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 						m->_usedBlock1StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
 				}
 				else {
-					// no following AllocationBlock and nothing remains in the previous one -> everything is freed
-					if(aThis->address == m->_usedBlock2StartAddress)
-						m->_usedBlock2StartAddress = m->_usedBlock2EndAddress;
-					else if(aThis->address == m->_usedBlock1StartAddress)
-						m->_usedBlock1StartAddress = m->_usedBlock1EndAddress;
+					// no following AllocationBlock and nothing remains in this one -> everything is freed
+					if(aThis->address == m->_usedBlock2StartAddress) {
+						if(m->_usedBlock1EndAddress == m->_bufferStartAddress) {
+							m->_usedBlock2EndAddress = m->_bufferStartAddress;
+							m->_usedBlock2StartAddress = m->_bufferStartAddress;
+							m->_usedBlock2EndAllocation = m->_allocationBlockList2.back().allocations.begin() + 1;
+						}
+						else {
+							m->_usedBlock2EndAddress = m->_usedBlock1EndAddress;
+							m->_usedBlock2StartAddress = m->_usedBlock1StartAddress;
+							m->_usedBlock1EndAddress = m->_bufferStartAddress;
+							m->_usedBlock1StartAddress = m->_bufferStartAddress;
+							m->_allocationBlockList2.swap(m->_allocationBlockList1);
+							m->_usedBlock2EndAllocation = m->_usedBlock1EndAllocation;
+							m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
+						}
+						return;
+					}
+					else {  // aThis->address == m->_usedBlock1StartAddress
+						m->_usedBlock1EndAddress = m->_bufferStartAddress;
+						m->_usedBlock1StartAddress = m->_bufferStartAddress;
+						m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
+						return;
+					}
 				}
 			}
 			else {
 				// find the _usedBlock[1|2]StartAddress inside this AllocationBlock
 				if(aThis->address == m->_usedBlock2StartAddress) {
-					m->_usedBlock2StartAddress = pThis->address;
+					m->_usedBlock2StartAddress = fwdThis->address;
 					if(m->_usedBlock2EndAddress == m->_usedBlock2StartAddress) {
 						if(m->_usedBlock1EndAddress == m->_bufferStartAddress) {
 							m->_usedBlock2EndAddress = m->_bufferStartAddress;
@@ -303,8 +321,8 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 						return;
 					}
 				}
-				else if(aThis->address == m->_usedBlock1StartAddress) {
-					m->_usedBlock1StartAddress = pThis->address;
+				else {  // aThis->address == m->_usedBlock1StartAddress
+					m->_usedBlock1StartAddress = fwdThis->address;
 					if(m->_usedBlock1EndAddress == m->_usedBlock1StartAddress) {
 						m->_usedBlock1EndAddress = m->_bufferStartAddress;
 						m->_usedBlock1StartAddress = m->_bufferStartAddress;
@@ -316,8 +334,8 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 		}
 
 		// if all allocations are free in AllocationBlock, destroy AllocationBlock
-		if(pThis->magicValue == UINT64_MAX-1 && pThis->index == AllocationsPerBlock-1) {
-			AllocationBlock* b = reinterpret_cast<AllocationBlock*>(reinterpret_cast<uint8_t*>(pThis) -
+		if(fwdThis->magicValue == UINT64_MAX-1 && fwdThis->index == AllocationsPerBlock-1) {
+			AllocationBlock* b = reinterpret_cast<AllocationBlock*>(reinterpret_cast<uint8_t*>(fwdThis) -
 				size_t(&reinterpret_cast<AllocationBlock*>(nullptr)->allocations[AllocationsPerBlock-1]));
 			m->destroyAllocationBlock(*b);
 		}
@@ -370,6 +388,7 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 	if(_allocationBlockRecycleList.empty() ||
 	   &_allocationBlockRecycleList.front() == &_allocationBlockRecycleList.back())
 	{
+		b.unlink();
 		_allocationBlockRecycleList.push_back(b);
 	}
 	else
@@ -432,18 +451,23 @@ template<typename Allocation, size_t AllocationsPerBlock>
 void CircularAllocationMemory<Allocation, AllocationsPerBlock>::freeInternal(Allocation* a)
 {
 	// get nextAddress
+	// (the address of the next allocation)
 	uint64_t nextAddress;
 	Allocation* n = a + 1;
 	auto magicValue = reinterpret_cast<SpecialAllocation*>(n)->magicValue;
 	if(magicValue != UINT64_MAX-1) {
-		// if magicValue < UINT64_MAX-2 => it is valid allocation and we return its address,
-		// if magicValue == UINT64_MAX-2 => it is next-to-be-allocated allocation and we return the address it contains,
-		// if magicValue == UINT64_MAX => it is freed allocation and we return its original address
+		// set nextAddress from next allocation's address field
+		//
+		// Following cases are handled here:
+		// - if magicValue <  UINT64_MAX-2 => it is valid allocation, so we return its address
+		// - if magicValue == UINT64_MAX-2 => it is next-to-be-allocated allocation and we return the address it contains
+		// - if magicValue == UINT64_MAX   => it is freed allocation and we return its original address
 		nextAddress = reinterpret_cast<SpecialAllocation*>(n)->address;
 	}
 	else {
-		// if magicValue == UINT64_MAX-1 => it is freed allocation and, since the previous allocation is still not freed,
-		// UINT64_MAX value might indicate only the last element in AllocationBlock
+		// handle the end of the AllocationBlock
+		//
+		// if magicValue == UINT64_MAX-1 => it indicates the last element in AllocationBlock
 		n = reinterpret_cast<Allocation*>(reinterpret_cast<LastAllocation*>(n)->nextAllocation);
 		if(n == nullptr)
 			nextAddress =

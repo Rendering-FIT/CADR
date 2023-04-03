@@ -14,7 +14,8 @@ protected:
 	uint32_t _version;
 public:
 
-	std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> chooseDeviceAndQueueFamilies(vk::SurfaceKHR surface);
+	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDeviceAndQueueFamilies(vk::SurfaceKHR surface);
+	std::tuple<vk::PhysicalDevice, uint32_t> chooseDeviceAndQueueFamily();
 
 	// constructors and destructor
 	VulkanInstance();
@@ -25,7 +26,7 @@ public:
 	               uint32_t applicationVersion = 0,
 	               const char* engineName = nullptr,
 	               uint32_t engineVersion = 0,
-	               uint32_t apiVersion = 0,
+	               uint32_t apiVersion = VK_API_VERSION_1_0,
 	               vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	               vk::ArrayProxy<const char*const> enabledExtensions = nullptr);
 	~VulkanInstance();
@@ -42,7 +43,7 @@ public:
 	            uint32_t applicationVersion = 0,
 	            const char* engineName = nullptr,
 	            uint32_t engineVersion = 0,
-	            uint32_t apiVersion = 0,
+	            uint32_t apiVersion = VK_API_VERSION_1_0,
 	            vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	            vk::ArrayProxy<const char*const> enabledExtensions = nullptr);
 	void init(VulkanLibrary& lib,vk::Instance instance);

@@ -34,6 +34,8 @@ void DataStorage::destroy() noexcept
 	}
 
 	// destroy VertexMemory objects
+	for(DataMemory* m : _dataMemoryList)
+		delete m;
 	_dataMemoryList.clear();
 	_firstAllocMemory = nullptr;
 	_secondAllocMemory = nullptr;
@@ -47,13 +49,13 @@ DataStorage::~DataStorage() noexcept
 
 
 DataStorage::DataStorage()
-	: DataStorage(Renderer::get())
+	: DataStorage(*Renderer::get())
 {
 }
 
 
-DataStorage::DataStorage(Renderer* renderer)
-	: _renderer(renderer)
+DataStorage::DataStorage(Renderer& renderer)
+	: _renderer(&renderer)
 {
 }
 
@@ -110,7 +112,7 @@ DataAllocation* DataStorage::alloc(size_t numBytes, MoveCallback moveCallback, v
 
 void DataStorage::cancelAllAllocations()
 {
-	for(unique_ptr<DataMemory>& m : _dataMemoryList)
+	for(DataMemory* m : _dataMemoryList)
 		m->cancelAllAllocations();
 }
 

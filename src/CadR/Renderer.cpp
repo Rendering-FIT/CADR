@@ -29,7 +29,7 @@ Renderer::Renderer(bool makeDefault)
 	, _graphicsQueueFamily(0xffffffff)
 	, _emptyStorage(nullptr)
 	, _emptyGeometryMemory(nullptr)
-	, _dataStorage(this)
+	, _dataStorage(*this)
 {
 	// create empty GeometryStorage
 	AttribSizeList emptyAttribSizeList;
@@ -49,7 +49,7 @@ Renderer::Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDev
 	: _device(nullptr)
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _emptyStorage(nullptr)
-	, _dataStorage(this)
+	, _dataStorage(*this)
 {
 	// create empty GeometryStorage
 	AttribSizeList emptyAttribSizeList;
@@ -377,6 +377,7 @@ void Renderer::finalize()
 	// destroy shaders, pipelines,...
 	_device->destroy(_processDrawablesShader);
 	_device->destroy(_descriptorPool);
+	_device->destroy(_dataPointerDescriptorSetLayout);
 	_device->destroy(_processDrawablesDescriptorSetLayout);
 	_device->destroy(_processDrawablesPipelineLayout);
 	_device->destroy(_processDrawablesPipeline);

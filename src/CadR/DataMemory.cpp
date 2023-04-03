@@ -105,6 +105,7 @@ DataMemory* DataMemory::tryCreate(DataStorage& dataStorage, size_t size)
 {
 	Renderer* renderer = dataStorage.renderer();
 	VulkanDevice* device = renderer->device();
+	assert(device && "CadR::Renderer object is not initialized. It's device is null.");
 	vk::Device d = device->get();
 
 	// try create buffer

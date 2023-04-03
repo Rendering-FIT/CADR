@@ -1,5 +1,6 @@
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
+#include <tuple>
 
 using namespace std;
 using namespace CadR;
@@ -102,80 +103,125 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 }
 
 
-tuple<vk::PhysicalDevice,uint32_t,uint32_t> VulkanInstance::chooseDeviceAndQueueFamilies(vk::SurfaceKHR surface)
+tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceAndQueueFamilies(vk::SurfaceKHR surface)
 {
 	// find compatible devices
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 	// contains the window).
-	vector<vk::PhysicalDevice> deviceList=enumeratePhysicalDevices();
-	vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
-	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
-	for(vk::PhysicalDevice pd:deviceList) {
+	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
+	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
+	for(vk::PhysicalDevice pd : deviceList) {
 
 		// skip devices without VK_KHR_swapchain
-		vector<vk::ExtensionProperties> extensionList=enumerateDeviceExtensionProperties(pd);
-		for(vk::ExtensionProperties& e:extensionList)
-			if(strcmp(e.extensionName,"VK_KHR_swapchain")==0)
+		vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
+		for(vk::ExtensionProperties& e : extensionList)
+			if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
 				goto swapchainSupported;
 		continue;
 		swapchainSupported:
 
-		// skip devices without surface formats and presentation modes
-		uint32_t formatCount;
-		uint32_t presentationModeCount;
-#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
-		vk::createResultValue(
-			pd.getSurfaceFormatsKHR(surface,&formatCount,nullptr,*this),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
-		vk::createResultValue(
-			pd.getSurfacePresentModesKHR(surface,&presentationModeCount,nullptr,*this),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
-#else
-		vk::resultCheck(
-			pd.getSurfaceFormatsKHR(surface,&formatCount,nullptr,*this),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
-		vk::resultCheck(
-			pd.getSurfacePresentModesKHR(surface,&presentationModeCount,nullptr,*this),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
-#endif
-		if(formatCount==0||presentationModeCount==0)
-			continue;
+		// select queues for graphics rendering and for presentation
+		uint32_t graphicsQueueFamily = UINT32_MAX;
+		uint32_t presentationQueueFamily = UINT32_MAX;
+		vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+		for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
-		// select queues (for graphics rendering and for presentation)
-		uint32_t graphicsQueueFamily=UINT32_MAX;
-		uint32_t presentationQueueFamily=UINT32_MAX;
-		vector<vk::QueueFamilyProperties> queueFamilyList=getPhysicalDeviceQueueFamilyProperties(pd);
-		uint32_t i=0;
-		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
-			bool p=pd.getSurfaceSupportKHR(i,surface,*this)!=0;
-			if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
-				if(p) {
-					compatibleDevicesSingleQueue.emplace_back(pd,i);
+			// test for presentation support
+			if(pd.getSurfaceSupportKHR(i, surface, *this)) {
+
+				// test for graphics operations support
+				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
+					// if presentation and graphics operations are supported on the same queue,
+					// we will use single queue
+					compatibleDevices.emplace_back(pd, i, i, pd.getProperties(*this));
 					goto nextDevice;
 				}
-				if(graphicsQueueFamily==UINT32_MAX)
-					graphicsQueueFamily=i;
+				else
+					// if only presentation is supported, we store the first such queue
+					if(presentationQueueFamily == UINT32_MAX)
+						presentationQueueFamily = i;
 			}
 			else {
-				if(p)
-					if(presentationQueueFamily==UINT32_MAX)
-						presentationQueueFamily=i;
+				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
+					// if only graphics operations are supported, we store the first such queue
+					if(graphicsQueueFamily == UINT32_MAX)
+						graphicsQueueFamily = i;
 			}
 		}
-		compatibleDevicesTwoQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily);
+
+		if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
+			// presentation and graphics operations are supported on the different queues
+			compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties(*this));
 		nextDevice:;
 	}
 
-	// choose device
-	if(compatibleDevicesSingleQueue.size()>0) {
-		auto t=compatibleDevicesSingleQueue.front();
-		return make_tuple(std::get<0>(t),std::get<1>(t),std::get<1>(t));
+	// choose the best device
+	auto bestDevice = compatibleDevices.begin();
+	if(bestDevice == compatibleDevices.end())
+		return make_tuple(vk::PhysicalDevice(), 0, 0);
+	constexpr const array deviceTypeScore = {
+		10, // vk::PhysicalDeviceType::eOther         - lowest score
+		40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
+		50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
+		30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
+		20, // vk::PhysicalDeviceType::eCpu           - low score
+		10, // unknown vk::PhysicalDeviceType
+	};
+	int bestScore = deviceTypeScore[clamp(int(std::get<3>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
+	if(std::get<1>(*bestDevice) == std::get<2>(*bestDevice))
+		bestScore++;
+	for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
+		int score = deviceTypeScore[clamp(int(std::get<3>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
+		if(std::get<1>(*it) == std::get<2>(*it))
+			score++;
+		if(score > bestScore) {
+			bestDevice = it;
+			bestScore = score;
+		}
 	}
-	else if(compatibleDevicesTwoQueues.size()>0) {
-		auto t=compatibleDevicesTwoQueues.front();
-		return t;
+	return make_tuple(std::get<0>(*bestDevice), std::get<1>(*bestDevice), std::get<2>(*bestDevice)); 
+}
+
+
+tuple<vk::PhysicalDevice, uint32_t> VulkanInstance::chooseDeviceAndQueueFamily()
+{
+	// find compatible devices
+	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
+	vector<tuple<vk::PhysicalDevice, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
+	for(vk::PhysicalDevice pd : deviceList) {
+
+		// select queues for graphics rendering
+		vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+		for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+			// test for graphics operations support
+			if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
+				compatibleDevices.emplace_back(pd, i, pd.getProperties(*this));
+
+		}
+
 	}
-	else
-		return make_tuple(vk::PhysicalDevice(),0,0);
+
+	// choose the best device
+	auto bestDevice = compatibleDevices.begin();
+	if(bestDevice == compatibleDevices.end())
+		return make_tuple(vk::PhysicalDevice(), 0);
+	constexpr const array deviceTypeScore = {
+		10, // vk::PhysicalDeviceType::eOther         - lowest score
+		40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
+		50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
+		30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
+		20, // vk::PhysicalDeviceType::eCpu           - low score
+		10, // unknown vk::PhysicalDeviceType
+	};
+	int bestScore = deviceTypeScore[clamp(int(std::get<2>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
+	for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
+		int score = deviceTypeScore[clamp(int(std::get<2>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
+		if(score > bestScore) {
+			bestDevice = it;
+			bestScore = score;
+		}
+	}
+	return make_tuple(std::get<0>(*bestDevice), std::get<1>(*bestDevice)); 
 }
