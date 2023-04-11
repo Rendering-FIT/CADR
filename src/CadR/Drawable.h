@@ -44,7 +44,7 @@ public:
 	> _drawableListHook;  ///< List hook of Geometry::_drawableList. Geometry::_drawableList contains all Drawables that render the Geometry.
 public:
 
-	Drawable() noexcept = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many functions of this object until you initialize it by calling create().
+	Drawable() = default;  ///< Default constructor. It leaves object largely uninitialized. It is dangerous to call many functions of this object until you initialize it by calling create().
 	Drawable(Geometry& geometry, uint32_t primitiveSetIndex, size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet);
 	Drawable(Drawable&& other) noexcept;
 	Drawable& operator=(Drawable&& rhs) noexcept;

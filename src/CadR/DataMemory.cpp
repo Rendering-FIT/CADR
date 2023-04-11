@@ -77,7 +77,7 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 DataMemory::DataMemory(DataStorage& dataStorage, vk::Buffer buffer, vk::DeviceMemory memory, size_t size)
 	: DataMemory(dataStorage)  // this ensures the destructor will be executed if this constructor throws
 {
-	assert((buffer && memory && size) || (!buffer && !memory && size==0) &&
+	assert(((buffer && memory && size) || (!buffer && !memory && size==0)) &&
 	       "DataMemory::DataMemory(): The buffer, memory and size parameters must all be either non-zero/non-null or zero/null.");
 
 	// assign resources

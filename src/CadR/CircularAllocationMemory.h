@@ -47,14 +47,15 @@ protected:
 		uint32_t index;  ///< Index of SpecialAllocation within AllocationBlock, starting from 0.
 		CircularAllocationMemory<Allocation, AllocationsPerBlock>* circularAllocationMemory;
 	};
+	struct LastAllocation;
 	struct FirstAllocation {
-		struct LastAllocation* prevAllocation;
+		LastAllocation* prevAllocation;
 		uint64_t magicValue;  ///< It contains special value of UINT64_MAX-1.
 		uint32_t index;  ///< Index of SpecialAllocation within AllocationBlock, starting from 0.
 		CircularAllocationMemory<Allocation, AllocationsPerBlock>* circularAllocationMemory;
 	};
 	struct LastAllocation {
-		struct FirstAllocation* nextAllocation;
+		FirstAllocation* nextAllocation;
 		uint64_t magicValue;  ///< It contains special value of UINT64_MAX-1.
 		uint32_t index;  ///< Index of SpecialAllocation within AllocationBlock, starting from 0.
 		CircularAllocationMemory<Allocation, AllocationsPerBlock>* circularAllocationMemory;
@@ -336,7 +337,7 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 		// if all allocations are free in AllocationBlock, destroy AllocationBlock
 		if(fwdThis->magicValue == UINT64_MAX-1 && fwdThis->index == AllocationsPerBlock-1) {
 			AllocationBlock* b = reinterpret_cast<AllocationBlock*>(reinterpret_cast<uint8_t*>(fwdThis) -
-				size_t(&reinterpret_cast<AllocationBlock*>(nullptr)->allocations[AllocationsPerBlock-1]));
+				size_t(&static_cast<AllocationBlock*>(nullptr)->allocations[AllocationsPerBlock-1]));
 			m->destroyAllocationBlock(*b);
 		}
 	}

@@ -6,13 +6,16 @@ using namespace CadR;
 
 vk::PhysicalDeviceFeatures2 VulkanDevice::_defaultFeatures;
 vk::PhysicalDeviceVulkan12Features vulkan12Features;
-static struct CadR::VulkanDeviceStaticInitializer {
-	VulkanDeviceStaticInitializer() {
-		VulkanDevice::_defaultFeatures.pNext = &vulkan12Features;
-		VulkanDevice::_defaultFeatures.features.shaderInt64 = true;
-		vulkan12Features.bufferDeviceAddress = true;
-	}
-} initializer;
+namespace CadR {
+	struct VulkanDeviceStaticInitializer {
+		VulkanDeviceStaticInitializer() {
+			VulkanDevice::_defaultFeatures.pNext = &vulkan12Features;
+			VulkanDevice::_defaultFeatures.features.shaderInt64 = true;
+			vulkan12Features.bufferDeviceAddress = true;
+		}
+	};
+}
+static CadR::VulkanDeviceStaticInitializer initializer;
 
 
 

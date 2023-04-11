@@ -161,7 +161,7 @@ int main(int argc,char** argv) {
 
 		// init Vulkan and open window
 		CadR::VulkanLibrary vulkanLib(CadR::VulkanLibrary::defaultName());
-		CadR::VulkanInstance vulkanInstance(vulkanLib,"glTF reader",0,"CADR",0,VK_API_VERSION_1_0,nullptr,
+		CadR::VulkanInstance vulkanInstance(vulkanLib,"glTF reader",0,"CADR",0,VK_API_VERSION_1_2,nullptr,
 #ifdef _WIN32
 		                                    {"VK_KHR_surface","VK_KHR_win32_surface"});  // enabled extension names
 #else
@@ -170,8 +170,11 @@ int main(int argc,char** argv) {
 		CadUI::Window window(vulkanInstance);
 		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
 				vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
-		CadR::VulkanDevice device(vulkanInstance,deviceAndQueueFamilies,
-		                          nullptr,"VK_KHR_swapchain",&vk::PhysicalDeviceFeatures().setMultiDrawIndirect(true));
+		CadR::VulkanDevice device(
+			vulkanInstance,deviceAndQueueFamilies,
+			nullptr,
+			"VK_KHR_swapchain",
+			CadR::VulkanDevice::defaultFeatures());
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
 		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
 		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);

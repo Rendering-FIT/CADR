@@ -91,7 +91,7 @@ Drawable& Drawable::operator=(Drawable&& rhs) noexcept
 }
 
 
-void Drawable::moveCallback(DataAllocation* oldAlloc, DataAllocation* newAlloc, void* userData)
+void Drawable::moveCallback(DataAllocation*, DataAllocation* newAlloc, void* userData)
 {
 	static_cast<Drawable*>(userData)->_shaderData = newAlloc;
 }
@@ -113,7 +113,7 @@ void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex,
 
 	// handle previous bindings 
 	GeometryMemory* m = geometry.geometryMemory();
-	if(_indexIntoStateSet != ~0u)
+	if(_indexIntoStateSet != ~0u) {
 		if(_stateSetDrawableContainer->geometryMemory == m) {
 
 			// only update DrawableGpuData
@@ -130,6 +130,7 @@ void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex,
 		}
 		else
 			_stateSetDrawableContainer->removeDrawableUnsafe(*this);
+	}
 
 	// append into StateSet
 	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
