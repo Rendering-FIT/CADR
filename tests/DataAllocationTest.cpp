@@ -94,34 +94,42 @@ int main(int,char**)
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
+#if 0
 	{
-		size_t s = 1;
+		size_t s = 0;
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		for(size_t n=198; n<1000; n++) {
+		for(size_t n=396; n<1030; n++) {
+			if(offset*n >= 65536)
+				continue;
 			vector<DataAllocation*> a;
-			a.reserve(1000);
-			for(size_t i=0; i<n; i++)
+			a.reserve(1030);
+			for(size_t i=0; i<n-1; i++)
 				a.push_back(ds.alloc(s, nullptr, nullptr));
+			a.push_back(ds.alloc(s, nullptr, nullptr));
 			for(size_t i=0; i<n; i++)
 				if(a[i]->deviceAddress() != firstAddress+(offset*i))
 					throw runtime_error("Allocation is not on the the proper place in the buffer");
-			for(size_t i=0; i<n; i++)
-				ds.free(a[i]);
+			ds.free(a[n-1]);
+			for(size_t i=n-1; i>1; )
+				ds.free(a[--i]);
+			ds.free(a[0]);
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 		}
 	}
+#endif
 
-	// 0..1000 allocations of size 0..260, released in the order of their allocation
+	// 0..1030 allocations of size 0..260, taking 64KiB max, released in the order of their allocation
 	for(size_t s=0; s<260; s++) {
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		for(size_t n=0; n<1024; n++) {
+		for(size_t n=0; n<1030; n++) {
 
 			// skip the cases that require 64KiB+ memory
 			if(offset*n >= 65536)
 				continue;
 
+			// test
 			vector<DataAllocation*> a;
-			a.reserve(1000);
+			a.reserve(1030);
 			for(size_t i=0; i<n; i++)
 				a.push_back(ds.alloc(s, nullptr, nullptr));
 			for(size_t i=0; i<n; i++)
@@ -136,6 +144,36 @@ int main(int,char**)
 					                    << ")").str());
 			for(size_t i=0; i<n; i++)
 				ds.free(a[i]);
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+		}
+	}
+
+	// 0..1030 allocations of size 0..260, taking 64KiB max, released in the reversed order of their allocation
+	for(size_t s=0; s<260; s++) {
+		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
+		for(size_t n=0; n<1030; n++) {
+
+			// skip the cases that require 64KiB+ memory
+			if(offset*n >= 65536)
+				continue;
+
+			// test
+			vector<DataAllocation*> a;
+			a.reserve(1030);
+			for(size_t i=0; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++)
+				if(a[i]->deviceAddress() != firstAddress+(offset*i))
+					throw runtime_error("Allocation is not on the the proper place in the buffer. " +
+					                    static_cast<ostringstream&>(ostringstream()
+					                    << "(Details: AllocationSize = " << s <<
+					                    ", offset = " << offset << ", total number of allocations = "
+					                    << n << ", problematic allocation index = " << i <<
+					                    " expected allocation place = " << (firstAddress+(offset*i))
+					                    << ", real allocation place = " << a[i]->deviceAddress()
+					                    << ")").str());
+			for(size_t i=n; i>0; )
+				ds.free(a[--i]);
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 		}
 	}
