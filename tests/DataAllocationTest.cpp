@@ -3,6 +3,7 @@
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
+#include <sstream>
 #include <vector>
 
 using namespace std;
@@ -114,13 +115,25 @@ int main(int,char**)
 	for(size_t s=0; s<260; s++) {
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
 		for(size_t n=0; n<1024; n++) {
+
+			// skip the cases that require 64KiB+ memory
+			if(offset*n >= 65536)
+				continue;
+
 			vector<DataAllocation*> a;
 			a.reserve(1000);
 			for(size_t i=0; i<n; i++)
 				a.push_back(ds.alloc(s, nullptr, nullptr));
 			for(size_t i=0; i<n; i++)
 				if(a[i]->deviceAddress() != firstAddress+(offset*i))
-					throw runtime_error("Allocation is not on the the proper place in the buffer");
+					throw runtime_error("Allocation is not on the the proper place in the buffer. " +
+					                    static_cast<ostringstream&>(ostringstream()
+					                    << "(Details: AllocationSize = " << s <<
+					                    ", offset = " << offset << ", total number of allocations = "
+					                    << n << ", problematic allocation index = " << i <<
+					                    " expected allocation place = " << (firstAddress+(offset*i))
+					                    << ", real allocation place = " << a[i]->deviceAddress()
+					                    << ")").str());
 			for(size_t i=0; i<n; i++)
 				ds.free(a[i]);
 			DataMemoryTest::verifyDataStorageEmpty(ds);
