@@ -69,6 +69,8 @@ protected:
 	static void destroyAllocation(Allocation* a);
 	AllocationBlock& createAllocationBlock();
 	void destroyAllocationBlock(AllocationBlock& b);
+	static void resetAllocationBlock(SpecialAllocation* aThis,
+		CircularAllocationMemory<Allocation, AllocationsPerBlock>* m);
 	template<typename... Args>
 	Allocation* allocInternal(size_t numBytes, Args... args);
 	void freeInternal(Allocation* a);
@@ -218,6 +220,43 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 }
 
 
+// The resetAllocationBlock() method resets AllocationBlock2 and AllocationBlock1 pointers to
+// empty AllocationBlock state. The function is expected to be called when empty state is detected.
+// This might happen only when the allocation on the start address is freed.
+template<typename Allocation, size_t AllocationsPerBlock>
+void CircularAllocationMemory<Allocation, AllocationsPerBlock>::resetAllocationBlock(SpecialAllocation* aThis,
+	CircularAllocationMemory<Allocation, AllocationsPerBlock>* m)
+{
+	// does the last freed allocation belong to block2 or block1?
+	if(aThis->address == m->_usedBlock2StartAddress) {
+		if(m->_usedBlock1EndAddress == m->_bufferStartAddress) {
+			// empty Block1 -> reset Block2 pointers
+			m->_usedBlock2EndAddress = m->_bufferStartAddress;
+			m->_usedBlock2StartAddress = m->_bufferStartAddress;
+			m->_usedBlock2EndAllocation = m->_allocationBlockList2.back().allocations.begin() + 1;
+		}
+		else {
+			// Block1 not empty -> swap Block2 and Block1
+			m->_usedBlock2EndAddress = m->_usedBlock1EndAddress;
+			m->_usedBlock2StartAddress = m->_usedBlock1StartAddress;
+			m->_usedBlock1EndAddress = m->_bufferStartAddress;
+			m->_usedBlock1StartAddress = m->_bufferStartAddress;
+			m->_allocationBlockList2.swap(m->_allocationBlockList1);
+			m->_usedBlock2EndAllocation = m->_usedBlock1EndAllocation;
+			m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
+		}
+	}
+	else
+	// aThis->address == m->_usedBlock1StartAddress
+	{
+		// reset Block1 pointers
+		m->_usedBlock1EndAddress = m->_bufferStartAddress;
+		m->_usedBlock1StartAddress = m->_bufferStartAddress;
+		m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
+	}
+}
+
+
 template<typename Allocation, size_t AllocationsPerBlock>
 void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocation(Allocation* a)
 {
@@ -227,7 +266,8 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 
 	// mark this allocation as free by setting its magicValue member to UINT64_MAX;
 	// the value UINT64_MAX-1 is used instead of UINT64_MAX if all previous allocations
-	// from the beginning of the current AllocationBlock are free (e.g. they are marked with UINT64_MAX-1),
+	// from the beginning of the current AllocationBlock are free (e.g. they are marked with UINT64_MAX-1)
+	// and for the first and the last internal allocation at the beginning and at the end of AllocationBlock,
 	// the value UINT64_MAX-2 is used as stopper for some algorithms on the Allocation
 	// that will be allocated as the next one
 	if(aPrev->magicValue != UINT64_MAX-1)
@@ -260,7 +300,7 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 		if(aThis->address == m->_usedBlock2StartAddress || aThis->address == m->_usedBlock1StartAddress)
 		{
 			// test if free block finished before the end of the first AllocationBlock
-			if(fwdThis->magicValue != UINT64_MAX-1 || fwdThis->index != AllocationsPerBlock-1)
+			if(fwdThis->magicValue != UINT64_MAX-1)  // magicValue can be UINT64_MAX-2, UINT64_MAX-1 (if the end of AllocationBlock was reached), any valid allocation (<UINT64_MAX-2), but it cannot be UINT64_MAX
 			{
 				// find the _usedBlock[1|2]StartAddress inside the first AllocationBlock
 				if(aThis->address == m->_usedBlock2StartAddress) {
@@ -306,32 +346,7 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 				if(p == nullptr)
 				{
 					// no second AllocationBlock and nothing remains in the first one -> everything is freed
-					if(aThis->address == m->_usedBlock2StartAddress) {
-						if(m->_usedBlock1EndAddress == m->_bufferStartAddress) {
-							// empty Block1 -> reset Block2 pointers
-							m->_usedBlock2EndAddress = m->_bufferStartAddress;
-							m->_usedBlock2StartAddress = m->_bufferStartAddress;
-							m->_usedBlock2EndAllocation = m->_allocationBlockList2.back().allocations.begin() + 1;
-						}
-						else {
-							// Block1 not empty -> swap Block2 and Block1
-							m->_usedBlock2EndAddress = m->_usedBlock1EndAddress;
-							m->_usedBlock2StartAddress = m->_usedBlock1StartAddress;
-							m->_usedBlock1EndAddress = m->_bufferStartAddress;
-							m->_usedBlock1StartAddress = m->_bufferStartAddress;
-							m->_allocationBlockList2.swap(m->_allocationBlockList1);
-							m->_usedBlock2EndAllocation = m->_usedBlock1EndAllocation;
-							m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
-						}
-					}
-					else
-					// aThis->address == m->_usedBlock1StartAddress
-					{
-						// reset Block1 pointers
-						m->_usedBlock1EndAddress = m->_bufferStartAddress;
-						m->_usedBlock1StartAddress = m->_bufferStartAddress;
-						m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
-					}
+					resetAllocationBlock(aThis, m);
 					return;
 				}
 				else
@@ -339,43 +354,26 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 				{
 					// find the _usedBlock[1|2]StartAddress inside the second AllocationBlock
 					p++;
-					while(reinterpret_cast<SpecialAllocation*>(p)->magicValue >= UINT64_MAX-1)
+					while(reinterpret_cast<SpecialAllocation*>(p)->magicValue == UINT64_MAX-1)
 						if(reinterpret_cast<SpecialAllocation*>(p)->index != AllocationsPerBlock-1)
 							p++;
 						else {
-							// free block finishes at the end of the second AllocationBlock
-							if(aThis->address == m->_usedBlock2StartAddress) {
-								if(m->_usedBlock1EndAddress == m->_bufferStartAddress) {
-									// empty Block1 -> reset Block2 pointers
-									m->_usedBlock2EndAddress = m->_bufferStartAddress;
-									m->_usedBlock2StartAddress = m->_bufferStartAddress;
-									m->_usedBlock2EndAllocation = m->_allocationBlockList2.back().allocations.begin() + 1;
-								}
-								else {
-									// Block1 not empty -> swap Block2 and Block1
-									m->_usedBlock2EndAddress = m->_usedBlock1EndAddress;
-									m->_usedBlock2StartAddress = m->_usedBlock1StartAddress;
-									m->_usedBlock1EndAddress = m->_bufferStartAddress;
-									m->_usedBlock1StartAddress = m->_bufferStartAddress;
-									m->_allocationBlockList2.swap(m->_allocationBlockList1);
-									m->_usedBlock2EndAllocation = m->_usedBlock1EndAllocation;
-									m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
-								}
-							}
-							else
-							// aThis->address == m->_usedBlock1StartAddress
-							{
-								// reset Block1 pointers
-								m->_usedBlock1EndAddress = m->_bufferStartAddress;
-								m->_usedBlock1StartAddress = m->_bufferStartAddress;
-								m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.begin() + 1;
-							}
+							resetAllocationBlock(aThis, m);
 							goto afterSettingAddress;
 						}
-					if(aThis->address == m->_usedBlock2StartAddress)
-						m->_usedBlock2StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
-					else // aThis->address == m->_usedBlock1StartAddress
-						m->_usedBlock1StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
+
+					// did we reached the end of allocations?
+					if(reinterpret_cast<SpecialAllocation*>(p)->magicValue == UINT64_MAX-2) {
+						// no more allocations in the Block[1|2]
+						resetAllocationBlock(aThis, m);
+					}
+					else {
+						// we reached the first allocation in the Block[1|2]
+						if(aThis->address == m->_usedBlock2StartAddress)
+							m->_usedBlock2StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
+						else // aThis->address == m->_usedBlock1StartAddress
+							m->_usedBlock1StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
+					}
 					afterSettingAddress:;
 				}
 			}
