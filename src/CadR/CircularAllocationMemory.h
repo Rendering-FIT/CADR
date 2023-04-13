@@ -55,10 +55,10 @@ protected:
 		CircularAllocationMemory<Allocation, AllocationsPerBlock>* circularAllocationMemory;
 	};
 	struct LastAllocation {
-		FirstAllocation* nextAllocation;
+		uint64_t address;  ///< Address of allocated memory of the following allocation in the next AllocationBlock, or null if the next AllocationBlock was not created yet. 
 		uint64_t magicValue;  ///< It contains special value of UINT64_MAX-1.
 		uint32_t index;  ///< Index of SpecialAllocation within AllocationBlock, starting from 0.
-		CircularAllocationMemory<Allocation, AllocationsPerBlock>* circularAllocationMemory;
+		FirstAllocation* nextAllocation;
 	};
 
 	// basic allocation/deallocation functions
@@ -107,6 +107,7 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 		a = &(*_usedBlock2EndAllocation);
 		_usedBlock2EndAllocation++;
 
+		// write special allocation after the current allocation to serve as stopper for some algorithms
 		SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock2EndAllocation));
 		next->address = _usedBlock2EndAddress;
 		next->magicValue = UINT64_MAX-2;
@@ -118,6 +119,8 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 			// allocating "inside" AllocationBlock
 			a = &(*_usedBlock2EndAllocation);
 			_usedBlock2EndAllocation++;
+
+			// write special allocation after the current allocation to serve as stopper for some algorithms
 			SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock2EndAllocation));
 			next->address = _usedBlock2EndAddress;
 			next->magicValue = UINT64_MAX-2;
@@ -140,10 +143,13 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 			a = &(*_usedBlock2EndAllocation);
 			_usedBlock2EndAllocation++;
 
+			// link new and previous AllocationBlock
 			LastAllocation& lPrev = reinterpret_cast<LastAllocation&>(bPrev.allocations.back());
+			lPrev.address = addr;
 			lPrev.nextAllocation = reinterpret_cast<FirstAllocation*>(&bNew.allocations.front());
 			reinterpret_cast<FirstAllocation&>(bNew.allocations.front()).prevAllocation = &lPrev;
 
+			// write special allocation after the current allocation to serve as stopper for some algorithms
 			SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock2EndAllocation));
 			next->address = _usedBlock2EndAddress;
 			next->magicValue = UINT64_MAX-2;
@@ -171,6 +177,7 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 		a = &(*_usedBlock1EndAllocation);
 		_usedBlock1EndAllocation++;
 
+		// write special allocation after the current allocation to serve as stopper for some algorithms
 		SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock1EndAllocation));
 		next->address = _usedBlock1EndAddress;
 		next->magicValue = UINT64_MAX-2;
@@ -182,6 +189,8 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 			// allocating "inside" AllocationBlock
 			a = &(*_usedBlock1EndAllocation);
 			_usedBlock1EndAllocation++;
+
+			// write special allocation after the current allocation to serve as stopper for some algorithms
 			SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock1EndAllocation));
 			next->address = _usedBlock1EndAddress;
 			next->magicValue = UINT64_MAX-2;
@@ -204,10 +213,13 @@ Allocation* CircularAllocationMemory<Allocation, AllocationsPerBlock>::createAll
 			a = &(*_usedBlock1EndAllocation);
 			_usedBlock1EndAllocation++;
 
+			// link new and previous AllocationBlock
 			LastAllocation& lPrev = reinterpret_cast<LastAllocation&>(bPrev.allocations.back());
+			lPrev.address = addr;
 			lPrev.nextAllocation = reinterpret_cast<FirstAllocation*>(&bNew.allocations.front());
 			reinterpret_cast<FirstAllocation&>(bNew.allocations.front()).prevAllocation = &lPrev;
 
+			// write special allocation after the current allocation to serve as stopper for some algorithms
 			SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock1EndAllocation));
 			next->address = _usedBlock1EndAddress;
 			next->magicValue = UINT64_MAX-2;
@@ -368,7 +380,7 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::destroyAllocatio
 						resetAllocationBlock(aThis, m);
 					}
 					else {
-						// we reached the first allocation in the Block[1|2]
+						// we reached the oldest allocation in the Block[1|2]
 						if(aThis->address == m->_usedBlock2StartAddress)
 							m->_usedBlock2StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
 						else // aThis->address == m->_usedBlock1StartAddress
@@ -401,10 +413,10 @@ typename CircularAllocationMemory<Allocation, AllocationsPerBlock>::AllocationBl
 		f.index = 0;
 		f.circularAllocationMemory = this;
 		LastAllocation& l = reinterpret_cast<LastAllocation&>(b.allocations.back());
-		l.nextAllocation = 0;
+		l.address = 0;
 		l.magicValue = UINT64_MAX-1;
 		l.index = AllocationsPerBlock-1;
-		l.circularAllocationMemory = this;
+		l.nextAllocation = 0;
 		return b;
 	}
 	else {
@@ -413,6 +425,7 @@ typename CircularAllocationMemory<Allocation, AllocationsPerBlock>::AllocationBl
 		FirstAllocation& f = reinterpret_cast<FirstAllocation&>(b.allocations.front());
 		f.prevAllocation = 0;
 		LastAllocation& l = reinterpret_cast<LastAllocation&>(b.allocations.back());
+		l.address = 0;
 		l.nextAllocation = 0;
 		return b;
 	}
@@ -514,15 +527,15 @@ void CircularAllocationMemory<Allocation, AllocationsPerBlock>::freeInternal(All
 		// handle the end of the AllocationBlock
 		//
 		// if magicValue == UINT64_MAX-1 => it indicates the last element in AllocationBlock
-		n = reinterpret_cast<Allocation*>(reinterpret_cast<LastAllocation*>(n)->nextAllocation);
-		if(n == nullptr)
+		if(reinterpret_cast<LastAllocation*>(n)->address == 0)
+			// no newer allocation => return _usedBlock[1|2]EndAddress
 			nextAddress =
 				(_usedBlock1EndAddress < reinterpret_cast<SpecialAllocation*>(a)->address)
 				? _usedBlock2EndAddress
 				: _usedBlock1EndAddress;
 		else {
-			n++;
-			nextAddress = reinterpret_cast<SpecialAllocation*>(n)->address;
+			// next AllocationBlock was destroyed => return remembered address of next allocation
+			nextAddress = reinterpret_cast<LastAllocation*>(n)->address;
 		}
 	}
 
