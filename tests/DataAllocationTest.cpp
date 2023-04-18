@@ -13,7 +13,7 @@ using namespace CadR;
 class DataMemoryTest : public DataMemory {
 protected:
 	void verifyAllocationBlockEmpty() const {
-		if(!_allocationBlockList2.empty() && _usedBlock2EndAllocation != _allocationBlockList2.front().allocations.begin()+1)
+		if(!_allocationBlockList2.empty() && &(*_usedBlock2EndAllocation) != &(*(_allocationBlockList2.front().allocations.begin()+1)))
 			throw runtime_error("DataMemory's allocationBlock2 is not empty.");
 		if(!_allocationBlockList1.empty() && _usedBlock1EndAllocation != _allocationBlockList1.front().allocations.begin()+1)
 			throw runtime_error("DataMemory's allocationBlock1 is not empty.");
@@ -96,7 +96,40 @@ int main(int,char**)
 
 #if 0
 	{
-		size_t s = 0;
+		size_t s = 1;
+		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
+		for(size_t n=395; n<1030; n++) {
+
+			// skip the cases that require 64KiB+ memory
+			if(offset*n >= 65536)
+				continue;
+
+			// test
+			vector<DataAllocation*> a;
+			a.reserve(1030);
+			for(size_t i=0; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++)
+				if(a[i]->deviceAddress() != firstAddress+(offset*i))
+					throw runtime_error("Allocation is not on the the proper place in the buffer. " +
+					                    static_cast<ostringstream&>(ostringstream()
+					                    << "(Details: AllocationSize = " << s <<
+					                    ", offset = " << offset << ", total number of allocations = "
+					                    << n << ", problematic allocation index = " << i <<
+					                    " expected allocation place = " << (firstAddress+(offset*i))
+					                    << ", real allocation place = " << a[i]->deviceAddress()
+					                    << ")").str());
+			ds.free(a[0]);
+			for(size_t i=1; i<n-1; i++)
+				ds.free(a[i]);
+			ds.free(a[n-1]);
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+		}
+	}
+#endif
+#if 0
+	{
+		size_t s = 1;
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
 		for(size_t n=396; n<1030; n++) {
 			if(offset*n >= 65536)
@@ -110,15 +143,23 @@ int main(int,char**)
 				if(a[i]->deviceAddress() != firstAddress+(offset*i))
 					throw runtime_error("Allocation is not on the the proper place in the buffer");
 			ds.free(a[n-1]);
-			for(size_t i=n-1; i>1; )
+			for(size_t i=n-1; i>199; ) {
 				ds.free(a[--i]);
+				cout << i << ": " << ds.dataMemoryList().front()->usedBytes() << endl;
+			}
+			ds.free(a[198]);
+			cout << "198: " << ds.dataMemoryList().front()->usedBytes() << endl;
+			for(size_t i=198; i>1; ) {
+				ds.free(a[--i]);
+				cout << i << ": " << ds.dataMemoryList().front()->usedBytes() << endl;
+			}
 			ds.free(a[0]);
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 		}
 	}
 #endif
 
-	// 0..1030 allocations of size 0..260, taking 64KiB max, released in the order of their allocation
+	// 0..1030 allocations of size 0..260, taking 64KiB max
 	for(size_t s=0; s<260; s++) {
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
 		for(size_t n=0; n<1030; n++) {
@@ -127,7 +168,7 @@ int main(int,char**)
 			if(offset*n >= 65536)
 				continue;
 
-			// test
+			// test - allocations released in the order of their allocation
 			vector<DataAllocation*> a;
 			a.reserve(1030);
 			for(size_t i=0; i<n; i++)
@@ -144,36 +185,79 @@ int main(int,char**)
 					                    << ")").str());
 			for(size_t i=0; i<n; i++)
 				ds.free(a[i]);
+			a.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
-		}
-	}
 
-	// 0..1030 allocations of size 0..260, taking 64KiB max, released in the reversed order of their allocation
-	for(size_t s=0; s<260; s++) {
-		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		for(size_t n=0; n<1030; n++) {
-
-			// skip the cases that require 64KiB+ memory
-			if(offset*n >= 65536)
-				continue;
-
-			// test
-			vector<DataAllocation*> a;
-			a.reserve(1030);
+			// test - allocations released in the reversed order of their allocation
 			for(size_t i=0; i<n; i++)
 				a.push_back(ds.alloc(s, nullptr, nullptr));
-			for(size_t i=0; i<n; i++)
-				if(a[i]->deviceAddress() != firstAddress+(offset*i))
-					throw runtime_error("Allocation is not on the the proper place in the buffer. " +
-					                    static_cast<ostringstream&>(ostringstream()
-					                    << "(Details: AllocationSize = " << s <<
-					                    ", offset = " << offset << ", total number of allocations = "
-					                    << n << ", problematic allocation index = " << i <<
-					                    " expected allocation place = " << (firstAddress+(offset*i))
-					                    << ", real allocation place = " << a[i]->deviceAddress()
-					                    << ")").str());
 			for(size_t i=n; i>0; )
 				ds.free(a[--i]);
+			a.clear();
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+
+			// test - each second allocation released starting by even
+			for(size_t i=0; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i+=2)
+				ds.free(a[i]);
+			for(size_t i=1; i<n; i+=2)
+				ds.free(a[i]);
+			a.clear();
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+
+			// test - each second allocation released starting by odd
+			for(size_t i=0; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=1; i<n; i+=2)
+				ds.free(a[i]);
+			for(size_t i=0; i<n; i+=2)
+				ds.free(a[i]);
+			a.clear();
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+
+			// test - each second allocation released in reverse order
+			for(size_t i=0; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(int64_t i=n-2; i>=0; i-=2)
+				ds.free(a[i]);
+			for(int64_t i=n-1; i>=0; i-=2)
+				ds.free(a[i]);
+			a.clear();
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+
+			// test - each second allocation released in reverse order
+			for(size_t i=0; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(int64_t i=n-1; i>=0; i-=2)
+				ds.free(a[i]);
+			for(int64_t i=n-2; i>=0; i-=2)
+				ds.free(a[i]);
+			a.clear();
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+
+			// test - allocations allocated in Block1 and released in the order of their allocation
+			DataAllocation* bigAllocation = ds.alloc(65536-s, nullptr, nullptr);
+			if(n != 0)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			bigAllocation->free();
+			for(size_t i=1; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++)
+				ds.free(a[i]);
+			a.clear();
+			DataMemoryTest::verifyDataStorageEmpty(ds);
+
+			// test - allocations allocated in Block1 and released in the reverse order of their allocation
+			bigAllocation = ds.alloc(65536-s, nullptr, nullptr);
+			if(n != 0)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			bigAllocation->free();
+			for(size_t i=1; i<n; i++)
+				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=n; i>0; )
+				ds.free(a[--i]);
+			a.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 		}
 	}
