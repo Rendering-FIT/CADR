@@ -785,18 +785,18 @@ int main(int argc,char** argv) {
 			);
 
 		// primaryCommandBuffers
-		auto commandPool=
+		auto commandPool =
 			device.createCommandPoolUnique(
 				vk::CommandPoolCreateInfo(
-					vk::CommandPoolCreateFlagBits::eTransient|vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
+					vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
 					graphicsQueueFamily  // queueFamilyIndex
 				)
 			);
-		vector<vk::CommandBuffer> primaryCommandBuffers;
+		vector<vk::CommandBuffer> frameCommandBuffers;
 		window.resizeCallbacks.append(
-			[&device,&window,&commandPool,&primaryCommandBuffers]() {
-				device.resetCommandPool(commandPool.get(),vk::CommandPoolResetFlags());
-				primaryCommandBuffers=
+			[&device, &window, &commandPool, &frameCommandBuffers]() {
+				device.resetCommandPool(commandPool.get(), vk::CommandPoolResetFlags());
+				frameCommandBuffers =
 					device.allocateCommandBuffers(
 						vk::CommandBufferAllocateInfo(
 							commandPool.get(),                 // commandPool
@@ -861,15 +861,12 @@ int main(int argc,char** argv) {
 			if(!success)
 				continue;
 
-			// record primary command buffer
-			vk::CommandBuffer commandBuffer=primaryCommandBuffers[imageIndex];
-			device.beginCommandBuffer(
-				commandBuffer,  // commandBuffer
-				vk::CommandBufferBeginInfo(
-					vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-					nullptr  // pInheritanceInfo
-				)
-			);
+			// start frame
+			renderer.beginFrame();
+			vk::CommandBuffer commandBuffer = frameCommandBuffers[imageIndex];
+			renderer.beginRecording(commandBuffer);
+
+			// record command buffer
 			glm::mat4 perspectiveMatrix(
 				// make perspective:
 				// ZO - Zero to One is output depth range,
@@ -920,9 +917,12 @@ int main(int argc,char** argv) {
 				1,  // clearValueCount
 				&(const vk::ClearValue&)vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f})  // clearValues
 			);
-			device.endCommandBuffer(commandBuffer);
 
-			// render
+			// end frame recording
+			renderer.endRecording(commandBuffer);
+			renderer.endFrame();
+
+			// submit and present
 			device.queueSubmit(
 				graphicsQueue,  // queue
 				vk::SubmitInfo(

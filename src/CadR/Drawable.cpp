@@ -42,8 +42,7 @@ Drawable::Drawable(Geometry& geometry, uint32_t primitiveSetIndex,
 	geometry._drawableList.push_back(*this);  // initializes _drawableListHook
 
 	// alloc _shaderData
-	if(shaderDataSize != 0)
-		_shaderData = renderer()->dataStorage().alloc(shaderDataSize, moveCallback, this);
+	_shaderData = stateSet.renderer()->dataStorage().alloc(shaderDataSize, moveCallback, this);
 
 	// append into StateSet
 	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
