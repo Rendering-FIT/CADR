@@ -57,10 +57,19 @@ int main(int,char**)
 	ds.free(nullptr);
 	DataMemoryTest::verifyDataStorageEmpty(ds);
 
+	// test of zero size allocation
+	a = ds.alloc(0, nullptr, nullptr);
+	if(a->deviceAddress() != 0)
+		throw runtime_error("Allocation's device address for zero sized allocation is not 0.");
+	a->free();
+	a->free();
+	ds.free(a);
+	DataMemoryTest::verifyDataStorageEmpty(ds);
+
 	// single allocation of size 0..260 - create and destroy
 	for(size_t s=0; s<260; s++) {
 		a = ds.alloc(s, nullptr, nullptr);
-		if(a->deviceAddress() != firstAddress)
+		if(a->deviceAddress() != firstAddress && (a->deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
 		ds.free(a);
 		DataMemoryTest::verifyDataStorageEmpty(ds);
@@ -70,10 +79,10 @@ int main(int,char**)
 	for(size_t s=0; s<260; s++) {
 		DataAllocation* a1 = ds.alloc(s, nullptr, nullptr);
 		DataAllocation* a2 = ds.alloc(s, nullptr, nullptr);
-		if(a1->deviceAddress() != firstAddress)
+		if(a1->deviceAddress() != firstAddress && (a1->deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		if(a2->deviceAddress() != firstAddress+offset)
+		if(a2->deviceAddress() != firstAddress+offset && (a2->deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the the proper place in the buffer");
 		ds.free(a1);
 		ds.free(a2);
@@ -84,10 +93,10 @@ int main(int,char**)
 	for(size_t s=0; s<260; s++) {
 		DataAllocation* a1 = ds.alloc(s, nullptr, nullptr);
 		DataAllocation* a2 = ds.alloc(s, nullptr, nullptr);
-		if(a1->deviceAddress() != firstAddress)
+		if(a1->deviceAddress() != firstAddress && (a1->deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		if(a2->deviceAddress() != firstAddress+offset)
+		if(a2->deviceAddress() != firstAddress+offset && (a2->deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the the proper place in the buffer");
 		ds.free(a2);
 		ds.free(a1);
@@ -174,7 +183,7 @@ int main(int,char**)
 			for(size_t i=0; i<n; i++)
 				a.push_back(ds.alloc(s, nullptr, nullptr));
 			for(size_t i=0; i<n; i++)
-				if(a[i]->deviceAddress() != firstAddress+(offset*i))
+				if(a[i]->deviceAddress() != firstAddress+(offset*i) && (a[i]->deviceAddress() != 0 || s != 0))
 					throw runtime_error("Allocation is not on the the proper place in the buffer. " +
 					                    static_cast<ostringstream&>(ostringstream()
 					                    << "(Details: AllocationSize = " << s <<

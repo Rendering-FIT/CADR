@@ -34,6 +34,8 @@ protected:
 	vk::Buffer _buffer;
 	vk::DeviceMemory _memory;
 
+	static DataAllocation _zeroSizeAllocation;
+
 	DataMemory(DataStorage& dataStorage);
 
 public:
@@ -80,8 +82,8 @@ inline vk::Buffer DataMemory::buffer() const  { return _buffer; }
 inline vk::DeviceMemory DataMemory::memory() const  { return _memory; }
 inline vk::DeviceAddress DataMemory::bufferDeviceAddress() const  { return _bufferStartAddress; }
 inline size_t DataMemory::usedBytes() const  { return _usedBytes; }
-inline DataAllocation* DataMemory::alloc(size_t numBytes, MoveCallback& moveCallback, void* moveCallbackUserData)  { return allocInternal(numBytes, numBytes, this, moveCallback, moveCallbackUserData); }
-inline void DataMemory::free(DataAllocation* a)  { if(a) a->dataMemory().freeInternal(a); }
+inline DataAllocation* DataMemory::alloc(size_t numBytes, MoveCallback& moveCallback, void* moveCallbackUserData)  { if(numBytes==0) return &_zeroSizeAllocation; else return allocInternal(numBytes, numBytes, this, moveCallback, moveCallbackUserData); }
+inline void DataMemory::free(DataAllocation* a)  { if(a && &a->dataMemory()!=nullptr) a->dataMemory().freeInternal(a); }
 
 // functions moved from DataAllocation.h to avoid circular include dependency
 // (allowed by include CadR/DataAllocation.h on the top of this file)

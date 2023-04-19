@@ -36,6 +36,8 @@ public:
 	static DataAllocation* alloc(DataStorage& storage, size_t size,
 	                             MoveCallback moveCallback, void* moveCallbackUserData);
 	DataAllocation() = default;
+	DataAllocation(vk::DeviceAddress deviceAddress, size_t size, DataMemory* dataMemory,
+	               MoveCallback moveCallback, void* moveCallbackUserData);
 	void init(vk::DeviceAddress deviceAddress, size_t size, DataMemory* dataMemory,
 	          MoveCallback moveCallback, void* moveCallbackUserData);
 	void free();
@@ -74,6 +76,7 @@ public:
 // inline methods
 namespace CadR {
 
+inline DataAllocation::DataAllocation(vk::DeviceAddress deviceAddress, size_t size, DataMemory* dataMemory, MoveCallback moveCallback, void* moveCallbackUserData)  { init(deviceAddress, size, dataMemory, moveCallback, moveCallbackUserData); }
 inline void DataAllocation::init(vk::DeviceAddress deviceAddress, size_t size, DataMemory* dataMemory, MoveCallback moveCallback, void* moveCallbackUserData)  { _deviceAddress = deviceAddress; _size = size; _dataMemory = dataMemory; _moveCallback = moveCallback; _moveCallbackUserData = moveCallbackUserData; _stagingDataAllocation = nullptr; }
 inline vk::DeviceAddress DataAllocation::deviceAddress() const  { return _deviceAddress; }
 inline size_t DataAllocation::size() const  { return _size; }

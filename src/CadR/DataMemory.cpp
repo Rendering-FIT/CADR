@@ -6,6 +6,8 @@
 using namespace std;
 using namespace CadR;
 
+DataAllocation DataMemory::_zeroSizeAllocation(0, 0, nullptr, nullptr, nullptr);
+
 
 
 DataMemory::~DataMemory()
