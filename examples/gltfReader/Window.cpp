@@ -430,6 +430,9 @@ bool CadUI::Window::updateSize()
 	if(!_device)
 		throw std::runtime_error("CadUI::Window::updateSize() called without proper call to Window::initVulkan().");
 
+	// wait for rendering to complete
+	_device->waitIdle();
+
 	// recreate only upon surface extent change
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface,*this));
 	if(surfaceCapabilities.currentExtent!=_surfaceExtent) {

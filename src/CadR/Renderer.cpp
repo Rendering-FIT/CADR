@@ -437,8 +437,8 @@ size_t Renderer::beginFrame()
 		// prepare stats processing
 		_timestampIndex = 0;
 		_inProgressFrameInfoList.emplace_back();
-		auto& [stats,timestampPool] = _inProgressFrameInfoList.back();
-		stats.frameNumber = _frameNumber;
+		FrameInfoStuff& stats = _inProgressFrameInfoList.back();
+		stats.info.frameNumber = _frameNumber;
 
 		// get calibrated timestamps
 		if(_useCalibratedTimestamps) {
@@ -453,16 +453,16 @@ size_t Renderer::beginFrame()
 				ts.data(),  // pTimestamps
 				&maxDeviation  // pMaxDeviation
 			);
-			stats.beginFrameGpu = ts[0];
-			stats.beginFrameCpu = ts[1];
+			stats.info.beginFrameGpu = ts[0];
+			stats.info.beginFrameCpu = ts[1];
 		}
 		else {
-			stats.beginFrameGpu = getGpuTimestamp();
-			stats.beginFrameCpu = getCpuTimestamp();
+			stats.info.beginFrameGpu = getGpuTimestamp();
+			stats.info.beginFrameCpu = getCpuTimestamp();
 		}
 
 		// create timestamp pool
-		timestampPool=
+		stats.timestampPool =
 			_device->createQueryPoolUnique(
 				vk::QueryPoolCreateInfo(
 					vk::QueryPoolCreateFlags(),  // flags

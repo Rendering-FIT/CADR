@@ -934,9 +934,6 @@ int main(int argc,char** argv) {
 				vk::Fence(nullptr)  // fence
 			);
 			window.present(presentationQueue,renderingFinishedSemaphore.get(),imageIndex);
-
-			// wait for rendering to complete
-			device.queueWaitIdle(presentationQueue);
 		}
 
 		// finish all pending work on device
