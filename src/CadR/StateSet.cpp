@@ -118,8 +118,6 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 
 	if(_numDrawables != 0) {
 
-		assert(_geometryStorage && "If StateSet has associated Drawables, GeometryStorage have to be assigned before calling StateSet::recordToCommandBuffer().");
-
 		for(StateSetDrawableContainer* container : _drawableContainerList) {
 
 			// get numDrawables

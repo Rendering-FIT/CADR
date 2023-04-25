@@ -611,7 +611,6 @@ int main(int argc,char** argv) {
 
 				stateSetRoot.childList.append(ss);
 				ss.pipeline=pipeline;
-				ss.setGeometryStorage(g.geometryStorage());
 
 				window.resizeCallbacks.append(
 						[&device,&window,pipeline,
