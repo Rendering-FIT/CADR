@@ -22,6 +22,7 @@ struct CADR_EXPORT StateSetDrawableContainer {
 	std::vector<Drawable*> drawablePtrList;  ///< List of Drawables attached to this StateSet.
 
 	StateSetDrawableContainer(StateSet* s, GeometryMemory* m);
+	~StateSetDrawableContainer();
 	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData) noexcept;
 	void removeDrawableUnsafe(Drawable& d) noexcept;
 };
@@ -35,8 +36,7 @@ protected:
 	bool _skipRecording;  ///< The flag optimizing the rendering, making this and all the child StateSets to be excluded from recording to the command buffer.
 	                      ///< By default, it is set to true whenever there are no Drawables in this StateSet or any child StateSets. It can be forced to false by setting _forceRecording to true.
 	bool _forceRecording;  ///< The flag forces recording to happen always, even if the StateSet does not contain any Drawables. However, some draw commands might be recorded by the user in the callbacks. 
-	GeometryStorage* _geometryStorage = nullptr;  ///< GeometryStorage used by all Drawables attached to this StateSet.
-	std::vector<std::unique_ptr<StateSetDrawableContainer>> _drawableContainerList;
+	std::vector<StateSetDrawableContainer*> _drawableContainerList;  ///< List of containers for drawables. Containers are owned by the StateSet. They are automatically allocated and released.
 
 public:
 
@@ -71,8 +71,6 @@ public:
 	// construction and destruction
 	StateSet();
 	StateSet(Renderer* renderer);
-	StateSet(GeometryStorage* geometryStorage);
-	StateSet(Renderer* renderer, GeometryStorage* geometryStorage);
 	~StateSet();
 
 	// deleted constructors and operators
@@ -83,15 +81,14 @@ public:
 
 	// getters
 	Renderer* renderer() const;
-	GeometryStorage* geometryStorage() const;
-	const std::vector<std::unique_ptr<StateSetDrawableContainer>>& drawableContainerList() const;
+	const std::vector<StateSetDrawableContainer*>& drawableContainerList() const;
 	bool forceRecording() const;
 
 	// drawable methods
 	size_t numDrawables() const;
-	void appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId);
+	void appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId, GeometryStorage* geometryStorage);
 	void removeDrawable(Drawable& d);
-	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId);
+	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId, GeometryStorage* geometryStorage);
 	void removeDrawableUnsafe(Drawable& d);
 
 	// rendering methods
@@ -100,9 +97,6 @@ public:
 	                                     ///< If set to false, the recording will happen only if there are any Drawables in this StateSet or in any child StateSet. The recording can also be forced by requestRecording() on per-frame basis.
 	void requestRecording();  ///< Requests the recording of this StateSet for the current frame even if it does not contain any Drawables. This function shall be called from prepareCallList callbacks only. Otherwise, it has no effect.
 	void recordToCommandBuffer(vk::CommandBuffer cb, size_t& drawableCounter);
-
-	// geometry storage
-	void setGeometryStorage(GeometryStorage* geometryStorage);  ///< Sets the GeometryStorage that will be bound when rendering this StateSet. It must not be changed if you have already Drawables using this StateSet as StateSet would then use different GeometryStorage than Drawables, leading to undefined behaviour.
 
 	friend Drawable;
 	friend StateSetDrawableContainer;
@@ -119,27 +113,21 @@ namespace CadR {
 
 inline StateSetDrawableContainer::StateSetDrawableContainer(StateSet* s, GeometryMemory* m) : stateSet(s), geometryMemory(m)  {}
 
-inline StateSet::StateSet() : _renderer(Renderer::get()), _geometryStorage(nullptr)  {}
-inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer), _geometryStorage(nullptr)  {}
-inline StateSet::StateSet(GeometryStorage* geometryStorage)
-	: _renderer(Renderer::get()), _geometryStorage(geometryStorage)  {}
-inline StateSet::StateSet(Renderer* renderer, GeometryStorage* geometryStorage)
-	: _renderer(renderer), _geometryStorage(geometryStorage)  {}
-inline StateSet::~StateSet()  { assert(_numDrawables==0 && "Do not destroy StateSet while some Drawables still use it."); }
+inline StateSet::StateSet() : _renderer(Renderer::get())  {}
+inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer)  {}
+inline StateSet::~StateSet()  { for(auto* c : _drawableContainerList) delete c; }
 
 inline Renderer* StateSet::renderer() const  { return _renderer; }
-inline GeometryStorage* StateSet::geometryStorage() const  { return _geometryStorage; }
-inline const std::vector<std::unique_ptr<StateSetDrawableContainer>>& StateSet::drawableContainerList() const  { return _drawableContainerList; }
+inline const std::vector<StateSetDrawableContainer*>& StateSet::drawableContainerList() const  { return _drawableContainerList; }
 inline bool StateSet::forceRecording() const  { return _forceRecording; }
 
 inline size_t StateSet::numDrawables() const  { return _numDrawables; }
-inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData,geometryMemoryId); }
+inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId, GeometryStorage* geometryStorage)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData,geometryMemoryId,geometryStorage); }
 inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0u) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0u; }
 inline void StateSet::removeDrawableUnsafe(Drawable& d)  { d._stateSetDrawableContainer->removeDrawableUnsafe(d); }
 
 inline void StateSet::setForceRecording(bool value)  { _forceRecording = value; }
 inline void StateSet::requestRecording()  { _skipRecording = false; }
-inline void StateSet::setGeometryStorage(GeometryStorage* geometryStorage)  { assert(_numDrawables==0 && "Cannot change GeometryStorage while there are attached Drawables."); _geometryStorage=geometryStorage; }
 
 }
 

@@ -46,14 +46,23 @@ void StateSetDrawableContainer::removeDrawableUnsafe(Drawable& d) noexcept
 }
 
 
-void StateSet::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId)
+StateSetDrawableContainer::~StateSetDrawableContainer()
+{
+	for(size_t i=0,c=drawablePtrList.size(); i<c; i++)
+		drawablePtrList[i]->detachStateSet();
+}
+
+
+void StateSet::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData,
+                                    uint32_t geometryMemoryId, GeometryStorage* geometryStorage)
 {
 	// make sure we have enough StateSet::DrawableContainers
 	if(_drawableContainerList.size() <= geometryMemoryId) {
 		_drawableContainerList.reserve(geometryMemoryId+1);
 		while(_drawableContainerList.size() <= geometryMemoryId)
-			_drawableContainerList.emplace_back(make_unique<StateSetDrawableContainer>(
-				this, _geometryStorage->geometryMemoryList()[_drawableContainerList.size()].get()));
+			_drawableContainerList.emplace_back(
+				new StateSetDrawableContainer(this,
+					geometryStorage->geometryMemoryList()[_drawableContainerList.size()].get()));
 	}
 
 	// append Drawable into StateSetDrawableContainer
@@ -111,8 +120,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 
 		assert(_geometryStorage && "If StateSet has associated Drawables, GeometryStorage have to be assigned before calling StateSet::recordToCommandBuffer().");
 
-		for(unique_ptr<StateSetDrawableContainer>& uniqueContainer : _drawableContainerList) {
-			StateSetDrawableContainer* container = uniqueContainer.get();
+		for(StateSetDrawableContainer* container : _drawableContainerList) {
 
 			// get numDrawables
 			size_t numDrawables = container->drawableDataList.size();

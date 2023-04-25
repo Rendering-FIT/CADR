@@ -56,7 +56,8 @@ Drawable::Drawable(Geometry& geometry, uint32_t primitiveSetIndex,
 			_shaderData->deviceAddress(),  // shaderDataAddr
 			numInstances  // numInstances
 		),
-		m->id()  // geometryMemoryId
+		m->id(),  // geometryMemoryId
+		geometry.geometryStorage()  // geometryStorage
 	);
 }
 
@@ -142,7 +143,8 @@ void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex,
 			_shaderData->deviceAddress(),  // shaderDataAddr
 			numInstances  // numInstances
 		),
-		m->id()  // geometryMemoryId
+		m->id(),  // geometryMemoryId
+		geometry.geometryStorage()  // geometryStorage
 	);
 }
 
@@ -240,6 +242,16 @@ void Drawable::freeShaderData()
 	// update DrawableGpuData
 	if(_indexIntoStateSet != ~0u)
 		_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet].shaderDataAddr = 0;
+}
+
+
+void Drawable::detachStateSet() noexcept
+{
+	if(_indexIntoStateSet!=~0u) {
+		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
+		_drawableListHook.unlink();
+		_indexIntoStateSet=~0u;
+	}
 }
 
 

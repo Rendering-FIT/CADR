@@ -58,6 +58,7 @@ public:
 	void allocShaderData(size_t size, uint32_t numInstances);
 	void allocShaderData(size_t size);
 	void freeShaderData();
+	void detachStateSet() noexcept;
 	void destroy() noexcept;
 	bool isValid() const;
 
