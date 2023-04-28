@@ -2,9 +2,6 @@
 set(examples_folder_name "Examples")
 
 set(PACKAGES
-	tut02-vulkanInfo
-	tut05-resizableWindow
-	tut06-helloTriangle
 	VulkanDepthBuffer
 	OpenGLInteroperability
 	HelloQtWindow
@@ -12,6 +9,7 @@ set(PACKAGES
 	VulkanRenderingPerformance
 	VulkanDynamicFuncs
 	VulkanComputeShader
+	VulkanInfo
 	gltfReader
 	)
 
