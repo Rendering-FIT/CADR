@@ -34,8 +34,8 @@ public:
 	StagingBuffer& operator=(const StagingBuffer&) = delete;
 	StagingBuffer& operator=(StagingBuffer&& rhs) noexcept;
 
-	uint8_t* data() const;
-	size_t size() const;
+	template<typename T = uint8_t> T* data() const;
+	template<typename T = uint8_t> size_t size() const;
 
 	void reset(Renderer* renderer,vk::Buffer dstBuffer,size_t dstOffset,size_t size);
 	void record(vk::CommandBuffer cb);
@@ -55,8 +55,8 @@ inline StagingBuffer::StagingBuffer(Renderer* renderer,vk::Buffer dstBuffer,size
 inline StagingBuffer::~StagingBuffer()  { cleanUp(); }
 inline void StagingBuffer::destroy()  { cleanUp(); }
 
-inline uint8_t* StagingBuffer::data() const  { return _data; }
-inline size_t StagingBuffer::size() const  { return _size; }
+template<typename T> inline T* StagingBuffer::data() const  { return reinterpret_cast<T*>(_data); }
+template<typename T> inline size_t StagingBuffer::size() const  { return _size / sizeof(T); }
 
 
 }

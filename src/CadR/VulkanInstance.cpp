@@ -103,7 +103,7 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 }
 
 
-tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceAndQueueFamilies(vk::SurfaceKHR surface)
+tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceForRenderingAndPresentation(vk::SurfaceKHR surface)
 {
 	// find compatible devices
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
@@ -184,7 +184,7 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceAndQue
 }
 
 
-tuple<vk::PhysicalDevice, uint32_t> VulkanInstance::chooseDeviceAndQueueFamily()
+tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceForOffscreenRendering()
 {
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
@@ -206,7 +206,7 @@ tuple<vk::PhysicalDevice, uint32_t> VulkanInstance::chooseDeviceAndQueueFamily()
 	// choose the best device
 	auto bestDevice = compatibleDevices.begin();
 	if(bestDevice == compatibleDevices.end())
-		return make_tuple(vk::PhysicalDevice(), 0);
+		return make_tuple(vk::PhysicalDevice(), 0, 0);
 	constexpr const array deviceTypeScore = {
 		10, // vk::PhysicalDeviceType::eOther         - lowest score
 		40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
@@ -223,5 +223,5 @@ tuple<vk::PhysicalDevice, uint32_t> VulkanInstance::chooseDeviceAndQueueFamily()
 			bestScore = score;
 		}
 	}
-	return make_tuple(std::get<0>(*bestDevice), std::get<1>(*bestDevice)); 
+	return make_tuple(std::get<0>(*bestDevice), std::get<1>(*bestDevice), std::get<1>(*bestDevice)); 
 }

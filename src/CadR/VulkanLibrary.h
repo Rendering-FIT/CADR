@@ -21,6 +21,7 @@ public:
 	static const std::filesystem::path& defaultName();
 
 	VulkanLibrary();
+	VulkanLibrary(bool load);
 	VulkanLibrary(const std::filesystem::path& libPath);
 	~VulkanLibrary();
 
@@ -57,6 +58,7 @@ private:
 // inline and template methods
 inline const std::filesystem::path& VulkanLibrary::defaultName()  { return _defaultName; }
 inline VulkanLibrary::VulkanLibrary()  { vkGetInstanceProcAddr=nullptr; vkCreateInstance=nullptr; }
+inline VulkanLibrary::VulkanLibrary(bool init) : VulkanLibrary()  { if(init) load(); }
 inline VulkanLibrary::VulkanLibrary(const std::filesystem::path& libPath) : VulkanLibrary()  { load(libPath); }
 inline VulkanLibrary::~VulkanLibrary()  { unload(); }
 

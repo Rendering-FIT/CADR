@@ -39,9 +39,9 @@ int main(int,char**)
 	VulkanInstance instance(lib, nullptr, 0, nullptr, 0, VK_API_VERSION_1_2);
 	vk::PhysicalDevice physicalDevice;
 	uint32_t graphicsQueueFamily;
-	tie(physicalDevice, graphicsQueueFamily) = instance.chooseDeviceAndQueueFamily();
+	tie(physicalDevice, graphicsQueueFamily, ignore) = instance.chooseDeviceForOffscreenRendering();
 	VulkanDevice device(instance, physicalDevice, graphicsQueueFamily, graphicsQueueFamily,
-	                    nullptr, nullptr, VulkanDevice::defaultFeatures());
+	                    nullptr, VulkanDevice::defaultFeatures());
 	Renderer r(device, instance, physicalDevice, graphicsQueueFamily);
 
 	// free on nullptr, alloc and destroy single allocation of size 10

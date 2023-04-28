@@ -14,13 +14,13 @@ protected:
 	uint32_t _version;
 public:
 
-	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDeviceAndQueueFamilies(vk::SurfaceKHR surface);
-	std::tuple<vk::PhysicalDevice, uint32_t> chooseDeviceAndQueueFamily();
+	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDeviceForRenderingAndPresentation(vk::SurfaceKHR surface);
+	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDeviceForOffscreenRendering();
 
 	// constructors and destructor
 	VulkanInstance();
-	VulkanInstance(VulkanLibrary& lib,const vk::InstanceCreateInfo& createInfo);
-	VulkanInstance(VulkanLibrary& lib,vk::Instance instance);
+	VulkanInstance(VulkanLibrary& lib, const vk::InstanceCreateInfo& createInfo);
+	VulkanInstance(VulkanLibrary& lib, vk::Instance instance);
 	VulkanInstance(VulkanLibrary& lib,
 	               const char* applicationName = nullptr,
 	               uint32_t applicationVersion = 0,
@@ -37,7 +37,7 @@ public:
 	VulkanInstance& operator=(VulkanInstance&& rhs) noexcept;
 
 	// initialization and finalization
-	void create(VulkanLibrary& lib,const vk::InstanceCreateInfo& createInfo);
+	void create(VulkanLibrary& lib, const vk::InstanceCreateInfo& createInfo);
 	void create(VulkanLibrary& lib,
 	            const char* applicationName = nullptr,
 	            uint32_t applicationVersion = 0,
@@ -46,7 +46,7 @@ public:
 	            uint32_t apiVersion = VK_API_VERSION_1_0,
 	            vk::ArrayProxy<const char*const> enabledLayers = nullptr,
 	            vk::ArrayProxy<const char*const> enabledExtensions = nullptr);
-	void init(VulkanLibrary& lib,vk::Instance instance);
+	void init(VulkanLibrary& lib, vk::Instance instance);
 	bool initialized() const;
 	void destroy();
 
@@ -59,7 +59,7 @@ public:
 
 	uint32_t version() const;
 	bool supportsVersion(uint32_t version) const;
-	bool supportsVersion(uint32_t major,uint32_t minor,uint32_t patch=0) const;
+	bool supportsVersion(uint32_t major, uint32_t minor, uint32_t patch=0) const;
 
 	vk::Instance get() const;
 	void set(nullptr_t);
@@ -183,38 +183,38 @@ private:
 
 // inline and template methods
 inline VulkanInstance::VulkanInstance() : _version(0)  { vkDestroyInstance=nullptr; vkCreateDevice=nullptr; vkGetDeviceProcAddr=nullptr; }
-inline VulkanInstance::VulkanInstance(VulkanLibrary& lib,const vk::InstanceCreateInfo& createInfo)  { create(lib,createInfo); }
-inline VulkanInstance::VulkanInstance(VulkanLibrary& lib,vk::Instance instance)  { init(lib,instance); }
-inline VulkanInstance::VulkanInstance(VulkanLibrary& lib,const char* applicationName,uint32_t applicationVersion,
-		const char* engineName,uint32_t engineVersion,uint32_t apiVersion,
-		vk::ArrayProxy<const char*const> enabledLayers,vk::ArrayProxy<const char*const> enabledExtensions)
+inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, const vk::InstanceCreateInfo& createInfo)  { create(lib, createInfo); }
+inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, vk::Instance instance)  { init(lib, instance); }
+inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, const char* applicationName, uint32_t applicationVersion,
+		const char* engineName, uint32_t engineVersion, uint32_t apiVersion,
+		vk::ArrayProxy<const char*const> enabledLayers, vk::ArrayProxy<const char*const> enabledExtensions)
 {
-	vk::ApplicationInfo appInfo(applicationName,applicationVersion,engineName,engineVersion,apiVersion);
-	vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(),&appInfo,enabledLayers.size(),enabledLayers.data(),enabledExtensions.size(),enabledExtensions.data());
-	create(lib,createInfo);
+	vk::ApplicationInfo appInfo(applicationName, applicationVersion, engineName, engineVersion, apiVersion);
+	vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(), &appInfo, enabledLayers.size(), enabledLayers.data(), enabledExtensions.size(), enabledExtensions.data());
+	create(lib, createInfo);
 }
 inline VulkanInstance::~VulkanInstance()  { destroy(); }
 
-inline void VulkanInstance::create(VulkanLibrary& lib,const char* applicationName,uint32_t applicationVersion,
-		const char* engineName,uint32_t engineVersion,uint32_t apiVersion,
-		vk::ArrayProxy<const char*const> enabledLayers,vk::ArrayProxy<const char*const> enabledExtensions)
+inline void VulkanInstance::create(VulkanLibrary& lib, const char* applicationName, uint32_t applicationVersion,
+		const char* engineName, uint32_t engineVersion, uint32_t apiVersion,
+		vk::ArrayProxy<const char*const> enabledLayers, vk::ArrayProxy<const char*const> enabledExtensions)
 {
-	vk::ApplicationInfo appInfo(applicationName,applicationVersion,engineName,engineVersion,apiVersion);
-	vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(),&appInfo,enabledLayers.size(),enabledLayers.data(),enabledExtensions.size(),enabledExtensions.data());
-	create(lib,createInfo);
+	vk::ApplicationInfo appInfo(applicationName, applicationVersion, engineName, engineVersion, apiVersion);
+	vk::InstanceCreateInfo createInfo(vk::InstanceCreateFlags(), &appInfo, enabledLayers.size(), enabledLayers.data(), enabledExtensions.size(), enabledExtensions.data());
+	create(lib, createInfo);
 }
 inline bool VulkanInstance::initialized() const  { return _instance.operator bool(); }
-template<typename T> T VulkanInstance::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name,*this)); }
-template<typename T> T VulkanInstance::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name,*this)); }
+template<typename T> T VulkanInstance::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name, *this)); }
+template<typename T> T VulkanInstance::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name, *this)); }
 
 inline VulkanInstance::operator vk::Instance() const  { return _instance; }
 inline VulkanInstance::operator bool() const  { return _instance.operator bool(); }
 inline bool VulkanInstance::operator!() const  { return _instance.operator!(); }
 inline uint32_t VulkanInstance::version() const  { return _version; }
-inline bool VulkanInstance::supportsVersion(uint32_t version) const  { return _version>=version; }
-inline bool VulkanInstance::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version>=VK_MAKE_VERSION(major,minor,patch); }
+inline bool VulkanInstance::supportsVersion(uint32_t version) const  { return _version >= version; }
+inline bool VulkanInstance::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version >= VK_MAKE_VERSION(major,minor,patch); }
 inline vk::Instance VulkanInstance::get() const  { return _instance; }
-inline void VulkanInstance::set(nullptr_t)  { _instance=nullptr; }
+inline void VulkanInstance::set(nullptr_t)  { _instance = nullptr; }
 
 
 }

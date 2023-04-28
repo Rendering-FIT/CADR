@@ -169,10 +169,9 @@ int main(int argc,char** argv) {
 #endif
 		CadUI::Window window(vulkanInstance);
 		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
-				vulkanInstance.chooseDeviceAndQueueFamilies(window.surface());
+				vulkanInstance.chooseDeviceForRenderingAndPresentation(window.surface());
 		CadR::VulkanDevice device(
 			vulkanInstance,deviceAndQueueFamilies,
-			nullptr,
 			"VK_KHR_swapchain",
 			CadR::VulkanDevice::defaultFeatures());
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
