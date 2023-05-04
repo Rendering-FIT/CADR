@@ -5,6 +5,7 @@ set(PACKAGES
 	VulkanDepthBuffer
 	OpenGLInteroperability
 	HelloQtWindow
+	RenderingPerformance
 	VulkanAttributesAndUniforms
 	VulkanRenderingPerformance
 	VulkanDynamicFuncs
