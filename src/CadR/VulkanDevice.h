@@ -15,8 +15,6 @@ protected:
 	uint32_t _version;
 public:
 
-	static const vk::PhysicalDeviceFeatures2* defaultFeatures();
-
 	// constructors and destructor
 	VulkanDevice();
 	VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, vk::Device device);
@@ -91,31 +89,6 @@ public:
 	            const vk::ArrayProxy<const char*const> enabledExtensions,
 	            nullptr_t enabledFeatures);
 	void init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, vk::Device device);
-	void init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo);
-	void init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice,
-	          uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
-	          const vk::ArrayProxy<const char*const> enabledExtensions,
-	          const vk::PhysicalDeviceFeatures* enabledFeatures);
-	void init(VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-	          uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
-	          const vk::ArrayProxy<const char*const> enabledExtensions,
-	          const vk::PhysicalDeviceFeatures2* enabledFeatures2);
-	void init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice,
-	          uint32_t graphicsQueueFamily,uint32_t presentationQueueFamily,
-	          const vk::ArrayProxy<const char*const> enabledExtensions,
-	          nullptr_t enabledFeatures);
-	void init(VulkanInstance& instance,
-	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
-	          const vk::ArrayProxy<const char*const> enabledExtensions,
-	          const vk::PhysicalDeviceFeatures* enabledFeatures);
-	void init(VulkanInstance& instance,
-	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
-	          const vk::ArrayProxy<const char*const> enabledExtensions,
-	          const vk::PhysicalDeviceFeatures2* enabledFeatures2);
-	void init(VulkanInstance& instance,
-	          std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
-	          const vk::ArrayProxy<const char*const> enabledExtensions,
-	          nullptr_t enabledFeatures);
 	bool initialized() const;
 	void destroy();
 
@@ -600,33 +573,25 @@ public:
 private:
 	VulkanDevice(const VulkanDevice&) = default;  ///< Private copy contructor. Object copies not allowed. Only internal use.
 	VulkanDevice& operator=(const VulkanDevice&) = default;  ///< Private copy assignment. Object copies not allowed. Only internal use.
-protected:
-	static vk::PhysicalDeviceFeatures2 _defaultFeatures;
-	friend struct VulkanDeviceStaticInitializer;
 };
 
 
 // inline methods
-inline const vk::PhysicalDeviceFeatures2* VulkanDevice::defaultFeatures()  { return &_defaultFeatures; }
 inline VulkanDevice::VulkanDevice() : _version(0)  { vkGetDeviceProcAddr = nullptr; vkDestroyDevice = nullptr; }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo) : VulkanDevice()  { init(instance, physicalDevice, createInfo); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo) : VulkanDevice()  { create(instance, physicalDevice, createInfo); }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, vk::Device device) : VulkanDevice()  { init(instance, physicalDevice, device); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures)   : VulkanDevice()  { init(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2) : VulkanDevice()  { init(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures2); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures) : VulkanDevice()  { init(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures) : VulkanDevice()    { init(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2) : VulkanDevice()  { init(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures2); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures) : VulkanDevice()  { init(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures)   : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2) : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures2); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures) : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures) : VulkanDevice()    { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2) : VulkanDevice()  { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures2); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures) : VulkanDevice()  { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
 inline VulkanDevice::~VulkanDevice()  { destroy(); }
 
 inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures)    { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures); }
 inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2)  { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures2); }
 inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, reinterpret_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
 inline void VulkanDevice::create(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, reinterpret_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
-inline void VulkanDevice::init(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures)    { init(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures); }
-inline void VulkanDevice::init(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2)  { init(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures2); }
-inline void VulkanDevice::init(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { init(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, reinterpret_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
-inline void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { init(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, reinterpret_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
 inline bool VulkanDevice::initialized() const  { return _device.operator bool(); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }

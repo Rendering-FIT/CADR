@@ -11,6 +11,21 @@
 using namespace std;
 using namespace CadR;
 
+// required features
+// (Currently, CadR::Renderer requires shaderInt64 and bufferDeviceAddress features.)
+vk::PhysicalDeviceFeatures2 Renderer::_requiredFeatures;
+vk::PhysicalDeviceVulkan12Features vulkan12Features;
+namespace CadR {
+	struct RendererStaticInitializer {
+		RendererStaticInitializer() {
+			Renderer::_requiredFeatures.pNext = &vulkan12Features;
+			Renderer::_requiredFeatures.features.shaderInt64 = true;
+			vulkan12Features.bufferDeviceAddress = true;
+		}
+	};
+}
+static CadR::RendererStaticInitializer initializer;
+
 // shader code in SPIR-V binary
 static const uint32_t processDrawablesShaderSpirv[]={
 #include "shaders/processDrawables.comp.spv"

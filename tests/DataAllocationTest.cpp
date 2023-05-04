@@ -41,7 +41,7 @@ int main(int,char**)
 	uint32_t graphicsQueueFamily;
 	tie(physicalDevice, graphicsQueueFamily, ignore) = instance.chooseDeviceForOffscreenRendering();
 	VulkanDevice device(instance, physicalDevice, graphicsQueueFamily, graphicsQueueFamily,
-	                    nullptr, VulkanDevice::defaultFeatures());
+	                    nullptr, Renderer::requiredFeatures());
 	Renderer r(device, instance, physicalDevice, graphicsQueueFamily);
 
 	// free on nullptr, alloc and destroy single allocation of size 10

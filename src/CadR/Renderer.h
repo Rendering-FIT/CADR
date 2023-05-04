@@ -22,7 +22,7 @@ struct PrimitiveSetGpuData;
 
 
 class CADR_EXPORT Renderer {
-private:
+protected:
 
 	VulkanDevice* _device;
 	uint32_t _graphicsQueueFamily;
@@ -81,11 +81,14 @@ private:
 	uint32_t _timestampIndex;  ///< Timestamp index used during recording of frame to track the index of the next timestamp that will be recorded to the command buffer.
 
 	static Renderer* _defaultRenderer;
+	static vk::PhysicalDeviceFeatures2 _requiredFeatures;
+	friend struct RendererStaticInitializer;
 
 public:
 
 	static Renderer* get();
 	static void set(Renderer* r);
+	static const vk::PhysicalDeviceFeatures2* requiredFeatures();
 
 	Renderer(bool makeDefault=true);
 	Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
@@ -164,6 +167,7 @@ public:
 namespace CadR {
 inline Renderer* Renderer::get()  { return _defaultRenderer; }
 inline void Renderer::set(Renderer* r)  { _defaultRenderer=r; }
+inline const vk::PhysicalDeviceFeatures2* Renderer::requiredFeatures()  { return &_requiredFeatures; }
 inline VulkanDevice* Renderer::device() const  { return _device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
 inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }

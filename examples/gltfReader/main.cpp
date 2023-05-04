@@ -173,7 +173,7 @@ int main(int argc,char** argv) {
 		CadR::VulkanDevice device(
 			vulkanInstance,deviceAndQueueFamilies,
 			"VK_KHR_swapchain",
-			CadR::VulkanDevice::defaultFeatures());
+			CadR::Renderer::requiredFeatures());
 		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
 		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
 		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);

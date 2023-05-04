@@ -4,19 +4,6 @@
 
 using namespace CadR;
 
-vk::PhysicalDeviceFeatures2 VulkanDevice::_defaultFeatures;
-vk::PhysicalDeviceVulkan12Features vulkan12Features;
-namespace CadR {
-	struct VulkanDeviceStaticInitializer {
-		VulkanDeviceStaticInitializer() {
-			VulkanDevice::_defaultFeatures.pNext = &vulkan12Features;
-			VulkanDevice::_defaultFeatures.features.shaderInt64 = true;
-			vulkan12Features.bufferDeviceAddress = true;
-		}
-	};
-}
-static CadR::VulkanDeviceStaticInitializer initializer;
-
 
 
 void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, vk::Device device)
@@ -113,18 +100,23 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 }
 
 
-void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo)
+void VulkanDevice::create(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo)
 {
+	if(_device)
+		destroy();
+	if(!physicalDevice)
+		return;
+
 	init(instance, physicalDevice, instance.createDevice(physicalDevice, createInfo));
 }
 
 
-void VulkanDevice::init(VulkanInstance& instance,
-                        vk::PhysicalDevice physicalDevice,
-                        uint32_t graphicsQueueFamily,
-                        uint32_t presentationQueueFamily,
-                        const vk::ArrayProxy<const char*const> enabledExtensions,
-                        const vk::PhysicalDeviceFeatures* enabledFeatures)
+void VulkanDevice::create(VulkanInstance& instance,
+                          vk::PhysicalDevice physicalDevice,
+                          uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,
+                          const vk::ArrayProxy<const char*const> enabledExtensions,
+                          const vk::PhysicalDeviceFeatures* enabledFeatures)
 {
 	size_t numQueues = (graphicsQueueFamily==presentationQueueFamily) ? 1 : 2;
 	std::array<vk::DeviceQueueCreateInfo, 2> queueInfos = {
@@ -148,16 +140,16 @@ void VulkanDevice::init(VulkanInstance& instance,
 		enabledExtensions.size(), enabledExtensions.data(),  // enabledExtensions
 		enabledFeatures  // enabledFeatures
 	);
-	init(instance, physicalDevice, createInfo);
+	create(instance, physicalDevice, createInfo);
 }
 
 
-void VulkanDevice::init(VulkanInstance& instance,
-                        vk::PhysicalDevice physicalDevice,
-                        uint32_t graphicsQueueFamily,
-                        uint32_t presentationQueueFamily,
-                        const vk::ArrayProxy<const char*const> enabledExtensions,
-                        const vk::PhysicalDeviceFeatures2* enabledFeatures2)
+void VulkanDevice::create(VulkanInstance& instance,
+                          vk::PhysicalDevice physicalDevice,
+                          uint32_t graphicsQueueFamily,
+                          uint32_t presentationQueueFamily,
+                          const vk::ArrayProxy<const char*const> enabledExtensions,
+                          const vk::PhysicalDeviceFeatures2* enabledFeatures2)
 {
 	size_t numQueues = (graphicsQueueFamily==presentationQueueFamily) ? 1 : 2;
 	std::array<vk::DeviceQueueCreateInfo, 2> queueInfos = {
@@ -182,50 +174,7 @@ void VulkanDevice::init(VulkanInstance& instance,
 		nullptr  // enabledFeatures
 	);
 	createInfo.setPNext(enabledFeatures2);
-	init(instance, physicalDevice, createInfo);
-}
-
-
-void VulkanDevice::create(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo)
-{
-	if(_device)
-		destroy();
-	if(!physicalDevice)
-		return;
-
-	init(instance, physicalDevice, createInfo);
-}
-
-
-void VulkanDevice::create(VulkanInstance& instance,
-                          vk::PhysicalDevice physicalDevice,
-                          uint32_t graphicsQueueFamily,
-                          uint32_t presentationQueueFamily,
-                          const vk::ArrayProxy<const char*const> enabledExtensions,
-                          const vk::PhysicalDeviceFeatures* enabledFeatures)
-{
-	if(_device)
-		destroy();
-	if(!physicalDevice)
-		return;
-
-	init(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures);
-}
-
-
-void VulkanDevice::create(VulkanInstance& instance,
-                          vk::PhysicalDevice physicalDevice,
-                          uint32_t graphicsQueueFamily,
-                          uint32_t presentationQueueFamily,
-                          const vk::ArrayProxy<const char*const> enabledExtensions,
-                          const vk::PhysicalDeviceFeatures2* enabledFeatures2)
-{
-	if(_device)
-		destroy();
-	if(!physicalDevice)
-		return;
-
-	init(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures2);
+	create(instance, physicalDevice, createInfo);
 }
 
 
