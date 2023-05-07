@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include <functional>
 #include <tuple>
 
 namespace CadR {
@@ -15,9 +16,11 @@ protected:
 public:
 
 	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlagBits queueOperations,
-		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "", int index = -1);
+		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "", int index = -1,
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {});
 	std::vector<std::string> getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
-		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "");
+		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "",
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {});
 
 	// constructors and destructor
 	VulkanInstance();

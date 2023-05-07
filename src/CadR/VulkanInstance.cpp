@@ -105,7 +105,8 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 
 tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 	vk::QueueFlagBits queueOperations, vk::SurfaceKHR presentationSurface,
-	const std::string& nameFilter, int index)
+	const std::string& nameFilter, int index,
+	const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback)
 {
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
@@ -115,6 +116,12 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		// filter devices by supported operations
 		for(vk::PhysicalDevice pd : deviceList)
 		{
+			// callback to filter out devices
+			if(filterCallback)
+				if(filterCallback(*this, pd) == false)
+					continue;
+
+			// iterate queue families
 			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
@@ -131,13 +138,24 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		// filter devices by supported operations and presentation support
 		for(vk::PhysicalDevice pd : deviceList)
 		{
-			// skip devices without VK_KHR_swapchain
-			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
-			for(vk::ExtensionProperties& e : extensionList)
-				if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
-					goto swapchainSupported;
-			continue;
-		swapchainSupported:
+			// filter out devices
+			if(filterCallback)
+			{
+				// callback
+				// (do not forget to test for VK_KHR_swapchain inside filterCallback)
+				if(filterCallback(*this, pd) == false)
+					continue;
+			}
+			else
+			{
+				// skip devices without VK_KHR_swapchain
+				vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
+				for(vk::ExtensionProperties& e : extensionList)
+					if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
+						goto swapchainSupported;
+				continue;
+			swapchainSupported:;
+			}
 
 			// select queues for submitting operations and for presentation
 			uint32_t operationsQueueFamily = UINT32_MAX;
@@ -225,7 +243,8 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 
 
 vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
-	vk::SurfaceKHR presentationSurface, const std::string& nameFilter)
+	vk::SurfaceKHR presentationSurface, const std::string& nameFilter,
+	const function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback)
 {
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
@@ -235,6 +254,12 @@ vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlagBits queueOpe
 		// filter devices by supported operations
 		for(vk::PhysicalDevice pd : deviceList)
 		{
+			// callback to filter out devices
+			if(filterCallback)
+				if(filterCallback(*this, pd) == false)
+					continue;
+
+			// iterate queue families
 			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
@@ -251,13 +276,24 @@ vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlagBits queueOpe
 		// filter devices by supported operations and presentation support
 		for(vk::PhysicalDevice pd : deviceList)
 		{
-			// skip devices without VK_KHR_swapchain
-			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
-			for(vk::ExtensionProperties& e : extensionList)
-				if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
-					goto swapchainSupported;
-			continue;
-		swapchainSupported:
+			// filter out devices
+			if(filterCallback)
+			{
+				// callback
+				// (do not forget to test for VK_KHR_swapchain inside filterCallback)
+				if(filterCallback(*this, pd) == false)
+					continue;
+			}
+			else
+			{
+				// skip devices without VK_KHR_swapchain
+				vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
+				for(vk::ExtensionProperties& e : extensionList)
+					if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
+						goto swapchainSupported;
+				continue;
+			swapchainSupported:;
+			}
 
 			// select queues for submitting operations and for presentation
 			uint32_t operationsQueueFamily = UINT32_MAX;
