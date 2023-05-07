@@ -14,8 +14,10 @@ protected:
 	uint32_t _version;
 public:
 
-	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDeviceForRenderingAndPresentation(vk::SurfaceKHR surface);
-	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDeviceForOffscreenRendering();
+	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlagBits queueOperations,
+		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "", int index = -1);
+	std::vector<std::string> getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
+		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "");
 
 	// constructors and destructor
 	VulkanInstance();

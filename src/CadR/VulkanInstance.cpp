@@ -103,57 +103,97 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 }
 
 
-tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceForRenderingAndPresentation(vk::SurfaceKHR surface)
+tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
+	vk::QueueFlagBits queueOperations, vk::SurfaceKHR presentationSurface,
+	const std::string& nameFilter, int index)
 {
 	// find compatible devices
-	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-	// contains the window).
 	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
 	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
-	for(vk::PhysicalDevice pd : deviceList) {
+	if(!presentationSurface)
+	{
+		// filter devices by supported operations
+		for(vk::PhysicalDevice pd : deviceList)
+		{
+			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
-		// skip devices without VK_KHR_swapchain
-		vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
-		for(vk::ExtensionProperties& e : extensionList)
-			if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
-				goto swapchainSupported;
-		continue;
-		swapchainSupported:
-
-		// select queues for graphics rendering and for presentation
-		uint32_t graphicsQueueFamily = UINT32_MAX;
-		uint32_t presentationQueueFamily = UINT32_MAX;
-		vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
-		for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
-
-			// test for presentation support
-			if(pd.getSurfaceSupportKHR(i, surface, *this)) {
-
-				// test for graphics operations support
-				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
-					// if presentation and graphics operations are supported on the same queue,
-					// we will use single queue
+				// test for queue operations support (graphics, compute, etc.)
+				if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
 					compatibleDevices.emplace_back(pd, i, i, pd.getProperties(*this));
-					goto nextDevice;
+					break;
 				}
-				else
-					// if only presentation is supported, we store the first such queue
-					if(presentationQueueFamily == UINT32_MAX)
-						presentationQueueFamily = i;
-			}
-			else {
-				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
-					// if only graphics operations are supported, we store the first such queue
-					if(graphicsQueueFamily == UINT32_MAX)
-						graphicsQueueFamily = i;
 			}
 		}
+	}
+	else
+	{
+		// filter devices by supported operations and presentation support
+		for(vk::PhysicalDevice pd : deviceList)
+		{
+			// skip devices without VK_KHR_swapchain
+			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
+			for(vk::ExtensionProperties& e : extensionList)
+				if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
+					goto swapchainSupported;
+			continue;
+		swapchainSupported:
 
-		if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
-			// presentation and graphics operations are supported on the different queues
-			compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties(*this));
+			// select queues for submitting operations and for presentation
+			uint32_t operationsQueueFamily = UINT32_MAX;
+			uint32_t presentationQueueFamily = UINT32_MAX;
+			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+				// test for presentation support
+				if(pd.getSurfaceSupportKHR(i, presentationSurface, *this)) {
+
+					// test for queue operations support (graphics, compute, etc.)
+					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
+						// if operations and presentation are supported on the same queue,
+						// we will use single queue
+						compatibleDevices.emplace_back(pd, i, i, pd.getProperties(*this));
+						goto nextDevice;
+					}
+					else
+						// if only presentation is supported, we store the first such queue
+						if(presentationQueueFamily == UINT32_MAX)
+							presentationQueueFamily = i;
+				}
+				else {
+					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations)
+						// if only operations are supported on the queue,
+						// we store the first such queue
+						if(operationsQueueFamily == UINT32_MAX)
+							operationsQueueFamily = i;
+				}
+			}
+
+			if(operationsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
+				// presentation and operations are supported on the different queues
+				compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily, pd.getProperties(*this));
 		nextDevice:;
+		}
+	}
+
+	// filter physical devices
+	if(!nameFilter.empty()) {
+		decltype(compatibleDevices) filteredDevices;
+		for(auto& d : compatibleDevices)
+			if(nameFilter.find(std::get<3>(d).deviceName.data()) != string::npos)
+				filteredDevices.push_back(d);
+
+		compatibleDevices.swap(filteredDevices);
+	}
+
+	// choose by index
+	if(index >= 0) {
+		if(index < compatibleDevices.size()) {
+			auto& d = compatibleDevices[index];
+			return make_tuple(std::get<0>(d), std::get<1>(d), std::get<2>(d)); 
+		}
+		else
+			return make_tuple(vk::PhysicalDevice(), 0, 0);
 	}
 
 	// choose the best device
@@ -184,44 +224,87 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceForRen
 }
 
 
-tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDeviceForOffscreenRendering()
+vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
+	vk::SurfaceKHR presentationSurface, const std::string& nameFilter)
 {
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
-	vector<tuple<vk::PhysicalDevice, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
-	for(vk::PhysicalDevice pd : deviceList) {
+	vector<string> compatibleDevices;
+	if(!presentationSurface)
+	{
+		// filter devices by supported operations
+		for(vk::PhysicalDevice pd : deviceList)
+		{
+			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
-		// select queues for graphics rendering
-		vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
-		for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
-
-			// test for graphics operations support
-			if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
-				compatibleDevices.emplace_back(pd, i, pd.getProperties(*this));
-
-		}
-
-	}
-
-	// choose the best device
-	auto bestDevice = compatibleDevices.begin();
-	if(bestDevice == compatibleDevices.end())
-		return make_tuple(vk::PhysicalDevice(), 0, 0);
-	constexpr const array deviceTypeScore = {
-		10, // vk::PhysicalDeviceType::eOther         - lowest score
-		40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
-		50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
-		30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
-		20, // vk::PhysicalDeviceType::eCpu           - low score
-		10, // unknown vk::PhysicalDeviceType
-	};
-	int bestScore = deviceTypeScore[clamp(int(std::get<2>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
-	for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
-		int score = deviceTypeScore[clamp(int(std::get<2>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
-		if(score > bestScore) {
-			bestDevice = it;
-			bestScore = score;
+				// test for queue operations support (graphics, compute, etc.)
+				if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
+					compatibleDevices.emplace_back(pd.getProperties(*this).deviceName.data());
+					break;
+				}
+			}
 		}
 	}
-	return make_tuple(std::get<0>(*bestDevice), std::get<1>(*bestDevice), std::get<1>(*bestDevice)); 
+	else
+	{
+		// filter devices by supported operations and presentation support
+		for(vk::PhysicalDevice pd : deviceList)
+		{
+			// skip devices without VK_KHR_swapchain
+			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
+			for(vk::ExtensionProperties& e : extensionList)
+				if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
+					goto swapchainSupported;
+			continue;
+		swapchainSupported:
+
+			// select queues for submitting operations and for presentation
+			uint32_t operationsQueueFamily = UINT32_MAX;
+			uint32_t presentationQueueFamily = UINT32_MAX;
+			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+				// test for presentation support
+				if(pd.getSurfaceSupportKHR(i, presentationSurface, *this)) {
+
+					// test for queue operations support (graphics, compute, etc.)
+					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
+						// if operations and presentation are supported on the same queue,
+						// we will use single queue
+						compatibleDevices.emplace_back(pd.getProperties(*this).deviceName.data());
+						goto nextDevice;
+					}
+					else
+						// if only presentation is supported, we store the first such queue
+						if(presentationQueueFamily == UINT32_MAX)
+							presentationQueueFamily = i;
+				}
+				else {
+					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations)
+						// if only operations are supported on the queue,
+						// we store the first such queue
+						if(operationsQueueFamily == UINT32_MAX)
+							operationsQueueFamily = i;
+				}
+			}
+
+			if(operationsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
+				// presentation and operations are supported on the different queues
+				compatibleDevices.emplace_back(pd.getProperties(*this).deviceName.data());
+		nextDevice:;
+		}
+	}
+
+	// filter physical devices
+	if(!nameFilter.empty()) {
+		decltype(compatibleDevices) filteredDevices;
+		for(const string& s : compatibleDevices)
+			if(nameFilter.find(s) != string::npos)
+				filteredDevices.emplace_back(move(s));
+
+		compatibleDevices.swap(filteredDevices);
+	}
+
+	return move(compatibleDevices);
 }

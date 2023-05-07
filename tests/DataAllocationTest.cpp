@@ -39,7 +39,7 @@ int main(int,char**)
 	VulkanInstance instance(lib, nullptr, 0, nullptr, 0, VK_API_VERSION_1_2);
 	vk::PhysicalDevice physicalDevice;
 	uint32_t graphicsQueueFamily;
-	tie(physicalDevice, graphicsQueueFamily, ignore) = instance.chooseDeviceForOffscreenRendering();
+	tie(physicalDevice, graphicsQueueFamily, ignore) = instance.chooseDevice(vk::QueueFlagBits::eGraphics);
 	VulkanDevice device(instance, physicalDevice, graphicsQueueFamily, graphicsQueueFamily,
 	                    nullptr, Renderer::requiredFeatures());
 	Renderer r(device, instance, physicalDevice, graphicsQueueFamily);

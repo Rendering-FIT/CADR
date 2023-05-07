@@ -169,7 +169,7 @@ int main(int argc,char** argv) {
 #endif
 		CadUI::Window window(vulkanInstance);
 		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
-				vulkanInstance.chooseDeviceForRenderingAndPresentation(window.surface());
+				vulkanInstance.chooseDevice(vk::QueueFlagBits::eGraphics, window.surface());
 		CadR::VulkanDevice device(
 			vulkanInstance,deviceAndQueueFamilies,
 			"VK_KHR_swapchain",

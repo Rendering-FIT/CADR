@@ -421,7 +421,7 @@ void App::init()
 		nullptr  // enabled extensions
 	);
 	tie(physicalDevice, graphicsQueueFamily, ignore) =
-		instance.chooseDeviceForOffscreenRendering();
+		instance.chooseDevice(vk::QueueFlagBits::eGraphics);
 	device.create(
 		instance,  // instance
 		physicalDevice,
