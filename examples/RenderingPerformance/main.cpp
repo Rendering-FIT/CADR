@@ -1,5 +1,6 @@
 #include <CadR/Drawable.h>
 #include <CadR/Geometry.h>
+#include <CadR/Pipeline.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
@@ -19,6 +20,12 @@ using namespace CadR;
 
 // constants
 static const vk::Extent2D imageExtent(128, 128);
+static const string appName = "RenderingPerformance";
+static const string vulkanAppName = "CadR performance test";
+static const uint32_t vulkanAppVersion = VK_MAKE_VERSION(0, 0, 0);
+static const string engineName = "CADR";
+static const uint32_t engineVersion = VK_MAKE_VERSION(0, 0, 0);
+static const uint32_t vulkanApiVersion = VK_API_VERSION_1_2;
 
 
 enum class TestType
@@ -60,7 +67,8 @@ public:
 	void init();
 	void mainLoop();
 	void frame(bool collectInfo);
-	tuple<unique_ptr<Geometry>, vector<unique_ptr<Drawable>>> generateInvisibleTriangleScene(
+	void printResults();
+	tuple<Geometry*, vector<Drawable*>> generateInvisibleTriangleScene(
 		StateSet& stateSet, glm::uvec2 screenSize, size_t requestedNumTriangles, TestType testType);
 
 	// no move constructor and operator
@@ -90,26 +98,33 @@ public:
 	vk::Framebuffer framebuffer;
 	vk::ShaderModule vsModule;
 	vk::ShaderModule fsModule;
-	vk::PipelineLayout pipelineLayout;
-	vk::Pipeline pipeline;
 	vk::CommandPool commandPool;
 	vk::CommandBuffer commandBuffer;
 	vk::Fence renderingFinishedFence;
 
+	TestType testType = TestType::TriangleStripPerformance;
 	bool longTest = false;
+	int deviceIndex = -1;
+	string deviceNameFilter;
+	size_t requestedNumTriangles = 12;
 	bool calibratedTimestampsSupported = false;
 	vk::Format colorFormat = vk::Format::eR8G8B8A8Srgb;
 	vk::Format depthFormat = vk::Format::eUndefined;
+	glm::vec4 backgroundColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
+	list<FrameInfo> frameInfoList;
+	chrono::steady_clock::duration realTestTime;
 	uint32_t numContainers;
 	vector<CadR::StateSetDrawableContainer*> id2containerMap;
 	CadR::StateSet stateSetRoot;
-	glm::vec4 backgroundColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
+	CadR::Pipeline pipeline;
+	Geometry* geometry = nullptr;
+	vector<Drawable*> drawableList;
 
 };
 
 
 
-tuple<unique_ptr<Geometry>, vector<unique_ptr<Drawable>>> App::generateInvisibleTriangleScene(
+tuple<Geometry*, vector<Drawable*>> App::generateInvisibleTriangleScene(
 	StateSet& stateSet, glm::uvec2 screenSize, size_t requestedNumTriangles, TestType testType)
 {
 	if(screenSize.x <= 1 || screenSize.y <= 1)
@@ -327,44 +342,107 @@ tuple<unique_ptr<Geometry>, vector<unique_ptr<Drawable>>> App::generateInvisible
 	}
 
 	// create drawable(s)
-	vector<unique_ptr<Drawable>> drawableList;
+	struct DrawableList : vector<Drawable*> {
+		~DrawableList() {
+			for(Drawable* d : *this)
+				delete d;
+		}
+	} drawableList;
 	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance || testType == TestType::BakedBoxesPerformance)
 	{
-		drawableList.emplace_back(make_unique<Drawable>(*geometry, 0, 0, 1, stateSet));
+		drawableList.emplace_back(make_unique<Drawable>(*geometry, 0, 0, 1, stateSet).release());
 	}
 	else if (testType == TestType::DrawablePerformance)
 	{
 		drawableList.reserve(requestedNumTriangles);
 		for (uint32_t i=0, c=uint32_t(requestedNumTriangles); i<c; i++)
-			drawableList.emplace_back(make_unique<Drawable>(*geometry, i, 0, 1, stateSet));
+			drawableList.emplace_back(make_unique<Drawable>(*geometry, i, 0, 1, stateSet).release());
 	}
 	else if (testType == TestType::BoxDrawablePerformance)
 	{
 		uint32_t numBoxes = uint32_t((requestedNumTriangles + 11) / 12);
 		drawableList.reserve(numBoxes);
 		for (uint32_t i = 0; i < numBoxes; i++)
-			drawableList.emplace_back(make_unique<Drawable>(*geometry, i, 0, 1, stateSet));
+			drawableList.emplace_back(make_unique<Drawable>(*geometry, i, 0, 1, stateSet).release());
 	}
 
-	return make_tuple(move(geometry), move(drawableList));
+	vector<Drawable*> dl;
+	drawableList.swap(dl);
+	return make_tuple(geometry.release(), dl);
 }
 
 
 /// Construct application object
 App::App(int argc, char** argv)
 	: stateSetRoot(&renderer)
+	, pipeline(&renderer)
 {
 	// process command-line arguments
 	bool printHelp = false;
 	for(int i=1; i<argc; i++) {
-		if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
-			printHelp = true;
+
+		// parse options starting with '-'
+		if(argv[i][0] == '-') {
+			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+				printHelp = true;
+		}
+		// parse whatever does not start with '-'
+		else {
+			// parse numbers
+			if(argv[i][0] >= '0' && argv[i][0] <= '9') {
+				char* e = nullptr;
+				deviceIndex = strtoul(argv[i], &e, 10);
+				if(e == nullptr || *e != 0) {
+					cout << "Invalid parameter \"" << argv[i] << "\"" << endl;
+					printHelp = true;
+				}
+			}
+			// parse text
+			else
+				deviceNameFilter = argv[i];
+		}
 	}
-	if(printHelp) {
-		cout << argv[0] << " tests various performance characteristics of CADR library."
-		     << "Usage:\n"
-		        "   " << argv[0] << " [gpu index]\n"
-		        "   --help or -h - prints the usage information"<<endl;
+
+	// print help
+	if(printHelp)
+	{
+		// header
+		cout << appName << " tests various performance characteristics of CADR library.\n\n"
+		     << "Devices in this system:" << endl;
+		
+		// get device names
+		try {
+			// initialize Vulkan and get device names
+			library.load();
+			instance.create(
+				library,  // Vulkan library
+				vulkanAppName.c_str(),  // application name
+				vulkanAppVersion,  // application version
+				engineName.c_str(),  // engine name
+				engineVersion,  // engine version
+				vulkanApiVersion,  // api version
+				nullptr,  // enabled layers
+				nullptr  // enabled extensions
+			);
+			vector<string> deviceNames = instance.getPhysicalDeviceNames(vk::QueueFlagBits::eGraphics);
+
+			// print device names
+			if(deviceNames.empty())
+				cout << "   < no devices found >" << endl;
+			else
+				for(size_t i=0, c=deviceNames.size(); i<c; i++)
+					cout << "   " << i << ": " << deviceNames[i] << endl;
+		}
+		catch(vk::Error& e) {
+			cout << "   Vulkan initialization failed because of exception: " << e.what() << endl;
+		}
+		
+		// print usage and exit
+		cout << "\nUsage:\n"
+		        "   " << appName << " [-h] [gpu name filter] [gpu index]\n"
+		        "   [gpu filter name] - optional string used to filter devices by their names\n"
+		        "   [gpu index] - optional device index that will be used to select device\n"
+		        "   --help or -h - prints this usage information" << endl;
 		exit(99);
 	}
 }
@@ -382,12 +460,16 @@ App::~App()
 			cout << "Failed because of Vulkan exception: " << e.what() << endl;
 		}
 
+		// delete scene
+		for(Drawable* d : drawableList)  delete d;
+		delete geometry;
+
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
+		pipeline.destroyPipeline();
+		pipeline.destroyPipelineLayout();
 		device.destroy(renderingFinishedFence);
 		device.destroy(commandPool);
-		device.destroy(pipeline);
-		device.destroy(pipelineLayout);
 		device.destroy(fsModule);
 		device.destroy(vsModule);
 		device.destroy(framebuffer);
@@ -408,20 +490,44 @@ App::~App()
 
 void App::init()
 {
+	// header
+	cout << appName << " tests various performance characteristics of CADR library.\n" << endl;
+
 	// init Vulkan
 	library.load();
 	instance.create(
 		library,  // Vulkan library
-		"CadR performance test",  // application name
-		VK_MAKE_VERSION(0,0,0),   // application version
-		"CADR",                   // engine name
-		VK_MAKE_VERSION(0,0,0),   // engine version
-		VK_API_VERSION_1_2,       // api version
+		vulkanAppName.c_str(),  // application name
+		vulkanAppVersion,  // application version
+		engineName.c_str(),  // engine name
+		engineVersion,  // engine version
+		vulkanApiVersion,  // api version
 		nullptr,  // enabled layers
 		nullptr  // enabled extensions
 	);
+	
+	// select device
 	tie(physicalDevice, graphicsQueueFamily, ignore) =
-		instance.chooseDevice(vk::QueueFlagBits::eGraphics);
+		instance.chooseDevice(vk::QueueFlagBits::eGraphics, nullptr, deviceNameFilter, deviceIndex);
+	cout << "Tested device:" << endl;
+	if(!physicalDevice) {
+		if(deviceIndex == -1 && deviceNameFilter.empty())
+			cout << "   < no devices found >" << endl;
+		else {
+			cout << "   < no device selected based on command line parameters >\n"
+			     << "Device list:" << endl;
+			vector<string> deviceNames = instance.getPhysicalDeviceNames(vk::QueueFlagBits::eGraphics);
+			if(deviceNames.empty())
+				cout << "   < no devices found >" << endl;
+			else
+				for(size_t i=0, c=deviceNames.size(); i<c; i++)
+					cout << "   " << i << ": " << deviceNames[i] << endl;
+		}
+		exit(99);
+	}
+	cout << "   " << instance.getPhysicalDeviceProperties(physicalDevice).deviceName << "\n" << endl;
+
+	// create device
 	device.create(
 		instance,  // instance
 		physicalDevice,
@@ -744,8 +850,8 @@ void App::init()
 		);
 
 	// pipeline layout
-	pipelineLayout =
-		device.createPipelineLayout(
+	auto pipelineLayoutUnique =
+		device.createPipelineLayoutUnique(
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				0,       // setLayoutCount
@@ -760,8 +866,8 @@ void App::init()
 		);
 
 	// pipeline
-	pipeline =
-		device.createGraphicsPipeline(
+	auto pipelineUnique =
+		device.createGraphicsPipelineUnique(
 			nullptr,  // pipelineCache
 			vk::GraphicsPipelineCreateInfo(
 				vk::PipelineCreateFlags(),  // flags
@@ -899,13 +1005,14 @@ void App::init()
 				},
 
 				nullptr,  // pDynamicState
-				pipelineLayout,  // layout
+				pipelineLayoutUnique.get(),  // layout
 				renderPassList[uint32_t(renderingSetup)],  // renderPass
 				0,  // subpass
 				vk::Pipeline(nullptr),  // basePipelineHandle
 				-1 // basePipelineIndex
 			)
 		);
+	pipeline.init(pipelineUnique.release(), pipelineLayoutUnique.release(), nullptr);
 
 	// command pool
 	commandPool =
@@ -933,6 +1040,11 @@ void App::init()
 				vk::FenceCreateFlags()  // flags
 			}
 		);
+
+	// scene
+	stateSetRoot.pipeline = &pipeline;
+	tie(geometry, drawableList) = generateInvisibleTriangleScene(
+		stateSetRoot, glm::vec2(imageExtent.width, imageExtent.height), requestedNumTriangles, testType);
 }
 
 
@@ -964,7 +1076,7 @@ void App::frame(bool collectInfo)
 	// record camera matrices
 	device.cmdPushConstants(
 		commandBuffer,  // commandBuffer
-		pipelineLayout,  // pipelineLayout
+		pipeline.layout(),  // pipelineLayout
 		vk::ShaderStageFlagBits::eVertex,  // stageFlags
 		0,  // offset
 		(16+4)*sizeof(float),  // size
@@ -1041,8 +1153,104 @@ void App::mainLoop()
 
 	do{
 		frame(true);
+		frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
 		t = chrono::steady_clock::now();
 	}while(t < finishTime);
+	realTestTime = t - startTime;
+
+	device.waitIdle();
+	frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+}
+
+
+void App::printResults()
+{
+	// print results, start with the header of output
+	// (using log-level D_OFF to do it always because it was requested by cmd-line argument)
+	if (testType == TestType::TrianglePerformance)
+		cout << "Triangle performance test of " << size_t(requestedNumTriangles/1e6) << " Mtri ("
+				<< requestedNumTriangles << " triangles) inside 1 drawable." << endl;
+	else if (testType == TestType::TriangleStripPerformance)
+		cout << "Triangle strip performance test of " << size_t(requestedNumTriangles/1e6) << " Mtri ("
+				<< requestedNumTriangles << " triangles) inside 1 drawable." << endl;
+	else if (testType == TestType::BakedBoxesPerformance)
+		cout << "Baked boxes performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+				<< "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+				<< requestedNumTriangles << " triangles in 1 drawable)." << endl;
+	else if (testType == TestType::BoxDrawablePerformance)
+		cout << "Drawable per box performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+				<< "M (" << size_t((requestedNumTriangles + 11) / 12) << ") boxes ("
+				<< requestedNumTriangles << " triangles in " << size_t((requestedNumTriangles + 11) / 12)
+				<< " drawables)." << endl;
+	else if (testType == TestType::DrawablePerformance)
+		cout << "Drawable performance test of " << size_t(requestedNumTriangles / 1e6)
+				<< " Mtri in " << size_t(requestedNumTriangles / 1e6) << " Mdrawables ("
+				<< requestedNumTriangles << " triangles in " << requestedNumTriangles << " drawables)." << endl;
+
+	// if no measurements
+	if(frameInfoList.empty()) {
+		cout << "      No measurements made." << endl;
+		return;
+	}
+
+	// get time info
+	struct FrameTimeInfo
+	{
+		size_t frameId;
+		double cpuTime;
+		double gpuTime;
+		double totalTime;
+	};
+	vector<FrameTimeInfo> frameTimeList;
+	frameTimeList.reserve(frameInfoList.size());
+	for(FrameInfo& info : frameInfoList) {
+		double cpuTime = double(info.endFrameCpu - info.beginFrameCpu) * renderer.cpuTimestampPeriod();
+		double gpuTime = double(info.endRenderingGpu - info.beginRenderingGpu) * renderer.gpuTimestampPeriod();
+		double totalTime = max(double(info.endRenderingGpu - info.beginFrameGpu) * renderer.gpuTimestampPeriod(),
+		                       cpuTime);
+		frameTimeList.emplace_back(FrameTimeInfo{info.frameNumber, cpuTime, gpuTime, totalTime});
+	}
+
+	// print median times
+	cout << "   Median times:" << endl;
+	auto median = [](vector<FrameTimeInfo>& l, double (*getElement)(FrameTimeInfo&)) -> double {
+		vector<double> v;
+		v.reserve(l.size());
+		for (FrameTimeInfo& i : l)
+			v.push_back(getElement(i));
+		std::nth_element(v.begin(), v.begin() + l.size() / 2, v.end());
+		return v[l.size() / 2];
+	};
+	cout << "      Performance: " << size_t(double(requestedNumTriangles) / median(frameTimeList, [](FrameTimeInfo& i) { return i.totalTime; }) / 1e6) << " Mtri/s" << endl;
+	cout << fixed << setprecision(3);
+	cout << "      Total time:  " << median(frameTimeList, [](FrameTimeInfo& i) { return i.totalTime; }) * 1000 << "ms" << endl;
+	cout << "      Cpu time:    " << median(frameTimeList, [](FrameTimeInfo& i) { return i.cpuTime; }) * 1000 << "ms" << endl;
+	cout << "      Gpu time:    " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuTime; }) * 1000 << "ms" << endl;
+
+	// print frame times
+	auto printValue =
+		[](double v) -> void {
+			cout << fixed;
+			if(v < 1.)
+				cout << setprecision(3) << v;
+			else if(v < 10.)
+				cout << setprecision(2) << v;
+			else if(v < 100.)
+				cout << setprecision(1) << v;
+			else
+				cout << setprecision(0) << v;
+		};
+	cout << "   Test frames rendered: " << frameInfoList.size() << " in " << fixed << setprecision(2) << chrono::duration<double>(realTestTime).count() << " seconds." << endl;
+	cout << "   Frame times:" << endl;
+	for(FrameTimeInfo& i : frameTimeList) {
+		cout << "      " << i.frameId << ": ";
+		printValue(i.totalTime * 1000);
+		cout << "ms (cpu time: ";
+		printValue(i.cpuTime * 1000);
+		cout << "ms, gpu time: ";
+		printValue(i.gpuTime * 1000);
+		cout << "ms)" << endl;
+	}
 }
 
 
@@ -1054,6 +1262,7 @@ int main(int argc, char** argv) {
 		App app(argc, argv);
 		app.init();
 		app.mainLoop();
+		app.printResults();
 
 	// catch exceptions
 	} catch(CadR::Error &e) {
