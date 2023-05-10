@@ -32,7 +32,6 @@ static const uint32_t vulkanApiVersion = VK_API_VERSION_1_2;
 
 enum class TestType
 {
-	Undefined,
 	TrianglePerformance,
 	TriangleStripPerformance,
 	BakedBoxesPerformance,
@@ -88,7 +87,7 @@ public:
 	vk::Queue graphicsQueue;
 	Renderer renderer;
 	array<vk::RenderPass, RenderingSetupCount> renderPassList;
-	RenderingSetup renderingSetup = RenderingSetup::Picking;
+	RenderingSetup renderingSetup = RenderingSetup::Performance;
 	vk::Image colorImage;
 	vk::Image depthImage;
 	vk::Image idImage;
@@ -388,7 +387,7 @@ App::App(int argc, char** argv)
 		// parse options starting with '-'
 		if(argv[i][0] == '-') {
 
-			// test selection
+			// select test
 			if(strcmp(argv[i], "-t") == 0 || strncmp(argv[i], "--test=", 7) == 0)
 			{
 				const char* start;
@@ -425,8 +424,34 @@ App::App(int argc, char** argv)
 					requestedNumTriangles = size_t(0.1 * 1e6);
 				}
 				else {
-					testType = TestType::Undefined;
-					requestedNumTriangles = 0;
+					cout << "Invalid test type \"" << start << "\"." << endl;
+					printHelp = true;
+				}
+			}
+
+			// select rendering setup
+			if(strcmp(argv[i], "-r") == 0 || strncmp(argv[i], "--rendering-setup=", 18) == 0)
+			{
+				const char* start;
+				if(argv[i][1] == 'r') {
+					if(i+1 == argc) {
+						printHelp = true;
+						continue;
+					}
+					i++;
+					start = argv[i];
+				}
+				else
+					start = &argv[i][18];
+
+				// parse test name
+				if(strcmp(start, "Performance") == 0)
+					renderingSetup = RenderingSetup::Performance;
+				else if(strcmp(start, "Picking") == 0)
+					renderingSetup = RenderingSetup::Picking;
+				else {
+					cout << "Invalid rendering setup \"" << start << "\"." << endl;
+					printHelp = true;
 				}
 			}
 
@@ -494,9 +519,10 @@ App::App(int argc, char** argv)
 		        "   " << appName << " [-h] [-p] [-l] [-t<test-name>] [gpu name filter] [gpu index]\n"
 		        "   [gpu filter name] - optional string used to filter devices by their names\n"
 		        "   [gpu index] - optional device index that will be used to select device\n"
-		        "   -t<test-name> or --test=<test-name> - select particular test;\n"
-		        "      possible values for <test-name>:\n"
-		        "         TriangleStripPerformance - connected triangles forming strip\n"
+		        "   -t <test-name> or --test=<test-name> - select particular test;\n"
+		        "      valid values of <test-name>:\n"
+		        "         TriangleStripPerformance - connected triangles forming strip;\n"
+		        "                                    this is the default option\n"
 		        "         TrianglePerformance - separate triangles\n"
 		        "         BakedBoxesPerformance - boxes baked into single Drawable,\n"
 		        "                                 e.g. single draw call\n"
@@ -504,6 +530,14 @@ App::App(int argc, char** argv)
 		        "                                  e.g. one draw call per box\n"
 		        "         DrawablePerformance - each triangle in its own Drawable,\n"
 		        "                               e.g. one draw call per triangle\n"
+		        "   -r <setup-name> or --rendering-setup=<setup-name> - rendering setup;\n"
+		        "      valid values of <setup-name>:\n"
+		        "         Performance - rendering pipeline focused on performance without\n"
+		        "                       picking capability, e.g. no id-buffer attachment\n"
+		        "                       and no object ids shader output;\n"
+		        "                       this is the default option\n"
+		        "         Picking - picking capability included, e.g. id-buffer attachment\n"
+		        "                   and shaders producing id values into the id-buffer\n"
 		        "   -l or --long - perform long test instead of short one; long test takes " <<
 		        chrono::duration<unsigned>(longTestDuration).count() << " seconds\n"
 		        "        and short test " << setprecision(2) <<
@@ -576,7 +610,7 @@ void App::init()
 	// select device
 	tie(physicalDevice, graphicsQueueFamily, ignore) =
 		instance.chooseDevice(vk::QueueFlagBits::eGraphics, nullptr, deviceNameFilter, deviceIndex);
-	cout << "Tested device:" << endl;
+	cout << "Device:" << endl;
 	if(!physicalDevice) {
 		if(deviceIndex == -1 && deviceNameFilter.empty())
 			cout << "   < no devices found >" << endl;
@@ -592,7 +626,25 @@ void App::init()
 		}
 		exit(99);
 	}
-	cout << "   " << instance.getPhysicalDeviceProperties(physicalDevice).deviceName << "\n" << endl;
+	cout << "   " << instance.getPhysicalDeviceProperties(physicalDevice).deviceName << endl;
+
+	// test setup
+	cout << "Test:" << endl;
+	switch(testType) {
+	case TestType::TrianglePerformance:      cout << "   TrianglePerformance" << endl; break;
+	case TestType::TriangleStripPerformance: cout << "   TriangleStripPerformance" << endl; break;
+	case TestType::BakedBoxesPerformance:    cout << "   BakedBoxesPerformance" << endl; break;
+	case TestType::BoxDrawablePerformance:   cout << "   BoxDrawablePerformance" << endl; break;
+	case TestType::DrawablePerformance:      cout << "   DrawablePerformance" << endl; break;
+	default: cout << "   Undefined" << endl;
+	};
+	cout << "Rendering setup:" << endl;
+	switch(renderingSetup) {
+	case RenderingSetup::Performance: cout << "   Performance" << endl; break;
+	case RenderingSetup::Picking:     cout << "   Picking" << endl; break;
+	default: cout << "   Undefined" << endl;
+	};
+	cout << endl;
 
 	// create device
 	device.create(
