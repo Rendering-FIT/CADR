@@ -19,7 +19,9 @@ using namespace CadR;
 
 
 // constants
-static const vk::Extent2D imageExtent(128, 128);
+static const vk::Extent2D imageExtent(1920, 1080);
+static const constexpr auto shortTestDuration = chrono::milliseconds(1500);
+static const constexpr auto longTestDuration = chrono::seconds(30);
 static const string appName = "RenderingPerformance";
 static const string vulkanAppName = "CadR performance test";
 static const uint32_t vulkanAppVersion = VK_MAKE_VERSION(0, 0, 0);
@@ -30,6 +32,7 @@ static const uint32_t vulkanApiVersion = VK_API_VERSION_1_2;
 
 enum class TestType
 {
+	Undefined,
 	TrianglePerformance,
 	TriangleStripPerformance,
 	BakedBoxesPerformance,
@@ -104,6 +107,7 @@ public:
 
 	TestType testType = TestType::TriangleStripPerformance;
 	bool longTest = false;
+	bool printFrameTimes = false;
 	int deviceIndex = -1;
 	string deviceNameFilter;
 	size_t requestedNumTriangles = 12;
@@ -383,6 +387,54 @@ App::App(int argc, char** argv)
 
 		// parse options starting with '-'
 		if(argv[i][0] == '-') {
+
+			// test selection
+			if(strcmp(argv[i], "-t") == 0 || strncmp(argv[i], "--test=", 7) == 0)
+			{
+				const char* start;
+				if(argv[i][1] == 't') {
+					if(i+1 == argc) {
+						printHelp = true;
+						continue;
+					}
+					i++;
+					start = argv[i];
+				}
+				else
+					start = &argv[i][7];
+
+				// parse test name
+				if(strcmp(start, "TriangleStripPerformance") == 0) {
+					testType = TestType::TriangleStripPerformance;
+					requestedNumTriangles = size_t(10 * 1e6);
+				}
+				else if(strcmp(start, "TrianglePerformance") == 0) {
+					testType = TestType::TrianglePerformance;
+					requestedNumTriangles = size_t(10 * 1e6);
+				}
+				else if(strcmp(start, "BakedBoxesPerformance") == 0) {
+					testType = TestType::BakedBoxesPerformance;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
+				else if(strcmp(start, "BoxDrawablePerformance") == 0) {
+					testType = TestType::BoxDrawablePerformance;
+					requestedNumTriangles = size_t(1.2 * 1e6);
+				}
+				else if(strcmp(start, "DrawablePerformance") == 0) {
+					testType = TestType::DrawablePerformance;
+					requestedNumTriangles = size_t(0.1 * 1e6);
+				}
+				else {
+					testType = TestType::Undefined;
+					requestedNumTriangles = 0;
+				}
+			}
+
+			// process simple options
+			if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--long") == 0)
+				longTest = true;
+			if(strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--print-frame-times") == 0)
+				printFrameTimes = true;
 			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
 				printHelp = true;
 		}
@@ -409,7 +461,7 @@ App::App(int argc, char** argv)
 		// header
 		cout << appName << " tests various performance characteristics of CADR library.\n\n"
 		     << "Devices in this system:" << endl;
-		
+
 		// get device names
 		try {
 			// initialize Vulkan and get device names
@@ -436,12 +488,27 @@ App::App(int argc, char** argv)
 		catch(vk::Error& e) {
 			cout << "   Vulkan initialization failed because of exception: " << e.what() << endl;
 		}
-		
+
 		// print usage and exit
 		cout << "\nUsage:\n"
-		        "   " << appName << " [-h] [gpu name filter] [gpu index]\n"
+		        "   " << appName << " [-h] [-p] [-l] [-t<test-name>] [gpu name filter] [gpu index]\n"
 		        "   [gpu filter name] - optional string used to filter devices by their names\n"
 		        "   [gpu index] - optional device index that will be used to select device\n"
+		        "   -t<test-name> or --test=<test-name> - select particular test;\n"
+		        "      possible values for <test-name>:\n"
+		        "         TriangleStripPerformance - connected triangles forming strip\n"
+		        "         TrianglePerformance - separate triangles\n"
+		        "         BakedBoxesPerformance - boxes baked into single Drawable,\n"
+		        "                                 e.g. single draw call\n"
+		        "         BoxDrawablePerformance - each box in its own Drawable,\n"
+		        "                                  e.g. one draw call per box\n"
+		        "         DrawablePerformance - each triangle in its own Drawable,\n"
+		        "                               e.g. one draw call per triangle\n"
+		        "   -l or --long - perform long test instead of short one; long test takes " <<
+		        chrono::duration<unsigned>(longTestDuration).count() << " seconds\n"
+		        "        and short test " << setprecision(2) <<
+		        chrono::duration<float>(shortTestDuration).count() <<" seconds\n"
+		        "   -p or --print-frame-times - print times of each rendered frame\n"
 		        "   --help or -h - prints this usage information" << endl;
 		exit(99);
 	}
@@ -505,7 +572,7 @@ void App::init()
 		nullptr,  // enabled layers
 		nullptr  // enabled extensions
 	);
-	
+
 	// select device
 	tie(physicalDevice, graphicsQueueFamily, ignore) =
 		instance.chooseDevice(vk::QueueFlagBits::eGraphics, nullptr, deviceNameFilter, deviceIndex);
@@ -1146,7 +1213,7 @@ void App::frame(bool collectInfo)
 
 void App::mainLoop()
 {
-	chrono::steady_clock::duration testTime = longTest ? chrono::seconds(30) : chrono::milliseconds(1500);
+	chrono::steady_clock::duration testTime = longTest ? longTestDuration : shortTestDuration;
 	chrono::steady_clock::time_point startTime = chrono::steady_clock::now();
 	chrono::steady_clock::time_point finishTime = startTime + testTime;
 	chrono::steady_clock::time_point t;
@@ -1211,8 +1278,8 @@ void App::printResults()
 		frameTimeList.emplace_back(FrameTimeInfo{info.frameNumber, cpuTime, gpuTime, totalTime});
 	}
 
-	// print median times
-	cout << "   Median times:" << endl;
+	// print median frame
+	cout << "   Median results:" << endl;
 	auto median = [](vector<FrameTimeInfo>& l, double (*getElement)(FrameTimeInfo&)) -> double {
 		vector<double> v;
 		v.reserve(l.size());
@@ -1240,17 +1307,22 @@ void App::printResults()
 			else
 				cout << setprecision(0) << v;
 		};
-	cout << "   Test frames rendered: " << frameInfoList.size() << " in " << fixed << setprecision(2) << chrono::duration<double>(realTestTime).count() << " seconds." << endl;
-	cout << "   Frame times:" << endl;
-	for(FrameTimeInfo& i : frameTimeList) {
-		cout << "      " << i.frameId << ": ";
-		printValue(i.totalTime * 1000);
-		cout << "ms (cpu time: ";
-		printValue(i.cpuTime * 1000);
-		cout << "ms, gpu time: ";
-		printValue(i.gpuTime * 1000);
-		cout << "ms)" << endl;
+	cout << "   Rendered " << frameInfoList.size() << " frames in " << fixed << setprecision(2) << chrono::duration<double>(realTestTime).count() << " seconds." << endl;
+	if(printFrameTimes)
+	{
+		cout << "   Frame times:" << endl;
+		for(FrameTimeInfo& i : frameTimeList) {
+			cout << "      " << i.frameId << ": ";
+			printValue(i.totalTime * 1000);
+			cout << "ms (cpu time: ";
+			printValue(i.cpuTime * 1000);
+			cout << "ms, gpu time: ";
+			printValue(i.gpuTime * 1000);
+			cout << "ms)" << endl;
+		}
 	}
+	else
+		cout << "   To print times of each frame, specify --frame-times on command line." << endl;
 }
 
 
