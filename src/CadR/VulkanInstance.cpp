@@ -206,7 +206,7 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 
 	// choose by index
 	if(index >= 0) {
-		if(index < compatibleDevices.size()) {
+		if(index < decltype(index)(compatibleDevices.size())) {
 			auto& d = compatibleDevices[index];
 			return make_tuple(std::get<0>(d), std::get<1>(d), std::get<2>(d)); 
 		}

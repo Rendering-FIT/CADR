@@ -11,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vulkan/vulkan.hpp>
+#include <iomanip>
 #include <iostream>
 #include <tuple>
 
@@ -32,6 +33,7 @@ static const uint32_t vulkanApiVersion = VK_API_VERSION_1_2;
 
 enum class TestType
 {
+	Undefined,
 	TrianglePerformance,
 	TriangleStripPerformance,
 	BakedBoxesPerformance,
@@ -104,12 +106,12 @@ public:
 	vk::CommandBuffer commandBuffer;
 	vk::Fence renderingFinishedFence;
 
-	TestType testType = TestType::TriangleStripPerformance;
+	TestType testType = TestType::Undefined;
 	bool longTest = false;
 	bool printFrameTimes = false;
 	int deviceIndex = -1;
 	string deviceNameFilter;
-	size_t requestedNumTriangles = 12;
+	size_t requestedNumTriangles = 0;
 	bool calibratedTimestampsSupported = false;
 	vk::Format colorFormat = vk::Format::eR8G8B8A8Srgb;
 	vk::Format depthFormat = vk::Format::eUndefined;
@@ -481,7 +483,7 @@ App::App(int argc, char** argv)
 	}
 
 	// print help
-	if(printHelp)
+	if(printHelp || testType == TestType::Undefined)
 	{
 		// header
 		cout << appName << " tests various performance characteristics of CADR library.\n\n"
@@ -515,10 +517,15 @@ App::App(int argc, char** argv)
 		}
 
 		// print usage and exit
-		cout << "\nUsage:\n"
-		        "   " << appName << " [-h] [-p] [-l] [-t<test-name>] [gpu name filter] [gpu index]\n"
-		        "   [gpu filter name] - optional string used to filter devices by their names\n"
-		        "   [gpu index] - optional device index that will be used to select device\n"
+		cout << "\nSimple usage:\n"
+		        "   " << appName << " -t<test-name>]\n";
+		cout << "\nComplete usage info:\n"
+		        "   " << appName << " -t <test-name> -r <rendering-setup>\n"
+		        "         [gpu name filter] [gpu index] [-l] [-p] [-h]\n"
+		        "   [gpu filter name] - optional string argument used to filter devices by\n"
+		        "      their names; the argument must not start with a number\n"
+		        "   [gpu index] - optional device index that will be used to select device;\n"
+		        "      the argument must be composed of numbers only\n"
 		        "   -t <test-name> or --test=<test-name> - select particular test;\n"
 		        "      valid values of <test-name>:\n"
 		        "         TriangleStripPerformance - connected triangles forming strip;\n"
@@ -530,8 +537,8 @@ App::App(int argc, char** argv)
 		        "                                  e.g. one draw call per box\n"
 		        "         DrawablePerformance - each triangle in its own Drawable,\n"
 		        "                               e.g. one draw call per triangle\n"
-		        "   -r <setup-name> or --rendering-setup=<setup-name> - rendering setup;\n"
-		        "      valid values of <setup-name>:\n"
+		        "   -r <rendering-setup> or --rendering-setup=<rendering-setup> - name of\n"
+		        "      rendering setup; valid values of <rendering-setup>:\n"
 		        "         Performance - rendering pipeline focused on performance without\n"
 		        "                       picking capability, e.g. no id-buffer attachment\n"
 		        "                       and no object ids shader output;\n"
@@ -1184,7 +1191,7 @@ void App::frame(bool collectInfo)
 
 	// begin the frame
 	renderer.setCollectFrameInfo(collectInfo, calibratedTimestampsSupported);
-	size_t frameNumber = renderer.beginFrame();
+	renderer.beginFrame();
 
 	// submit all copy operations that were not submitted yet
 	renderer.executeCopyOperations();
