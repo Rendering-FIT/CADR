@@ -16,6 +16,10 @@
 using namespace std;
 
 
+// constants
+static const string appName = "VulkanRenderingPerformance";
+
+
 // Vulkan instance
 // (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
 static vk::UniqueInstance instance;
@@ -50,6 +54,7 @@ static bool needResize=true;
 // (they need to be placed in particular (not arbitrary) order as it gives their destruction order)
 static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
+static vk::PhysicalDeviceProperties physicalDeviceProperties;
 static uint32_t graphicsQueueFamily;
 static uint32_t presentationQueueFamily;
 static uint32_t sparseQueueFamily;
@@ -3664,7 +3669,7 @@ static size_t getMemoryAlignment(vk::Device device,size_t size,vk::BufferCreateF
 
 
 /// Init Vulkan and open the window.
-static void init(size_t deviceIndex)
+static void init(const string& nameFilter = "", int deviceIndex = -1)
 {
 	// Vulkan instance
 	instance=
@@ -3780,118 +3785,150 @@ static void init(size_t deviceIndex)
 
 #endif
 
+	// print physical devices
+	cout << "Devices in this system:" << endl;
+	vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
+	vector<vk::PhysicalDeviceProperties> devicePropertiesList;
+	if(deviceList.empty()) {
+		cout << "   < no devices found >" << endl;
+		throw runtime_error("No Vulkan devices found in the system.");
+	}
+	for(vk::PhysicalDevice pd : deviceList) {
+		devicePropertiesList.emplace_back(pd.getProperties());
+		cout << "   " << devicePropertiesList.back().deviceName << endl;
+	}
+
 	// find compatible devices
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 	// renders the window).
-	vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
-	vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
-	vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t,uint32_t>> compatibleDevicesThreeQueues;
-	for(vk::PhysicalDevice pd:deviceList) {
+	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
+	for(size_t di=0, c=deviceList.size(); di<c; di++)
+	{
+		vk::PhysicalDevice pd = deviceList[di];
 
 		// skip devices without VK_KHR_swapchain
-		auto extensionList=pd.enumerateDeviceExtensionProperties();
-		for(vk::ExtensionProperties& e:extensionList)
-			if(strcmp(e.extensionName,"VK_KHR_swapchain")==0)
+		auto extensionList = pd.enumerateDeviceExtensionProperties();
+		for(vk::ExtensionProperties& e : extensionList)
+			if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
 				goto swapchainSupported;
 		continue;
 		swapchainSupported:
 
-		// skip devices without surface formats and presentation modes
-		uint32_t formatCount;
-		uint32_t presentationModeCount;
-	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
-		vk::createResultValue(
-			pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr,vk::DispatchLoaderStatic()),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
-		vk::createResultValue(
-			pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr,vk::DispatchLoaderStatic()),
-			VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
-	#else
-		resultCheck(pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr,vk::DispatchLoaderStatic()),"vk::PhysicalDevice::getSurfaceFormatsKHR");
-		resultCheck(pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr,vk::DispatchLoaderStatic()),"vk::PhysicalDevice::getSurfacePresentModesKHR");
-	#endif
-		if(formatCount==0||presentationModeCount==0)
-			continue;
-
-		// select queues (for graphics rendering and for presentation)
-		uint32_t graphicsQueueFamily=UINT32_MAX;
-		uint32_t presentationQueueFamily=UINT32_MAX;
-		uint32_t sparseQueueFamily=UINT32_MAX;
-		uint32_t graphicsAndPresentationQueueFamily=UINT32_MAX;
-		vector<vk::QueueFamilyProperties> queueFamilyList=pd.getQueueFamilyProperties();
-		uint32_t i=0;
+		// select queues
+		uint32_t graphicsQueueFamily = UINT32_MAX;
+		uint32_t presentationQueueFamily = UINT32_MAX;
+		uint32_t sparseQueueFamily = UINT32_MAX;
+		vector<vk::QueueFamilyProperties> queueFamilyList = pd.getQueueFamilyProperties();
+		uint32_t i = 0;
 		for(auto it=queueFamilyList.begin(); it!=queueFamilyList.end(); it++,i++) {
-			bool p=pd.getSurfaceSupportKHR(i,surface.get())!=0;
-			if(it->queueFlags&vk::QueueFlagBits::eGraphics) {
+			bool p = pd.getSurfaceSupportKHR(i, surface.get()) != 0;
+			if(it->queueFlags & vk::QueueFlagBits::eGraphics) {
 				if(p) {
-					if(it->queueFlags&vk::QueueFlagBits::eSparseBinding) {
-						compatibleDevicesSingleQueue.emplace_back(pd,i);
+					if(it->queueFlags & vk::QueueFlagBits::eSparseBinding) {
+						compatibleDevices.emplace_back(pd, i, i, i, devicePropertiesList[di]);
 						goto nextDevice;
 					}
-					else
-						if(graphicsAndPresentationQueueFamily==UINT32_MAX)
-							graphicsAndPresentationQueueFamily=i;
+					else {
+						if(graphicsQueueFamily == UINT32_MAX)
+							graphicsQueueFamily = i;
+						if(presentationQueueFamily == UINT32_MAX)
+							presentationQueueFamily = i;
+					}
 				}
 				else {
-					if(graphicsQueueFamily==UINT32_MAX)
-						graphicsQueueFamily=i;
+					if(graphicsQueueFamily == UINT32_MAX)
+						graphicsQueueFamily = i;
 				}
 			}
 			else {
 				if(p)
-					if(presentationQueueFamily==UINT32_MAX)
-						presentationQueueFamily=i;
+					if(presentationQueueFamily == UINT32_MAX)
+						presentationQueueFamily = i;
 			}
-			if(sparseQueueFamily==UINT32_MAX && it->queueFlags&vk::QueueFlagBits::eSparseBinding)
-				sparseQueueFamily=i;
+			if(sparseQueueFamily == UINT32_MAX && it->queueFlags & vk::QueueFlagBits::eSparseBinding)
+				sparseQueueFamily = i;
 		}
-		if(sparseMode==SPARSE_NONE) {
-			if(graphicsAndPresentationQueueFamily!=UINT32_MAX)
-				compatibleDevicesSingleQueue.emplace_back(pd,graphicsAndPresentationQueueFamily);
-			else
-				if(graphicsQueueFamily!=UINT32_MAX && presentationQueueFamily!=UINT32_MAX)
-					compatibleDevicesThreeQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily,sparseQueueFamily);
+		if(sparseMode == SPARSE_NONE) {
+			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
+				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, sparseQueueFamily, devicePropertiesList[di]);
 		}
 		else
-			if(sparseQueueFamily!=UINT32_MAX) {
-				if(graphicsAndPresentationQueueFamily!=UINT32_MAX)
-					compatibleDevicesThreeQueues.emplace_back(pd,graphicsAndPresentationQueueFamily,graphicsAndPresentationQueueFamily,sparseQueueFamily);
-				else
-					if(graphicsQueueFamily!=UINT32_MAX && presentationQueueFamily!=UINT32_MAX)
-						compatibleDevicesThreeQueues.emplace_back(pd,graphicsQueueFamily,presentationQueueFamily,sparseQueueFamily);
-			}
+			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX && sparseQueueFamily != UINT32_MAX)
+				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, sparseQueueFamily, devicePropertiesList[di]);
 		nextDevice:;
 	}
-	cout<<"Compatible devices:"<<endl;
-	for(auto& t:compatibleDevicesSingleQueue)
-		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
-	for(auto& t:compatibleDevicesThreeQueues)
-		cout<<"   "<<get<0>(t).getProperties().deviceName<<endl;
+	if(compatibleDevices.empty())
+		throw runtime_error("No compatible devices.");
 
-	// choose device
-	if(deviceIndex<compatibleDevicesSingleQueue.size()) {
-		auto t=compatibleDevicesSingleQueue[deviceIndex];
-		physicalDevice=get<0>(t);
-		graphicsQueueFamily=get<1>(t);
-		presentationQueueFamily=graphicsQueueFamily;
-		sparseQueueFamily=graphicsQueueFamily;
+	// filter physical devices
+	if(!nameFilter.empty())
+	{
+		decltype(compatibleDevices) filteredDevices;
+		for(auto& d : compatibleDevices)
+			if(string_view(std::get<4>(d).deviceName).find(nameFilter) != string::npos)
+				filteredDevices.push_back(d);
+
+		compatibleDevices.swap(filteredDevices);
 	}
-	else if((deviceIndex-compatibleDevicesSingleQueue.size())<compatibleDevicesThreeQueues.size()) {
-		auto t=compatibleDevicesThreeQueues[deviceIndex-compatibleDevicesSingleQueue.size()];
-		physicalDevice=get<0>(t);
-		graphicsQueueFamily=get<1>(t);
-		presentationQueueFamily=get<2>(t);
-		sparseQueueFamily=get<3>(t);
+	if(compatibleDevices.empty())
+		throw runtime_error("No device matching the name filter \"" + nameFilter + "\".");
+
+	if(deviceIndex >= 0)
+	{
+		// choose by index
+		if(deviceIndex < decltype(deviceIndex)(compatibleDevices.size())) {
+			auto& d = compatibleDevices[deviceIndex];
+			physicalDevice = std::get<0>(d);
+			graphicsQueueFamily = std::get<1>(d);
+			presentationQueueFamily = std::get<2>(d);
+			sparseQueueFamily = std::get<3>(d);
+			physicalDeviceProperties = std::get<4>(d);
+		}
+		else
+			throw runtime_error("Invalid device index. "
+				"Index " + to_string(deviceIndex) + " is not in the valid range 0.." +
+				to_string(compatibleDevices.size()) + ".");
 	}
 	else
-		throw runtime_error("No compatible devices.");
-	vk::PhysicalDeviceProperties pdProperties=physicalDevice.getProperties();
-	cout<<"Using device:\n"
-	      "   "<<pdProperties.deviceName<<endl;
+	{
+		// choose the best device
+		auto bestDevice = compatibleDevices.begin();
+		if(bestDevice == compatibleDevices.end())
+			throw runtime_error("No device selected.");
+		constexpr const array deviceTypeScore = {
+			10, // vk::PhysicalDeviceType::eOther         - lowest score
+			40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
+			50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
+			30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
+			20, // vk::PhysicalDeviceType::eCpu           - low score
+			10, // unknown vk::PhysicalDeviceType
+		};
+		int bestScore = deviceTypeScore[clamp(int(std::get<4>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
+		uint32_t queueFamily = std::get<1>(*bestDevice);
+		if(std::get<2>(*bestDevice) == queueFamily && std::get<3>(*bestDevice) == queueFamily)
+			bestScore++;
+		for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
+			int score = deviceTypeScore[clamp(int(std::get<4>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
+			if(std::get<1>(*it) == std::get<2>(*it))
+				score++;
+			if(score > bestScore) {
+				bestDevice = it;
+				bestScore = score;
+			}
+		}
+
+		physicalDevice = std::get<0>(*bestDevice);
+		graphicsQueueFamily = std::get<1>(*bestDevice);
+		presentationQueueFamily = std::get<2>(*bestDevice);
+		sparseQueueFamily = std::get<3>(*bestDevice);
+		physicalDeviceProperties = std::get<4>(*bestDevice);
+	}
+	cout << "Selected device:\n"
+	        "   " << physicalDeviceProperties.deviceName << "\n" << endl;
 
 	// get supported features
-	vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
+	vk::PhysicalDeviceFeatures physicalFeatures = physicalDevice.getFeatures();
 	enabledFeatures.setMultiDrawIndirect(physicalFeatures.multiDrawIndirect);
 	enabledFeatures.setGeometryShader(physicalFeatures.geometryShader);
 	enabledFeatures.setShaderFloat64(physicalFeatures.shaderFloat64);
@@ -3913,7 +3950,7 @@ static void init(size_t deviceIndex)
 			}
 		cout<<")"<<endl;
 	}
-	cout<<"Max memory allocations: "<<pdProperties.limits.maxMemoryAllocationCount<<endl;
+	cout << "Max memory allocations: " << physicalDeviceProperties.limits.maxMemoryAllocationCount << endl;
 
 	switch(sparseMode) {
 	case SPARSE_NONE:
@@ -3922,16 +3959,16 @@ static void init(size_t deviceIndex)
 		if(!physicalFeatures.sparseBinding)
 			throw runtime_error("Sparse binding is not supported.");
 		enabledFeatures.setSparseBinding(true);
-		bufferCreateFlags=vk::BufferCreateFlagBits::eSparseBinding;
-		bufferSizeMultiplier=1;
+		bufferCreateFlags = vk::BufferCreateFlagBits::eSparseBinding;
+		bufferSizeMultiplier = 1;
 		break;
 	case SPARSE_RESIDENCY:
 		if(!physicalFeatures.sparseBinding || !physicalFeatures.sparseResidencyBuffer)
 			throw runtime_error("Sparse residency is not supported.");
 		enabledFeatures.setSparseBinding(true);
 		enabledFeatures.setSparseResidencyBuffer(true);
-		bufferCreateFlags=vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency;
-		bufferSizeMultiplier=10;
+		bufferCreateFlags = vk::BufferCreateFlagBits::eSparseBinding | vk::BufferCreateFlagBits::eSparseResidency;
+		bufferSizeMultiplier = 10;
 		break;
 	case SPARSE_RESIDENCY_ALIASED:
 		if(!physicalFeatures.sparseBinding || !physicalFeatures.sparseResidencyBuffer)
@@ -3941,8 +3978,8 @@ static void init(size_t deviceIndex)
 		if(!physicalFeatures.sparseResidencyAliased)
 			throw runtime_error("Sparse aliased is not supported.");
 		enabledFeatures.setSparseResidencyAliased(true);
-		bufferCreateFlags=vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency|vk::BufferCreateFlagBits::eSparseAliased;
-		bufferSizeMultiplier=10;
+		bufferCreateFlags = vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency | vk::BufferCreateFlagBits::eSparseAliased;
+		bufferSizeMultiplier = 10;
 		break;
 	}
 
@@ -4005,22 +4042,22 @@ static void init(size_t deviceIndex)
 	// number of triangles
 	// (reduce the number on integrated graphics as it may easily run out of memory)
 	if(minimalTest)
-		numTriangles=1000;
+		numTriangles = 1000;
 	else {
-		if(gpuMemory>=2.8*1024*1024*1024) // >=2.8GiB
-			numTriangles=numTrianglesStandard;
-		else if(gpuMemory>=1.4*1024*1024*1024) // >=1.4GiB
-			numTriangles=numTrianglesStandard/2;
-		else if(gpuMemory>=700*1024*1024) // >=700MiB
-			numTriangles=numTrianglesStandard/5;
-		else if(gpuMemory>=400*1024*1024) // >=400MiB
-			numTriangles=numTrianglesStandard/10;
+		if(gpuMemory >= 2.8*1024*1024*1024) // >=2.8GiB
+			numTriangles = numTrianglesStandard;
+		else if(gpuMemory >= 1.4*1024*1024*1024) // >=1.4GiB
+			numTriangles = numTrianglesStandard/2;
+		else if(gpuMemory >= 700*1024*1024) // >=700MiB
+			numTriangles = numTrianglesStandard/5;
+		else if(gpuMemory >= 400*1024*1024) // >=400MiB
+			numTriangles = numTrianglesStandard/10;
 		else
-			numTriangles=numTrianglesStandard/20;
-		if(physicalDevice.getProperties().deviceType==vk::PhysicalDeviceType::eIntegratedGpu)
-			numTriangles=min(numTriangles,numTrianglesReduced);
+			numTriangles = numTrianglesStandard/20;
+		if(physicalDeviceProperties.deviceType == vk::PhysicalDeviceType::eIntegratedGpu)
+			numTriangles = min(numTriangles, numTrianglesReduced);
 	}
-	cout<<"Number of triangles for tests: "<<numTriangles<<endl;
+	cout << "Number of triangles for tests: " << numTriangles << endl;
 
 	// print sparse mode for tests
 	switch(sparseMode) {
@@ -9266,7 +9303,7 @@ static void recreateSwapchainAndPipeline()
 	timestampValidBits=
 		physicalDevice.getQueueFamilyProperties()[graphicsQueueFamily].timestampValidBits;
 	timestampPeriod_ns=
-		physicalDevice.getProperties().limits.timestampPeriod;
+		physicalDeviceProperties.limits.timestampPeriod;
 	cout<<"Timestamp number of bits:  "<<timestampValidBits<<endl;
 	cout<<"Timestamp period:          "<<timestampPeriod_ns<<"ns\n"<<endl;
 	if(timestampValidBits==0)
@@ -9619,46 +9656,70 @@ static void testMemoryAllocationPerformance(vk::BufferCreateFlags bufferFlags,un
 /// main function of the application
 int main(int argc,char** argv)
 {
+	// print header
+	cout << appName << " tests various performance characteristics\n"
+		"of the Vulkan physical device.\n" << endl;
+
 	// catch exceptions
-	// (vulkan.hpp fuctions throws if they fail)
+	// (vulkan.hpp fuctions throw if they fail)
 	try {
 
-		// parse command line
-		size_t physicalDeviceIndex=0;
+		// process command-line arguments
+		bool printHelp = false;
+		int physicalDeviceIndex = -1;
+		string deviceNameFilter;
 		for(int i=1; i<argc; i++) {
-			if(argv[i]==nullptr || argv[i][0]==0)
+
+			if(argv[i] == nullptr || argv[i][0] == 0)
 				continue;
-			if(argv[i][0]=='-') {
-				if(strcmp(argv[i],"--long")==0)  longTest = true;
-				else if(strcmp(argv[i],"--minimal")==0)  minimalTest=true;
-				else if(strcmp(argv[i],"--sparse-none")==0)  sparseMode=SPARSE_NONE;
-				else if(strcmp(argv[i],"--sparse-binding")==0)  sparseMode=SPARSE_BINDING;
-				else if(strcmp(argv[i],"--sparse-residency")==0)  sparseMode=SPARSE_RESIDENCY;
-				else if(strcmp(argv[i],"--sparse-residency-aliased")==0)  sparseMode=SPARSE_RESIDENCY_ALIASED;
-				else if(strcmp(argv[i],"--help")==0 || strcmp(argv[i],"-h")==0) {
-					cout<<"Usage:\n"
-					      "   "<<argv[0]<<" [options] [gpu index]\n"
-					      "   --long - perform long test; testing time is extended to 20 second\n"
-					      "            from the default of 2 seconds\n"
-					      "   --minimal - perform minimal test; for debugging purposes,\n"
-					      "               number of triangles used for testing is reduced\n"
-					      "   --sparse-none - sparse mode used during the main test\n"
-					      "   --sparse-binding - sparse mode used during the main test\n"
-					      "   --sparse-residency - sparse mode used during the main test\n"
-					      "   --sparse-residency-aliased - sparse mode used during the main test\n"
-					      "   --help or -h - prints the usage information"<<endl;
-				} else {
-					cout<<"Invalid argument: "<<argv[i]<<endl;
-					exit(99);
-				}
+
+			// parse options starting with '-'
+			if(argv[i][0] == '-') {
+
+				if(strcmp(argv[i], "--long") == 0)  longTest = true;
+				else if(strcmp(argv[i], "--minimal") == 0)  minimalTest = true;
+				else if(strcmp(argv[i], "--sparse-none") == 0)  sparseMode = SPARSE_NONE;
+				else if(strcmp(argv[i], "--sparse-binding") == 0)  sparseMode = SPARSE_BINDING;
+				else if(strcmp(argv[i], "--sparse-residency") == 0)  sparseMode = SPARSE_RESIDENCY;
+				else if(strcmp(argv[i], "--sparse-residency-aliased") == 0)  sparseMode = SPARSE_RESIDENCY_ALIASED;
+				else if(strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0)  printHelp = true;
 			}
-			else
-				physicalDeviceIndex=size_t(max(atoi(argv[i]),0));
+			// parse whatever does not start with '-'
+			else {
+				// parse numbers
+				if(argv[i][0] >= '0' && argv[i][0] <= '9') {
+					char* e = nullptr;
+					physicalDeviceIndex = strtoul(argv[i], &e, 10);
+					if(e == nullptr || *e != 0) {
+						cout << "Invalid parameter \"" << argv[i] << "\"" << endl;
+						printHelp = true;
+					}
+				}
+				// parse text
+				else
+					deviceNameFilter = argv[i];
+			}
+		}
+
+		// print usage info and exit
+		if(printHelp) {
+			cout << "\nUsage:\n"
+			        "   " << appName << " [deviceNameFilter] [deviceIndex] [options]\n"
+			        "   --long - perform long test; testing time is extended to 20 second\n"
+			        "            from the default of 2 seconds\n"
+			        "   --minimal - perform minimal test; for debugging purposes,\n"
+			        "               number of triangles used for testing is reduced\n"
+			        "   --sparse-none - sparse mode used during the main test\n"
+			        "   --sparse-binding - sparse mode used during the main test\n"
+			        "   --sparse-residency - sparse mode used during the main test\n"
+			        "   --sparse-residency-aliased - sparse mode used during the main test\n"
+			        "   --help or -h - prints the usage information" << endl;
+			exit(99);
 		}
 
 		// init Vulkan and open window,
 		// give physical device index as parameter
-		init(physicalDeviceIndex);
+		init(deviceNameFilter, physicalDeviceIndex);
 
 		// create test objects
 		initTests();
@@ -9908,8 +9969,8 @@ int main(int argc,char** argv)
 				// sparse properties
 				if(sparseDevice) {
 					vk::PhysicalDeviceFeatures physicalFeatures=physicalDevice.getFeatures();
-					cout<<"Sparse address space:       0x"<<std::hex<<physicalDevice.getProperties().limits.sparseAddressSpaceSize<<std::dec<<
-						" ("<<(((physicalDevice.getProperties().limits.sparseAddressSpaceSize+512)/1024+512)/1024+512)/1024<<"GiB)"<<endl;
+					cout<<"Sparse address space:       0x"<<std::hex<<physicalDeviceProperties.limits.sparseAddressSpaceSize<<std::dec<<
+						" ("<<(((physicalDeviceProperties.limits.sparseAddressSpaceSize+512)/1024+512)/1024+512)/1024<<"GiB)"<<endl;
 					cout<<"Sparse binding:             "<<physicalFeatures.sparseBinding<<endl;
 					cout<<"Sparse residency buffer:    "<<physicalFeatures.sparseResidencyBuffer<<endl;
 					cout<<"Sparse residency image2D:   "<<physicalFeatures.sparseResidencyImage2D<<endl;
