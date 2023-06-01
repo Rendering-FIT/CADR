@@ -171,6 +171,7 @@ static vk::UniqueBuffer sameMatrixRowMajorBuffer;
 static vk::UniqueBuffer sameMatrix4x3Buffer;
 static vk::UniqueBuffer sameMatrix4x3RowMajorBuffer;
 static vk::UniqueBuffer sameDMatrixBuffer;
+static vk::UniqueBuffer sameDMatrixStagingBuffer;
 static vk::UniqueBuffer samePATBuffer;
 static vk::UniqueBuffer transformationMatrixAttribute;
 static vk::UniqueBuffer transformationMatrixBuffer;
@@ -192,6 +193,7 @@ static vk::UniqueDeviceMemory sameMatrixRowMajorBufferMemory;
 static vk::UniqueDeviceMemory sameMatrix4x3BufferMemory;
 static vk::UniqueDeviceMemory sameMatrix4x3RowMajorBufferMemory;
 static vk::UniqueDeviceMemory sameDMatrixBufferMemory;
+static vk::UniqueDeviceMemory sameDMatrixStagingBufferMemory;
 static vk::UniqueDeviceMemory samePATBufferMemory;
 static vk::UniqueDeviceMemory transformationMatrixAttributeMemory;
 static vk::UniqueDeviceMemory transformationMatrixBufferMemory;  // not used now
@@ -621,9 +623,13 @@ struct Test {
 	uint32_t groupVariable;
 	string text;
 	bool enabled = true;
-	enum class Type { VertexThroughput, FragmentThroughput };
+	enum class Type { VertexThroughput, FragmentThroughput, TransferThroughput };
 	Type type;
-	double numRenderedItems;
+	union {
+		double numRenderedItems;
+		size_t numTransfers;
+	};
+	size_t transferSize;
 	typedef void (*Func)(vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t groupVariable);
 	Func func;
 	Test(const char* text_, Type t, Func func_) : text(text_), type(t), func(func_)  {}
@@ -633,10 +639,7 @@ struct Test {
 static vector<Test> tests;
 
 
-static void beginTest(
-	vk::CommandBuffer cb, vk::Framebuffer framebuffer, vk::Extent2D currentSurfaceExtent,
-	vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout,
-	const vector<vk::Buffer>& attributes, const vector<vk::DescriptorSet>& descriptorSets)
+static void beginTestBarrier(vk::CommandBuffer cb)
 {
 	cb.pipelineBarrier(
 		vk::PipelineStageFlagBits::eAllCommands,  // srcStageMask
@@ -652,6 +655,15 @@ static void beginTest(
 		0,nullptr,  // bufferMemoryBarrierCount+pBufferMemoryBarriers
 		0,nullptr   // imageMemoryBarrierCount+pImageMemoryBarriers
 	);
+}
+
+
+static void beginTest(
+	vk::CommandBuffer cb, vk::Framebuffer framebuffer, vk::Extent2D currentSurfaceExtent,
+	vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout,
+	const vector<vk::Buffer>& attributes, const vector<vk::DescriptorSet>& descriptorSets)
+{
+	beginTestBarrier(cb);
 	cb.beginRenderPass(
 		vk::RenderPassBeginInfo(
 			renderPass.get(),         // renderPass
@@ -3236,6 +3248,66 @@ static void initTests()
 		}
 	);
 
+	const char* consecutiveTransfersText =
+		"   Transfer of consecutive blocks while changing block size:";
+	for(uint32_t n : array<uint32_t, 22>{4, 4, 8, 16, 32, 64, 128, 256, 512, 1024,
+	                                     2048, 4096, 8192, 16384, 32768, 65536,
+	                                     131072, 262144, 524288, 1048576,
+	                                     2097152, 4194304})
+	{
+		if(minimalTest)
+			if(n > 2048)
+				continue;
+
+		tests.emplace_back(
+			consecutiveTransfersText,
+			n,
+			[](uint32_t n) {
+				string s = static_cast<stringstream&&>(stringstream() << "      " << n << " bytes : ").str();
+				return s;
+			}(n).c_str(),
+			Test::Type::TransferThroughput,
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t transferSize)
+			{
+				// compute numTranfers
+				size_t numTransfers = (minimalTest) ? 10 : size_t(1e6);
+				while(numTransfers*transferSize > size_t(1e7))
+					numTransfers /= 10;
+
+				// set test params
+				tests[timestampIndex/2].numTransfers = numTransfers;
+				tests[timestampIndex/2].transferSize = transferSize;
+
+				// record command buffer
+				beginTestBarrier(cb);
+				cb.writeTimestamp(
+					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+					timestampPool.get(),  // queryPool
+					timestampIndex++      // query
+				);
+				for(size_t offset=0, endOffset=transferSize*numTransfers;
+				    offset<endOffset; offset+=transferSize)
+				{
+					cb.copyBuffer(
+						sameDMatrixStagingBuffer.get(),  // srcBuffer
+						sameDMatrixBuffer.get(),         // dstBuffer
+						1,                               // regionCount
+						&(const vk::BufferCopy&)vk::BufferCopy(  // pRegions
+							offset,  // srcOffset
+							offset,  // dstOffset
+							transferSize  // size
+						)
+					);
+				}
+
+				cb.writeTimestamp(
+					vk::PipelineStageFlagBits::eTransfer,  // pipelineStage
+					timestampPool.get(),  // queryPool
+					timestampIndex++      // query
+				);
+			}
+		);
+	}
 }
 
 
@@ -5511,6 +5583,8 @@ static void recreateSwapchainAndPipeline()
 	sameMatrix4x3RowMajorBufferMemory.reset();
 	sameDMatrixBuffer.reset();
 	sameDMatrixBufferMemory.reset();
+	sameDMatrixStagingBuffer.reset();
+	sameDMatrixStagingBufferMemory.reset();
 	samePATBuffer.reset();
 	samePATBufferMemory.reset();
 	transformationMatrixAttribute.reset();
@@ -8004,6 +8078,9 @@ static void recreateSwapchainAndPipeline()
 		1,                                     // regionCount
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,transformationDMatrix4x4BufferSize)  // pRegions
 	);
+	assert(sameDMatrixStagingBuffer.ptr==nullptr && "Staging buffer must be unmapped here.");
+	::sameDMatrixStagingBuffer=move(sameDMatrixStagingBuffer.buffer);
+	sameDMatrixStagingBufferMemory=move(sameDMatrixStagingBuffer.memory);
 	submitNowCommandBuffer->copyBuffer(
 		samePATStagingBuffer.buffer.get(),  // srcBuffer
 		samePATBuffer.get(),                // dstBuffer
@@ -9708,7 +9785,8 @@ int main(int argc,char** argv)
 			        "   --long - perform long test; testing time is extended to 20 second\n"
 			        "            from the default of 2 seconds\n"
 			        "   --minimal - perform minimal test; for debugging purposes,\n"
-			        "               number of triangles used for testing is reduced\n"
+			        "               number of triangles used for testing is lagerly\n"
+			        "               reduced, making measurements possibly very imprecise\n"
 			        "   --sparse-none - sparse mode used during the main test\n"
 			        "   --sparse-binding - sparse mode used during the main test\n"
 			        "   --sparse-residency - sparse mode used during the main test\n"
@@ -9845,7 +9923,7 @@ int main(int argc,char** argv)
 							cout << t.text << " not supported" << endl;
 					}
 				}
-				cout<<"Fragment throughput:"<<endl;
+				cout<<"\nFragment throughput:"<<endl;
 				size_t numScreenFragments=size_t(currentSurfaceExtent.width)*currentSurfaceExtent.height;
 				for(size_t i=0; i<tests.size(); i++) {
 					Test& t = tests[i];
@@ -9864,7 +9942,23 @@ int main(int argc,char** argv)
 							cout << t.text << " not supported" << endl;
 					}
 				}
-				cout << "Number of measurements of each test: " << tests.front().renderingTimes.size() << endl;
+				cout<<"\nTransfer throughput:"<<endl;
+				for(size_t i=0; i<tests.size(); i++) {
+					Test& t = tests[i];
+					if(t.type==Test::Type::TransferThroughput) {
+						if(i!=0 && tests[i].groupText && tests[i-1].groupText!=tests[i].groupText)
+							cout << tests[i].groupText << endl;
+						if(t.enabled) {
+							sort(t.renderingTimes.begin(), t.renderingTimes.end());
+							double time_ns = t.renderingTimes[(t.renderingTimes.size()-1)/2] * timestampPeriod_ns;
+							cout << t.text << double(t.numTransfers)/time_ns*1e9/1e6 << " million transfers per second ("
+							     << double(t.numTransfers*t.transferSize)/time_ns*1e9/1024/1024 << " MiB/s)" << endl;
+						}
+						else
+							cout << t.text << " not supported" << endl;
+					}
+				}
+				cout << "\nNumber of measurements of each test: " << tests.front().renderingTimes.size() << endl;
 				cout << "Total time of all measurements: " << totalMeasurementTime << " seconds" << endl;
 				cout << endl;
 
