@@ -3269,7 +3269,7 @@ static void initTests()
 			consecutiveTransfersText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&&>(stringstream() << "      " << n << " bytes : ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "      " << n << " bytes: ").str();
 				return s;
 			}(n).c_str(),
 			Test::Type::TransferThroughput,
@@ -3281,10 +3281,12 @@ static void initTests()
 				size_t numTransfers = (minimalTest) ? 10 : size_t(4e6) / transferSize;
 				if(numTransfers*transferSize*8 > sameDMatrixStagingBufferSize)
 					numTransfers = sameDMatrixStagingBufferSize / transferSize / 8;
+				bool testEnabled = numTransfers > 0;
 
 				// set test params
 				tests[timestampIndex/2].numTransfers = numTransfers;
 				tests[timestampIndex/2].transferSize = transferSize;
+				tests[timestampIndex/2].enabled = testEnabled;
 
 				// record command buffer
 				beginTestBarrier(cb);
@@ -3293,19 +3295,22 @@ static void initTests()
 					timestampPool.get(),  // queryPool
 					timestampIndex++      // query
 				);
-				for(size_t offset=0, endOffset=transferSize*numTransfers;
-				    offset<endOffset; offset+=transferSize)
-				{
-					cb.copyBuffer(
-						sameDMatrixStagingBuffer.get(),  // srcBuffer
-						sameDMatrixBuffer.get(),         // dstBuffer
-						1,                               // regionCount
-						&(const vk::BufferCopy&)vk::BufferCopy(  // pRegions
-							offset,  // srcOffset
-							offset,  // dstOffset
-							transferSize  // size
-						)
-					);
+
+				if(testEnabled) {
+					for(size_t offset=0, endOffset=transferSize*numTransfers;
+						offset<endOffset; offset+=transferSize)
+					{
+						cb.copyBuffer(
+							sameDMatrixStagingBuffer.get(),  // srcBuffer
+							sameDMatrixBuffer.get(),         // dstBuffer
+							1,                               // regionCount
+							&(const vk::BufferCopy&)vk::BufferCopy(  // pRegions
+								offset,  // srcOffset
+								offset,  // dstOffset
+								transferSize  // size
+							)
+						);
+					}
 				}
 
 				cb.writeTimestamp(
@@ -3325,7 +3330,7 @@ static void initTests()
 			spacedTransfersText,
 			n,
 			[](uint32_t n) {
-				string s = static_cast<stringstream&&>(stringstream() << "      " << n << " bytes : ").str();
+				string s = static_cast<stringstream&&>(stringstream() << "      " << n << " bytes: ").str();
 				return s;
 			}(n).c_str(),
 			Test::Type::TransferThroughput,
@@ -3337,10 +3342,12 @@ static void initTests()
 				size_t numTransfers = (minimalTest) ? 10 : size_t(4e6) / transferSize;
 				if(numTransfers*transferSize*2*8 > sameDMatrixStagingBufferSize)
 					numTransfers = sameDMatrixStagingBufferSize / transferSize / 2 / 8;
+				bool testEnabled = numTransfers > 0;
 
 				// set test params
 				tests[timestampIndex/2].numTransfers = numTransfers;
 				tests[timestampIndex/2].transferSize = transferSize;
+				tests[timestampIndex/2].enabled = testEnabled;
 
 				// record command buffer
 				beginTestBarrier(cb);
@@ -3349,19 +3356,22 @@ static void initTests()
 					timestampPool.get(),  // queryPool
 					timestampIndex++      // query
 				);
-				for(size_t offset=0, endOffset=numTransfers*transferSize*2;
-				    offset<endOffset; offset+=size_t(transferSize)*2)
-				{
-					cb.copyBuffer(
-						sameDMatrixStagingBuffer.get(),  // srcBuffer
-						sameDMatrixBuffer.get(),         // dstBuffer
-						1,                               // regionCount
-						&(const vk::BufferCopy&)vk::BufferCopy(  // pRegions
-							offset,  // srcOffset
-							offset,  // dstOffset
-							transferSize  // size
-						)
-					);
+
+				if(testEnabled) {
+					for(size_t offset=0, endOffset=numTransfers*transferSize*2;
+						offset<endOffset; offset+=size_t(transferSize)*2)
+					{
+						cb.copyBuffer(
+							sameDMatrixStagingBuffer.get(),  // srcBuffer
+							sameDMatrixBuffer.get(),         // dstBuffer
+							1,                               // regionCount
+							&(const vk::BufferCopy&)vk::BufferCopy(  // pRegions
+								offset,  // srcOffset
+								offset,  // dstOffset
+								transferSize  // size
+							)
+						);
+					}
 				}
 
 				cb.writeTimestamp(
@@ -10073,7 +10083,7 @@ int main(int argc,char** argv)
 							     << double(t.numTransfers*t.transferSize)/time_ns*1e9/1024/1024 << " MiB/s)" << endl;
 						}
 						else
-							cout << t.text << " not supported" << endl;
+							cout << t.text << "not run" << endl;
 					}
 				}
 				cout << "\nNumber of measurements of each test: " << tests.front().renderingTimes.size() << endl;
