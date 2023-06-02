@@ -55,6 +55,7 @@ static bool needResize=true;
 static vk::UniqueSurfaceKHR surface;
 static vk::PhysicalDevice physicalDevice;
 static vk::PhysicalDeviceProperties physicalDeviceProperties;
+static vector<vk::ExtensionProperties> physicalDeviceExtensions;
 static uint32_t graphicsQueueFamily;
 static uint32_t presentationQueueFamily;
 static uint32_t sparseQueueFamily;
@@ -403,6 +404,7 @@ static uint32_t numTriangles;
 static bool minimalTest=false;
 static bool longTest=false;
 static vk::Extent2D renderingExtent(1366,768);  // HD resultion (it should always fit to FullHD screen, even with window captions, taskbar, etc.)
+static size_t sameDMatrixStagingBufferSize;
 static const unsigned triangleSize=0;
 static uint32_t numFullscreenQuads=10; // note: if you increase the value, make sure that fullscreenQuad*.vert is still drawing to the clip space (by gl_InstanceIndex)
 static const uint32_t triStripLength=1000;
@@ -3248,17 +3250,21 @@ static void initTests()
 		}
 	);
 
+	vector<uint32_t> transferSizeList;
+	if(minimalTest)
+		transferSizeList = { 4, 32 };
+	else if(longTest)
+		transferSizeList = { 4, 4, 8, 16, 32, 64, 128, 256, 512, 1024,
+		                     2048, 4096, 8192, 16384, 32768, 65536,
+		                     131072, 262144, 524288, 1048576,
+		                     2097152, 4194304 };
+	else
+		transferSizeList = { 4, 32, 256, 2048, 1048576 };
+
 	const char* consecutiveTransfersText =
 		"   Transfer of consecutive blocks while changing block size:";
-	for(uint32_t n : array<uint32_t, 22>{4, 4, 8, 16, 32, 64, 128, 256, 512, 1024,
-	                                     2048, 4096, 8192, 16384, 32768, 65536,
-	                                     131072, 262144, 524288, 1048576,
-	                                     2097152, 4194304})
+	for(uint32_t n : transferSizeList)
 	{
-		if(minimalTest)
-			if(n > 2048)
-				continue;
-
 		tests.emplace_back(
 			consecutiveTransfersText,
 			n,
@@ -3270,9 +3276,11 @@ static void initTests()
 			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t transferSize)
 			{
 				// compute numTranfers
-				size_t numTransfers = (minimalTest) ? 10 : size_t(1e6);
-				while(numTransfers*transferSize > size_t(1e7))
-					numTransfers /= 10;
+				// (numTransfers is limited to 1/8 of the buffer size because of some strange driver problem
+				// on Intel(R) UHD Graphics 630 (i7-10750H), driver version 30.0.101.1338, driver date: 2022-01-20)
+				size_t numTransfers = (minimalTest) ? 10 : size_t(4e6) / transferSize;
+				if(numTransfers*transferSize*8 > sameDMatrixStagingBufferSize)
+					numTransfers = sameDMatrixStagingBufferSize / transferSize / 8;
 
 				// set test params
 				tests[timestampIndex/2].numTransfers = numTransfers;
@@ -3287,6 +3295,62 @@ static void initTests()
 				);
 				for(size_t offset=0, endOffset=transferSize*numTransfers;
 				    offset<endOffset; offset+=transferSize)
+				{
+					cb.copyBuffer(
+						sameDMatrixStagingBuffer.get(),  // srcBuffer
+						sameDMatrixBuffer.get(),         // dstBuffer
+						1,                               // regionCount
+						&(const vk::BufferCopy&)vk::BufferCopy(  // pRegions
+							offset,  // srcOffset
+							offset,  // dstOffset
+							transferSize  // size
+						)
+					);
+				}
+
+				cb.writeTimestamp(
+					vk::PipelineStageFlagBits::eTransfer,  // pipelineStage
+					timestampPool.get(),  // queryPool
+					timestampIndex++      // query
+				);
+			}
+		);
+	}
+
+	const char* spacedTransfersText =
+		"   Transfer of spaced blocks while changing block and space size:";
+	for(uint32_t n : transferSizeList)
+	{
+		tests.emplace_back(
+			spacedTransfersText,
+			n,
+			[](uint32_t n) {
+				string s = static_cast<stringstream&&>(stringstream() << "      " << n << " bytes : ").str();
+				return s;
+			}(n).c_str(),
+			Test::Type::TransferThroughput,
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t transferSize)
+			{
+				// compute numTranfers
+				// (numTransfers is limited to 1/8 of the buffer size because of some strange driver problem
+				// on Intel(R) UHD Graphics 630 (i7-10750H), driver version 30.0.101.1338, driver date: 2022-01-20)
+				size_t numTransfers = (minimalTest) ? 10 : size_t(4e6) / transferSize;
+				if(numTransfers*transferSize*2*8 > sameDMatrixStagingBufferSize)
+					numTransfers = sameDMatrixStagingBufferSize / transferSize / 2 / 8;
+
+				// set test params
+				tests[timestampIndex/2].numTransfers = numTransfers;
+				tests[timestampIndex/2].transferSize = transferSize;
+
+				// record command buffer
+				beginTestBarrier(cb);
+				cb.writeTimestamp(
+					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+					timestampPool.get(),  // queryPool
+					timestampIndex++      // query
+				);
+				for(size_t offset=0, endOffset=numTransfers*transferSize*2;
+				    offset<endOffset; offset+=size_t(transferSize)*2)
 				{
 					cb.copyBuffer(
 						sameDMatrixStagingBuffer.get(),  // srcBuffer
@@ -3743,6 +3807,16 @@ static size_t getMemoryAlignment(vk::Device device,size_t size,vk::BufferCreateF
 /// Init Vulkan and open the window.
 static void init(const string& nameFilter = "", int deviceIndex = -1)
 {
+	// physical_device_properties2 support
+	bool physicalDeviceProperties2Supported = false;
+	auto extensionList = vk::enumerateInstanceExtensionProperties();
+	for(vk::ExtensionProperties& e : extensionList) {
+		if(strcmp(e.extensionName, "VK_KHR_get_physical_device_properties2") == 0) {
+			physicalDeviceProperties2Supported = true;
+			break;
+		}
+	}
+
 	// Vulkan instance
 	instance=
 		vk::createInstanceUnique(
@@ -3756,11 +3830,11 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 					VK_API_VERSION_1_0,      // api version
 				},
 				0,nullptr,  // no layers
-				2,          // enabled extension count
+				uint32_t(physicalDeviceProperties2Supported ? 3 : 2),  // enabled extension count
 #ifdef _WIN32
-				array<const char*,2>{"VK_KHR_surface","VK_KHR_win32_surface"}.data(),  // enabled extension names
+				array<const char*, 3>{ "VK_KHR_surface", "VK_KHR_win32_surface", "VK_KHR_get_physical_device_properties2" }.data(),  // enabled extension names
 #else
-				array<const char*,2>{"VK_KHR_surface","VK_KHR_xlib_surface"}.data(),  // enabled extension names
+				array<const char*, 3>{ "VK_KHR_surface", "VK_KHR_xlib_surface", "VK_KHR_get_physical_device_properties2" }.data(),  // enabled extension names
 #endif
 			});
 
@@ -3874,14 +3948,15 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 	// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 	// renders the window).
-	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
+	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, uint32_t, vk::PhysicalDeviceProperties,
+		vector<vk::ExtensionProperties>>> compatibleDevices;
 	for(size_t di=0, c=deviceList.size(); di<c; di++)
 	{
 		vk::PhysicalDevice pd = deviceList[di];
 
 		// skip devices without VK_KHR_swapchain
-		auto extensionList = pd.enumerateDeviceExtensionProperties();
-		for(vk::ExtensionProperties& e : extensionList)
+		vector<vk::ExtensionProperties> extensionList = pd.enumerateDeviceExtensionProperties();
+		for(const vk::ExtensionProperties& e : extensionList)
 			if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
 				goto swapchainSupported;
 		continue;
@@ -3898,7 +3973,7 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 			if(it->queueFlags & vk::QueueFlagBits::eGraphics) {
 				if(p) {
 					if(it->queueFlags & vk::QueueFlagBits::eSparseBinding) {
-						compatibleDevices.emplace_back(pd, i, i, i, devicePropertiesList[di]);
+						compatibleDevices.emplace_back(pd, i, i, i, devicePropertiesList[di], move(extensionList));
 						goto nextDevice;
 					}
 					else {
@@ -3923,11 +3998,13 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 		}
 		if(sparseMode == SPARSE_NONE) {
 			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
-				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, sparseQueueFamily, devicePropertiesList[di]);
+				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, sparseQueueFamily,
+				                               devicePropertiesList[di], move(extensionList));
 		}
 		else
 			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX && sparseQueueFamily != UINT32_MAX)
-				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, sparseQueueFamily, devicePropertiesList[di]);
+				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, sparseQueueFamily,
+				                               devicePropertiesList[di], move(extensionList));
 		nextDevice:;
 	}
 	if(compatibleDevices.empty())
@@ -3956,6 +4033,7 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 			presentationQueueFamily = std::get<2>(d);
 			sparseQueueFamily = std::get<3>(d);
 			physicalDeviceProperties = std::get<4>(d);
+			physicalDeviceExtensions = std::move(get<5>(d));
 		}
 		else
 			throw runtime_error("Invalid device index. "
@@ -3995,8 +4073,9 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 		presentationQueueFamily = std::get<2>(*bestDevice);
 		sparseQueueFamily = std::get<3>(*bestDevice);
 		physicalDeviceProperties = std::get<4>(*bestDevice);
+		physicalDeviceExtensions = move(std::get<5>(*bestDevice));
 	}
-	cout << "Selected device:\n"
+	cout << "\nSelected device:\n"
 	        "   " << physicalDeviceProperties.deviceName << "\n" << endl;
 
 	// get supported features
@@ -4004,6 +4083,44 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 	enabledFeatures.setMultiDrawIndirect(physicalFeatures.multiDrawIndirect);
 	enabledFeatures.setGeometryShader(physicalFeatures.geometryShader);
 	enabledFeatures.setShaderFloat64(physicalFeatures.shaderFloat64);
+
+	// DeviceID and VendorID
+	cout << "VendorID: 0x" << hex << physicalDeviceProperties.vendorID;
+	switch(physicalDeviceProperties.vendorID) {
+	case 0x1002: cout << " (AMD/ATI)" << endl; break;
+	case 0x10DE: cout << " (Nvidia)" << endl; break;
+	case 0x8086: cout << " (Intel)" << endl; break;
+	case 0x10005: cout << " (Mesa)"; break;
+	default: cout << endl;
+	}
+	cout << "DeviceID: 0x" << physicalDeviceProperties.deviceID << dec << endl;
+
+	// driver info
+	cout << "Vulkan version:  " << VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) << "."
+	     << VK_VERSION_MINOR(physicalDeviceProperties.apiVersion) << "."
+	     << VK_VERSION_PATCH(physicalDeviceProperties.apiVersion) << endl;
+	cout << "Driver version:  " << physicalDeviceProperties.driverVersion << " (0x" << hex << physicalDeviceProperties.driverVersion << ")" << dec << endl;
+	for(const vk::ExtensionProperties& e : physicalDeviceExtensions)
+		if(strcmp(e.extensionName, "VK_KHR_driver_properties") == 0) {
+			struct InstanceFuncs : vk::DispatchLoaderBase {
+				PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = PFN_vkGetPhysicalDeviceProperties2KHR(instance->getProcAddr("vkGetPhysicalDeviceProperties2KHR"));
+			} vkFuncs;
+			auto properties2 = physicalDevice.getProperties2KHR<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDriverPropertiesKHR>(vkFuncs);
+			vk::PhysicalDeviceDriverPropertiesKHR& driverProperties = properties2.get<vk::PhysicalDeviceDriverPropertiesKHR>();
+			cout << "   Driver name:  " << driverProperties.driverName << endl;
+			cout << "   Driver info:  " << driverProperties.driverInfo << endl;
+			cout << "   DriverID:     " << to_string(driverProperties.driverID) << endl;
+			cout << "   Driver conformance version:  " << unsigned(driverProperties.conformanceVersion.major)
+			     << "." << unsigned(driverProperties.conformanceVersion.minor) 
+			     << "." << unsigned(driverProperties.conformanceVersion.subminor)
+			     << "." << unsigned(driverProperties.conformanceVersion.patch) << endl;
+			goto afterDriverProperties;
+		}
+	cout << "   Driver name:  n/a" << endl;
+	cout << "   Driver info:  n/a" << endl;
+	cout << "   DriverID:     n/a" << endl;
+	cout << "   Driver conformance version:  n/a" << endl;
+	afterDriverProperties:
 
 	// GPU memory and sparse props
 	size_t gpuMemory=0;
@@ -8081,6 +8198,7 @@ static void recreateSwapchainAndPipeline()
 	assert(sameDMatrixStagingBuffer.ptr==nullptr && "Staging buffer must be unmapped here.");
 	::sameDMatrixStagingBuffer=move(sameDMatrixStagingBuffer.buffer);
 	sameDMatrixStagingBufferMemory=move(sameDMatrixStagingBuffer.memory);
+	sameDMatrixStagingBufferSize=transformationDMatrix4x4BufferSize;
 	submitNowCommandBuffer->copyBuffer(
 		samePATStagingBuffer.buffer.get(),  // srcBuffer
 		samePATBuffer.get(),                // dstBuffer
