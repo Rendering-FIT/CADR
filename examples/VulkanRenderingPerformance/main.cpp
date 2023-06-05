@@ -10079,8 +10079,8 @@ int main(int argc,char** argv)
 						if(t.enabled) {
 							sort(t.renderingTimes.begin(), t.renderingTimes.end());
 							double time_ns = t.renderingTimes[(t.renderingTimes.size()-1)/2] * timestampPeriod_ns;
-							cout << t.text << double(t.numTransfers)/time_ns*1e9/1e6 << " million transfers per second ("
-							     << double(t.numTransfers*t.transferSize)/time_ns*1e9/1024/1024 << " MiB/s)" << endl;
+							cout << t.text << time_ns/t.numTransfers << "ns per transfer ("
+							     << double(t.numTransfers*t.transferSize)/time_ns*1e9/1024/1024/1024 << " GiB/s)" << endl;
 						}
 						else
 							cout << t.text << "not run" << endl;
