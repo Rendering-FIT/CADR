@@ -9888,6 +9888,10 @@ int main(int argc,char** argv)
 				else if(strcmp(argv[i], "--sparse-residency") == 0)  sparseMode = SPARSE_RESIDENCY;
 				else if(strcmp(argv[i], "--sparse-residency-aliased") == 0)  sparseMode = SPARSE_RESIDENCY_ALIASED;
 				else if(strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0)  printHelp = true;
+				else {
+					cout << "Invalid argument: " << argv[i] << endl;
+					printHelp = true;
+				}
 			}
 			// parse whatever does not start with '-'
 			else {
