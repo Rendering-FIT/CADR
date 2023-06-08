@@ -7,5 +7,5 @@ out gl_PerVertex {
 
 
 void main() {
-	gl_Position=vec4(gl_VertexIndex,gl_InstanceIndex+2,0.5,1.);
+	gl_Position = vec4(0, 0, float(gl_VertexIndex + gl_InstanceIndex) * 1e-20, 1);
 }

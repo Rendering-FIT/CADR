@@ -4109,7 +4109,26 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 	cout << "Vulkan version:  " << VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) << "."
 	     << VK_VERSION_MINOR(physicalDeviceProperties.apiVersion) << "."
 	     << VK_VERSION_PATCH(physicalDeviceProperties.apiVersion) << endl;
-	cout << "Driver version:  " << physicalDeviceProperties.driverVersion << " (0x" << hex << physicalDeviceProperties.driverVersion << ")" << dec << endl;
+	cout << "Driver version:  ";
+	if(physicalDeviceProperties.vendorID == 0x10DE)
+		// Nvidia uses 10|8|8|6
+		cout << ((physicalDeviceProperties.driverVersion >> 22) & 0x3ff) << '.'
+		     << ((physicalDeviceProperties.driverVersion >> 14) & 0x0ff) << '.'
+		     << ((physicalDeviceProperties.driverVersion >>  6) & 0x0ff) << '.'
+		     << ((physicalDeviceProperties.driverVersion >>  0) & 0x03f);
+#ifdef _WIN32
+	else if(physicalDeviceProperties.vendorID == 0x8086)
+		// Intel uses 18|14 on Win32
+		cout << (physicalDeviceProperties.driverVersion >> 14) << '.'
+		     << (physicalDeviceProperties.driverVersion & 0x3fff);
+#endif
+	else
+		// try standard Vulkan versioning scheme, e.g. 10|10|12 
+		cout <<  (physicalDeviceProperties.driverVersion >> 22) << '.'
+		     << ((physicalDeviceProperties.driverVersion >> 12) & 0x3ff) << '.'
+		     << ((physicalDeviceProperties.driverVersion >>  0) & 0xfff);
+	cout << " (" << physicalDeviceProperties.driverVersion
+	     << ", 0x" << hex << physicalDeviceProperties.driverVersion << ")" << dec << endl;
 	for(const vk::ExtensionProperties& e : physicalDeviceExtensions)
 		if(strcmp(e.extensionName, "VK_KHR_driver_properties") == 0) {
 			struct InstanceFuncs : vk::DispatchLoaderBase {
@@ -9863,7 +9882,7 @@ int main(int argc,char** argv)
 {
 	// print header
 	cout << appName << " tests various performance characteristics\n"
-		"of the Vulkan physical device.\n" << endl;
+		"   of the Vulkan physical device.\n" << endl;
 
 	// catch exceptions
 	// (vulkan.hpp fuctions throw if they fail)

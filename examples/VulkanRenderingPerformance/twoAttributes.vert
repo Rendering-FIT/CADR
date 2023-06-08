@@ -9,5 +9,5 @@ out gl_PerVertex {
 };
 
 void main() {
-	gl_Position=inPosition+attribute1+vec4(2.,2.,2.,2.);
+	gl_Position = inPosition + attribute1 + vec4(2.,2.,2.,2.);
 }
