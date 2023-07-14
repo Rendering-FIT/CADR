@@ -21,6 +21,7 @@ set(APP_SHADERS
 	twoAttributes.vert
 	twoBuffers.vert
 	twoBuffer3.vert
+	twoInterleavedBuffers.vert
 	twoPackedAttributes.vert
 	twoPackedBuffers.vert
 	twoPackedBuffersUsingStruct.vert
@@ -32,6 +33,7 @@ set(APP_SHADERS
 	fourAttributes.vert
 	fourBuffers.vert
 	fourBuffer3.vert
+	fourInterleavedBuffers.vert
 	fourAttributesAndMatrix.vert
 	geometryShaderConstantOutput.vert
 	geometryShaderConstantOutput.geom

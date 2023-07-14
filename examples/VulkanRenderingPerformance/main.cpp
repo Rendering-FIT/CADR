@@ -78,6 +78,7 @@ static vk::UniqueShaderModule matrixBufferVS;
 static vk::UniqueShaderModule twoAttributesVS;
 static vk::UniqueShaderModule twoBuffersVS;
 static vk::UniqueShaderModule twoBuffer3VS;
+static vk::UniqueShaderModule twoInterleavedBuffersVS;
 static vk::UniqueShaderModule twoPackedAttributesVS;
 static vk::UniqueShaderModule twoPackedBuffersVS;
 static vk::UniqueShaderModule twoPackedBuffersUsingStructVS;
@@ -89,6 +90,7 @@ static vk::UniqueShaderModule twoPackedBuffersAndMatrixVS;
 static vk::UniqueShaderModule fourAttributesVS;
 static vk::UniqueShaderModule fourBuffersVS;
 static vk::UniqueShaderModule fourBuffer3VS;
+static vk::UniqueShaderModule fourInterleavedBuffersVS;
 static vk::UniqueShaderModule fourAttributesAndMatrixVS;
 static vk::UniqueShaderModule geometryShaderConstantOutputVS;
 static vk::UniqueShaderModule geometryShaderConstantOutputGS;
@@ -219,10 +221,12 @@ static vk::DescriptorSet transformationMatrixBufferDescriptorSet;
 static vk::DescriptorSet singlePackedBufferDescriptorSet;
 static vk::DescriptorSet twoBuffersDescriptorSet;
 static vk::DescriptorSet twoBuffer3DescriptorSet;
+static vk::DescriptorSet twoInterleavedBuffersDescriptorSet;
 static vk::DescriptorSet twoPackedBuffersDescriptorSet;
 static vk::DescriptorSet threeBuffersDescriptorSet;
 static vk::DescriptorSet fourBuffersDescriptorSet;
 static vk::DescriptorSet fourBuffer3DescriptorSet;
+static vk::DescriptorSet fourInterleavedBuffersDescriptorSet;
 static vk::DescriptorSet threeBuffersInGSDescriptorSet;
 static vk::DescriptorSet threeUniformFSDescriptorSet;
 static vk::DescriptorSet transformationThreeMatricesDescriptorSet;
@@ -256,6 +260,8 @@ static vk::UniquePipeline matrixBufferPipeline;
 static vk::UniquePipeline twoAttributesPipeline;
 static vk::UniquePipeline twoBuffersPipeline;
 static vk::UniquePipeline twoBuffer3Pipeline;
+static vk::UniquePipeline twoInterleavedAttributesPipeline;
+static vk::UniquePipeline twoInterleavedBuffersPipeline;
 static vk::UniquePipeline twoPackedAttributesPipeline;
 static vk::UniquePipeline twoPackedBuffersPipeline;
 static vk::UniquePipeline twoPackedBuffersUsingStructPipeline;
@@ -268,8 +274,9 @@ static vk::UniquePipeline twoPackedBuffersAndMatrixPipeline;
 static vk::UniquePipeline fourAttributesPipeline;
 static vk::UniquePipeline fourBuffersPipeline;
 static vk::UniquePipeline fourBuffer3Pipeline;
+static vk::UniquePipeline fourInterleavedAttributesPipeline;
+static vk::UniquePipeline fourInterleavedBuffersPipeline;
 static vk::UniquePipeline fourAttributesAndMatrixPipeline;
-static vk::UniquePipeline interleavedFourAttributesPipeline;
 static vk::UniquePipeline geometryShaderConstantOutputPipeline;
 static vk::UniquePipeline geometryShaderPipeline;
 static vk::UniquePipeline transformationThreeMatricesPipeline;
@@ -324,8 +331,10 @@ static array<vk::UniqueBuffer,2> vec4u8Attributes;
 static array<vk::UniqueBuffer,3> vec3Buffers;
 static vk::UniqueBuffer packedAttribute1;
 static vk::UniqueBuffer packedAttribute2;
-static vk::UniqueBuffer interleavedFourAttributes;
-static vk::UniqueBuffer interleavedFourBuffers;
+static vk::UniqueBuffer twoInterleavedAttributes;
+static vk::UniqueBuffer twoInterleavedBuffers;
+static vk::UniqueBuffer fourInterleavedAttributes;
+static vk::UniqueBuffer fourInterleavedBuffers;
 static vk::UniqueBuffer packedBuffer1;
 static vk::UniqueBuffer packedBuffer2;
 static vk::UniqueBuffer singlePackedBuffer;
@@ -364,8 +373,10 @@ static array<vk::UniqueDeviceMemory,3> vec4BufferMemory;
 static array<vk::UniqueDeviceMemory,3> vec3BufferMemory;
 static vk::UniqueDeviceMemory packedAttribute1Memory;
 static vk::UniqueDeviceMemory packedAttribute2Memory;
-static vk::UniqueDeviceMemory interleavedFourAttributesMemory;
-static vk::UniqueDeviceMemory interleavedFourBuffersMemory;
+static vk::UniqueDeviceMemory twoInterleavedAttributesMemory;
+static vk::UniqueDeviceMemory twoInterleavedBuffersMemory;
+static vk::UniqueDeviceMemory fourInterleavedAttributesMemory;
+static vk::UniqueDeviceMemory fourInterleavedBuffersMemory;
 static vk::UniqueDeviceMemory packedBuffer1Memory;
 static vk::UniqueDeviceMemory packedBuffer2Memory;
 static vk::UniqueDeviceMemory singlePackedBufferMemory;
@@ -452,6 +463,9 @@ static const uint32_t twoBuffersVS_spirv[]={
 static const uint32_t twoBuffer3VS_spirv[]={
 #include "twoBuffer3.vert.spv"
 };
+static const uint32_t twoInterleavedBuffersVS_spirv[]={
+#include "twoInterleavedBuffers.vert.spv"
+};
 static const uint32_t twoPackedAttributesVS_spirv[]={
 #include "twoPackedAttributes.vert.spv"
 };
@@ -484,6 +498,9 @@ static const uint32_t fourBuffersVS_spirv[]={
 };
 static const uint32_t fourBuffer3VS_spirv[]={
 #include "fourBuffer3.vert.spv"
+};
+static const uint32_t fourInterleavedBuffersVS_spirv[]={
+#include "fourInterleavedBuffers.vert.spv"
 };
 static const uint32_t fourAttributesAndMatrixVS_spirv[]={
 #include "fourAttributesAndMatrix.vert.spv"
@@ -1095,7 +1112,80 @@ static void initTests()
 		}),
 
 	Test(
-		"   Attribute performance, 2x uvec4 attribute unpacked into\n"
+		"   Interleaved attribute performance, 2x vec4 attributes fetched from the\n"
+		"      single buffer, both attributes used:     ",
+		Test::Type::VertexThroughput,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          twoInterleavedAttributesPipeline.get(), simplePipelineLayout.get(),
+			          vector<vk::Buffer>{ twoInterleavedAttributes.get() },
+			          vector<vk::DescriptorSet>());
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}),
+			
+	Test(
+		"   Interleaved buffer performance, 2x vec4 buffers fetched from the\n"
+		"      single buffer, both attributes used:     ",
+		Test::Type::VertexThroughput,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          twoInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(),
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>{ twoInterleavedBuffersDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}),
+
+	Test(
+		"   Interleaved packed buffer performance,\n"
+		"      1x buffer using 32-byte struct unpacked\n"
+		"      into position+normal+color+texCoord:     ",
+		Test::Type::VertexThroughput,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          singlePackedBufferPipeline.get(), oneBufferPipelineLayout.get(),
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>{ singlePackedBufferDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}),
+
+	Test(
+		"   Packed attribute performance, 2x uvec4 attribute unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
@@ -1119,7 +1209,7 @@ static void initTests()
 		}),
 
 	Test(
-		"   Buffer performance, 2x uvec4 buffers unpacked into\n"
+		"   Packed buffer performance, 2x uvec4 buffers unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
@@ -1143,7 +1233,7 @@ static void initTests()
 		}),
 
 	Test(
-		"   Buffer performance, 2x buffer using 16-byte struct unpacked into\n"
+		"   Packed buffer performance, 2x buffer using 16-byte struct unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
@@ -1167,7 +1257,7 @@ static void initTests()
 		}),
 
 	Test(
-		"   Buffer performance, 2x buffer using 16-byte struct,\n"
+		"   Packed buffer performance, 2x buffer using 16-byte struct,\n"
 		"      accessed multiple times, unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
@@ -1177,30 +1267,6 @@ static void initTests()
 			          twoPackedBuffersUsingStructSlowPipeline.get(), twoBuffersPipelineLayout.get(),
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoPackedBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
-		}),
-
-	Test(
-		"   Buffer performance, 1x buffer using 32-byte struct unpacked\n"
-		"      into position+normal+color+texCoord:     ",
-		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
-		{
-			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          singlePackedBufferPipeline.get(), oneBufferPipelineLayout.get(),
-			          vector<vk::Buffer>(),
-			          vector<vk::DescriptorSet>{ singlePackedBufferDescriptorSet });
 			cb.writeTimestamp(
 				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 				timestampPool.get(),  // queryPool
@@ -1241,7 +1307,7 @@ static void initTests()
 		}),
 
 	Test(
-		"   Buffer performance, 4x vec4f32 buffers:\n"
+		"   Buffer performance, 4x vec4f32 buffers,\n"
 		"      all attributes used:                     ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
@@ -1289,16 +1355,14 @@ static void initTests()
 		}),
 
 	Test(
-		"   Attribute performance, 4x attribute (2x vec4f32 + 2x vec4u8,\n"
-		"      2x conversion from vec4u8 in memory to vec4 in VS):\n"
-		"                                               ",
+		"   Interleaved attribute performance, 4x vec4f32 fetched\n"
+		"      from the single buffer:                  ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          two4F32Two4U8AttributesPipeline.get(), simplePipelineLayout.get(),
-			          vector<vk::Buffer>{ coordinate4Attribute.get(), vec4Attributes[0].get(),
-			                              vec4u8Attributes[0].get(), vec4u8Attributes[1].get() },
+			          fourInterleavedAttributesPipeline.get(), simplePipelineLayout.get(),
+			          vector<vk::Buffer>{ fourInterleavedAttributes.get() },
 			          vector<vk::DescriptorSet>());
 			cb.writeTimestamp(
 				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
@@ -1315,15 +1379,40 @@ static void initTests()
 		}),
 
 	Test(
-		"   Attribute performance, interleaved 4x vec4f32 in single buffer,\n"
-		"      uninterleaving by array of VertexInputAttributeDescription:\n"
+		"   Interleaved buffer performance, 4x vec4f32 fetched from the\n"
+		"      single buffer, all attributes used:      ",
+		Test::Type::VertexThroughput,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          fourInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(),
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>{ fourInterleavedBuffersDescriptorSet });
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
+			cb.writeTimestamp(
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				timestampIndex++      // query
+			);
+			cb.endRenderPass();
+		}),
+
+	Test(
+		"   Attribute performance, 4x attribute (2x vec4f32 + 2x vec4u8,\n"
+		"      2x conversion from vec4u8 in memory to vec4 in VS):\n"
 		"                                               ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          interleavedFourAttributesPipeline.get(), simplePipelineLayout.get(),
-			          vector<vk::Buffer>{ interleavedFourAttributes.get() },
+			          two4F32Two4U8AttributesPipeline.get(), simplePipelineLayout.get(),
+			          vector<vk::Buffer>{ coordinate4Attribute.get(), vec4Attributes[0].get(),
+			                              vec4u8Attributes[0].get(), vec4u8Attributes[1].get() },
 			          vector<vk::DescriptorSet>());
 			cb.writeTimestamp(
 				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
@@ -4463,6 +4552,14 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 				twoBuffer3VS_spirv              // pCode
 			)
 		);
+	twoInterleavedBuffersVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),          // flags
+				sizeof(twoInterleavedBuffersVS_spirv),  // codeSize
+				twoInterleavedBuffersVS_spirv           // pCode
+			)
+		);
 	twoPackedAttributesVS=
 		device->createShaderModuleUnique(
 			vk::ShaderModuleCreateInfo(
@@ -4549,6 +4646,14 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 				vk::ShaderModuleCreateFlags(),  // flags
 				sizeof(fourBuffer3VS_spirv),    // codeSize
 				fourBuffer3VS_spirv             // pCode
+			)
+		);
+	fourInterleavedBuffersVS=
+		device->createShaderModuleUnique(
+			vk::ShaderModuleCreateInfo(
+				vk::ShaderModuleCreateFlags(),           // flags
+				sizeof(fourInterleavedBuffersVS_spirv),  // codeSize
+				fourInterleavedBuffersVS_spirv           // pCode
 			)
 		);
 	fourAttributesAndMatrixVS=
@@ -5582,6 +5687,8 @@ static void recreateSwapchainAndPipeline()
 	twoAttributesPipeline.reset();
 	twoBuffersPipeline.reset();
 	twoBuffer3Pipeline.reset();
+	twoInterleavedAttributesPipeline.reset();
+	twoInterleavedBuffersPipeline.reset();
 	two4F32Two4U8AttributesPipeline.reset();
 	twoPackedAttributesPipeline.reset();
 	twoPackedBuffersPipeline.reset();
@@ -5594,8 +5701,9 @@ static void recreateSwapchainAndPipeline()
 	fourAttributesPipeline.reset();
 	fourBuffersPipeline.reset();
 	fourBuffer3Pipeline.reset();
+	fourInterleavedAttributesPipeline.reset();
+	fourInterleavedBuffersPipeline.reset();
 	fourAttributesAndMatrixPipeline.reset();
-	interleavedFourAttributesPipeline.reset();
 	geometryShaderConstantOutputPipeline.reset();
 	geometryShaderPipeline.reset();
 	transformationThreeMatricesPipeline.reset();
@@ -5659,10 +5767,14 @@ static void recreateSwapchainAndPipeline()
 	packedAttribute1Memory.reset();
 	packedAttribute2.reset();
 	packedAttribute2Memory.reset();
-	interleavedFourAttributes.reset();
-	interleavedFourAttributesMemory.reset();
-	interleavedFourBuffers.reset();
-	interleavedFourBuffersMemory.reset();
+	twoInterleavedAttributes.reset();
+	twoInterleavedAttributesMemory.reset();
+	twoInterleavedBuffers.reset();
+	twoInterleavedBuffersMemory.reset();
+	fourInterleavedAttributes.reset();
+	fourInterleavedAttributesMemory.reset();
+	fourInterleavedBuffers.reset();
+	fourInterleavedBuffersMemory.reset();
 	packedBuffer1.reset();
 	packedBuffer1Memory.reset();
 	packedBuffer2.reset();
@@ -6218,6 +6330,34 @@ static void recreateSwapchainAndPipeline()
 			               2,  // vertexAttributeDescriptionCount
 			               fourAttributesDescription.data(),  // pVertexAttributeDescriptions
 		               });
+	twoInterleavedAttributesPipeline=
+		createPipeline(twoAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               1,  // vertexBindingDescriptionCount
+			               array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
+				               vk::VertexInputBindingDescription(
+					               0,  // binding
+					               8*sizeof(float),  // stride
+					               vk::VertexInputRate::eVertex  // inputRate
+				               ),
+			               }.data(),
+			               2,  // vertexAttributeDescriptionCount
+			               array<const vk::VertexInputAttributeDescription,2>{  // pVertexAttributeDescriptions
+				               vk::VertexInputAttributeDescription(
+					               0,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               0   // offset
+				               ),
+				               vk::VertexInputAttributeDescription(
+					               1,  // location
+					               0,  // binding
+					               vk::Format::eR32G32B32A32Sfloat,  // format
+					               16  // offset
+				               ),
+			               }.data()
+		               });
 	twoBuffersPipeline=
 		createPipeline(twoBuffersVS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
@@ -6227,6 +6367,13 @@ static void recreateSwapchainAndPipeline()
 		               });
 	twoBuffer3Pipeline=
 		createPipeline(twoBuffer3VS.get(),constantColorFS.get(),twoBuffersPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	twoInterleavedBuffersPipeline=
+		createPipeline(twoInterleavedBuffersVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
 			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
@@ -6372,24 +6519,7 @@ static void recreateSwapchainAndPipeline()
 	fourAttributesPipeline=
 		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &fourAttributesInputState);
-	fourBuffersPipeline=
-		createPipeline(fourBuffersVS.get(),constantColorFS.get(),fourBuffersPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
-			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
-		               });
-	fourBuffer3Pipeline=
-		createPipeline(fourBuffer3VS.get(),constantColorFS.get(),fourBuffersPipelineLayout.get(),currentSurfaceExtent,
-		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
-			               vk::PipelineVertexInputStateCreateFlags(),  // flags
-			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
-			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
-		               });
-	fourAttributesAndMatrixPipeline=
-		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
-		               &fourAttributesInputState);
-	interleavedFourAttributesPipeline=
+	fourInterleavedAttributesPipeline=
 		createPipeline(fourAttributesVS.get(),constantColorFS.get(),simplePipelineLayout.get(),currentSurfaceExtent,
 		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 			               vk::PipelineVertexInputStateCreateFlags(),  // flags
@@ -6429,6 +6559,30 @@ static void recreateSwapchainAndPipeline()
 				               ),
 			               }.data()
 		               });
+	fourBuffersPipeline=
+		createPipeline(fourBuffersVS.get(),constantColorFS.get(),fourBuffersPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	fourBuffer3Pipeline=
+		createPipeline(fourBuffer3VS.get(),constantColorFS.get(),fourBuffersPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	fourInterleavedBuffersPipeline=
+		createPipeline(fourInterleavedBuffersVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
+		               &(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+			               vk::PipelineVertexInputStateCreateFlags(),  // flags
+			               0,nullptr,  // vertexBindingDescriptionCount,pVertexBindingDescriptions
+			               0,nullptr   // vertexAttributeDescriptionCount,pVertexAttributeDescriptions
+		               });
+	fourAttributesAndMatrixPipeline=
+		createPipeline(fourAttributesAndMatrixVS.get(),constantColorFS.get(),oneBufferPipelineLayout.get(),currentSurfaceExtent,
+		               &fourAttributesInputState);
 	if(enabledFeatures.geometryShader)
 		geometryShaderPipeline=
 			createPipeline(geometryShaderVS.get(),constantColorFS.get(),threeBuffersInGSPipelineLayout.get(),currentSurfaceExtent,
@@ -6999,7 +7153,8 @@ static void recreateSwapchainAndPipeline()
 	size_t texCoordBufferSize=size_t(numTriangles)*3*2*sizeof(float);
 	size_t vec4u8BufferSize=size_t(numTriangles)*3*4;
 	size_t packedDataBufferSize=size_t(numTriangles)*3*16; // ~48MB
-	size_t interleavedFourAttributeBufferSize=size_t(numTriangles)*3*64; // ~192MB
+	size_t twoInterleavedBuffersSize=size_t(numTriangles)*3*32; // ~96MB
+	size_t fourInterleavedBuffersSize=size_t(numTriangles)*3*64; // ~192MB
 	size_t indexBufferSize=size_t(numTriangles)*3*4;
 	size_t primitiveRestartIndexBufferSize=size_t(numTriangles)*4*4;
 	size_t stripIndexBufferSize=getIndexBufferSize(numTriangles/triStripLength,triStripLength);
@@ -7033,8 +7188,10 @@ static void recreateSwapchainAndPipeline()
 		createBuffer(vec3Buffers[i],vec3BufferMemory[i],      coordinate3BufferSize,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedAttribute1,  packedAttribute1Memory,  packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedAttribute2,  packedAttribute2Memory,  packedDataBufferSize,  true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
-	createBuffer(interleavedFourAttributes,interleavedFourAttributesMemory,interleavedFourAttributeBufferSize,true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
-	createBuffer(interleavedFourBuffers,   interleavedFourBuffersMemory,   interleavedFourAttributeBufferSize,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(twoInterleavedAttributes, twoInterleavedAttributesMemory, twoInterleavedBuffersSize, true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(twoInterleavedBuffers,    twoInterleavedBuffersMemory,    twoInterleavedBuffersSize, true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(fourInterleavedAttributes,fourInterleavedAttributesMemory,fourInterleavedBuffersSize,true,vk::BufferUsageFlagBits::eVertexBuffer |vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
+	createBuffer(fourInterleavedBuffers,   fourInterleavedBuffersMemory,   fourInterleavedBuffersSize,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedBuffer1,     packedBuffer1Memory,     packedDataBufferSize,  true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(packedBuffer2,     packedBuffer2Memory,     packedDataBufferSize,  true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
 	createBuffer(singlePackedBuffer,singlePackedBufferMemory,packedDataBufferSize*2,true,vk::BufferUsageFlagBits::eStorageBuffer|vk::BufferUsageFlagBits::eTransferDst,bindInfoList);
@@ -7178,7 +7335,8 @@ static void recreateSwapchainAndPipeline()
 	StagingBuffer vec4u8AttributeStagingBuffer(vec4u8BufferSize);
 	StagingBuffer packedAttribute1StagingBuffer(packedDataBufferSize);
 	StagingBuffer packedAttribute2StagingBuffer(packedDataBufferSize);
-	StagingBuffer interleavedFourAttributeStagingBuffer(interleavedFourAttributeBufferSize);
+	StagingBuffer twoInterleavedBuffersStagingBuffer(twoInterleavedBuffersSize);
+	StagingBuffer fourInterleavedBuffersStagingBuffer(fourInterleavedBuffersSize);
 	StagingBuffer singlePackedBufferStagingBuffer(packedDataBufferSize*2);
 	StagingBuffer packedDAttribute1StagingBuffer(packedDataBufferSize);
 	StagingBuffer packedDAttribute2StagingBuffer(packedDataBufferSize);
@@ -7207,7 +7365,7 @@ static void recreateSwapchainAndPipeline()
 		   (2*coordinate4BufferSize+2*coordinate3BufferSize+
 			normalBufferSize+colorBufferSize+texCoordBufferSize+
 			6*coordinate4BufferSize+3*coordinate3BufferSize+vec4u8BufferSize*vec4u8Attributes.size()+
-			4*packedDataBufferSize+2*interleavedFourAttributeBufferSize+5*packedDataBufferSize+
+			4*packedDataBufferSize+2*twoInterleavedBuffersSize+2*fourInterleavedBuffersSize+5*packedDataBufferSize+
 			indexBufferSize+primitiveRestartIndexBufferSize+stripIndexBufferSize+
 			stripPrimitiveRestartIndexBufferSize+stripPrimitiveRestart3IndexBufferSize+
 			stripPrimitiveRestart4IndexBufferSize+stripPrimitiveRestart7IndexBufferSize+
@@ -7234,8 +7392,22 @@ static void recreateSwapchainAndPipeline()
 		renderingExtent.width,renderingExtent.height,true,
 		2./currentSurfaceExtent.width,2./currentSurfaceExtent.height,-1.,-1.);
 
+	// 2xvec4 in one buffer
+	float* pfloat=reinterpret_cast<float*>(twoInterleavedBuffersStagingBuffer.map());
+	for(size_t i=0; i<numTriangles*3; i++) {
+		pfloat[i*8+0]=coords[i*4+0];
+		pfloat[i*8+1]=coords[i*4+1];
+		pfloat[i*8+2]=coords[i*4+2];
+		pfloat[i*8+3]=coords[i*4+3];
+		pfloat[i*8+4]=-2.f;
+		pfloat[i*8+5]=-2.f;
+		pfloat[i*8+6]=-2.f;
+		pfloat[i*8+7]=-2.f;
+	}
+	twoInterleavedBuffersStagingBuffer.unmap();
+
 	// 4xvec4 in one buffer
-	float* pfloat=reinterpret_cast<float*>(interleavedFourAttributeStagingBuffer.map());
+	pfloat=reinterpret_cast<float*>(fourInterleavedBuffersStagingBuffer.map());
 	for(size_t i=0; i<numTriangles*3; i++) {
 		pfloat[i*16+0]=coords[i*4+0];
 		pfloat[i*16+1]=coords[i*4+1];
@@ -7254,7 +7426,7 @@ static void recreateSwapchainAndPipeline()
 		pfloat[i*16+14]=4.f;
 		pfloat[i*16+15]=4.f;
 	}
-	interleavedFourAttributeStagingBuffer.unmap();
+	fourInterleavedBuffersStagingBuffer.unmap();
 	coordinate4StagingBuffer.unmap();
 
 	// vec3 normals, set to (1,1,1)
@@ -7605,16 +7777,28 @@ static void recreateSwapchainAndPipeline()
 		&(const vk::BufferCopy&)vk::BufferCopy(0,0,packedDataBufferSize)  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
-		interleavedFourAttributeStagingBuffer.buffer.get(),  // srcBuffer
-		interleavedFourAttributes.get(),                     // dstBuffer
-		1,                                                   // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,interleavedFourAttributeBufferSize)  // pRegions
+		twoInterleavedBuffersStagingBuffer.buffer.get(),  // srcBuffer
+		twoInterleavedAttributes.get(),                   // dstBuffer
+		1,                                                // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,twoInterleavedBuffersSize)  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
-		interleavedFourAttributeStagingBuffer.buffer.get(),  // srcBuffer
-		interleavedFourBuffers.get(),                        // dstBuffer
-		1,                                                   // regionCount
-		&(const vk::BufferCopy&)vk::BufferCopy(0,0,interleavedFourAttributeBufferSize)  // pRegions
+		twoInterleavedBuffersStagingBuffer.buffer.get(),  // srcBuffer
+		twoInterleavedBuffers.get(),                      // dstBuffer
+		1,                                                // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,twoInterleavedBuffersSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		fourInterleavedBuffersStagingBuffer.buffer.get(),  // srcBuffer
+		fourInterleavedAttributes.get(),                   // dstBuffer
+		1,                                                 // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,fourInterleavedBuffersSize)  // pRegions
+	);
+	submitNowCommandBuffer->copyBuffer(
+		fourInterleavedBuffersStagingBuffer.buffer.get(),  // srcBuffer
+		fourInterleavedBuffers.get(),                      // dstBuffer
+		1,                                                 // regionCount
+		&(const vk::BufferCopy&)vk::BufferCopy(0,0,fourInterleavedBuffersSize)  // pRegions
 	);
 	submitNowCommandBuffer->copyBuffer(
 		singlePackedBufferStagingBuffer.buffer.get(),  // srcBuffer
@@ -7787,7 +7971,8 @@ static void recreateSwapchainAndPipeline()
 	vec4u8AttributeStagingBuffer.reset();
 	packedAttribute1StagingBuffer.reset();
 	packedAttribute2StagingBuffer.reset();
-	interleavedFourAttributeStagingBuffer.reset();
+	twoInterleavedBuffersStagingBuffer.reset();
+	fourInterleavedBuffersStagingBuffer.reset();
 	singlePackedBufferStagingBuffer.reset();
 	packedDAttribute1StagingBuffer.reset();
 	packedDAttribute2StagingBuffer.reset();
@@ -8421,7 +8606,7 @@ static void recreateSwapchainAndPipeline()
 		device->createDescriptorPoolUnique(
 			vk::DescriptorPoolCreateInfo(
 				vk::DescriptorPoolCreateFlags(),  // flags
-				31,  // maxSets
+				33,  // maxSets
 				3,  // poolSizeCount
 				array<vk::DescriptorPoolSize,3>{  // pPoolSizes
 					vk::DescriptorPoolSize(
@@ -8430,7 +8615,7 @@ static void recreateSwapchainAndPipeline()
 					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eStorageBuffer,  // type
-						43  // descriptorCount
+						45  // descriptorCount
 					),
 					vk::DescriptorPoolSize(
 						vk::DescriptorType::eCombinedImageSampler,  // type
@@ -8511,6 +8696,14 @@ static void recreateSwapchainAndPipeline()
 				&twoBuffersDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
+	twoInterleavedBuffersDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&oneBufferDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
 	twoPackedBuffersDescriptorSet=
 		device->allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
@@ -8549,6 +8742,14 @@ static void recreateSwapchainAndPipeline()
 				descriptorPool.get(),  // descriptorPool
 				1,  // descriptorSetCount
 				&fourBuffersDescriptorSetLayout.get()  // pSetLayouts
+			)
+		)[0];
+	fourInterleavedBuffersDescriptorSet=
+		device->allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				descriptorPool.get(),  // descriptorPool
+				1,  // descriptorSetCount
+				&oneBufferDescriptorSetLayout.get()  // pSetLayouts
 			)
 		)[0];
 	threeBuffersInGSDescriptorSet=
@@ -8688,7 +8889,7 @@ static void recreateSwapchainAndPipeline()
 			)
 		)[0];
 	device->updateDescriptorSets(
-		array<vk::WriteDescriptorSet,44>{{  // descriptorWrites
+		array<vk::WriteDescriptorSet,46>{{  // descriptorWrites
 			{
 				oneUniformVSDescriptorSet,  // dstSet
 				0,  // dstBinding
@@ -8839,6 +9040,22 @@ static void recreateSwapchainAndPipeline()
 				nullptr  // pTexelBufferView
 			},
 			{
+				twoInterleavedBuffersDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eStorageBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						twoInterleavedBuffers.get(),  // buffer
+						0,  // offset
+						twoInterleavedBuffersSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
 				twoPackedBuffersDescriptorSet,  // dstSet
 				0,  // dstBinding
 				0,  // dstArrayElement
@@ -8964,6 +9181,22 @@ static void recreateSwapchainAndPipeline()
 						vec3Buffers[2].get(),  // buffer
 						0,  // offset
 						coordinate3BufferSize  // range
+					),
+				}.data(),
+				nullptr  // pTexelBufferView
+			},
+			{
+				fourInterleavedBuffersDescriptorSet,  // dstSet
+				0,  // dstBinding
+				0,  // dstArrayElement
+				1,  // descriptorCount
+				vk::DescriptorType::eStorageBuffer,  // descriptorType
+				nullptr,  // pImageInfo
+				array<vk::DescriptorBufferInfo,1>{  // pBufferInfo
+					vk::DescriptorBufferInfo(
+						fourInterleavedBuffers.get(),  // buffer
+						0,  // offset
+						fourInterleavedBuffersSize  // range
 					),
 				}.data(),
 				nullptr  // pTexelBufferView
