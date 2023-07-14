@@ -10454,9 +10454,13 @@ int main(int argc,char** argv)
 					cout<<"Sparse residency image2D:   "<<physicalFeatures.sparseResidencyImage2D<<endl;
 					cout<<"Sparse residency 4samples:  "<<physicalFeatures.sparseResidency4Samples<<endl;
 					cout<<"Sparse residency aliased:   "<<physicalFeatures.sparseResidencyAliased<<endl;
-					cout<<"Sparse buffer page size:    "<<getMemoryAlignment(sparseResidencyDevice.get(),1,
-						vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency|
+					cout<<"Sparse buffer page size:    ";
+					if(physicalFeatures.sparseResidencyBuffer)
+						cout<<getMemoryAlignment(sparseResidencyDevice.get(),1,
+							vk::BufferCreateFlagBits::eSparseBinding|vk::BufferCreateFlagBits::eSparseResidency|
 							(physicalFeatures.sparseResidencyAliased?vk::BufferCreateFlagBits::eSparseAliased:vk::BufferCreateFlags()))<<endl;
+					else
+						cout<<"no sparse residency buffer support"<<endl;
 					vk::SparseImageFormatProperties imageFormatProperties=
 						[]() {
 							auto l=physicalDevice.getSparseImageFormatProperties(vk::Format::eR8G8B8A8Uint,vk::ImageType::e2D,vk::SampleCountFlagBits::e1,vk::ImageUsageFlagBits::eSampled,vk::ImageTiling::eOptimal);
