@@ -642,7 +642,7 @@ struct Test {
 	uint32_t groupVariable;
 	string text;
 	bool enabled = true;
-	enum class Type { VertexThroughput, FragmentThroughput, TransferThroughput };
+	enum class Type { WarmUp, VertexThroughput, FragmentThroughput, TransferThroughput };
 	Type type;
 	union {
 		double numRenderedItems;
@@ -679,7 +679,7 @@ static void beginTestBarrier(vk::CommandBuffer cb)
 
 static void beginTest(
 	vk::CommandBuffer cb, vk::Framebuffer framebuffer, vk::Extent2D currentSurfaceExtent,
-	vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout,
+	vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, uint32_t& timestampIndex,
 	const vector<vk::Buffer>& attributes, const vector<vk::DescriptorSet>& descriptorSets)
 {
 	beginTestBarrier(cb);
@@ -712,6 +712,22 @@ static void beginTest(
 			attributes.data(),  // pBuffers
 			vector<vk::DeviceSize>(attributes.size(),0).data()  // pOffsets
 		);
+	cb.writeTimestamp(
+		vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+		timestampPool.get(),  // queryPool
+		timestampIndex++      // query
+	);
+}
+
+
+static void endTest(vk::CommandBuffer cb, uint32_t& timestampIndex)
+{
+	cb.writeTimestamp(
+		vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
+		timestampPool.get(),  // queryPool
+		timestampIndex++      // query
+	);
+	cb.endRenderPass();
 }
 
 
@@ -720,27 +736,32 @@ static void initTests()
 	tests = {
 
 	Test(
+		"   Test just to warm up GPU. The test shall be invisible to the user.",
+		Test::Type::WarmUp,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			// render something to put GPU out of power saving states
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+					  coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
+					  vector<vk::Buffer>{ coordinate4Attribute.get() },
+					  vector<vk::DescriptorSet>());
+			cb.draw(3*numTriangles,1,0,0);
+			cb.draw(3*numTriangles,1,0,0);
+			endTest(cb, timestampIndex);
+		}),
+
+	Test(
 		"   VS max throughput (one draw call, attributeless,\n"
 		"      constant VS output):                     ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(),
+			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -750,21 +771,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          attributelessInputIndicesPipeline.get(), simplePipelineLayout.get(),
+			          attributelessInputIndicesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -775,21 +786,11 @@ static void initTests()
 		{
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-				          geometryShaderConstantOutputPipeline.get(), simplePipelineLayout.get(),
+				          geometryShaderConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>(),
 				          vector<vk::DescriptorSet>());
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 			else {
 				tests[timestampIndex/2].enabled = false;
@@ -807,121 +808,81 @@ static void initTests()
 		}),
 
 	Test(
-		"   Instancing throughput (single triangle instanced, constant VS output,\n"
-		"      one draw call, attributeless):           ",
+		"   Instancing throughput (single triangle instanced,\n"
+		"      constant VS output, one draw call,\n"
+		"      attributeless):                          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(),
+			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3, numTriangles, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Instancing throughput (single triangle instanced, one indirect draw call,\n"
-		"      one indirect record, attributeless:      ",
+		"   Instancing throughput (single triangle instanced,\n"
+		"      one indirect draw call, one indirect record,\n"
+		"      attributeless:                           ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(),
+			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndirect(indirectBuffer.get(),  // buffer
 							size_t(numTriangles)*sizeof(vk::DrawIndirectCommand),  // offset
 							1,  // drawCount
 							sizeof(vk::DrawIndirectCommand));  // stride
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Draw command throughput (per-triangle draw command in command buffer,\n"
-		"      attributeless, constant VS output):      ",
+		"   Draw command throughput,\n"
+		"      per-triangle draw command in command buffer,\n"
+		"      attributeless, constant VS output:       ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(),
+			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			for(uint32_t i=0; i<numTriangles; i++)
 				cb.draw(3, 1, numTriangles*3, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Draw command throughput (per-triangle draw command in command buffer,\n"
-		"      vec4 coordinate attribute):              ",
+		"   Draw command throughput,\n"
+		"      per-triangle draw command in command buffer,\n"
+		"      vec4 coordinate attribute:               ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          coordinateAttributePipeline.get(), simplePipelineLayout.get(),
+			          coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			for(uint32_t i=0; i<numTriangles; i++)
 				cb.draw(3, 1, i*3, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Indirect draw command throughput (one indirect draw call,\n"
-		"      per-triangle record, attributeless):     ",
+		"   Indirect draw command throughput,\n"
+		"      one indirect draw call, per-triangle record,\n"
+		"      attributeless):                          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(),
+			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			if(enabledFeatures.multiDrawIndirect)
 				cb.drawIndirect(indirectBuffer.get(),  // buffer
 								0,  // offset
@@ -929,29 +890,20 @@ static void initTests()
 								sizeof(vk::DrawIndirectCommand));  // stride
 			else
 				tests[timestampIndex/2].enabled = false;
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Indirect draw command throughput (one indirect draw call, per-triangle\n"
-		"      record, vec4 coordiate attribute):       ",
+		"   Indirect draw command throughput,\n"
+		"      one indirect draw call, per-triangle record,\n"
+		"      vec4 coordiate attribute):               ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          coordinateAttributePipeline.get(), simplePipelineLayout.get(),
+			          coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			if(enabledFeatures.multiDrawIndirect)
 				cb.drawIndirect(indirectBuffer.get(),  // buffer
 				                0,  // offset
@@ -959,204 +911,121 @@ static void initTests()
 				                sizeof(vk::DrawIndirectCommand));  // stride
 			else
 				tests[timestampIndex/2].enabled = false;
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Attribute performance, coordinates in vec4 attribute,\n"
+		"   One attribute performance, coordinates in vec4 attribute,\n"
 		"      one draw call:                           ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          coordinateAttributePipeline.get(), simplePipelineLayout.get(),
+			          coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Buffer performance, coordinates in vec4 buffer,\n"
+		"   One buffer performance, coordinates in vec4 buffer,\n"
 		"      one draw call:                           ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          coordinate4BufferPipeline.get(), oneBufferPipelineLayout.get(),
+			          coordinate4BufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ coordinate4BufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Buffer performance, coordinates in vec3 buffer,\n"
+		"   One buffer performance, coordinates in vec3 buffer,\n"
 		"      one draw call:                           ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          coordinate3BufferPipeline.get(), oneBufferPipelineLayout.get(),
+			          coordinate3BufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ coordinate3BufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Attribute performance, 2x vec4 attributes,\n"
+		"   Two attributes performance, 2x vec4 attribute,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoAttributesPipeline.get(), simplePipelineLayout.get(),
+			          twoAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), vec4Attributes[0].get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Buffer performance, 2x vec4 buffers,\n"
+		"   Two buffers performance, 2x vec4 buffer,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoBuffersPipeline.get(), twoBuffersPipelineLayout.get(),
+			          twoBuffersPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Buffer performance, 2x vec3 buffers,\n"
+		"   Two buffers performance, 2x vec3 buffer,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoBuffer3Pipeline.get(), twoBuffersPipelineLayout.get(),
+			          twoBuffer3Pipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoBuffer3DescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Interleaved attribute performance, 2x vec4 attributes fetched from the\n"
-		"      single buffer, both attributes used:     ",
+		"   Two interleaved attributes performance,\n"
+		"      2x vec4 attribute fetched from the single buffer,\n"
+		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoInterleavedAttributesPipeline.get(), simplePipelineLayout.get(),
+			          twoInterleavedAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ twoInterleavedAttributes.get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 			
 	Test(
-		"   Interleaved buffer performance, 2x vec4 buffers fetched from the\n"
-		"      single buffer, both attributes used:     ",
+		"   Two interleaved buffers performance,\n"
+		"      2x vec4 buffers fetched from the single buffer,\n"
+		"      both buffers used:                       ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(),
+			          twoInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoInterleavedBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1167,93 +1036,56 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          singlePackedBufferPipeline.get(), oneBufferPipelineLayout.get(),
+			          singlePackedBufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ singlePackedBufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Packed attribute performance, 2x uvec4 attribute unpacked into\n"
+		"   Packed attribute performance,\n"
+		"      2x uvec4 attribute unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedAttributesPipeline.get(), simplePipelineLayout.get(),
+			          twoPackedAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Packed buffer performance, 2x uvec4 buffers unpacked into\n"
+		"   Packed buffer performance,\n"
+		"      2x uvec4 buffers unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedBuffersPipeline.get(), twoBuffersPipelineLayout.get(),
+			          twoPackedBuffersPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoPackedBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Packed buffer performance, 2x buffer using 16-byte struct unpacked into\n"
+		"   Packed buffer performance,\n"
+		"      2x buffer using 16-byte struct unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedBuffersUsingStructPipeline.get(), twoBuffersPipelineLayout.get(),
+			          twoPackedBuffersUsingStructPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoPackedBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1264,168 +1096,99 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedBuffersUsingStructSlowPipeline.get(), twoBuffersPipelineLayout.get(),
+			          twoPackedBuffersUsingStructSlowPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ twoPackedBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Attribute performance, 4x vec4f32 attributes:\n"
-		"                                               ",
+		"   Four attributes performance,\n"
+		"      4x vec4f32 attributes:                   ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fourAttributesPipeline.get(), simplePipelineLayout.get(),
+			          fourAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), vec4Attributes[0].get(),
 			                              vec4Attributes[1].get(), vec4Attributes[2].get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Buffer performance, 4x vec4f32 buffers,\n"
-		"      all attributes used:                     ",
+		"   Four buffers performance, 4x vec4f32 buffers,\n"
+		"      all buffers used:                        ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fourBuffersPipeline.get(), fourBuffersPipelineLayout.get(),
+			          fourBuffersPipeline.get(), fourBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ fourBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Buffer performance, 4x vec3 buffers,\n"
+		"   Four buffers performance, 4x vec3 buffers,\n"
+		"      all buffers used:                        ",
+		Test::Type::VertexThroughput,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          fourBuffer3Pipeline.get(), fourBuffersPipelineLayout.get(), timestampIndex,
+			          vector<vk::Buffer>(),
+			          vector<vk::DescriptorSet>{ fourBuffer3DescriptorSet });
+			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
+			endTest(cb, timestampIndex);
+		}),
+
+	Test(
+		"   Four interleaved attributes performance, 4x vec4f32\n"
+		"      fetched from the single buffer:          ",
+		Test::Type::VertexThroughput,
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		{
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          fourInterleavedAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
+			          vector<vk::Buffer>{ fourInterleavedAttributes.get() },
+			          vector<vk::DescriptorSet>());
+			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
+			endTest(cb, timestampIndex);
+		}),
+
+	Test(
+		"   Four interleaved buffers performance,\n"
+		"      4x vec4f32 fetched from the single buffer,\n"
 		"      all attributes used:                     ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fourBuffer3Pipeline.get(), fourBuffersPipelineLayout.get(),
-			          vector<vk::Buffer>(),
-			          vector<vk::DescriptorSet>{ fourBuffer3DescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
-		}),
-
-	Test(
-		"   Interleaved attribute performance, 4x vec4f32 fetched\n"
-		"      from the single buffer:                  ",
-		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
-		{
-			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fourInterleavedAttributesPipeline.get(), simplePipelineLayout.get(),
-			          vector<vk::Buffer>{ fourInterleavedAttributes.get() },
-			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
-		}),
-
-	Test(
-		"   Interleaved buffer performance, 4x vec4f32 fetched from the\n"
-		"      single buffer, all attributes used:      ",
-		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
-		{
-			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fourInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(),
+			          fourInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ fourInterleavedBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
-		"   Attribute performance, 4x attribute (2x vec4f32 + 2x vec4u8,\n"
-		"      2x conversion from vec4u8 in memory to vec4 in VS):\n"
-		"                                               ",
+		"   Four attributes performance, 4x attribute\n"
+		"      (2x vec4f32 + 2x vec4u8, 2x conversion from vec4u8\n"
+		"      in memory to vec4 in VS):                ",
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          two4F32Two4U8AttributesPipeline.get(), simplePipelineLayout.get(),
+			          two4F32Two4U8AttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), vec4Attributes[0].get(),
 			                              vec4u8Attributes[0].get(), vec4u8Attributes[1].get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1435,21 +1198,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          singleMatrixUniformPipeline.get(), oneUniformVSPipelineLayout.get(),
+			          singleMatrixUniformPipeline.get(), oneUniformVSPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get() },
 			          vector<vk::DescriptorSet>{ oneUniformVSDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1459,21 +1212,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          matrixBufferPipeline.get(), oneBufferPipelineLayout.get(),
+			          matrixBufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get() },
 			          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1484,22 +1227,12 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          matrixAttributePipeline.get(), simplePipelineLayout.get(),
+			          matrixAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), transformationMatrixAttribute.get() },
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3, numTriangles/2, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
 			cb.draw(3, numTriangles/2, 3, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1509,21 +1242,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedAttributesAndSingleMatrixPipeline.get(), oneBufferPipelineLayout.get(),
+			          twoPackedAttributesAndSingleMatrixPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1533,21 +1256,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedAttributesAndMatrixPipeline.get(), oneBufferPipelineLayout.get(),
+			          twoPackedAttributesAndMatrixPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1557,21 +1270,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          twoPackedBuffersAndMatrixPipeline.get(), threeBuffersPipelineLayout.get(),
+			          twoPackedBuffersAndMatrixPipeline.get(), threeBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ threeBuffersDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1583,21 +1286,11 @@ static void initTests()
 		{
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-				          geometryShaderPipeline.get(), threeBuffersInGSPipelineLayout.get(),
+				          geometryShaderPipeline.get(), threeBuffersInGSPipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>(),
 				          vector<vk::DescriptorSet>{ threeBuffersInGSDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 			else {
 				tests[timestampIndex/2].enabled = false;
@@ -1621,22 +1314,12 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fourAttributesAndMatrixPipeline.get(), oneBufferPipelineLayout.get(),
+			          fourAttributesAndMatrixPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), vec4Attributes[0].get(),
 			                              vec4Attributes[1].get(), vec4Attributes[2].get() },
 			          vector<vk::DescriptorSet>{ sameMatrixBufferDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1648,21 +1331,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          transformationThreeMatricesPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          transformationThreeMatricesPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationThreeMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1673,21 +1346,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          transformationFiveMatricesPipeline.get(), twoBuffersAndUniformPipelineLayout.get(),
+			          transformationFiveMatricesPipeline.get(), twoBuffersAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationFiveMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1698,11 +1361,6 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
-			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          transformationFiveMatricesPushConstantsPipeline.get(),
-			          twoBuffersAndPushConstantsPipelineLayout.get(),
-			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
-			          vector<vk::DescriptorSet>{ transformationTwoMatricesDescriptorSet });
 			cb.pushConstants(
 				twoBuffersAndPushConstantsPipelineLayout.get(),  // layout
 				vk::ShaderStageFlagBits::eVertex,  // stageFlags
@@ -1719,18 +1377,13 @@ static void initTests()
 					0.f,0.f,0.f,1.f,
 				}.data()
 			);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
+			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+			          transformationFiveMatricesPushConstantsPipeline.get(),
+			          twoBuffersAndPushConstantsPipelineLayout.get(), timestampIndex,
+			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
+			          vector<vk::DescriptorSet>{ transformationTwoMatricesDescriptorSet });
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1743,21 +1396,11 @@ static void initTests()
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          transformationFiveMatricesSpecializationConstantsPipeline.get(),
-			          twoBuffersPipelineLayout.get(),
+			          twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1769,21 +1412,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          transformationFiveMatricesConstantsPipeline.get(), twoBuffersPipelineLayout.get(),
+			          transformationFiveMatricesConstantsPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1797,21 +1430,11 @@ static void initTests()
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          transformationFiveMatricesUsingGSAndAttributesPipeline.get(),
-				          twoBuffersAndUniformInGSPipelineLayout.get(),
+				          twoBuffersAndUniformInGSPipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 				          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSAndAttributesDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			} else {
 				tests[timestampIndex/2].enabled = false;
 				cb.writeTimestamp(
@@ -1838,21 +1461,11 @@ static void initTests()
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          transformationFiveMatricesUsingGSPipeline.get(),
-				          fourBuffersAndUniformInGSPipelineLayout.get(),
+				          fourBuffersAndUniformInGSPipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>(),
 				          vector<vk::DescriptorSet>{ transformationFiveMatricesUsingGSDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			} else {
 				tests[timestampIndex/2].enabled = false;
 				cb.writeTimestamp(
@@ -1877,22 +1490,13 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedFourAttributesFiveMatricesPipeline.get(), twoBuffersAndUniformPipelineLayout.get(),
+			          phongTexturedFourAttributesFiveMatricesPipeline.get(),
+			          twoBuffersAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), normalAttribute.get(),
 			                              colorAttribute.get(), texCoordAttribute.get() },
 			          vector<vk::DescriptorSet>{ transformationFiveMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1905,21 +1509,12 @@ static void initTests()
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedFourAttributesPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ coordinate4Attribute.get(), normalAttribute.get(),
 			                              colorAttribute.get(), texCoordAttribute.get() },
 			          vector<vk::DescriptorSet>{ transformationThreeMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1931,21 +1526,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationThreeMatricesDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1957,21 +1542,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedRowMajorPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedRowMajorPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationThreeMatricesRowMajorDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -1983,21 +1558,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedMat4x3Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedMat4x3Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationThreeMatrices4x3DescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2009,21 +1574,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedMat4x3RowMajorPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedMat4x3RowMajorPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationThreeMatrices4x3RowMajorDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2036,21 +1591,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedQuat1Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedQuat1Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndPATDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2063,21 +1608,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndPATDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2090,21 +1625,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedQuat3Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedQuat3Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndPATDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2117,21 +1642,11 @@ static void initTests()
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2143,23 +1658,13 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndPATDescriptorSet });
-			cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(3*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2172,23 +1677,13 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(3*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2200,24 +1695,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedQuat2PrimitiveRestartPipeline.get(),
-			          bufferAndUniformPipelineLayout.get(),
+			          bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndPATDescriptorSet });
-			cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(4*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2230,24 +1715,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(),
-			          bufferAndUniformPipelineLayout.get(),
+			          bufferAndUniformPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(4*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}),
 
 	Test(
@@ -2262,21 +1737,11 @@ static void initTests()
 			if(enabledFeatures.shaderFloat64) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedDMatricesOnlyInputPipeline.get(),
-				          bufferAndUniformPipelineLayout.get(),
+				          bufferAndUniformPipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 				          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			} else {
 				tests[timestampIndex/2].enabled = false;
 				cb.writeTimestamp(
@@ -2303,21 +1768,11 @@ static void initTests()
 		{
 			if(enabledFeatures.shaderFloat64) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-				          phongTexturedDMatricesPipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          phongTexturedDMatricesPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>{ packedAttribute1.get(), packedAttribute2.get() },
 				          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			} else {
 				tests[timestampIndex/2].enabled = false;
 				cb.writeTimestamp(
@@ -2345,21 +1800,11 @@ static void initTests()
 			if(enabledFeatures.shaderFloat64) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedDMatricesDVerticesPipeline.get(),
-				          bufferAndUniformPipelineLayout.get(),
+				          bufferAndUniformPipelineLayout.get(), timestampIndex,
 				          vector<vk::Buffer>{ packedDAttribute1.get(), packedDAttribute2.get(), packedDAttribute3.get() },
 				          vector<vk::DescriptorSet>{ transformationThreeDMatricesDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			} else {
 				tests[timestampIndex/2].enabled = false;
 				cb.writeTimestamp(
@@ -2386,22 +1831,12 @@ static void initTests()
 		{
 			if(enabledFeatures.shaderFloat64 && enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-						  phongTexturedInGSDMatricesDVerticesPipeline.get(),
-				          bufferAndUniformInGSPipelineLayout.get(),
-						  vector<vk::Buffer>{ packedDAttribute1.get(), packedDAttribute2.get(), packedDAttribute3.get() },
-						  vector<vk::DescriptorSet>{ phongTexturedThreeDMatricesUsingGSAndAttributesDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
+				          phongTexturedInGSDMatricesDVerticesPipeline.get(),
+				          bufferAndUniformInGSPipelineLayout.get(), timestampIndex,
+				          vector<vk::Buffer>{ packedDAttribute1.get(), packedDAttribute2.get(), packedDAttribute3.get() },
+				          vector<vk::DescriptorSet>{ phongTexturedThreeDMatricesUsingGSAndAttributesDescriptorSet });
 				cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			} else {
 				tests[timestampIndex/2].enabled = false;
 				cb.writeTimestamp(
@@ -2441,22 +1876,13 @@ static void initTests()
 			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
 			{
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-						  phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
-						  vector<vk::Buffer>{ sharedVertexPackedAttribute1.get(), sharedVertexPackedAttribute2.get() },
-						  vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
+				          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          timestampIndex,
+				          vector<vk::Buffer>{ sharedVertexPackedAttribute1.get(), sharedVertexPackedAttribute2.get() },
+				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 				for(uint32_t i=0,e=3*numTriangles; i<e; i+=n*3)
 					cb.draw(min(n*3, e-i), 1, i, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 		);
 
@@ -2484,24 +1910,15 @@ static void initTests()
 			Test::Type::VertexThroughput,
 			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
 			{
+				cb.bindIndexBuffer(stripIndexBuffer.get(), 0, vk::IndexType::eUint32);
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          timestampIndex,
 				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-				cb.bindIndexBuffer(stripIndexBuffer.get(), 0, vk::IndexType::eUint32);
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				for(uint32_t i=0,e=3*numTriangles; i<e; i+=n*3)
 					cb.drawIndexed(min(n*3, e-i), 1, i, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 		);
 	}
@@ -2529,22 +1946,13 @@ static void initTests()
 			{
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          timestampIndex,
 				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
 					for(uint32_t j=i,je=j+triStripLength; j<je; j+=n)
 						cb.draw(n+2, 1, j, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 		);
 	}
@@ -2571,25 +1979,16 @@ static void initTests()
 			Test::Type::VertexThroughput,
 			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
 			{
+				cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          timestampIndex,
 				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-				cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
 				for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
 					for(uint32_t j=i,je=j+triStripLength; j<je; j+=n)
 						cb.drawIndexed(n+2, 1, j, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 		);
 	}
@@ -2623,10 +2022,6 @@ static void initTests()
 			Test::Type::VertexThroughput,
 			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t triPerStrip)
 			{
-				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-				          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
-				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
-				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 				switch(triPerStrip) {
 				case 0: cb.bindIndexBuffer(stripPrimitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32); break;
 				case 1: cb.bindIndexBuffer(stripPrimitiveRestart3IndexBuffer.get(), 0, vk::IndexType::eUint32); break;
@@ -2634,23 +2029,18 @@ static void initTests()
 				case 5: cb.bindIndexBuffer(stripPrimitiveRestart7IndexBuffer.get(), 0, vk::IndexType::eUint32); break;
 				case 8: cb.bindIndexBuffer(stripPrimitiveRestart10IndexBuffer.get(), 0, vk::IndexType::eUint32); break;
 				};
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
+				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+				          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          timestampIndex,
+				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
+				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 				if(triPerStrip==0)
 					cb.drawIndexed((triStripLength+3)*(numTriangles/triStripLength), 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
 				else {
 					uint32_t numIndicesPerStrip = (triPerStrip+3) * (triStripLength/triPerStrip);
 					cb.drawIndexed(numIndicesPerStrip*(numTriangles/triStripLength), 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
 				}
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 		);
 	}
@@ -2678,10 +2068,6 @@ static void initTests()
 			Test::Type::VertexThroughput,
 			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t triPerStrip)
 			{
-				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-				          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
-				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
-				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 				switch(triPerStrip) {
 				case 1000: cb.bindIndexBuffer(stripPrimitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32); break;
 				case 1: cb.bindIndexBuffer(stripPrimitiveRestart3IndexBuffer.get(), 0, vk::IndexType::eUint32); break;
@@ -2689,20 +2075,15 @@ static void initTests()
 				case 5: cb.bindIndexBuffer(stripPrimitiveRestart7IndexBuffer.get(), 0, vk::IndexType::eUint32); break;
 				case 8: cb.bindIndexBuffer(stripPrimitiveRestart10IndexBuffer.get(), 0, vk::IndexType::eUint32); break;
 				};
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
+				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
+				          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+				          timestampIndex,
+				          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
+				          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
 				uint32_t numIndicesPerStrip = (triPerStrip+3) * (triStripLength/triPerStrip);
 				for(uint32_t i=0,e=(numTriangles/triStripLength)*numIndicesPerStrip; i<e; i+=numIndicesPerStrip)
 					cb.drawIndexed(numIndicesPerStrip, 1, i, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-				cb.writeTimestamp(
-					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-					timestampPool.get(),  // queryPool
-					timestampIndex++      // query
-				);
-				cb.endRenderPass();
+				endTest(cb, timestampIndex);
 			}
 		);
 	}
@@ -2718,23 +2099,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(primitiveRestartMinusOne2IndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(primitiveRestartMinusOne2IndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(5*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2749,23 +2121,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(primitiveRestartMinusOne5IndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(primitiveRestartMinusOne5IndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(8*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2780,23 +2143,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(minusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(minusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2811,23 +2165,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(numTriangles+2, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2842,23 +2187,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2PrimitiveRestartPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(numTriangles+2, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2873,23 +2209,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(numTriangles+2, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2904,23 +2231,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(numTriangles+2, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2935,23 +2253,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(3*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2966,23 +2275,14 @@ static void initTests()
 		Test::Type::VertexThroughput,
 		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
 		{
+			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ stripPackedAttribute1.get(), stripPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.drawIndexed(3*numTriangles, 1, 0, 0, 0);  // indexCount, instanceCount, firstIndex, vertexOffset, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -2999,21 +2299,12 @@ static void initTests()
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ sameVertexPackedAttribute1.get(), sameVertexPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			for(uint32_t i=0,e=(numTriangles/triStripLength)*(2+triStripLength); i<e; i+=2+triStripLength)
 				cb.draw(2+triStripLength, 1, i, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3030,20 +2321,11 @@ static void initTests()
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
+			          timestampIndex,
 			          vector<vk::Buffer>{ sameVertexPackedAttribute1.get(), sameVertexPackedAttribute2.get() },
 			          vector<vk::DescriptorSet>{ transformationTwoMatricesAndSinglePATDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(3*numTriangles, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3055,21 +2337,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = 1.;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateContantColorPipeline.get(), simplePipelineLayout.get(),
+			          fillrateContantColorPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, 1, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3080,21 +2352,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateContantColorPipeline.get(), simplePipelineLayout.get(),
+			          fillrateContantColorPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3106,21 +2368,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateFourSmoothInterpolatorsPipeline.get(), simplePipelineLayout.get(),
+			          fillrateFourSmoothInterpolatorsPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3132,21 +2384,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateFourFlatInterpolatorsPipeline.get(), simplePipelineLayout.get(),
+			          fillrateFourFlatInterpolatorsPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3158,21 +2400,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateTexturedPhongInterpolatorsPipeline.get(), simplePipelineLayout.get(),
+			          fillrateTexturedPhongInterpolatorsPipeline.get(), simplePipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>());
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3186,21 +2418,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateTexturedPhongPipeline.get(), phongTexturedPipelineLayout.get(),
+			          fillrateTexturedPhongPipeline.get(), phongTexturedPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ phongTexturedDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3214,21 +2436,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateTexturedPhongNotPackedPipeline.get(), phongTexturedPipelineLayout.get(),
+			          fillrateTexturedPhongNotPackedPipeline.get(), phongTexturedPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ phongTexturedNotPackedDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3240,21 +2452,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateUniformColor4fPipeline.get(), oneUniformFSPipelineLayout.get(),
+			          fillrateUniformColor4fPipeline.get(), oneUniformFSPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ one4fUniformFSDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3266,21 +2468,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          fillrateUniformColor4bPipeline.get(), oneUniformFSPipelineLayout.get(),
+			          fillrateUniformColor4bPipeline.get(), oneUniformFSPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ one4bUniformFSDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3294,21 +2486,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongNoSpecularPipeline.get(), threeUniformFSPipelineLayout.get(),
+			          phongNoSpecularPipeline.get(), threeUniformFSPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ threeUniformFSDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3321,21 +2503,11 @@ static void initTests()
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
-			          phongNoSpecularSingleUniformPipeline.get(), oneUniformFSPipelineLayout.get(),
+			          phongNoSpecularSingleUniformPipeline.get(), oneUniformFSPipelineLayout.get(), timestampIndex,
 			          vector<vk::Buffer>(),
 			          vector<vk::DescriptorSet>{ allInOneLightingUniformDescriptorSet });
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
 			cb.draw(4, numFullscreenQuads, 0, 0);  // vertexCount, instanceCount, firstVertex, firstInstance
-			cb.writeTimestamp(
-				vk::PipelineStageFlagBits::eColorAttachmentOutput,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				timestampIndex++      // query
-			);
-			cb.endRenderPass();
+			endTest(cb, timestampIndex);
 		}
 	);
 
@@ -3362,7 +2534,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::TransferThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t transferSize)
+			[](vk::CommandBuffer cb, size_t /*acquiredImageIndex*/, uint32_t& timestampIndex, uint32_t transferSize)
 			{
 				// compute numTranfers
 				// (numTransfers is limited to 1/8 of the buffer size because of some strange driver problem
@@ -3423,7 +2595,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::TransferThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t transferSize)
+			[](vk::CommandBuffer cb, size_t /*acquiredImageIndex*/, uint32_t& timestampIndex, uint32_t transferSize)
 			{
 				// compute numTranfers
 				// (numTransfers is limited to 1/8 of the buffer size because of some strange driver problem
@@ -4031,7 +3203,7 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 #endif
 
 	// print physical devices
-	cout << "Devices in this system:" << endl;
+	cout << "Devices in the system:" << endl;
 	vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 	vector<vk::PhysicalDeviceProperties> devicePropertiesList;
 	if(deviceList.empty()) {
@@ -4449,6 +3621,7 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 					vk::SubpassDependency(
 						VK_SUBPASS_EXTERNAL,   // srcSubpass
 						0,                     // dstSubpass
+#if 1 // set to 0 to enable full pipeline barrier (for debugging purposes)
 						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput |  // srcStageMask
 						                       vk::PipelineStageFlagBits::eEarlyFragmentTests),
 						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput |  // dstStageMask
@@ -4458,6 +3631,14 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentWrite |  // dstAccessMask
 						                vk::AccessFlagBits::eDepthStencilAttachmentWrite),
 						vk::DependencyFlags()  // dependencyFlags
+#else
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eAllCommands),  // srcStageMask
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eAllCommands),  // dstStageMask
+						vk::AccessFlags(vk::AccessFlagBits::eMemoryRead |  // srcAccessMask
+						                vk::AccessFlagBits::eMemoryWrite),
+						vk::AccessFlags(vk::AccessFlagBits::eMemoryRead |  // dstAccessMask
+						                vk::AccessFlagBits::eMemoryWrite),
+#endif
 					),
 				}.data()
 			)
@@ -9803,16 +8984,8 @@ static void recreateSwapchainAndPipeline()
 		cb.resetQueryPool(timestampPool.get(),0,uint32_t(tests.size())*2);
 		uint32_t timestampIndex=0;
 
-		// render something to put GPU out of power saving states
-		beginTest(cb,framebuffers[i].get(),currentSurfaceExtent,
-		          coordinateAttributePipeline.get(),simplePipelineLayout.get(),
-		          vector<vk::Buffer>{ coordinate4Attribute.get() },
-		          vector<vk::DescriptorSet>());
-		cb.draw(3*numTriangles,1,0,0);
-		cb.draw(3*numTriangles,1,0,0);
-		cb.endRenderPass();
-
 		// record all tests
+		// (first test warms up GPU while it is not used for real measurement)
 		for(size_t j=0,c=tests.size(); j<c; j++)
 			tests[j].func(cb, i, timestampIndex, tests[j].groupVariable);
 
