@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <sstream>
 
 using namespace std;
@@ -315,7 +316,7 @@ static vk::UniquePipeline phongNoSpecularPipeline;
 static vk::UniquePipeline phongNoSpecularSingleUniformPipeline;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
-static vector<vk::UniqueCommandBuffer> commandBuffers;
+static vk::UniqueCommandBuffer commandBuffer;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
 static vk::UniqueBuffer coordinate4Attribute;
@@ -638,6 +639,7 @@ static const uint32_t phongNoSpecularSingleUniformFS_spirv[]={
 
 struct Test {
 	vector<uint64_t> renderingTimes;
+	uint32_t timestampIndex;
 	const char* groupText = nullptr;
 	uint32_t groupVariable;
 	string text;
@@ -649,13 +651,14 @@ struct Test {
 		size_t numTransfers;
 	};
 	size_t transferSize;
-	typedef void (*Func)(vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t groupVariable);
+	typedef void (*Func)(vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t groupVariable);
 	Func func;
 	Test(const char* text_, Type t, Func func_) : text(text_), type(t), func(func_)  {}
 	Test(const char* groupText_, uint32_t groupVariable_, const char* text_, Type t, Func func_) : groupText(groupText_), groupVariable(groupVariable_), text(text_), type(t), func(func_)  {}
 };
 
 static vector<Test> tests;
+static vector<Test*> shuffledTests;
 
 
 static void beginTestBarrier(vk::CommandBuffer cb)
@@ -738,7 +741,7 @@ static void initTests()
 	Test(
 		"   Test just to warm up GPU. The test shall be invisible to the user.",
 		Test::Type::WarmUp,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			// render something to put GPU out of power saving states
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -754,7 +757,7 @@ static void initTests()
 		"   VS max throughput (one draw call, attributeless,\n"
 		"      constant VS output):                     ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -768,7 +771,7 @@ static void initTests()
 		"   VS VertexIndex and InstanceIndex forming output\n"
 		"      (one draw call, attributeless):          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          attributelessInputIndicesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -782,7 +785,7 @@ static void initTests()
 		"   GS max throughput (geometry shader constant output,\n"
 		"      one draw call, attributeless):           ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -812,7 +815,7 @@ static void initTests()
 		"      constant VS output, one draw call,\n"
 		"      attributeless):                          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -827,7 +830,7 @@ static void initTests()
 		"      one indirect draw call, one indirect record,\n"
 		"      attributeless:                           ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -845,7 +848,7 @@ static void initTests()
 		"      per-triangle draw command in command buffer,\n"
 		"      attributeless, constant VS output:       ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -861,7 +864,7 @@ static void initTests()
 		"      per-triangle draw command in command buffer,\n"
 		"      vec4 coordinate attribute:               ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -877,7 +880,7 @@ static void initTests()
 		"      one indirect draw call, per-triangle record,\n"
 		"      attributeless):                          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          attributelessConstantOutputPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -898,7 +901,7 @@ static void initTests()
 		"      one indirect draw call, per-triangle record,\n"
 		"      vec4 coordiate attribute):               ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -918,7 +921,7 @@ static void initTests()
 		"   One attribute performance, coordinates in vec4 attribute,\n"
 		"      one draw call:                           ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          coordinateAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -932,7 +935,7 @@ static void initTests()
 		"   One buffer performance, coordinates in vec4 buffer,\n"
 		"      one draw call:                           ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          coordinate4BufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -946,7 +949,7 @@ static void initTests()
 		"   One buffer performance, coordinates in vec3 buffer,\n"
 		"      one draw call:                           ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          coordinate3BufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -960,7 +963,7 @@ static void initTests()
 		"   Two attributes performance, 2x vec4 attribute,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -974,7 +977,7 @@ static void initTests()
 		"   Two buffers performance, 2x vec4 buffer,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoBuffersPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
@@ -988,7 +991,7 @@ static void initTests()
 		"   Two buffers performance, 2x vec3 buffer,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoBuffer3Pipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
@@ -1003,7 +1006,7 @@ static void initTests()
 		"      2x vec4 attribute fetched from the single buffer,\n"
 		"      both attributes used:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoInterleavedAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -1018,7 +1021,7 @@ static void initTests()
 		"      2x vec4 buffers fetched from the single buffer,\n"
 		"      both buffers used:                       ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1033,7 +1036,7 @@ static void initTests()
 		"      1x buffer using 32-byte struct unpacked\n"
 		"      into position+normal+color+texCoord:     ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          singlePackedBufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1048,7 +1051,7 @@ static void initTests()
 		"      2x uvec4 attribute unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -1063,7 +1066,7 @@ static void initTests()
 		"      2x uvec4 buffers unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedBuffersPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
@@ -1078,7 +1081,7 @@ static void initTests()
 		"      2x buffer using 16-byte struct unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedBuffersUsingStructPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
@@ -1093,7 +1096,7 @@ static void initTests()
 		"      accessed multiple times, unpacked into\n"
 		"      position+normal+color+texCoord:          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedBuffersUsingStructSlowPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
@@ -1107,7 +1110,7 @@ static void initTests()
 		"   Four attributes performance,\n"
 		"      4x vec4f32 attributes:                   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          fourAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -1122,7 +1125,7 @@ static void initTests()
 		"   Four buffers performance, 4x vec4f32 buffers,\n"
 		"      all buffers used:                        ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          fourBuffersPipeline.get(), fourBuffersPipelineLayout.get(), timestampIndex,
@@ -1136,7 +1139,7 @@ static void initTests()
 		"   Four buffers performance, 4x vec3 buffers,\n"
 		"      all buffers used:                        ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          fourBuffer3Pipeline.get(), fourBuffersPipelineLayout.get(), timestampIndex,
@@ -1150,7 +1153,7 @@ static void initTests()
 		"   Four interleaved attributes performance, 4x vec4f32\n"
 		"      fetched from the single buffer:          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          fourInterleavedAttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -1165,7 +1168,7 @@ static void initTests()
 		"      4x vec4f32 fetched from the single buffer,\n"
 		"      all attributes used:                     ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          fourInterleavedBuffersPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1180,7 +1183,7 @@ static void initTests()
 		"      (2x vec4f32 + 2x vec4u8, 2x conversion from vec4u8\n"
 		"      in memory to vec4 in VS):                ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          two4F32Two4U8AttributesPipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -1195,7 +1198,7 @@ static void initTests()
 		"   Matrix performance, one uniform Matrix for all triangles read\n"
 		"      by VS, coordinates in vec4 attribute:    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          singleMatrixUniformPipeline.get(), oneUniformVSPipelineLayout.get(), timestampIndex,
@@ -1209,7 +1212,7 @@ static void initTests()
 		"   Matrix performance, per-triangle Matrix in matrix buffer read\n"
 		"      by VS, coordinates in vec4 attribute:    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          matrixBufferPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1224,7 +1227,7 @@ static void initTests()
 		"      coordinates in vec4 attribute, each triangle is instanced\n"
 		"      so it receives different matrix:         ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          matrixAttributePipeline.get(), simplePipelineLayout.get(), timestampIndex,
@@ -1239,7 +1242,7 @@ static void initTests()
 		"   Matrix performance, single non-changing Matrix in a buffer,\n"
 		"      two packed attributes:                   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedAttributesAndSingleMatrixPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1253,7 +1256,7 @@ static void initTests()
 		"   Matrix performance, per-triangle Matrix in matrix buffer,\n"
 		"      two packed attributes:                   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedAttributesAndMatrixPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1267,7 +1270,7 @@ static void initTests()
 		"   Matrix performance, per-triangle Matrix in matrix buffer,\n"
 		"      two packed buffers:                      ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          twoPackedBuffersAndMatrixPipeline.get(), threeBuffersPipelineLayout.get(), timestampIndex,
@@ -1282,7 +1285,7 @@ static void initTests()
 		"      from matrix buffer, two packed buffers read by GS:\n"
 		"                                               ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1311,7 +1314,7 @@ static void initTests()
 		"   Matrix performance, per-triangle matrix in matrix buffer,\n"
 		"      4x vec4f32 attributes:                   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          fourAttributesAndMatrixPipeline.get(), oneBufferPipelineLayout.get(), timestampIndex,
@@ -1328,7 +1331,7 @@ static void initTests()
 		"      two packed attributes unpacked into positions+normals+\n"
 		"      color+texCoord:                          ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          transformationThreeMatricesPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1343,7 +1346,7 @@ static void initTests()
 		"      2x per-triangle matrix read from matrix buffer (mat4+mat3)\n"
 		"      in VS, two packed attributes:            ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          transformationFiveMatricesPipeline.get(), twoBuffersAndUniformPipelineLayout.get(), timestampIndex,
@@ -1359,7 +1362,7 @@ static void initTests()
 		"      2x per-triangle Matrix read from matrix buffer (mat4+mat3)\n"
 		"      in VS, two packed attributes:            ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.pushConstants(
 				twoBuffersAndPushConstantsPipelineLayout.get(),  // layout
@@ -1392,7 +1395,7 @@ static void initTests()
 		"      (mat3) + 2x per-triangle Matrix read from matrix buffer (mat4+\n"
 		"      mat3) in VS, two packed attributes:      ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          transformationFiveMatricesSpecializationConstantsPipeline.get(),
@@ -1409,7 +1412,7 @@ static void initTests()
 		"      2x per-triangle Matrix read from matrix buffer (mat4+mat3),\n"
 		"      two packed attributes:                   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          transformationFiveMatricesConstantsPipeline.get(), twoBuffersPipelineLayout.get(), timestampIndex,
@@ -1425,7 +1428,7 @@ static void initTests()
 		"      Matrix read from matrix buffer (mat4+mat3) in GS,\n"
 		"      2x packed attribute passed through VS:   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1456,7 +1459,7 @@ static void initTests()
 		"      Matrix read from matrix buffer (mat4+mat3) in GS,\n"
 		"      2x packed data read from buffer in GS:   ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1487,7 +1490,7 @@ static void initTests()
 		"      four attributes (vec4f32+vec3f32+vec4u8+vec2f32),\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedFourAttributesFiveMatricesPipeline.get(),
@@ -1505,7 +1508,7 @@ static void initTests()
 		"      four attributes (vec4f32+vec3f32+vec4u8+vec2f32),\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedFourAttributesPipeline.get(), bufferAndUniformPipelineLayout.get(),
@@ -1523,7 +1526,7 @@ static void initTests()
 		"      buffer (mat4)), 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1539,7 +1542,7 @@ static void initTests()
 		"      matrix from matrix buffer (mat4)), 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedRowMajorPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1555,7 +1558,7 @@ static void initTests()
 		"      buffer), 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedMat4x3Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1571,7 +1574,7 @@ static void initTests()
 		"      row-major mat4x3 from matrix buffer), 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedMat4x3RowMajorPipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1588,7 +1591,7 @@ static void initTests()
 		"      buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedQuat1Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1605,7 +1608,7 @@ static void initTests()
 		"      buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1622,7 +1625,7 @@ static void initTests()
 		"      buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedQuat3Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1639,7 +1642,7 @@ static void initTests()
 		"      the same index in buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(), timestampIndex,
@@ -1656,7 +1659,7 @@ static void initTests()
 		"      2x vec4f32 read from buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1675,7 +1678,7 @@ static void initTests()
 		"      2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1693,7 +1696,7 @@ static void initTests()
 		"      2x vec4f32 read from buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1713,7 +1716,7 @@ static void initTests()
 		"      in buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(primitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1732,7 +1735,7 @@ static void initTests()
 		"      2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.shaderFloat64) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1764,7 +1767,7 @@ static void initTests()
 		"      positions in single precision, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.shaderFloat64) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1795,7 +1798,7 @@ static void initTests()
 		"      matrix buffer (dmat4)), 3x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.shaderFloat64) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1827,7 +1830,7 @@ static void initTests()
 		"      dmatrix from matrix buffer (dmat4)), 3x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			if(enabledFeatures.shaderFloat64 && enabledFeatures.geometryShader) {
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1873,7 +1876,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::VertexThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t n)
 			{
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
@@ -1908,7 +1911,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::VertexThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t n)
 			{
 				cb.bindIndexBuffer(stripIndexBuffer.get(), 0, vk::IndexType::eUint32);
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -1942,7 +1945,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::VertexThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t n)
 			{
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 				          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
@@ -1977,7 +1980,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::VertexThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t n)
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t n)
 			{
 				cb.bindIndexBuffer(indexBuffer.get(), 0, vk::IndexType::eUint32);
 				beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2020,7 +2023,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::VertexThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t triPerStrip)
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t triPerStrip)
 			{
 				switch(triPerStrip) {
 				case 0: cb.bindIndexBuffer(stripPrimitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32); break;
@@ -2066,7 +2069,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::VertexThroughput,
-			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t triPerStrip)
+			[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t triPerStrip)
 			{
 				switch(triPerStrip) {
 				case 1000: cb.bindIndexBuffer(stripPrimitiveRestartIndexBuffer.get(), 0, vk::IndexType::eUint32); break;
@@ -2097,7 +2100,7 @@ static void initTests()
 		"      the same index in buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(primitiveRestartMinusOne2IndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2119,7 +2122,7 @@ static void initTests()
 		"      the same index in buffer in VS, 2x packed attribute,\n"
 		"      simplified FS that just uses all inputs: ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(primitiveRestartMinusOne5IndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2141,7 +2144,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      performance of indices (-1) per second:  ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(minusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2163,7 +2166,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      degenerated triangles performance:       ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2185,7 +2188,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      degenerated triangles performance:       ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2207,7 +2210,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      degenerated triangles per second:        ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2229,7 +2232,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      degenerated triangles per second:        ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2251,7 +2254,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      triangles per second:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(zeroIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2273,7 +2276,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      triangles per second:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			cb.bindIndexBuffer(plusOneIndexBuffer.get(), 0, vk::IndexType::eUint32);
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2295,7 +2298,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      triangles per second:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2TriStripPipeline.get(), bufferAndUniformPipelineLayout.get(),
@@ -2317,7 +2320,7 @@ static void initTests()
 		"      2x packed attribute, simplified FS that just uses all inputs,\n"
 		"      triangles per second:                    ",
 		Test::Type::VertexThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
 			          phongTexturedSingleQuat2Pipeline.get(), bufferAndUniformPipelineLayout.get(),
@@ -2333,7 +2336,7 @@ static void initTests()
 	tests.emplace_back(
 		"   Single fullscreen quad, constant color FS:  ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = 1.;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2348,7 +2351,7 @@ static void initTests()
 	tests.emplace_back(
 		"   10x fullscreen quad, constant color FS:     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2364,7 +2367,7 @@ static void initTests()
 		"   Four smooth interpolators (4x vec4),\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2380,7 +2383,7 @@ static void initTests()
 		"   Four flat interpolators (4x vec4),\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2396,7 +2399,7 @@ static void initTests()
 		"   Four textured phong interpolators (vec3+vec3+vec4+vec2),\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2414,7 +2417,7 @@ static void initTests()
 		"      globalAmbientLight (12 byte) + light (64 byte) + sampler2D),\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2432,7 +2435,7 @@ static void initTests()
 		"      globalAmbientLight (12 byte) + light (80 byte) + sampler2D),\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2448,7 +2451,7 @@ static void initTests()
 		"   Constant color from uniform, 1x uniform (vec4) in FS,\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2464,7 +2467,7 @@ static void initTests()
 		"   Constant color from uniform, 1x uniform (uint) in FS,\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2482,7 +2485,7 @@ static void initTests()
 		"      light (48 bytes: position+attenuation+ambient+diffuse)),\n"
 		"      10x fullscreen quad:                     ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2499,7 +2502,7 @@ static void initTests()
 		"      1x uniform (material+globalAmbientLight+light (vec4+vec4+vec4 +\n"
 		"      3x vec4), 10x fullscreen quad:           ",
 		Test::Type::FragmentThroughput,
-		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t& timestampIndex, uint32_t)
+		[](vk::CommandBuffer cb, size_t acquiredImageIndex, uint32_t timestampIndex, uint32_t)
 		{
 			tests[timestampIndex/2].numRenderedItems = numFullscreenQuads;
 			beginTest(cb, framebuffers[acquiredImageIndex].get(), currentSurfaceExtent,
@@ -2534,7 +2537,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::TransferThroughput,
-			[](vk::CommandBuffer cb, size_t /*acquiredImageIndex*/, uint32_t& timestampIndex, uint32_t transferSize)
+			[](vk::CommandBuffer cb, size_t /*acquiredImageIndex*/, uint32_t timestampIndex, uint32_t transferSize)
 			{
 				// compute numTranfers
 				// (numTransfers is limited to 1/8 of the buffer size because of some strange driver problem
@@ -2595,7 +2598,7 @@ static void initTests()
 				return s;
 			}(n).c_str(),
 			Test::Type::TransferThroughput,
-			[](vk::CommandBuffer cb, size_t /*acquiredImageIndex*/, uint32_t& timestampIndex, uint32_t transferSize)
+			[](vk::CommandBuffer cb, size_t /*acquiredImageIndex*/, uint32_t timestampIndex, uint32_t transferSize)
 			{
 				// compute numTranfers
 				// (numTransfers is limited to 1/8 of the buffer size because of some strange driver problem
@@ -2643,6 +2646,22 @@ static void initTests()
 			}
 		);
 	}
+
+	// assign timestampIndex to each test
+	uint32_t timestampIndex = 0;
+	for(Test& t : tests) {
+		t.timestampIndex = timestampIndex;
+		timestampIndex += 2;
+	}
+
+	// create shuffled tests list
+	// (tests are shuffled before each run;
+	// this avoids some problems on Radeons when one test might cause
+	// following test to perform poorly probably because some parts of the GPU are
+	// switched into powersaving states because of not high enough load)
+	shuffledTests.reserve(tests.size());
+	for(Test& t : tests)
+		shuffledTests.emplace_back(&t);
 }
 
 
@@ -4823,10 +4842,20 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 	commandPool=
 		device->createCommandPoolUnique(
 			vk::CommandPoolCreateInfo(
-				vk::CommandPoolCreateFlags(),  // flags
+				vk::CommandPoolCreateFlagBits::eTransient,  // flags
 				graphicsQueueFamily  // queueFamilyIndex
 			)
 		);
+
+	// command buffer
+	commandBuffer=std::move(
+		device->allocateCommandBuffersUnique(
+			vk::CommandBufferAllocateInfo(
+				commandPool.get(),                 // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1   // commandBufferCount
+			)
+		)[0]);
 
 	// semaphores
 	imageAvailableSemaphore=
@@ -4852,7 +4881,6 @@ static void recreateSwapchainAndPipeline()
 
 	// stop device and clear resources
 	device->waitIdle();
-	commandBuffers.clear();
 	framebuffers.clear();
 	depthImage.reset();
 	depthImageMemory.reset();
@@ -8957,42 +8985,6 @@ static void recreateSwapchainAndPipeline()
 				vk::QueryPipelineStatisticFlags()  // pipelineStatistics
 			)
 		);
-
-	// reallocate command buffers
-	if(commandBuffers.size()!=swapchainImages.size()) {
-		commandBuffers=
-			device->allocateCommandBuffersUnique(
-				vk::CommandBufferAllocateInfo(
-					commandPool.get(),                 // commandPool
-					vk::CommandBufferLevel::ePrimary,  // level
-					uint32_t(swapchainImages.size())   // commandBufferCount
-				)
-			);
-	}
-
-	// record command buffers
-	for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
-
-		// begin command buffer
-		vk::CommandBuffer cb=commandBuffers[i].get();
-		cb.begin(
-			vk::CommandBufferBeginInfo(
-				vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-				nullptr  // pInheritanceInfo
-			)
-		);
-		cb.resetQueryPool(timestampPool.get(),0,uint32_t(tests.size())*2);
-		uint32_t timestampIndex=0;
-
-		// record all tests
-		// (first test warms up GPU while it is not used for real measurement)
-		for(size_t j=0,c=tests.size(); j<c; j++)
-			tests[j].func(cb, i, timestampIndex, tests[j].groupVariable);
-
-		// end command buffer
-		cb.end();
-		assert(timestampIndex==tests.size()*2 && "Number of timestamps and number of tests mismatch.");
-	}
 }
 
 
@@ -9014,12 +9006,39 @@ static bool queueFrame()
 		else  vk::throwResultException(r,VULKAN_HPP_NAMESPACE_STRING"::Device::acquireNextImageKHR");
 	}
 
+	// reset command pool
+	// and begin command buffer
+	device->resetCommandPool(commandPool.get(), vk::CommandPoolResetFlags());
+	commandBuffer->begin(
+		vk::CommandBufferBeginInfo(
+			vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+			nullptr  // pInheritanceInfo
+		)
+	);
+	commandBuffer->resetQueryPool(timestampPool.get(), 0, uint32_t(tests.size())*2);
+
+	// shuffle tests
+	// to run them in different order each time
+	// except the first test doing warm up;
+	// it avoids some problems on Radeons when one test might cause
+	// following test to perform poorly probably because some parts of the GPU are
+	// switched into powersaving states because of not high enough load)
+	minstd_rand rnd;
+	shuffle(shuffledTests.begin()+1, shuffledTests.end(), rnd);
+
+	// record all tests
+	for(size_t j=0,c=tests.size(); j<c; j++)
+		shuffledTests[j]->func(commandBuffer.get(), imageIndex, shuffledTests[j]->timestampIndex, shuffledTests[j]->groupVariable);
+
+	// end command buffer
+	commandBuffer->end();
+
 	// submit work
 	graphicsQueue.submit(
 		vk::SubmitInfo(
 			1,&imageAvailableSemaphore.get(),     // waitSemaphoreCount+pWaitSemaphores
 			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-			1,&commandBuffers[imageIndex].get(),  // commandBufferCount+pCommandBuffers
+			1,&commandBuffer.get(),  // commandBufferCount+pCommandBuffers
 			1,&renderFinishedSemaphore.get()      // signalSemaphoreCount+pSignalSemaphores
 		),
 		vk::Fence(nullptr)
@@ -9459,8 +9478,18 @@ int main(int argc,char** argv)
 					else  timestamps[i]=timestamps[i+1]=timestamps[i-1];
 				i+=2;
 			}
-			if(!is_sorted(timestamps.begin(),timestamps.end()))
-				throw std::runtime_error("Tests ran in parallel.");
+
+			// verify that tests did not overlap
+			uint64_t v = 0;
+			for(auto it=shuffledTests.begin(); it!=shuffledTests.end(); it++)
+				if((*it)->enabled) {
+					uint32_t i = (*it)->timestampIndex;
+					if(v > timestamps[i])
+						throw std::runtime_error("Tests ran in parallel.");
+					if(timestamps[i] > timestamps[i+1])
+						throw std::runtime_error("Tests ran in parallel.");
+					v = timestamps[i+1];
+				}
 
 			// print the result at the end
 			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
