@@ -2545,7 +2545,11 @@ static void initTests()
 				size_t numTransfers = (minimalTest) ? 10 : size_t(4e6) / transferSize;
 				if(numTransfers*transferSize*8 > sameDMatrixStagingBufferSize)
 					numTransfers = sameDMatrixStagingBufferSize / transferSize / 8;
-				bool testEnabled = numTransfers > 0;
+
+				// enable TransferThroughput tests only on each fourth measurement
+				// because they are usually very time consuming
+				bool testEnabled = numTransfers > 0 &&
+				                   (tests.front().renderingTimes.size() & 0x3) == 0;
 
 				// set test params
 				tests[timestampIndex/2].numTransfers = numTransfers;
@@ -2606,7 +2610,11 @@ static void initTests()
 				size_t numTransfers = (minimalTest) ? 10 : size_t(4e6) / transferSize;
 				if(numTransfers*transferSize*2*8 > sameDMatrixStagingBufferSize)
 					numTransfers = sameDMatrixStagingBufferSize / transferSize / 2 / 8;
-				bool testEnabled = numTransfers > 0;
+
+				// enable TransferThroughput tests only on each fourth measurement
+				// because they are usually very time consuming
+				bool testEnabled = numTransfers > 0 &&
+				                   (tests.front().renderingTimes.size() & 0x3) == 0;
 
 				// set test params
 				tests[timestampIndex/2].numTransfers = numTransfers;
@@ -9471,11 +9479,6 @@ int main(int argc,char** argv)
 			for(Test& t : tests) {
 				if(t.enabled)
 					t.renderingTimes.emplace_back(timestamps[i+1]-timestamps[i]);
-				else
-					// neutralize invalid timestamps of disabled tests
-					// e.g. avoid "run in parallel" error
-					if(i==0)  timestamps[0]=timestamps[1]=0;
-					else  timestamps[i]=timestamps[i+1]=timestamps[i-1];
 				i+=2;
 			}
 
@@ -9529,22 +9532,25 @@ int main(int argc,char** argv)
 					}
 				}
 				cout<<"\nTransfer throughput:"<<endl;
+				size_t numTransferTests = 0;
 				for(size_t i=0; i<tests.size(); i++) {
 					Test& t = tests[i];
 					if(t.type==Test::Type::TransferThroughput) {
 						if(i!=0 && tests[i].groupText && tests[i-1].groupText!=tests[i].groupText)
 							cout << tests[i].groupText << endl;
-						if(t.enabled) {
+						if(!t.renderingTimes.empty()) {
 							sort(t.renderingTimes.begin(), t.renderingTimes.end());
 							double time_ns = t.renderingTimes[(t.renderingTimes.size()-1)/2] * timestampPeriod_ns;
 							cout << t.text << time_ns/t.numTransfers << "ns per transfer ("
 							     << double(t.numTransfers*t.transferSize)/time_ns*1e9/1024/1024/1024 << " GiB/s)" << endl;
+							numTransferTests = t.renderingTimes.size();
 						}
 						else
 							cout << t.text << "not run" << endl;
 					}
 				}
-				cout << "\nNumber of measurements of each test: " << tests.front().renderingTimes.size() << endl;
+				cout << "\nNumber of measurements of vertex and fragment tests: " << tests.front().renderingTimes.size() << endl;
+				cout << "Number of measurements of transfer tests: " << numTransferTests << endl;
 				cout << "Total time of all measurements: " << totalMeasurementTime << " seconds" << endl;
 				cout << endl;
 
