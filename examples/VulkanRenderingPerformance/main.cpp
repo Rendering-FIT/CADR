@@ -9496,7 +9496,7 @@ int main(int argc,char** argv)
 
 			// print the result at the end
 			double totalMeasurementTime=chrono::duration<double>(chrono::steady_clock::now()-startTime).count();
-			if(totalMeasurementTime>((longTest)?20.:2.)) {
+			if(totalMeasurementTime>((longTest)?60.:2.)) {
 				cout<<"Triangle throughput:"<<endl;
 				for(size_t i=0; i<tests.size(); i++) {
 					Test& t = tests[i];
