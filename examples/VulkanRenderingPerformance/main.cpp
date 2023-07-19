@@ -3419,7 +3419,11 @@ static void init(const string& nameFilter = "", int deviceIndex = -1)
 	     << ", 0x" << hex << physicalDeviceProperties.driverVersion << ")" << dec << endl;
 	for(const vk::ExtensionProperties& e : physicalDeviceExtensions)
 		if(strcmp(e.extensionName, "VK_KHR_driver_properties") == 0) {
+#if VK_HEADER_VERSION>=186
 			struct InstanceFuncs : vk::DispatchLoaderBase {
+#else
+			struct InstanceFuncs {
+#endif
 				PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = PFN_vkGetPhysicalDeviceProperties2KHR(instance->getProcAddr("vkGetPhysicalDeviceProperties2KHR"));
 			} vkFuncs;
 			auto properties2 = physicalDevice.getProperties2KHR<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDriverPropertiesKHR>(vkFuncs);
