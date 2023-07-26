@@ -37,6 +37,8 @@ set(APP_SHADERS
 	fourAttributesAndMatrix.vert
 	geometryShaderConstantOutput.vert
 	geometryShaderConstantOutput.geom
+	geometryShaderConstantOutputTwoTriangles.geom
+	geometryShaderNoOutput.geom
 	geometryShader.vert
 	geometryShader.geom
 	transformationThreeMatrices.vert

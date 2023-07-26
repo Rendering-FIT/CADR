@@ -9,10 +9,4 @@ out gl_PerVertex {
 };
 
 void main() {
-	gl_Position=vec4(0,0,0.5,1);
-	EmitVertex();
-	gl_Position=vec4(0,0,0.6,1);
-	EmitVertex();
-	gl_Position=vec4(0,1e-10,0.4,1);
-	EmitVertex();
 }
