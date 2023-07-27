@@ -195,10 +195,11 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 	}
 
 	// filter physical devices
-	if(!nameFilter.empty()) {
+	if(!nameFilter.empty())
+	{
 		decltype(compatibleDevices) filteredDevices;
 		for(auto& d : compatibleDevices)
-			if(nameFilter.find(std::get<3>(d).deviceName.data()) != string::npos)
+			if(string_view(std::get<3>(d).deviceName).find(nameFilter) != string::npos)
 				filteredDevices.push_back(d);
 
 		compatibleDevices.swap(filteredDevices);

@@ -7,7 +7,7 @@ namespace CadR {
 class Renderer;
 
 
-class CADR_EXPORT Pipeline final {
+class CADR_EXPORT Pipeline {
 protected:
 	Renderer* _renderer;
 	vk::Pipeline _pipeline;

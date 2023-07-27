@@ -19,6 +19,8 @@ namespace CadR {
 	struct RendererStaticInitializer {
 		RendererStaticInitializer() {
 			Renderer::_requiredFeatures.pNext = &vulkan12Features;
+			Renderer::_requiredFeatures.features.multiDrawIndirect = true;
+			Renderer::_requiredFeatures.features.drawIndirectFirstInstance = true;
 			Renderer::_requiredFeatures.features.shaderInt64 = true;
 			vulkan12Features.bufferDeviceAddress = true;
 		}

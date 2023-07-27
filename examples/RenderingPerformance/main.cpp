@@ -516,7 +516,7 @@ App::App(int argc, char** argv)
 			cout << "   Vulkan initialization failed because of exception: " << e.what() << endl;
 		}
 
-		// print usage and exit
+		// print usage info and exit
 		cout << "\nSimple usage:\n"
 		        "   " << appName << " -t<test-name>]\n";
 		cout << "\nComplete usage info:\n"
