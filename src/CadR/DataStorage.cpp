@@ -1,5 +1,6 @@
 #include <CadR/DataStorage.h>
 #include <CadR/DataMemory.h>
+#include <CadR/Exceptions.h>
 #include <CadR/Renderer.h>
 #include <CadR/StagingMemory.h>
 #include <CadR/StagingBuffer.h>
@@ -28,12 +29,11 @@ void DataStorage::destroy() noexcept
 		_submittedList.front().free();
 
 	// destroy StagingMemory objects
-	for(auto it = _stagingMemoryList.begin(); it != _stagingMemoryList.end(); it++) {
-		delete *it;
-		*it = nullptr;
-	}
+	for(StagingMemory* m : _stagingMemoryList)
+		delete m;
+	_stagingMemoryList.clear();
 
-	// destroy VertexMemory objects
+	// destroy DataMemory objects
 	for(DataMemory* m : _dataMemoryList)
 		delete m;
 	_dataMemoryList.clear();
@@ -65,10 +65,16 @@ DataAllocation* DataStorage::alloc(size_t numBytes, MoveCallback moveCallback, v
 	// make sure we have _firstAllocMemory
 	// (it might be missing just before the first call to alloc())
 	if(_firstAllocMemory == nullptr) {
-		_firstAllocMemory = DataMemory::tryCreate(*this,
-			max(_renderer->bufferSizeList()[0], numBytes));
+		size_t size =
+			(numBytes < _renderer->bufferSizeList()[0])
+				? _renderer->bufferSizeList()[0]
+				: (numBytes < _renderer->bufferSizeList()[1])
+					? _renderer->bufferSizeList()[1]
+					: max(numBytes, _renderer->bufferSizeList()[2]);
+		_firstAllocMemory = DataMemory::tryCreate(*this, size);
 		if(_firstAllocMemory == nullptr)
-			return nullptr;
+			throw OutOfResources("CadR::DataStorage::alloc() error: Cannot allocate DataMemory. "
+			                     "Requested size: " + to_string(size) + " bytes.");
 		_dataMemoryList.emplace_back(_firstAllocMemory);
 	}
 
@@ -80,10 +86,14 @@ DataAllocation* DataStorage::alloc(size_t numBytes, MoveCallback moveCallback, v
 	// make sure we have _secondAllocMemory
 	// (it might be missing until the first DataMemory is full)
 	if(_secondAllocMemory == nullptr) {
-		_secondAllocMemory = DataMemory::tryCreate(*this,
-			max(_renderer->bufferSizeList()[1], numBytes));
+		size_t size =
+			(numBytes < _renderer->bufferSizeList()[1])
+				? _renderer->bufferSizeList()[1]
+				: max(numBytes, _renderer->bufferSizeList()[2]);
+		_secondAllocMemory = DataMemory::tryCreate(*this, size);
 		if(_secondAllocMemory == nullptr)
-			return nullptr;
+			throw OutOfResources("CadR::DataStorage::alloc() error: Cannot allocate DataMemory. "
+			                     "Requested size: " + to_string(size) + " bytes.");
 		_dataMemoryList.emplace_back(_secondAllocMemory);
 	}
 
@@ -97,15 +107,17 @@ DataAllocation* DataStorage::alloc(size_t numBytes, MoveCallback moveCallback, v
 	// (_firstAllocMemory is considered full now, _secondAllocMemory almost full,
 	// so we replace _firstAlloc memory by _secondAllocMemory and
 	// we put new DataMemory into _secondAllocMemory)
-	DataMemory* m = DataMemory::tryCreate(*this, max(_renderer->bufferSizeList()[2], numBytes));
+	size_t size = max(_renderer->bufferSizeList()[2], numBytes);
+	DataMemory* m = DataMemory::tryCreate(*this, size);
 	if(m == nullptr)
-		return nullptr;
+		throw OutOfResources("CadR::DataStorage::alloc() error: Cannot allocate DataMemory. "
+		                     "Requested size: " + to_string(size) + " bytes.");
 	_dataMemoryList.emplace_back(m);
 	_firstAllocMemory = _secondAllocMemory;
 	_secondAllocMemory = m;
 
 	// make the allocation
-	// from new _secondAllocMemory
+	// from the new DataMemory
 	return _secondAllocMemory->alloc(numBytes, moveCallback, moveCallbackUserData);
 }
 
@@ -125,25 +137,51 @@ StagingData DataStorage::createStagingData(DataAllocation* a)
 	if(a->_stagingDataAllocation)
 		return StagingData(a->_stagingDataAllocation);
 
-	// get index of StagingMemory
-	size_t index = _dataMemoryList.size();
-	if(index > 0)
-		index--;
-	if(index > 2)
-		index = 2;
+	// try to use existing StagingMemories
+	if(!_stagingMemoryList.empty())
+	{
+		// get the last StagingMemory,
+		// but use only first three in the list
+		size_t index = _stagingMemoryList.size() - 1;
+		if(index > 2)
+			index = 2;
 
-	// alloc StagingMemory
-	if(_stagingMemoryList[index] == nullptr)
-		for(size_t i=0; i<=index; i++)
-			if(_stagingMemoryList[i] == nullptr)
-				_stagingMemoryList[i] = new StagingMemory(*this, _renderer->bufferSizeList()[i]);
+		// try alloc
+		StagingDataAllocation* s = _stagingMemoryList[index]->alloc(a);
+		if(s)
+			return StagingData(s);
+	}
+
+	// try to use first three StagingMemories
+	// while allocating them if they do not exist
+	for(size_t i=_stagingMemoryList.size(); i<3; i++)
+	{
+		_stagingMemoryList.push_back(new StagingMemory(*this, _renderer->bufferSizeList()[i]));
+
+		// try alloc
+		StagingDataAllocation* s = _stagingMemoryList.back()->alloc(a);
+		if(s)
+			return StagingData(s);
+	}
+
+	// try to use remaining StagingMemories
+	for(size_t i=3, c=_stagingMemoryList.size(); i<c; i++)
+	{
+		// try alloc
+		StagingDataAllocation* s = _stagingMemoryList.back()->alloc(a);
+		if(s)
+			return StagingData(s);
+	}
+
+	// alloc extra StagingMemory
+	_stagingMemoryList.push_back(new StagingMemory(*this, max(a->size(), _renderer->bufferSizeList()[2])));
 
 	// try alloc
-	StagingDataAllocation* s = _stagingMemoryList[index]->alloc(a);
+	StagingDataAllocation* s = _stagingMemoryList.back()->alloc(a);
 	if(s)
 		return StagingData(s);
 
-	return StagingData(nullptr);
+	throw LogicError("CadR::DataStorage::createStagingData(): Failed to allocate StagingData (size: " + to_string(a->size()) + " bytes).");
 }
 
 
@@ -181,4 +219,30 @@ void DataStorage::disposeUploadSet(DataStorage::UploadSetId uploadSetId)
 	while(!uploadSetId->empty())
 		uploadSetId->front().free();
 	_pendingList.erase(uploadSetId);
+}
+
+
+int DataStorage::getHighestUsedStagingMemory() const
+{
+	for(int i=int(_stagingMemoryList.size())-1; i>=0; i--)
+		if(_stagingMemoryList[i]->usedBytes() > 0)
+			return i;
+	return -1;
+}
+
+
+void DataStorage::disposeStagingMemories(int fromIndexUp)
+{
+	if(fromIndexUp >= int(_stagingMemoryList.size()))
+		return;
+	if(fromIndexUp < 0)
+		fromIndexUp = 0;
+	for(int i=int(_stagingMemoryList.size())-1; i>=fromIndexUp; i--)
+	{
+		StagingMemory* m = _stagingMemoryList[i];
+		if(m->usedBytes() > 0)
+			throw LogicError("CadR::DataStorage::disposeStagingMemories(): Cannot dispose StagingMemory object because it still holds data.");
+		delete m;
+		_stagingMemoryList.pop_back();
+	}
 }

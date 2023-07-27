@@ -12,9 +12,9 @@ class StagingDataAllocation;
 
 /** \brief DataAllocation represents single piece of allocated memory.
  *
- *  The data are stored in DataMemory objects and managed using DataStorage.
+ *  The allocated memory is suballocated from DataMemory objects and managed using DataStorage.
  *
- *  \sa DataMemory, DataAllocation
+ *  \sa DataMemory, DataStorage
  */
 class CADR_EXPORT DataAllocation {
 public:

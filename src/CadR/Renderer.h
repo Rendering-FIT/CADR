@@ -37,6 +37,7 @@ protected:
 	GeometryStorage* _emptyStorage;
 	GeometryMemory*  _emptyGeometryMemory;
 	mutable DataStorage _dataStorage;
+	int                 _highestUsedStagingMemory = -1;
 	vk::Buffer       _drawableBuffer;
 	vk::DeviceMemory _drawableBufferMemory;
 	size_t           _drawableBufferSize = 0;
@@ -155,6 +156,7 @@ public:
 	vk::DeviceMemory allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	vk::DeviceMemory allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
+	void disposeUnusedStagingMemory();
 
 	const std::array<size_t,3>& bufferSizeList() const;
 

@@ -61,7 +61,7 @@ StagingMemory::StagingMemory(DataStorage& dataStorage, size_t size)
 	);
 
 	// get buffer address
-	_bufferStartAddress = 
+	_bufferStartAddress =
 		uint64_t(
 			device->mapMemory(
 				_memory,  // memory

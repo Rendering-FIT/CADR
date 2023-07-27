@@ -11,11 +11,12 @@ class DataStorage;
 class StagingMemory;
 
 
-/** \brief StagingDataAllocation represents allocated memory that is used
- *  to update data in particular DataAllocation using stagging buffer approach.
+/** \brief StagingDataAllocation is used to update data of DataAllocation object.
+ *  It represents allocated memory used as staging buffer for particular DataAllocation.
  *
- *  It represents single piece of memory associated with particular DataAllocation.
  *  StagingData class is usually used as front-end for this class.
+ *  The user usually updates the data of StagingDataAllocation and calls StagingData::submit().
+ *  The submit call schedules copy operation between staging and regular buffer.
  *
  *  \sa StagingData, DataAllocation
  */

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <list>
 #include <vector>
 #include <vulkan/vulkan.hpp>
@@ -47,7 +46,8 @@ protected:
 	std::vector<DataMemory*> _dataMemoryList;
 	DataMemory* _firstAllocMemory = nullptr;
 	DataMemory* _secondAllocMemory = nullptr;
-	std::array<StagingMemory*, 3> _stagingMemoryList = {};
+	std::vector<StagingMemory*> _stagingMemoryList;
+	int _highestUsedStagingMemory = -1;
 	StagingDataAllocationList _submittedList;
 	std::list<StagingDataAllocationList> _pendingList;
 
@@ -80,6 +80,8 @@ public:
 	StagingData createStagingData(DataAllocation* a);
 	UploadSetId recordUpload(vk::CommandBuffer commandBuffer);
 	void disposeUploadSet(UploadSetId uploadSet);
+	int getHighestUsedStagingMemory() const;
+	void disposeStagingMemories(int fromIndexUp);
 
 };
 

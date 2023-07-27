@@ -7,25 +7,29 @@
 namespace CadR {
 
 
-/** CircularAllocationMemory provides basis for efficient suballocation functionality.
- *  It needs to be subclassed. Inheriting class shall provide concrete buffer and programmer interface.
+/** CircularAllocationMemory provides common functionality for efficient suballocation.
+ *  It is expected to be subclassed. The derived class shall provide concrete buffer and programmer interface.
  *
- *  Allocation template parameter shall be a struct or a class holding allocation data used by
- *  inheriting class with certain restrictions. For maximum efficiency purposes, Allocation is used also by
- *  CircularAllocationMemory, especially when the particular Allocation object is in the freed state.
+ *  Allocation template parameter shall be a struct or a class that holds allocation data details.
+ *  The allocation data can be used by the inherited class while there are some requirements and restrictions.
+ *  For maximum efficiency, Allocation is used also by CircularAllocationMemory,
+ *  especially when the particular Allocation object is in the freed state.
  *  For this reason, Allocation needs to be atleast 32 bytes in size.
  *  When in freed state, its content is in complete control of CircularAllocationMemory.
  *  When it is in allocated state, the first two members have certain restrictions. 
  *  The first member shall be uint64_t or pointer type indicating the offset
  *  or memory address of allocated object. The user shall not change its value himself.
  *  It might become 0 or nullptr when particular allocation is of zero size.
- *  The second member shall be any 8-byte value, such as size_t representing size of the allocated object or pointer
- *  to the owner object. There are three reserved values for this member: UINT64_MAX, UINT64_MAX-1 and UINT64_MAX-2.
- *  These values are internally used by CircularAllocationMemory for freed allocation object management.
- *  These three values were chosen because it shall theoretically not disturb size or pointer values stored in the second member.
- *  If size is stored there, values of UINT64_MAX would mean size of 18 Exabytes which is not expected to be used by standard applications.
- *  If the pointer is stored there, the value of UINT64_MAX, possibly decreased by 1 or 2, would mean pointer to an object
- *  that takes one, two or three bytes just at the end of address space. It is almost non-sence to have an owner object of such small size.
+ *  The second member shall be any 8-byte value, such as size_t representing size of
+ *  the allocated object or pointer to the owner object.
+ *  There are three reserved values for this member: UINT64_MAX, UINT64_MAX-1 and UINT64_MAX-2.
+ *  These values are internally used by CircularAllocationMemory for the management of freed allocation objects.
+ *  These three values were chosen because it shall theoretically not disturb size or pointer values
+ *  stored in the second member. If size is stored there, values of UINT64_MAX would mean size of
+ *  18 Exabytes which is not expected to be used by standard applications.
+ *  If the pointer is stored there, the value of UINT64_MAX, possibly decreased by 1 or 2,
+ *  would mean pointer to an object that takes one, two or three bytes just at the end of address space.
+ *  It is almost non-sence to have an owner object of such small size.
  */
 template<typename Allocation, size_t AllocationsPerBlock = 200>
 class CircularAllocationMemory {

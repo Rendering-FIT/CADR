@@ -928,6 +928,11 @@ void Renderer::executeCopyOperations()
 		_fence  // fence
 	);
 
+	// update highest index of used StagingMemory
+	int currentHighestUsedStagingMemory = _dataStorage.getHighestUsedStagingMemory();
+	if(currentHighestUsedStagingMemory > _highestUsedStagingMemory)
+		_highestUsedStagingMemory = currentHighestUsedStagingMemory;
+
 	// wait for work to complete
 	vk::Result r=_device->waitForFences(
 		_fence,        // fences (vk::ArrayProxy)
@@ -963,6 +968,14 @@ void Renderer::executeCopyOperations()
 			disposeStagingManagers(m.primitiveSetStagingManagerList(), m.primitiveSetAllocationManager());
 		}
 	}
+}
+
+
+void Renderer::disposeUnusedStagingMemory()
+{
+	// release unused StagingMemory objects
+	_dataStorage.disposeStagingMemories(_highestUsedStagingMemory + 1);
+	_highestUsedStagingMemory = -1;
 }
 
 
