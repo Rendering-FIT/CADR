@@ -7,7 +7,6 @@ set(PACKAGES
 	HelloQtWindow
 	RenderingPerformance
 	VulkanAttributesAndUniforms
-	VulkanRenderingPerformance
 	VulkanDynamicFuncs
 	VulkanComputeShader
 	VulkanInfo
