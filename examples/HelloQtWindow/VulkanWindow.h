@@ -1,14 +1,5 @@
 #pragma once
 
-#include <QWindow>
-#ifdef _WIN32
-# define VK_USE_PLATFORM_WIN32_KHR
-#else
-# define VK_USE_PLATFORM_XLIB_KHR
-#endif
-#include <vulkan/vulkan.hpp>
-
-
 #if QT_VERSION>=0x050a00 // include QVulkanInstance for Qt 5.10 and newer or provide alternative
 #include <QVulkanInstance>
 #else
@@ -22,6 +13,14 @@ public:
 	void destroy()  { if(_instance && _owned) { _instance.destroy(); _instance=nullptr; } }
 };
 #endif
+
+#include <QWindow>
+#ifdef _WIN32
+# define VK_USE_PLATFORM_WIN32_KHR
+#else
+# define VK_USE_PLATFORM_XLIB_KHR
+#endif
+#include <vulkan/vulkan.hpp>
 
 
 class VulkanWindow : public QWindow {

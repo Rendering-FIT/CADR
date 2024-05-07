@@ -1,6 +1,4 @@
 #include <CadR/StateSet.h>
-#include <CadR/GeometryMemory.h>
-#include <CadR/GeometryStorage.h>
 #include <CadR/Pipeline.h>
 #include <CadR/VulkanDevice.h>
 
@@ -14,59 +12,42 @@ const ParentChildListOffsets StateSet::parentChildListOffsets{
 };
 
 
-void StateSetDrawableContainer::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData) noexcept
+void StateSet::appendDrawableInternal(Drawable& d, DrawableGpuData gpuData)
 {
-	d._stateSetDrawableContainer = this;
-	d._indexIntoStateSet = uint32_t(drawableDataList.size());
-	drawableDataList.emplace_back(gpuData);
-	drawablePtrList.emplace_back(&d);
-	stateSet->_numDrawables++;
+	d._stateSet = this;
+	d._indexIntoStateSet = uint32_t(_drawableDataList.size());
+	_drawableDataList.emplace_back(gpuData);
+	_drawablePtrList.emplace_back(&d);
 }
 
 
-void StateSetDrawableContainer::removeDrawableUnsafe(Drawable& d) noexcept
+void StateSet::removeDrawableInternal(Drawable& d) noexcept
 {
 	uint32_t i = d._indexIntoStateSet;
-	size_t lastIndex = drawableDataList.size()-1;
+	size_t lastIndex = _drawableDataList.size()-1;
 	if(i == lastIndex) {
 		// remove last element
-		drawableDataList.pop_back();
-		drawablePtrList.pop_back();
+		_drawableDataList.pop_back();
+		_drawablePtrList.pop_back();
 	}
 	else {
 		// remove element by replacing it with the last element
-		drawableDataList[i] = drawableDataList[lastIndex];
-		drawableDataList.pop_back();
-		Drawable* movedDrawable = drawablePtrList[lastIndex];
-		drawablePtrList[i] = movedDrawable;
-		drawablePtrList.pop_back();
+		_drawableDataList[i] = _drawableDataList[lastIndex];
+		_drawableDataList.pop_back();
+		Drawable* movedDrawable = _drawablePtrList[lastIndex];
+		_drawablePtrList[i] = movedDrawable;
+		_drawablePtrList.pop_back();
 		movedDrawable->_indexIntoStateSet = i;
 	}
-	stateSet->_numDrawables--;
 }
 
 
-StateSetDrawableContainer::~StateSetDrawableContainer()
+void StateSet::removeAllDrawables() noexcept
 {
-	for(size_t i=0,c=drawablePtrList.size(); i<c; i++)
-		drawablePtrList[i]->detachStateSet();
-}
-
-
-void StateSet::appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData,
-                                    uint32_t geometryMemoryId, GeometryStorage* geometryStorage)
-{
-	// make sure we have enough StateSet::DrawableContainers
-	if(_drawableContainerList.size() <= geometryMemoryId) {
-		_drawableContainerList.reserve(geometryMemoryId+1);
-		while(_drawableContainerList.size() <= geometryMemoryId)
-			_drawableContainerList.emplace_back(
-				new StateSetDrawableContainer(this,
-					geometryStorage->geometryMemoryList()[_drawableContainerList.size()].get()));
-	}
-
-	// append Drawable into StateSetDrawableContainer
-	_drawableContainerList[geometryMemoryId]->appendDrawableUnsafe(d, gpuData);
+	for(Drawable* d : _drawablePtrList)
+		d->_indexIntoStateSet = ~0u;
+	_drawableDataList.clear();
+	_drawablePtrList.clear();
 }
 
 
@@ -75,10 +56,10 @@ size_t StateSet::prepareRecording()
 	// call user-registered functions
 	_skipRecording = !_forceRecording;
 	for(auto& f : prepareCallList)
-		f(this);
+		f(*this);
 
 	// recursively call child-StateSets and process number of drawables
-	size_t numDrawables = _numDrawables;
+	size_t numDrawables = _drawableDataList.size();
 	for(StateSet& ss : childList) {
 		numDrawables += ss.prepareRecording();
 		_skipRecording = _skipRecording && ss._skipRecording;
@@ -88,7 +69,7 @@ size_t StateSet::prepareRecording()
 }
 
 
-void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& drawableCounter)
+void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::PipelineLayout currentPipelineLayout, size_t& drawableCounter)
 {
 	// optimization
 	// to not process StateSet subgraphs that does not have any Drawables
@@ -96,16 +77,22 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 		return;
 
 	// bind pipeline
-	VulkanDevice* device = _renderer->device();
-	if(pipeline)
-		device->cmdBindPipeline(commandBuffer, vk::PipelineBindPoint::eGraphics, pipeline->get());
+	VulkanDevice& device = _renderer->device();
+	if(pipeline) {
+		device.cmdBindPipeline(commandBuffer, vk::PipelineBindPoint::eGraphics, pipeline->get());
+		currentPipelineLayout = pipeline->layout();
+	}
+
+	// set current pipeline layout
+	if(pipelineLayout)
+		currentPipelineLayout = pipelineLayout;
 
 	// bind descriptor sets
 	if(!descriptorSets.empty()) {
-		device->cmdBindDescriptorSets(
+		device.cmdBindDescriptorSets(
 			commandBuffer,  // commandBuffer
 			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-			pipelineLayout,  // layout
+			currentPipelineLayout,  // layout
 			descriptorSetNumber,  // firstSet
 			descriptorSets,  // descriptorSets
 			dynamicOffsets  // dynamicOffsets
@@ -114,66 +101,45 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, size_t& dr
 
 	// call user-registered functions
 	for(auto& f : recordCallList)
-		f(this, commandBuffer);
+		f(*this, commandBuffer);
 
-	if(_numDrawables != 0) {
+	size_t numDrawables = _drawableDataList.size();
+	if(numDrawables > 0) {
 
-		for(StateSetDrawableContainer* container : _drawableContainerList) {
+		// copy drawable data
+		memcpy(
+			&_renderer->drawableStagingData()[drawableCounter],  // dst
+			_drawableDataList.data(),  // src
+			numDrawables*sizeof(DrawableGpuData)  // size
+		);
 
-			// get numDrawables
-			size_t numDrawables = container->drawableDataList.size();
-			if(numDrawables == 0)
-				continue;
+		// update payload address
+		device.cmdPushConstants(
+			commandBuffer,  // commandBuffer
+			currentPipelineLayout,  // pipelineLayout
+			vk::ShaderStageFlagBits::eVertex,  // stageFlags
+			0,  // offset
+			sizeof(uint64_t),  // size
+			array<uint64_t,1>{  // pValues
+				_renderer->drawablePayloadDeviceAddress() + (drawableCounter * Renderer::drawablePayloadRecordSize),  // payloadBufferPtr
+			}.data()
+		);
 
-			// call user-registered functions
-			for(auto& f : recordContainerCallList)
-				f(container, commandBuffer);
+		// draw command
+		device.cmdDrawIndirect(
+			commandBuffer,  // commandBuffer
+			_renderer->drawIndirectBuffer(),  // buffer
+			drawableCounter * sizeof(vk::DrawIndirectCommand),  // offset
+			uint32_t(numDrawables),  // drawCount
+			sizeof(vk::DrawIndirectCommand)  // stride
+		);
 
-			// copy drawable data
-			memcpy(
-				&_renderer->drawableStagingData()[drawableCounter],  // dst
-				container->drawableDataList.data(),  // src
-				numDrawables*sizeof(DrawableGpuData)  // size
-			);
+		// update drawableCounter
+		drawableCounter += numDrawables;
 
-			// bind attributes
-			GeometryMemory* m = container->geometryMemory;
-			size_t numAttribs = m->numAttribs();
-			if(numAttribs > 0) {
-				vector<vk::Buffer> buffers(numAttribs, m->buffer());
-				device->cmdBindVertexBuffers(
-					commandBuffer,  // commandBuffer
-					0,  // firstBinding
-					uint32_t(numAttribs),  // bindingCount
-					buffers.data(),  // pBuffers
-					m->attribOffsets().data()  // pOffsets
-				);
-			}
-
-			// bind indices
-			device->cmdBindIndexBuffer(
-				commandBuffer,  // commandBuffer
-				m->buffer(),  // buffer
-				m->indexOffset(),  // offset
-				vk::IndexType::eUint32  // indexType
-			);
-
-			// draw command
-			device->cmdDrawIndexedIndirect(
-				commandBuffer,  // commandBuffer
-				_renderer->drawIndirectBuffer(),  // buffer
-				_renderer->drawIndirectCommandOffset() +  // offset
-					drawableCounter * sizeof(vk::DrawIndexedIndirectCommand),
-				uint32_t(numDrawables),  // drawCount
-				sizeof(vk::DrawIndexedIndirectCommand)  // stride
-			);
-
-			// update drawableCounter
-			drawableCounter += numDrawables;
-		}
 	}
 
 	// record child StateSets
 	for(StateSet& child : childList)
-		child.recordToCommandBuffer(commandBuffer, drawableCounter);
+		child.recordToCommandBuffer(commandBuffer, currentPipelineLayout, drawableCounter);
 }

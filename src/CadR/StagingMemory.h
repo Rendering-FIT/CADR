@@ -1,10 +1,11 @@
 #pragma once
 
-#include <CadR/CircularAllocationMemory.h>
-#include <CadR/StagingDataAllocation.h>
 #include <vulkan/vulkan.hpp>
 
 namespace CadR {
+
+class DataMemory;
+class Renderer;
 
 
 /** \brief StagingMemory represents memory that is suballocated to StagingData
@@ -16,29 +17,43 @@ namespace CadR {
  *
  *  \sa StagingData, StagingDataAllocation, DataAllocation, DataStorage, DataMemory
  */
-class StagingMemory : public CircularAllocationMemory<StagingDataAllocation, 200> {
+class StagingMemory {
 protected:
-	DataStorage* _dataStorage;  ///< DataStorage owning this StagingMemory.
+	DataMemory* _attachedDataMemory = 0;
+	uint64_t _offsetIntoDataMemory;
+	Renderer* _renderer;
 	vk::Buffer _buffer;
 	vk::DeviceMemory _memory;
-	StagingMemory(DataStorage& dataStorage);
+	size_t _bufferSize;
+	uint64_t _bufferStartAddress;
+	uint64_t _bufferEndAddress;
+	uint64_t _blockedRangeStartAddress;
+	uint64_t _blockedRangeEndAddress;
+	uint64_t _allocatedRangeStartAddress;
+	uint64_t _allocatedRangeEndAddress;
+	StagingMemory(Renderer& renderer);
 public:
 
-	StagingMemory(DataStorage& dataStorage, size_t size);
+	StagingMemory(Renderer& renderer, size_t size);
 	~StagingMemory();
 
+	void attach(DataMemory& m, uint64_t offset);
+	void detach() noexcept;
+	bool canDetach() const;
+
 	// getters
-	DataStorage& dataStorage() const;
+	DataMemory* dataMemory() const;
+	uint64_t offsetIntoDataMemory() const;
 	size_t size() const;
 	vk::Buffer buffer() const;
 	vk::DeviceMemory memory() const;
-	vk::DeviceAddress bufferDeviceAddress() const;
 	size_t usedBytes() const;
 
 	// low-level allocation functions
-	StagingDataAllocation* alloc(DataAllocation* a);
-	static void free(StagingDataAllocation* a);
+	uint64_t alloc(uint64_t offsetInBuffer, uint64_t size) noexcept;
 	void cancelAllAllocations();
+	std::tuple<uint64_t,size_t> recordUpload(vk::CommandBuffer);
+	void uploadDone(uint64_t id) noexcept;
 
 };
 
@@ -49,16 +64,14 @@ public:
 // inline methods
 namespace CadR {
 
-inline StagingMemory::StagingMemory(DataStorage& dataStorage) : _dataStorage(&dataStorage)  {}
-inline DataStorage& StagingMemory::dataStorage() const  { return *_dataStorage; }
-inline size_t StagingMemory::size() const  { return _bufferEndAddress - _bufferStartAddress; }
+inline StagingMemory::StagingMemory(Renderer& renderer) : _renderer(&renderer)  {}
+inline bool StagingMemory::canDetach() const  { return _allocatedRangeEndAddress == _blockedRangeStartAddress; }
+inline DataMemory* StagingMemory::dataMemory() const  { return _attachedDataMemory; }
+inline uint64_t StagingMemory::offsetIntoDataMemory() const  { return _offsetIntoDataMemory; }
+inline size_t StagingMemory::size() const  { return _bufferSize; }
 inline vk::Buffer StagingMemory::buffer() const  { return _buffer; }
 inline vk::DeviceMemory StagingMemory::memory() const  { return _memory; }
-inline vk::DeviceAddress StagingMemory::bufferDeviceAddress() const  { return _bufferStartAddress; }
-inline size_t StagingMemory::usedBytes() const  { return _usedBytes; }
-
-// functions moved here to avoid circular include dependency
-inline size_t StagingDataAllocation::stagingOffset() const  { return size_t(reinterpret_cast<uint8_t*>(_data) - _stagingMemory->bufferDeviceAddress()); }
-inline void StagingDataAllocation::free()  { StagingMemory::free(this); }
+inline size_t StagingMemory::usedBytes() const  { return (_allocatedRangeEndAddress > _blockedRangeStartAddress) ? _allocatedRangeEndAddress - _blockedRangeStartAddress : _blockedRangeEndAddress - _allocatedRangeStartAddress; }
+inline uint64_t StagingMemory::alloc(uint64_t offsetInBuffer, uint64_t size) noexcept  { uint64_t addr = _bufferStartAddress + offsetInBuffer - _offsetIntoDataMemory; uint64_t addrEnd = addr + size; if(addrEnd > _bufferEndAddress) return 0; _allocatedRangeEndAddress = addrEnd; return addr; }
 
 }

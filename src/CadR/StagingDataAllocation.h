@@ -1,11 +1,11 @@
 #pragma once
 
+#if 0
 #include <cstdint>
 #include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
-class DataAllocation;
 class DataMemory;
 class DataStorage;
 class StagingMemory;
@@ -24,7 +24,7 @@ class CADR_EXPORT StagingDataAllocation {
 protected:
 
 	void* _data;
-	DataAllocation* _owner;
+	void* _owner;  ///< Owner is expected to be of DataAllocation::Record type.
 	StagingMemory* _stagingMemory;
 	unsigned _referenceCounter;
 	boost::intrusive::list_member_hook<
@@ -35,13 +35,13 @@ protected:
 	friend class StagingData;
 	friend StagingMemory;
 	friend DataStorage;
-	StagingDataAllocation(void* data, DataAllocation* owner, StagingMemory* stagingMemory, unsigned referenceCounter);
+	StagingDataAllocation(void* data, void* owner, StagingMemory* stagingMemory, unsigned referenceCounter);
 
 public:
 
 	// construction, initialization and destruction
 	StagingDataAllocation() = default;
-	~StagingDataAllocation() noexcept;
+	~StagingDataAllocation() noexcept = default;
 	void init(uint64_t address, DataAllocation* a, StagingMemory* s);
 	void free();
 
@@ -54,7 +54,7 @@ public:
 	// getters
 	template<typename T = void>
 	T* data();
-	size_t size() const;
+	size_t sizeInBytes() const;
 	DataStorage& dataStorage() const;
 	StagingMemory& stagingDataMemory() const;
 	DataMemory& destinationDataMemory() const;
@@ -79,3 +79,4 @@ inline T* StagingDataAllocation::data()  { return reinterpret_cast<T*>(_data); }
 inline StagingMemory& StagingDataAllocation::stagingDataMemory() const  { return *_stagingMemory; }
 
 }
+#endif

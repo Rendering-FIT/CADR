@@ -6,11 +6,12 @@ using namespace CadR;
 
 int main(int,char**)
 {
-	StateSet ss1,ss2;
+	Renderer r;
+	StateSet ss1(r), ss2(r);
 
 	ss1.childList.size();
 	ss1.childList.empty();
-	ChildList<StateSet,StateSet::parentChildListOffsets>::iterator it1=ss1.childList.append(ss2);
+	ChildList<StateSet, StateSet::parentChildListOffsets>::iterator it1 = ss1.childList.append(ss2);
 	ss1.childList.remove(it1);
 	ss1.childList.clear();
 	for(const StateSet& child : ss1.childList)
@@ -20,7 +21,7 @@ int main(int,char**)
 
 	ss2.parentList.size();
 	ss2.parentList.empty();
-	ParentList<StateSet,StateSet::parentChildListOffsets>::iterator it2=ss2.parentList.append(ss1);
+	ParentList<StateSet, StateSet::parentChildListOffsets>::iterator it2 = ss2.parentList.append(ss1);
 	ss2.parentList.remove(it2);
 	ss2.parentList.clear();
 	for(const StateSet& parent : ss2.parentList)

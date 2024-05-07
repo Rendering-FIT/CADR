@@ -1,65 +1,42 @@
-// handle circular include
-#include <CadR/Drawable.h>
-#ifndef CADR_STATESET_H
-#define CADR_STATESET_H
+#pragma once
 
-#include <vulkan/vulkan.hpp>
+#include <CadR/Drawable.h>
 #include <CadR/ParentChildList.h>
+#include <functional>
 
 namespace CadR {
 
-class GeometryMemory;
-class GeometryStorage;
 class Pipeline;
 class Renderer;
-
-
-struct CADR_EXPORT StateSetDrawableContainer {
-
-	StateSet* stateSet;
-	GeometryMemory* geometryMemory;
-	std::vector<DrawableGpuData> drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
-	std::vector<Drawable*> drawablePtrList;  ///< List of Drawables attached to this StateSet.
-
-	StateSetDrawableContainer(StateSet* s, GeometryMemory* m);
-	~StateSetDrawableContainer();
-	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData) noexcept;
-	void removeDrawableUnsafe(Drawable& d) noexcept;
-};
 
 
 class CADR_EXPORT StateSet {
 protected:
 
 	Renderer* _renderer;  ///< Renderer associated with this Stateset.
-	size_t _numDrawables = 0;  ///< The number of Drawables of this StateSet. It does not include Drawables of the child StateSets.
-	bool _skipRecording;  ///< The flag optimizing the rendering, making this and all the child StateSets to be excluded from recording to the command buffer.
+	bool _skipRecording;  ///< The flag optimizing the rendering. When set, it excludes this and all the child StateSets from recording into the command buffer.
 	                      ///< By default, it is set to true whenever there are no Drawables in this StateSet or any child StateSets. It can be forced to false by setting _forceRecording to true.
-	bool _forceRecording;  ///< The flag forces recording to happen always, even if the StateSet does not contain any Drawables. However, some draw commands might be recorded by the user in the callbacks. 
-	std::vector<StateSetDrawableContainer*> _drawableContainerList;  ///< List of containers for drawables. Containers are owned by the StateSet. They are automatically allocated and released.
+	bool _forceRecording = false;  ///< The flag forces recording to happen always, even if the StateSet does not contain any Drawables. This might be useful as some draw commands might be recorded by the user in the callbacks. 
+	std::vector<DrawableGpuData> _drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
+	std::vector<Drawable*> _drawablePtrList;  ///< List of Drawables attached to this StateSet.
 
 public:
 
 	// pipeline to bind
 	CadR::Pipeline* pipeline = nullptr;
+	vk::PipelineLayout pipelineLayout;
 
 	// descriptorSets to bind
-	vk::PipelineLayout pipelineLayout;
 	uint32_t descriptorSetNumber = 0;
 	std::vector<vk::DescriptorSet> descriptorSets;
 	std::vector<uint32_t> dynamicOffsets;
 
 	// list of functions that will be called during the preparation for StateSet's command buffer recording
-	std::vector<std::function<void(StateSet*)>> prepareCallList;
+	std::vector<std::function<void(StateSet&)>> prepareCallList;
 
 	// list of functions that will be called during StateSet recording into the command buffer;
-	// the function is called only if the StateSet is recorded, e.g. only if it contains any drawables
-	std::vector<std::function<void(StateSet*, vk::CommandBuffer)>> recordCallList;
-
-	// list of functions that will be called during recording of each
-	// StateSetDrawableContainer of the StateSet into the command buffer;
-	// the function is called only on containers that are recorded, e.g. only if they contain any drawables
-	std::vector<std::function<void(StateSetDrawableContainer*, vk::CommandBuffer)>> recordContainerCallList;
+	// each function is called only if the StateSet is recorded, e.g. only if it contains any drawables or its recording is forced
+	std::vector<std::function<void(StateSet&, vk::CommandBuffer)>> recordCallList;
 
 	// parent-child relation
 	static const ParentChildListOffsets parentChildListOffsets;
@@ -69,9 +46,8 @@ public:
 public:
 
 	// construction and destruction
-	StateSet();
-	StateSet(Renderer* renderer);
-	~StateSet();
+	StateSet(Renderer& renderer) noexcept;
+	~StateSet() noexcept;
 
 	// deleted constructors and operators
 	StateSet(const StateSet&) = delete;
@@ -80,26 +56,27 @@ public:
 	StateSet& operator=(StateSet&&) = delete;
 
 	// getters
-	Renderer* renderer() const;
-	const std::vector<StateSetDrawableContainer*>& drawableContainerList() const;
+	Renderer& renderer() const;
 	bool forceRecording() const;
-
-	// drawable methods
-	size_t numDrawables() const;
-	void appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId, GeometryStorage* geometryStorage);
-	void removeDrawable(Drawable& d);
-	void appendDrawableUnsafe(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId, GeometryStorage* geometryStorage);
-	void removeDrawableUnsafe(Drawable& d);
 
 	// rendering methods
 	size_t prepareRecording();
 	void setForceRecording(bool value);  ///< Sets whether recording of this StateSet will always happen. It means that recordCallLists will be called, allowing the user to record its own draw commands. 
 	                                     ///< If set to false, the recording will happen only if there are any Drawables in this StateSet or in any child StateSet. The recording can also be forced by requestRecording() on per-frame basis.
 	void requestRecording();  ///< Requests the recording of this StateSet for the current frame even if it does not contain any Drawables. This function shall be called from prepareCallList callbacks only. Otherwise, it has no effect.
-	void recordToCommandBuffer(vk::CommandBuffer cb, size_t& drawableCounter);
+	void recordToCommandBuffer(vk::CommandBuffer cb, vk::PipelineLayout currentPipelineLayout, size_t& drawableCounter);
 
+	// drawable methods
+	void appendDrawable(Drawable& d, DrawableGpuData gpuData);
+	static void removeDrawable(Drawable& d);
+	void removeAllDrawables() noexcept;
+	Drawable& getDrawable(size_t index) const;
+	size_t getNumDrawables() const;
+
+protected:
+	void appendDrawableInternal(Drawable& d, DrawableGpuData gpuData);
+	void removeDrawableInternal(Drawable& d) noexcept;
 	friend Drawable;
-	friend StateSetDrawableContainer;
 };
 
 
@@ -107,28 +84,20 @@ public:
 
 
 // inline methods
-#include <CadR/Renderer.h>
-#include <cassert>
 namespace CadR {
 
-inline StateSetDrawableContainer::StateSetDrawableContainer(StateSet* s, GeometryMemory* m) : stateSet(s), geometryMemory(m)  {}
-
-inline StateSet::StateSet() : _renderer(Renderer::get())  {}
-inline StateSet::StateSet(Renderer* renderer) : _renderer(renderer)  {}
-inline StateSet::~StateSet()  { for(auto* c : _drawableContainerList) delete c; }
-
-inline Renderer* StateSet::renderer() const  { return _renderer; }
-inline const std::vector<StateSetDrawableContainer*>& StateSet::drawableContainerList() const  { return _drawableContainerList; }
+inline StateSet::StateSet(Renderer& renderer) noexcept : _renderer(&renderer)  {}
+inline StateSet::~StateSet() noexcept  { removeAllDrawables(); }
+inline Renderer& StateSet::renderer() const  { return *_renderer; }
 inline bool StateSet::forceRecording() const  { return _forceRecording; }
-
-inline size_t StateSet::numDrawables() const  { return _numDrawables; }
-inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData, uint32_t geometryMemoryId, GeometryStorage* geometryStorage)  { if(d._indexIntoStateSet!=~0u) removeDrawableUnsafe(d); appendDrawableUnsafe(d,gpuData,geometryMemoryId,geometryStorage); }
-inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet==~0u) return; removeDrawableUnsafe(d); d._indexIntoStateSet=~0u; }
-inline void StateSet::removeDrawableUnsafe(Drawable& d)  { d._stateSetDrawableContainer->removeDrawableUnsafe(d); }
-
 inline void StateSet::setForceRecording(bool value)  { _forceRecording = value; }
 inline void StateSet::requestRecording()  { _skipRecording = false; }
+inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData)  { if(d._indexIntoStateSet != ~0u) d._stateSet->removeDrawableInternal(d); appendDrawableInternal(d, gpuData); }
+inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet == ~0u) return; d._stateSet->removeDrawableInternal(d); d._indexIntoStateSet=~0u; }
+inline Drawable& StateSet::getDrawable(size_t index) const  { return *_drawablePtrList[index]; }
+inline size_t StateSet::getNumDrawables() const  { return _drawablePtrList.size(); }
+
+// functions moved here from Drawable.h to avoid circular include dependency
+inline Renderer& Drawable::renderer() const  { return _stateSet->renderer(); }
 
 }
-
-#endif /* CADR_STATESET_H */

@@ -4,7 +4,7 @@
 
 namespace CadR {
 
-class StagingDataAllocation;
+struct DataAllocationRecord;
 
 
 /** \brief StagingData is used to update data in particular DataAllocation
@@ -19,29 +19,18 @@ class StagingDataAllocation;
  */
 class CADR_EXPORT StagingData {
 protected:
-	StagingDataAllocation* _stagingDataAllocation = nullptr;
-	StagingData() = default;
+	DataAllocationRecord* _record;
+	bool _needInit;
 public:
 
 	// construction, initialization and destruction
-	StagingData(StagingDataAllocation* owner);
-	StagingData(std::nullptr_t);
-	~StagingData() noexcept;
-
-	// deleted constructors and operators
-	StagingData(const StagingData&) = delete;
-	StagingData(StagingData&&) = delete;
-	StagingData& operator=(const StagingData&) = delete;
-	StagingData& operator=(StagingData&&) = delete;
+	StagingData() = default;
+	StagingData(DataAllocationRecord* record, bool needInit);
 
 	// getters
-	template<typename T = void>
-	T* data();
-	size_t size() const;
-
-	// functions
-	void submit();
-	void cancel();
+	template<typename T = void> T* data();
+	size_t sizeInBytes() const;
+	bool needInit() const;
 
 };
 
@@ -50,15 +39,15 @@ public:
 
 
 // inline methods
-#include <CadR/StagingDataAllocation.h>
-#include <CadR/DataAllocation.h>
 namespace CadR {
 
-inline StagingData::~StagingData() noexcept  { if(_stagingDataAllocation) _stagingDataAllocation->_referenceCounter--; }
-inline StagingData::StagingData(StagingDataAllocation* owner) : StagingData()  { owner->_referenceCounter++; _stagingDataAllocation = owner; }
-inline StagingData::StagingData(std::nullptr_t) : StagingData()  { _stagingDataAllocation = nullptr; }
-inline void StagingData::cancel()  { if(_stagingDataAllocation) { _stagingDataAllocation->_referenceCounter--; _stagingDataAllocation = nullptr; } }
-template<typename T>
-inline T* StagingData::data()  { return reinterpret_cast<T*>(_stagingDataAllocation->_data); }
+inline StagingData::StagingData(DataAllocationRecord* record, bool needInit) : _record(record), _needInit(needInit)  {}
+inline bool StagingData::needInit() const  { return _needInit; }
 
 }
+
+
+// include inline StagingData functions defined in DataAllocation.h (they are defined there because they depend on DataAllocationRecord struct)
+#ifndef CADR_NO_DATAALLOCATION_INCLUDE
+# include <CadR/DataAllocation.h>
+#endif

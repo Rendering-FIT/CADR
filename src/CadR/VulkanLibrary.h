@@ -1,12 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
-#if _WIN32 // MSVC 2017 and 2019
 #include <filesystem>
-#else // gcc 7.4.0 (Ubuntu 18.04) does support path only as experimental
-#include <experimental/filesystem>
-namespace std { namespace filesystem { using std::experimental::filesystem::path; } }
-#endif
 
 namespace CadR {
 

@@ -1,4 +1,5 @@
 #include <CadR/DataStorage.h>
+#include <CadR/HandleTable.h>
 #include <CadR/Renderer.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
@@ -47,59 +48,62 @@ int main(int,char**)
 	// free on nullptr, alloc and destroy single allocation of size 10
 	DataStorage ds(r);
 	DataMemoryTest::verifyDataStorageEmpty(ds);
-	ds.free(nullptr);
-	DataAllocation* a = ds.alloc(10, nullptr, nullptr);
+	HandlelessAllocation a(ds);
+	a.alloc(10);
 	DataMemory& m = *ds.dataMemoryList().front();
-	vk::DeviceAddress firstAddress = a->deviceAddress();
-	if(firstAddress != m.bufferDeviceAddress())
+	vk::DeviceAddress firstAddress = a.deviceAddress();
+	if(firstAddress != m.deviceAddress())
 		throw runtime_error("Allocation is not on the beginning of the buffer");
-	ds.free(a);
-	ds.free(nullptr);
+	a.free();
+	a.free();
 	DataMemoryTest::verifyDataStorageEmpty(ds);
 
 	// test of zero size allocation
-	a = ds.alloc(0, nullptr, nullptr);
-	if(a->deviceAddress() != 0)
+	a.alloc(0);
+	if(a.deviceAddress() != 0)
 		throw runtime_error("Allocation's device address for zero sized allocation is not 0.");
-	a->free();
-	a->free();
-	ds.free(a);
+	a.free();
+	a.free();
 	DataMemoryTest::verifyDataStorageEmpty(ds);
 
 	// single allocation of size 0..260 - create and destroy
 	for(size_t s=0; s<260; s++) {
-		a = ds.alloc(s, nullptr, nullptr);
-		if(a->deviceAddress() != firstAddress && (a->deviceAddress() != 0 || s != 0))
+		a.alloc(s);
+		if(a.deviceAddress() != firstAddress && (a.deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
-		ds.free(a);
+		a.free();
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
 	// two allocations of size 0..260, first one released first
 	for(size_t s=0; s<260; s++) {
-		DataAllocation* a1 = ds.alloc(s, nullptr, nullptr);
-		DataAllocation* a2 = ds.alloc(s, nullptr, nullptr);
-		if(a1->deviceAddress() != firstAddress && (a1->deviceAddress() != 0 || s != 0))
+		HandlelessAllocation a1(ds);
+		HandlelessAllocation a2(ds);
+		a1.alloc(s);
+		a2.alloc(s);
+		if(a1.deviceAddress() != firstAddress && (a1.deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		if(a2->deviceAddress() != firstAddress+offset && (a2->deviceAddress() != 0 || s != 0))
+		if(a2.deviceAddress() != firstAddress+offset && (a2.deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the the proper place in the buffer");
-		ds.free(a1);
-		ds.free(a2);
+		a1.free();
+		a2.free();
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
 	// two allocations of size 0..260, second one released first
 	for(size_t s=0; s<260; s++) {
-		DataAllocation* a1 = ds.alloc(s, nullptr, nullptr);
-		DataAllocation* a2 = ds.alloc(s, nullptr, nullptr);
-		if(a1->deviceAddress() != firstAddress && (a1->deviceAddress() != 0 || s != 0))
+		HandlelessAllocation a1(ds);
+		HandlelessAllocation a2(ds);
+		a1.alloc(s);
+		a2.alloc(s);
+		if(a1.deviceAddress() != firstAddress && (a1.deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
 		size_t offset = (s==0) ? 0 : (s<=16) ? 16 : (s<=32) ? 32 : (s<=48) ? 48 : (s<=64) ? 64 : (s<=128) ? 128 : (s+63)&~63;
-		if(a2->deviceAddress() != firstAddress+offset && (a2->deviceAddress() != 0 || s != 0))
+		if(a2.deviceAddress() != firstAddress+offset && (a2.deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the the proper place in the buffer");
-		ds.free(a2);
-		ds.free(a1);
+		a1.free();
+		a2.free();
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
@@ -178,95 +182,116 @@ int main(int,char**)
 				continue;
 
 			// test - allocations released in the order of their allocation
-			vector<DataAllocation*> a;
-			a.reserve(1030);
+			vector<HandlelessAllocation> v;
+			v.reserve(1030);
+			for(size_t i=0; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(size_t i=0; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
-			for(size_t i=0; i<n; i++)
-				if(a[i]->deviceAddress() != firstAddress+(offset*i) && (a[i]->deviceAddress() != 0 || s != 0))
+				if(v[i].deviceAddress() != firstAddress+(offset*i) && (v[i].deviceAddress() != 0 || s != 0))
 					throw runtime_error("Allocation is not on the the proper place in the buffer. " +
-					                    static_cast<ostringstream&>(ostringstream()
+					                    static_cast<ostringstream>(ostringstream()
 					                    << "(Details: AllocationSize = " << s <<
 					                    ", offset = " << offset << ", total number of allocations = "
 					                    << n << ", problematic allocation index = " << i <<
 					                    " expected allocation place = " << (firstAddress+(offset*i))
-					                    << ", real allocation place = " << a[i]->deviceAddress()
+					                    << ", real allocation place = " << v[i].deviceAddress()
 					                    << ")").str());
 			for(size_t i=0; i<n; i++)
-				ds.free(a[i]);
-			a.clear();
+				v[i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - allocations released in the reversed order of their allocation
-			for(size_t i=0; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(size_t i=n; i>0; )
-				ds.free(a[--i]);
-			a.clear();
+				v[--i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released starting by even
-			for(size_t i=0; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(size_t i=0; i<n; i+=2)
-				ds.free(a[i]);
+				v[i].free();
 			for(size_t i=1; i<n; i+=2)
-				ds.free(a[i]);
-			a.clear();
+				v[i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released starting by odd
-			for(size_t i=0; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(size_t i=1; i<n; i+=2)
-				ds.free(a[i]);
+				v[i].free();
 			for(size_t i=0; i<n; i+=2)
-				ds.free(a[i]);
-			a.clear();
+				v[i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released in reverse order
-			for(size_t i=0; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(int64_t i=n-2; i>=0; i-=2)
-				ds.free(a[i]);
+				v[i].free();
 			for(int64_t i=n-1; i>=0; i-=2)
-				ds.free(a[i]);
-			a.clear();
+				v[i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released in reverse order
-			for(size_t i=0; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			for(size_t i=0; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(int64_t i=n-1; i>=0; i-=2)
-				ds.free(a[i]);
+				v[i].free();
 			for(int64_t i=n-2; i>=0; i-=2)
-				ds.free(a[i]);
-			a.clear();
+				v[i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - allocations allocated in Block1 and released in the order of their allocation
-			DataAllocation* bigAllocation = ds.alloc(65536-s, nullptr, nullptr);
-			if(n != 0)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
-			bigAllocation->free();
-			for(size_t i=1; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			HandlelessAllocation bigAllocation(ds);
+			bigAllocation.alloc(65536-s);
+			if(n != 0) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
+			bigAllocation.free();
+			for(size_t i=1; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(size_t i=0; i<n; i++)
-				ds.free(a[i]);
-			a.clear();
+				v[i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - allocations allocated in Block1 and released in the reverse order of their allocation
-			bigAllocation = ds.alloc(65536-s, nullptr, nullptr);
-			if(n != 0)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
-			bigAllocation->free();
-			for(size_t i=1; i<n; i++)
-				a.push_back(ds.alloc(s, nullptr, nullptr));
+			bigAllocation.alloc(65536-s);
+			if(n != 0) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
+			bigAllocation.free();
+			for(size_t i=1; i<n; i++) {
+				HandlelessAllocation& a = v.emplace_back(ds);
+				a.alloc(s);
+			}
 			for(size_t i=n; i>0; )
-				ds.free(a[--i]);
-			a.clear();
+				v[--i].free();
+			v.clear();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 		}
 	}

@@ -7,258 +7,229 @@
 using namespace std;
 using namespace CadR;
 
-static_assert(sizeof(DrawableGpuData)==24,
-              "DrawableGpuData size is expected to be 24 bytes.");
+static_assert(sizeof(DrawableGpuData)==40,
+              "DrawableGpuData size is expected to be 40 bytes. Otherwise updates to "
+              "Drawable class and to processDrawables.comp shader might be necessary.");
 
 
 Drawable::~Drawable() noexcept
 {
-	if(_indexIntoStateSet!=~0u)
-		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
-
-	if(_shaderData)
-		_shaderData->free();
+	if(_indexIntoStateSet != ~0u)
+		_stateSet->removeDrawableInternal(*this);
 }
 
 
 void Drawable::destroy() noexcept
 {
-	if(_indexIntoStateSet!=~0u) {
-		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
+	if(_indexIntoStateSet != ~0u) {
+		_stateSet->removeDrawableInternal(*this);
 		_drawableListHook.unlink();
-		_indexIntoStateSet=~0u;
-	}
-	if(_shaderData) {
-		_shaderData->free();
-		_shaderData = nullptr;
+		_indexIntoStateSet = ~0u;
+		_shaderData.free();
+		_shaderData.destroyHandle();
 	}
 }
 
 
-Drawable::Drawable(Geometry& geometry, uint32_t primitiveSetIndex,
-                   size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet)
-	: Drawable()  // this ensures that the destructor is called if this constructor throws
+Drawable::Drawable(Geometry& geometry, uint32_t primitiveSetOffset,
+                   uint32_t numInstances, StateSet& stateSet)
+	: Drawable(geometry.renderer())  // completion of this constructor ensures the destructor is called even if this constructor throws
 {
+	// register in Geometry's drawable list
 	geometry._drawableList.push_back(*this);  // initializes _drawableListHook
 
-	// alloc _shaderData
-	_shaderData = stateSet.renderer()->dataStorage().alloc(shaderDataSize, moveCallback, this);
-
 	// append into StateSet
-	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
-	GeometryMemory* m = geometry.geometryMemory();
-	stateSet.appendDrawableUnsafe(
+	// (it initializes _stateSet and _indexIntoStateSet)
+	stateSet.appendDrawableInternal(
 		*this,  // drawable
 		DrawableGpuData(  // drawableGpuData
-			m->bufferDeviceAddress() + m->primitiveSetOffset() +
-				(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
-					(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
-			_shaderData->deviceAddress(),  // shaderDataAddr
+			geometry.vertexDataAllocation().handle(),  // vertexDataHandle
+			geometry.indexDataAllocation().handle(),  // indexDataHandle
+			geometry.primitiveSetDataAllocation().handle(),  // primitiveSetHandle
+			0,  // shaderDataHandle
+			primitiveSetOffset,  // primitiveSetOffset
 			numInstances  // numInstances
-		),
-		m->id(),  // geometryMemoryId
-		geometry.geometryStorage()  // geometryStorage
+		)
+	);
+}
+
+
+Drawable::Drawable(Geometry& geometry, uint32_t primitiveSetOffset,
+                   StagingData& shaderStagingData, size_t shaderDataSize,
+                   uint32_t numInstances, StateSet& stateSet)
+	: Drawable(geometry.renderer())  // completion of this constructor ensures the destructor is called even if this constructor throws
+{
+	// shader data
+	_shaderData.createHandle(geometry.dataStorage());
+	shaderStagingData = _shaderData.alloc(shaderDataSize);
+
+	// register in Geometry's drawable list
+	geometry._drawableList.push_back(*this);  // initializes _drawableListHook
+
+	// append into StateSet
+	// (it initializes _stateSet and _indexIntoStateSet)
+	stateSet.appendDrawableInternal(
+		*this,  // drawable
+		DrawableGpuData(  // drawableGpuData
+			geometry.vertexDataAllocation().handle(),  // vertexDataHandle
+			geometry.indexDataAllocation().handle(),  // indexDataHandle
+			geometry.primitiveSetDataAllocation().handle(),  // primitiveSetHandle
+			_shaderData.handle(),  // shaderDataHandle
+			primitiveSetOffset,  // primitiveSetOffset
+			numInstances  // numInstances
+		)
 	);
 }
 
 
 Drawable::Drawable(Drawable&& other) noexcept
+	: _stateSet(other._stateSet)
+	, _shaderData(std::move(other._shaderData))
+	, _indexIntoStateSet(other._indexIntoStateSet)
+	, _drawableListHook(std::move(other._drawableListHook))
 {
-	_stateSetDrawableContainer = other._stateSetDrawableContainer;
-	_indexIntoStateSet = other._indexIntoStateSet;
-	_stateSetDrawableContainer->drawablePtrList[_indexIntoStateSet] = this;
+	_stateSet->_drawablePtrList[_indexIntoStateSet] = this;
 	other._indexIntoStateSet = ~0;
-	_shaderData = other._shaderData;
-	other._shaderData = nullptr;
-	_drawableListHook = std::move(other._drawableListHook);
 }
 
 
 Drawable& Drawable::operator=(Drawable&& rhs) noexcept
 {
 	if(_indexIntoStateSet != ~0u)
-		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
-	_stateSetDrawableContainer = rhs._stateSetDrawableContainer;
+		_stateSet->removeDrawableInternal(*this);
+	_stateSet = rhs._stateSet;
 	_indexIntoStateSet = rhs._indexIntoStateSet;
-	_stateSetDrawableContainer->drawablePtrList[_indexIntoStateSet] = this;
+	_stateSet->_drawablePtrList[_indexIntoStateSet] = this;
 	rhs._indexIntoStateSet = ~0;
-	if(_shaderData)
-		_shaderData->free();
-	_shaderData = rhs._shaderData;
-	rhs._shaderData = nullptr;
+	_shaderData = std::move(rhs._shaderData);
 	_drawableListHook = std::move(rhs._drawableListHook);
 	return *this;
 }
 
 
-void Drawable::moveCallback(DataAllocation*, DataAllocation* newAlloc, void* userData)
-{
-	static_cast<Drawable*>(userData)->_shaderData = newAlloc;
-}
-
-
-void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex,
-                      size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet)
+StagingData Drawable::create(Geometry& geometry, uint32_t primitiveSetOffset,
+                             size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet)
 {
 	// bind with new geometry
 	geometry._drawableList.push_back(*this);
 
 	// alloc new _shaderData
-	if(_shaderData) {
-		_shaderData->free();
-		_shaderData = nullptr;
-	}
-	if(shaderDataSize != 0)
-		_shaderData = stateSet.renderer()->dataStorage().alloc(shaderDataSize, moveCallback, this);
+	_shaderData.createHandle(geometry.dataStorage());
+	StagingData sd = _shaderData.alloc(shaderDataSize);
 
-	// handle previous bindings 
-	GeometryMemory* m = geometry.geometryMemory();
+	// handle previous bindings
 	if(_indexIntoStateSet != ~0u) {
-		if(_stateSetDrawableContainer->geometryMemory == m) {
+		if(_stateSet == &stateSet) {
 
 			// only update DrawableGpuData
-			_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet] =
-				DrawableGpuData(
-					m->bufferDeviceAddress() + m->primitiveSetOffset() +
-						((geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
-							(uint32_t(sizeof(CadR::PrimitiveSetGpuData)))),  // primitiveSetAddr
-					_shaderData->deviceAddress(),  // shaderDataAddr
+			_stateSet->_drawableDataList[_indexIntoStateSet] =
+				DrawableGpuData(  // drawableGpuData
+					geometry.vertexDataAllocation().handle(),  // vertexDataHandle
+					geometry.indexDataAllocation().handle(),  // indexDataHandle
+					geometry.primitiveSetDataAllocation().handle(),  // primitiveSetHandle
+					_shaderData.handle(),  // shaderDataHandle
+					primitiveSetOffset,  // primitiveSetOffset
+					numInstances  // numInstances
+				);
+			return sd;
+
+		}
+		else
+			_stateSet->removeDrawableInternal(*this);
+	}
+
+	// append into StateSet
+	// (it initializes _stateSet and _indexIntoStateSet)
+	stateSet.appendDrawableInternal(
+		*this,  // drawable
+		DrawableGpuData(  // drawableGpuData
+			geometry.vertexDataAllocation().handle(),  // vertexDataHandle
+			geometry.indexDataAllocation().handle(),  // indexDataHandle
+			geometry.primitiveSetDataAllocation().handle(),  // primitiveSetHandle
+			_shaderData.handle(),  // shaderDataHandle
+			primitiveSetOffset,  // primitiveSetOffset
+			numInstances  // numInstances
+		)
+	);
+
+	return sd;
+}
+
+
+void Drawable::create(Geometry& geometry, uint32_t primitiveSetOffset,
+                      uint32_t numInstances, StateSet& stateSet)
+{
+	// bind with new geometry
+	geometry._drawableList.push_back(*this);
+
+	// free _shaderData
+	_shaderData.free();
+	_shaderData.destroyHandle();
+
+	// handle previous bindings
+	if(_indexIntoStateSet != ~0u) {
+		if(_stateSet == &stateSet) {
+
+			// only update DrawableGpuData
+			_stateSet->_drawableDataList[_indexIntoStateSet] =
+				DrawableGpuData(  // drawableGpuData
+					geometry.vertexDataAllocation().handle(),  // vertexDataHandle
+					geometry.indexDataAllocation().handle(),  // indexDataHandle
+					geometry.primitiveSetDataAllocation().handle(),  // primitiveSetHandle
+					0,  // shaderDataHandle
+					primitiveSetOffset,  // primitiveSetOffset
 					numInstances  // numInstances
 				);
 			return;
 
 		}
 		else
-			_stateSetDrawableContainer->removeDrawableUnsafe(*this);
+			_stateSet->removeDrawableInternal(*this);
 	}
 
 	// append into StateSet
-	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
-	stateSet.appendDrawableUnsafe(
+	// (it initializes _stateSet and _indexIntoStateSet)
+	stateSet.appendDrawableInternal(
 		*this,  // drawable
 		DrawableGpuData(  // drawableGpuData
-			m->bufferDeviceAddress() + m->primitiveSetOffset() +
-				((geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
-					(uint32_t(sizeof(CadR::PrimitiveSetGpuData)))),  // primitiveSetAddr
-			_shaderData->deviceAddress(),  // shaderDataAddr
+			geometry.vertexDataAllocation().handle(),  // vertexDataHandle
+			geometry.indexDataAllocation().handle(),  // indexDataHandle
+			geometry.primitiveSetDataAllocation().handle(),  // primitiveSetHandle
+			0,  // shaderDataHandle
+			primitiveSetOffset,  // primitiveSetOffset
 			numInstances  // numInstances
-		),
-		m->id(),  // geometryMemoryId
-		geometry.geometryStorage()  // geometryStorage
+		)
 	);
 }
 
 
-#if 0 // not updated to new data allocation structures yet
-void Drawable::create(Geometry& geometry, uint32_t primitiveSetIndex)
+StagingData Drawable::reallocShaderData(size_t size, uint32_t numInstances)
 {
-	if(_indexIntoStateSet == ~0u)
-		throw runtime_error("Drawable::create(geometry, primitiveSetIndex) can be used only "
-		                    "for replacing geometry and primitiveSetIndex in the valid Drawable. "
-		                    "Use Drawable::create(geometry, primitiveSetIndex, shaderDataSize, numInstances, stateSet) instead.");
+	if(_indexIntoStateSet == ~0u || _shaderData.handle() == 0)
+		throw runtime_error("Drawable::reallocShaderData(size, numInstances) can be used only "
+		                    "for updating the valid Drawable that was created with shader data. "
+		                    "Use Drawable::create(geometry, primitiveSetOffset, shaderDataSize, numInstances, stateSet) first.");
 
-	// bind with new geometry
-	geometry._drawableList.push_back(*this);
-
-	// handle previous bindings
-	GeometryMemory* m = geometry.geometryMemory();
-	if(_stateSetDrawableContainer->geometryMemory == m) {
-
-		// update DrawableGpuData
-		_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet]=
-			DrawableGpuData(
-				m->bufferDeviceAddress() + m->primitiveSetOffset() +
-					(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
-						(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
-				_shaderData->deviceAddress()  // shaderDataAddr
-			);
-		return;
-
-	} else
-		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
-
-	// append into StateSet
-	// (it initializes _stateSetDrawableContainer and _indexIntoStateSet)
-	_stateSetDrawableContainer->stateSet->appendDrawableUnsafe(
-		*this,  // drawable
-		DrawableGpuData(  // drawableGpuData
-			m->bufferDeviceAddress() + m->primitiveSetOffset() +
-				(geometry.primitiveSetAllocation().startIndex + primitiveSetIndex) *
-					(uint32_t(sizeof(CadR::PrimitiveSetGpuData))),  // primitiveSetAddr
-			_shaderData->deviceAddress()  // shaderDataAddr
-		),
-		m->id()  // geometryMemoryId
-	);
-}
-#endif
-
-
-void Drawable::allocShaderData(size_t size, uint32_t numInstances)
-{
-	// alloc new _shaderData
-	if(_shaderData) {
-		_shaderData->free();
-		_shaderData = nullptr;
-	}
-	if(size != 0)
-		_shaderData = renderer()->dataStorage().alloc(size, moveCallback, this);
-
-	// update DrawableGpuData
-	if(_indexIntoStateSet == ~0u)
-		throw runtime_error("Drawable::allocShaderData(size, numInstances) can be used only "
-		                    "for updating the valid Drawable. "
-		                    "Use Drawable::create(geometry, primitiveSetIndex, shaderDataSize, numInstances, stateSet) first.");
-	DrawableGpuData& d = _stateSetDrawableContainer->drawableDataList[_indexIntoStateSet];
-	d.shaderDataAddr = _shaderData ? _shaderData->deviceAddress() : 0;
+	StagingData sd = _shaderData.alloc(size);
+	DrawableGpuData& d = _stateSet->_drawableDataList[_indexIntoStateSet];
 	d.numInstances = numInstances;
+	return sd;
 }
 
 
-void Drawable::allocShaderData(size_t size)
+StagingData Drawable::reallocShaderData(size_t size)
 {
-	// alloc new _shaderData
-	if(_shaderData) {
-		_shaderData->free();
-		_shaderData = nullptr;
-	}
-	if(size != 0)
-		_shaderData = renderer()->dataStorage().alloc(size, moveCallback, this);
+	if(_indexIntoStateSet == ~0u || _shaderData.handle() == 0)
+		throw runtime_error("Drawable::reallocShaderData(size, numInstances) can be used only "
+		                    "for updating the valid Drawable that was created with shader data. "
+		                    "Use Drawable::create(geometry, primitiveSetOffset, shaderDataSize, numInstances, stateSet) first.");
 
-	// update DrawableGpuData
-	if(_indexIntoStateSet != ~0u)
-		_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet].shaderDataAddr =
-			_shaderData ? _shaderData->deviceAddress() : 0;
+	StagingData sd = _shaderData.alloc(size);
+	return sd;
 }
 
 
 void Drawable::freeShaderData()
 {
-	// release _shaderData
-	if(_shaderData) {
-		_shaderData->free();
-		_shaderData = nullptr;
-	}
-
-	// update DrawableGpuData
-	if(_indexIntoStateSet != ~0u)
-		_stateSetDrawableContainer->drawableDataList[_indexIntoStateSet].shaderDataAddr = 0;
-}
-
-
-void Drawable::detachStateSet() noexcept
-{
-	if(_indexIntoStateSet!=~0u) {
-		_stateSetDrawableContainer->removeDrawableUnsafe(*this);
-		_drawableListHook.unlink();
-		_indexIntoStateSet=~0u;
-	}
-}
-
-
-StagingData Drawable::createStagingData()
-{
-	if(_shaderData == nullptr)
-		throw runtime_error("Drawable::createStagingData(): No shader data allocated.");
-
-	return _shaderData->createStagingData();
+	_shaderData.free();
 }

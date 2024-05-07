@@ -24,13 +24,13 @@ public:
 	             uint32_t graphicsQueueFamily,
 	             uint32_t presentationQueueFamily,
 	             const vk::ArrayProxy<const char*const> enabledExtensions,
-	             const vk::PhysicalDeviceFeatures* enabledFeatures);
+	             const vk::PhysicalDeviceFeatures& enabledFeatures);
 	VulkanDevice(VulkanInstance& instance,
 	             vk::PhysicalDevice physicalDevice,
 	             uint32_t graphicsQueueFamily,
 	             uint32_t presentationQueueFamily,
 	             const vk::ArrayProxy<const char*const> enabledExtensions,
-	             const vk::PhysicalDeviceFeatures2* enabledFeatures2);
+	             const vk::PhysicalDeviceFeatures2& enabledFeatures2);
 	VulkanDevice(VulkanInstance& instance,
 	             vk::PhysicalDevice physicalDevice,
 	             uint32_t graphicsQueueFamily,
@@ -40,11 +40,11 @@ public:
 	VulkanDevice(VulkanInstance& instance,
 	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*const> enabledExtensions,
-	             const vk::PhysicalDeviceFeatures* enabledFeatures);
+	             const vk::PhysicalDeviceFeatures& enabledFeatures);
 	VulkanDevice(VulkanInstance& instance,
 	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*const> enabledExtensions,
-	             const vk::PhysicalDeviceFeatures2* enabledFeatures2);
+	             const vk::PhysicalDeviceFeatures2& enabledFeatures2);
 	VulkanDevice(VulkanInstance& instance,
 	             std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	             const vk::ArrayProxy<const char*const> enabledExtensions,
@@ -63,13 +63,13 @@ public:
 	            uint32_t graphicsQueueFamily,
 	            uint32_t presentationQueueFamily,
 	            const vk::ArrayProxy<const char*const> enabledExtensions,
-	            const vk::PhysicalDeviceFeatures* enabledFeatures);
+	            const vk::PhysicalDeviceFeatures& enabledFeatures);
 	void create(VulkanInstance& instance,
 	            vk::PhysicalDevice physicalDevice,
 	            uint32_t graphicsQueueFamily,
 	            uint32_t presentationQueueFamily,
 	            const vk::ArrayProxy<const char*const> enabledExtensions,
-	            const vk::PhysicalDeviceFeatures2* enabledFeatures2);
+	            const vk::PhysicalDeviceFeatures2& enabledFeatures2);
 	void create(VulkanInstance& instance,
 	            vk::PhysicalDevice physicalDevice,
 	            uint32_t graphicsQueueFamily,
@@ -79,11 +79,11 @@ public:
 	void create(VulkanInstance& instance,
 	            std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	            const vk::ArrayProxy<const char*const> enabledExtensions,
-	            const vk::PhysicalDeviceFeatures* enabledFeatures);
+	            const vk::PhysicalDeviceFeatures& enabledFeatures);
 	void create(VulkanInstance& instance,
 	            std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	            const vk::ArrayProxy<const char*const> enabledExtensions,
-	            const vk::PhysicalDeviceFeatures2* enabledFeatures2);
+	            const vk::PhysicalDeviceFeatures2& enabledFeatures2);
 	void create(VulkanInstance& instance,
 	            std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies,
 	            const vk::ArrayProxy<const char*const> enabledExtensions,
@@ -139,6 +139,12 @@ public:
 	inline vk::Result createFramebuffer(const vk::FramebufferCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Framebuffer* pFramebuffer) const  { return _device.createFramebuffer(pCreateInfo,pAllocator,pFramebuffer,*this); }
 	inline void destroyFramebuffer(vk::Framebuffer framebuffer,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyFramebuffer(framebuffer,pAllocator,*this); }
 	inline void destroy(vk::Framebuffer framebuffer,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(framebuffer,pAllocator,*this); }
+	inline vk::Result createSwapchainKHR(const vk::SwapchainCreateInfoKHR* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::SwapchainKHR* pSwapchain) const  { return _device.createSwapchainKHR(pCreateInfo,pAllocator,pSwapchain,*this); }
+	inline void destroySwapchainKHR(vk::SwapchainKHR swapchain,const vk::AllocationCallbacks* pAllocator) const  { _device.destroySwapchainKHR(swapchain,pAllocator,*this); }
+	inline void destroy(vk::SwapchainKHR swapchain,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(swapchain,pAllocator,*this); }
+	inline vk::Result getSwapchainImagesKHR(vk::SwapchainKHR swapchain,uint32_t* pSwapchainImageCount,vk::Image* pSwapchainImages) const  { return _device.getSwapchainImagesKHR(swapchain,pSwapchainImageCount,pSwapchainImages,*this); }
+	inline vk::Result acquireNextImageKHR(vk::SwapchainKHR swapchain,uint64_t timeout,vk::Semaphore semaphore,vk::Fence fence,uint32_t* pImageIndex) const  { return _device.acquireNextImageKHR(swapchain,timeout,semaphore,fence,pImageIndex,*this); }
+	inline vk::Result presentKHR(vk::Queue queue,const vk::PresentInfoKHR* pPresentInfo) const  { return queue.presentKHR(pPresentInfo,*this); }
 	inline vk::Result createShaderModule(const vk::ShaderModuleCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::ShaderModule* pShaderModule) const  { return _device.createShaderModule(pCreateInfo,pAllocator,pShaderModule,*this); }
 	inline void destroyShaderModule(vk::ShaderModule shaderModule,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyShaderModule(shaderModule,pAllocator,*this); }
 	inline void destroy(vk::ShaderModule shaderModule,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(shaderModule,pAllocator,*this); }
@@ -187,6 +193,7 @@ public:
 	inline void cmdDrawIndexedIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset,uint32_t drawCount,uint32_t stride) const  { commandBuffer.drawIndexedIndirect(buffer,offset,drawCount,stride,*this); }
 	inline void cmdDrawIndexed(vk::CommandBuffer commandBuffer,uint32_t indexCount,uint32_t instanceCount,uint32_t firstIndex,int32_t vertexOffset,uint32_t firstInstance) const  { commandBuffer.drawIndexed(indexCount,instanceCount,firstIndex,vertexOffset,firstInstance,*this); }
 	inline void cmdDraw(vk::CommandBuffer commandBuffer,uint32_t vertexCount,uint32_t instanceCount,uint32_t firstVertex,uint32_t firstInstance) const  { commandBuffer.draw(vertexCount,instanceCount,firstVertex,firstInstance,*this); }
+	inline void cmdDrawIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset,uint32_t drawCount,uint32_t stride) const  { commandBuffer.drawIndirect(buffer,offset,drawCount,stride,*this); }
 	inline void cmdDispatch(vk::CommandBuffer commandBuffer,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatch(groupCountX,groupCountY,groupCountZ,*this); }
 	inline void cmdDispatchIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset) const  { commandBuffer.dispatchIndirect(buffer,offset,*this); }
 	inline void cmdDispatchBase(vk::CommandBuffer commandBuffer,uint32_t baseGroupX,uint32_t baseGroupY,uint32_t baseGroupZ,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatchBase(baseGroupX,baseGroupY,baseGroupZ,groupCountX,groupCountY,groupCountZ,*this); }
@@ -247,6 +254,15 @@ public:
 	inline vk::ResultValueType<vk::Framebuffer>::type createFramebuffer(const vk::FramebufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFramebuffer(createInfo,allocator,*this); }
 	inline void destroyFramebuffer(vk::Framebuffer framebuffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyFramebuffer(framebuffer,allocator,*this); }
 	inline void destroy(vk::Framebuffer framebuffer,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(framebuffer,allocator,*this); }
+	inline vk::ResultValueType<vk::SwapchainKHR>::type createSwapchainKHR(const vk::SwapchainCreateInfoKHR& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSwapchainKHR(createInfo,allocator,*this); }
+	inline void destroySwapchainKHR(vk::SwapchainKHR swapchain,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroySwapchainKHR(swapchain,allocator,*this); }
+	inline void destroy(vk::SwapchainKHR swapchain,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(swapchain,allocator,*this); }
+	template<typename ImageAllocator=std::allocator<vk::Image>>
+	inline typename vk::ResultValueType<std::vector<vk::Image,ImageAllocator>>::type getSwapchainImagesKHR(vk::SwapchainKHR swapchain) const  { return _device.getSwapchainImagesKHR(swapchain,*this); }
+	template <typename ImageAllocator,typename Dispatch,typename B1,typename std::enable_if<std::is_same<typename B1::value_type,vk::Image>::value,int>::type>
+		typename vk::ResultValueType<std::vector<vk::Image,ImageAllocator>>::type getSwapchainImagesKHR(vk::SwapchainKHR swapchain,ImageAllocator& imageAllocator) const  { return _device.getSwapchainImagesKHR(swapchain,imageAllocator,*this); }
+	inline vk::ResultValue<uint32_t> acquireNextImageKHR(vk::SwapchainKHR swapchain,uint64_t timeout,vk::Semaphore semaphore,vk::Fence fence) const  { return _device.acquireNextImageKHR(swapchain,timeout,semaphore,fence,*this); }
+	inline vk::Result presentKHR(vk::Queue queue,const vk::PresentInfoKHR& presentInfo) const  { return queue.presentKHR(presentInfo,*this); }
 	inline vk::ResultValueType<vk::ShaderModule>::type createShaderModule(const vk::ShaderModuleCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createShaderModule(createInfo,allocator,*this); }
 	inline void destroyShaderModule(vk::ShaderModule shaderModule,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyShaderModule(shaderModule,allocator,*this); }
 	inline void destroy(vk::ShaderModule shaderModule,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(shaderModule,allocator,*this); }
@@ -386,6 +402,7 @@ public:
 	inline vk::ResultValueType<vk::UniqueHandle<vk::ImageView,VulkanDevice>>::type createImageViewUnique(const vk::ImageViewCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createImageViewUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Sampler,VulkanDevice>>::type createSamplerUnique(const vk::SamplerCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSamplerUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::Framebuffer,VulkanDevice>>::type createFramebufferUnique(const vk::FramebufferCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFramebufferUnique(createInfo,allocator,*this); }
+	inline vk::ResultValueType<vk::UniqueHandle<vk::SwapchainKHR,VulkanDevice>>::type createSwapchainKHRUnique(const vk::SwapchainCreateInfoKHR& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createSwapchainKHRUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::ShaderModule,VulkanDevice>>::type createShaderModuleUnique(const vk::ShaderModuleCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createShaderModuleUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::DescriptorSetLayout,VulkanDevice>>::type createDescriptorSetLayoutUnique(const vk::DescriptorSetLayoutCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createDescriptorSetLayoutUnique(createInfo,allocator,*this); }
 	inline vk::ResultValueType<vk::UniqueHandle<vk::DescriptorPool,VulkanDevice>>::type createDescriptorPoolUnique(const vk::DescriptorPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createDescriptorPoolUnique(createInfo,allocator,*this); }
@@ -511,6 +528,11 @@ public:
 	PFN_vkDestroySampler vkDestroySampler;
 	PFN_vkCreateFramebuffer vkCreateFramebuffer;
 	PFN_vkDestroyFramebuffer vkDestroyFramebuffer;
+	PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
+	PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR;
+	PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
+	PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR;
+	PFN_vkQueuePresentKHR vkQueuePresentKHR;
 	PFN_vkCreateShaderModule vkCreateShaderModule;
 	PFN_vkDestroyShaderModule vkDestroyShaderModule;
 	PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout;
@@ -551,6 +573,7 @@ public:
 	PFN_vkCmdDrawIndexedIndirect vkCmdDrawIndexedIndirect;
 	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 	PFN_vkCmdDraw vkCmdDraw;
+	PFN_vkCmdDrawIndirect vkCmdDrawIndirect;
 	PFN_vkCmdDispatch vkCmdDispatch;
 	PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect;
 	PFN_vkCmdDispatchBase vkCmdDispatchBase;
@@ -580,18 +603,18 @@ private:
 inline VulkanDevice::VulkanDevice() : _version(0)  { vkGetDeviceProcAddr = nullptr; vkDestroyDevice = nullptr; }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, const vk::DeviceCreateInfo& createInfo) : VulkanDevice()  { create(instance, physicalDevice, createInfo); }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, vk::Device device) : VulkanDevice()  { init(instance, physicalDevice, device); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures)   : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2) : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures2); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures& enabledFeatures)   : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2& enabledFeatures2) : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures2); }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures) : VulkanDevice()  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, enabledFeatures); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures) : VulkanDevice()    { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
-inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2) : VulkanDevice()  { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures2); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures& enabledFeatures) : VulkanDevice()    { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
+inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2& enabledFeatures2) : VulkanDevice()  { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures2); }
 inline VulkanDevice::VulkanDevice(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures) : VulkanDevice()  { create(instance, physicalDeviceAndQueueFamilies, enabledExtensions, enabledFeatures); }
 inline VulkanDevice::~VulkanDevice()  { destroy(); }
 
-inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures* enabledFeatures)    { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures); }
-inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2* enabledFeatures2)  { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures2); }
-inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, static_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
-inline void VulkanDevice::create(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, static_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
+inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures& enabledFeatures)    { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures); }
+inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, const vk::PhysicalDeviceFeatures2& enabledFeatures2)  { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, enabledFeatures2); }
+inline void VulkanDevice::create(VulkanInstance& instance, std::tuple<vk::PhysicalDevice,uint32_t,uint32_t> physicalDeviceAndQueueFamilies, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { create(instance, std::get<0>(physicalDeviceAndQueueFamilies), std::get<1>(physicalDeviceAndQueueFamilies), std::get<2>(physicalDeviceAndQueueFamilies), enabledExtensions, *static_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
+inline void VulkanDevice::create(VulkanInstance& instance, vk::PhysicalDevice physicalDevice, uint32_t graphicsQueueFamily, uint32_t presentationQueueFamily, const vk::ArrayProxy<const char*const> enabledExtensions, nullptr_t enabledFeatures)  { create(instance, physicalDevice, graphicsQueueFamily, presentationQueueFamily, enabledExtensions, *static_cast<const vk::PhysicalDeviceFeatures*>(enabledFeatures)); }
 inline bool VulkanDevice::initialized() const  { return _device.operator bool(); }
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }

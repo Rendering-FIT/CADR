@@ -7,18 +7,35 @@
 #endif
 
 
-// vertices
-layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer VertexDataRef {
+// vertex
+layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer VertexDataRef {
 	vec3 position;
+	float dummy1;
+#ifdef PER_VERTEX_COLOR
+	vec4 color;
+#endif
+#ifdef TEXTURING
+	vec2 texCoord;
+	vec2 dummy3;
+#endif
 };
-const uint VertexDataSize = 12;
+#ifdef PER_VERTEX_COLOR
+# ifdef TEXTURING
+const uint VertexDataSize = 48;
+# else
+const uint VertexDataSize = 32;
+# endif
+#else
+# ifdef TEXTURING
+const uint VertexDataSize = 32;
+# else
+const uint VertexDataSize = 16;
+# endif
+#endif
 
-
-// indices
 layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer IndexDataRef {
 	uint indices[];
 };
-
 
 // per-drawable shader data
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer ShaderDataRef {
@@ -31,7 +48,6 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 	layout(offset=64) mat4 modelMatrix[];
 };
 
-
 // payload data
 // holding per-drawable data pointers
 layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer PayloadDataRef {
@@ -41,20 +57,17 @@ layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buf
 };
 const uint PayloadDataSize = 24;
 
-
 // scene data
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer SceneDataRef {
 	mat4 viewMatrix;        // current camera view matrix
 	float p11,p22,p33,p43;  // projectionMatrix - members that depend on zNear and zFar clipping planes
 };
 
-
 // push constants
 layout(push_constant) uniform pushConstants {
 	uint64_t payloadBufferPtr;  // one buffer for the whole scene
 	uint64_t sceneDataPtr;  // one buffer for the whole scene
 };
-
 
 // projection matrix specialization constants
 // (projectionMatrix members that do not depend on zNear and zFar clipping planes)
@@ -72,14 +85,35 @@ out gl_PerVertex {
 };
 layout(location = 0) flat out uint64_t outDataPtr;
 layout(location = 1) smooth out vec3 outEyePosition3;
-#ifdef ID_BUFFER
+#ifdef PER_VERTEX_COLOR
+layout(location = 2) smooth out vec4 outColor;
+# ifdef TEXTURING
+layout(location = 3) smooth out vec2 outTexCoord;
+#  ifdef ID_BUFFER
+layout(location = 4) flat out uvec2 outId;
+#  endif
+# else
+#  ifdef ID_BUFFER
+layout(location = 3) flat out uvec2 outId;
+#  endif
+# endif
+#else
+# ifdef TEXTURING
+layout(location = 2) smooth out vec2 outTexCoord;
+#  ifdef ID_BUFFER
+layout(location = 3) flat out uvec2 outId;
+#  endif
+# else
+#  ifdef ID_BUFFER
 layout(location = 2) flat out uvec2 outId;
+#  endif
+# endif
 #endif
-
 
 
 void main()
 {
+
 	// memory pointers
 	PayloadDataRef pd = PayloadDataRef(payloadBufferPtr + (gl_DrawID * PayloadDataSize));
 	outDataPtr = pd.shaderDataPtr;
@@ -100,6 +134,12 @@ void main()
 	gl_Position.z = scene.p33*eyePosition.z + scene.p43*eyePosition.w;
 	gl_Position.w = p34*eyePosition.z + p44*eyePosition.w;
 
+#ifdef PER_VERTEX_COLOR
+	outColor = vertex.color;
+#endif
+#ifdef TEXTURING
+	outTexCoord = vertex.texCoord;
+#endif
 #ifdef ID_BUFFER
 	outId[0] = gl_DrawID;
 	outId[1] = gl_InstanceIndex;

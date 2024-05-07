@@ -6,19 +6,13 @@
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <list>
-#include <map>
 
 namespace CadR {
 
-class AttribSizeList;
-class Geometry;
-class GeometryMemory;
-class GeometryStorage;
 class StateSet;
 class VulkanDevice;
 class VulkanInstance;
 struct DrawableGpuData;
-struct PrimitiveSetGpuData;
 
 
 class CADR_EXPORT Renderer {
@@ -31,24 +25,25 @@ protected:
 	vk::DeviceSize _standardBufferAlignment;  ///< Memory alignment of a standard buffer. It is used for optimization purposes like putting more small buffers into one large buffer.
 	vk::DeviceSize _nonCoherentAtom_addition;  ///< Serves for memory alignment purposes. It is equivalent to PhysicalDeviceLimits::nonCoherentAtomSize-1.
 	vk::DeviceSize _nonCoherentAtom_mask;  ///< Serves for memory alignment purposes. It is equivalent to bitwise negation of nonCoherentAtom_addition value.
-	std::array<size_t, 3> _bufferSizeList;  ///< First, we allocate small DataMemory and GeometryMemory objects. When they are full, we allocate bigger. This list contains the allocation steps. It is usually something like 64KiB, 2MiB and 32MiB. We try to not allocate too big buffers as it cause performance spikes.
+	std::array<size_t, 3> _bufferSizeList;  ///< First, we allocate small DataMemory objects. When they are full, we allocate bigger. This list contains the allocation steps. It is usually something like 64KiB, 2MiB and 32MiB. We try to not allocate too big buffers as it might cause performance spikes.
 
-	std::map<AttribSizeList, GeometryStorage> _geometryStorageMap;
-	GeometryStorage* _emptyStorage;
-	GeometryMemory*  _emptyGeometryMemory;
+	vk::Buffer        _drawableBuffer;
+	vk::DeviceMemory  _drawableBufferMemory;
+	size_t            _drawableBufferSize = 0;
+	vk::DeviceAddress _drawableBufferAddress;
+	vk::Buffer        _drawableStagingBuffer;
+	vk::DeviceMemory  _drawableStagingMemory;
+	DrawableGpuData*  _drawableStagingData;
+	vk::Buffer        _drawIndirectBuffer;
+	vk::DeviceMemory  _drawIndirectMemory;
+	vk::DeviceAddress _drawIndirectBufferAddress;
+	vk::Buffer        _drawablePayloadBuffer;
+	vk::DeviceMemory  _drawablePayloadMemory;
+	vk::DeviceAddress _drawablePayloadDeviceAddress;
+
 	mutable DataStorage _dataStorage;
-	int                 _highestUsedStagingMemory = -1;
-	vk::Buffer       _drawableBuffer;
-	vk::DeviceMemory _drawableBufferMemory;
-	size_t           _drawableBufferSize = 0;
-	vk::Buffer       _drawableStagingBuffer;
-	vk::DeviceMemory _drawableStagingMemory;
-	DrawableGpuData* _drawableStagingData;
-	vk::Buffer       _matrixListControlBuffer;
-	vk::DeviceMemory _matrixListControlBufferMemory;
-	vk::Buffer       _drawIndirectBuffer;
-	vk::DeviceMemory _drawIndirectMemory;
-	size_t           _drawIndirectCommandOffset;
+	size_t _currentFrameUploadBytes = 0;
+	size_t _lastFrameUploadBytes = 0;
 
 	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
@@ -58,14 +53,10 @@ protected:
 	vk::Fence _fence;  ///< Fence for general synchronization.
 
 	vk::PipelineCache _pipelineCache;
-	vk::ShaderModule _processDrawablesShader;
+	std::array<vk::ShaderModule,3> _processDrawablesShaderList;
 	vk::PipelineLayout _processDrawablesPipelineLayout;
-	vk::Pipeline _processDrawablesPipeline;
+	std::array<vk::Pipeline,3> _processDrawablesPipelineList;
 	vk::DescriptorPool _descriptorPool;
-	vk::DescriptorSetLayout _processDrawablesDescriptorSetLayout;
-	vk::DescriptorSet _processDrawablesDescriptorSet;
-	vk::DescriptorSetLayout _dataPointerDescriptorSetLayout;
-	vk::DescriptorSet _dataPointerDescriptorSet;
 
 	size_t _frameNumber = ~size_t(0);  ///< Monotonically increasing frame number. The first frame is 0. The initial value is -1, marking pre-first frame time.
 	double _cpuTimestampPeriod;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
@@ -87,13 +78,15 @@ protected:
 
 public:
 
-	static Renderer* get();
-	static void set(Renderer* r);
-	static const vk::PhysicalDeviceFeatures2* requiredFeatures();
+	static Renderer& get();
+	static void set(Renderer& r);
+	static const vk::PhysicalDeviceFeatures2& requiredFeatures();
 
 	Renderer(bool makeDefault=true);
 	Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
 	         uint32_t graphicsQueueFamily,bool makeDefault=true);
+	Renderer(const Renderer&) = delete;
+	Renderer& operator=(const Renderer&) = delete;
 	~Renderer();
 	void init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
 	          uint32_t graphicsQueueFamily,bool makeDefault=true);
@@ -110,13 +103,12 @@ public:
 	void endRecording(vk::CommandBuffer commandBuffer);  ///< Finish recording of the command buffer.
 	void endFrame();  ///< Mark the end of frame recording. This is usually called after the command buffer is submitted to gpu for execution.
 
-	VulkanDevice* device() const;
+	VulkanDevice& device() const;
 	uint32_t graphicsQueueFamily() const;
 	vk::Queue graphicsQueue() const;
 	const vk::PhysicalDeviceMemoryProperties& memoryProperties() const;
 	size_t standardBufferAlignment() const;
 	size_t alignStandardBuffer(size_t offset) const;
-	size_t getVertexCapacityForBuffer(const AttribSizeList& attribSizeList,size_t bufferSize) const;
 
 	size_t frameNumber() const;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
 	bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
@@ -133,32 +125,24 @@ public:
 	size_t drawableBufferSize() const;
 	vk::Buffer drawableStagingBuffer() const;
 	DrawableGpuData* drawableStagingData() const;
-	vk::Buffer matrixListControlBuffer() const;
 	vk::Buffer drawIndirectBuffer() const;
-	size_t drawIndirectCommandOffset() const;
+	vk::DeviceAddress drawIndirectBufferAddress() const;
+	vk::Buffer drawablePayloadBuffer() const;
+	vk::DeviceAddress drawablePayloadDeviceAddress() const;
 
 	vk::PipelineCache pipelineCache() const;
-	vk::Pipeline processDrawablesPipeline() const;
+	vk::Pipeline processDrawablesPipeline(size_t handleLevel) const;
 	vk::PipelineLayout processDrawablesPipelineLayout() const;
-	vk::DescriptorSet processDrawablesDescriptorSet() const;
-	vk::DescriptorSet dataPointerDescriptorSet() const;
 	vk::CommandPool transientCommandPool() const;
 	vk::CommandPool precompiledCommandPool() const;
-
-	GeometryStorage* getOrCreateGeometryStorage(const AttribSizeList& attribSizeList);
-	std::map<AttribSizeList,GeometryStorage>& geometryStorageMap();
-	GeometryStorage* emptyStorage();
-	const GeometryStorage* emptyStorage() const;
-	GeometryMemory* emptyGeometryMemory();
-	const GeometryMemory* emptyGeometryMemory() const;
 
 	vk::DeviceMemory allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	vk::DeviceMemory allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	vk::DeviceMemory allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
-	void disposeUnusedStagingMemory();
 
 	const std::array<size_t,3>& bufferSizeList() const;
+	static constexpr uint32_t drawablePayloadRecordSize = 24;
 
 };
 
@@ -166,11 +150,13 @@ public:
 }
 
 // inline methods
+#include <cassert>
 namespace CadR {
-inline Renderer* Renderer::get()  { return _defaultRenderer; }
-inline void Renderer::set(Renderer* r)  { _defaultRenderer=r; }
-inline const vk::PhysicalDeviceFeatures2* Renderer::requiredFeatures()  { return &_requiredFeatures; }
-inline VulkanDevice* Renderer::device() const  { return _device; }
+
+inline Renderer& Renderer::get()  { return *_defaultRenderer; }
+inline void Renderer::set(Renderer& r)  { _defaultRenderer = &r; }
+inline const vk::PhysicalDeviceFeatures2& Renderer::requiredFeatures()  { return _requiredFeatures; }
+inline VulkanDevice& Renderer::device() const  { assert(_device && "Renderer::device(): Renderer must be initialized with valid VulkanDevice to call this function."); return *_device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
 inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }
 inline const vk::PhysicalDeviceMemoryProperties& Renderer::memoryProperties() const  { return _memoryProperties; }
@@ -181,25 +167,30 @@ inline bool Renderer::collectFrameInfo() const  { return _collectFrameInfo; }
 inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
 inline float Renderer::gpuTimestampPeriod() const  { return _gpuTimestampPeriod; }
 inline DataStorage& Renderer::dataStorage() const  { return _dataStorage; }
+inline vk::Buffer Renderer::drawableBuffer() const  { return _drawableBuffer; }
 inline size_t Renderer::drawableBufferSize() const  { return _drawableBufferSize; }
 inline vk::Buffer Renderer::drawableStagingBuffer() const  { return _drawableStagingBuffer; }
 inline DrawableGpuData* Renderer::drawableStagingData() const  { return _drawableStagingData; }
-inline vk::Buffer Renderer::matrixListControlBuffer() const  { return _matrixListControlBuffer; }
 inline vk::Buffer Renderer::drawIndirectBuffer() const  { return _drawIndirectBuffer; }
-inline size_t Renderer::drawIndirectCommandOffset() const  { return _drawIndirectCommandOffset; }
+inline vk::DeviceAddress Renderer::drawIndirectBufferAddress() const  { return _drawIndirectBufferAddress; }
+inline vk::Buffer Renderer::drawablePayloadBuffer() const  { return _drawablePayloadBuffer; }
+inline vk::DeviceAddress Renderer::drawablePayloadDeviceAddress() const  { return _drawablePayloadDeviceAddress; }
 inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCache; }
-inline vk::Pipeline Renderer::processDrawablesPipeline() const  { return _processDrawablesPipeline; }
+inline vk::Pipeline Renderer::processDrawablesPipeline(size_t handleLevel) const  { return _processDrawablesPipelineList[handleLevel-1]; }
 inline vk::PipelineLayout Renderer::processDrawablesPipelineLayout() const  { return _processDrawablesPipelineLayout; }
-inline vk::DescriptorSet Renderer::processDrawablesDescriptorSet() const  { return _processDrawablesDescriptorSet; }
-inline vk::DescriptorSet Renderer::dataPointerDescriptorSet() const  { return _dataPointerDescriptorSet; }
 inline vk::CommandPool Renderer::transientCommandPool() const  { return _transientCommandPool; }
 inline vk::CommandPool Renderer::precompiledCommandPool() const  { return _precompiledCommandPool; }
-inline std::map<AttribSizeList, GeometryStorage>& Renderer::geometryStorageMap()  { return _geometryStorageMap; }
-inline GeometryStorage* Renderer::emptyStorage()  { return _emptyStorage; }
-inline const GeometryStorage* Renderer::emptyStorage() const  { return _emptyStorage; }
-inline GeometryMemory* Renderer::emptyGeometryMemory()  { return _emptyGeometryMemory; }
-inline const GeometryMemory* Renderer::emptyGeometryMemory() const  { return _emptyGeometryMemory; }
 inline const std::array<size_t,3>& Renderer::bufferSizeList() const  { return _bufferSizeList; }
+
+// functions moved here from DataAllocation.h to avoid circular include dependency
+inline DataAllocation::DataAllocation(DataStorage& storage) : _record(storage.zeroSizeAllocationRecord()), _handle(storage.createHandle())  {}  // this might throw in DataStorage::createHandle(), but _record points to zero size record that does not need to be freed
+inline DataAllocation::~DataAllocation() noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); }
+inline DataAllocation& DataAllocation::operator=(DataAllocation&& rhs) noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); _record=rhs._record; _handle = rhs._handle; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); rhs._handle=0; return *this; }
+inline uint64_t DataAllocation::createHandle(DataStorage& storage)  { if(_handle==0) _handle=storage.createHandle(); return _handle; }
+inline void DataAllocation::destroyHandle() noexcept  { if(_handle==0) return; dataStorage().destroyHandle(_handle); _handle=0; }
+
+// functions moved here from DataStorage.h to avoid circular include dependency
+inline void DataStorage::free(DataAllocationRecord* a) noexcept  { if(a->size==0) return; DataMemory::free(a); }
 
 }
 

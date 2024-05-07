@@ -1,48 +1,1289 @@
 #include <CadR/Geometry.h>
+#include <CadR/Exceptions.h>
 #include <CadR/Pipeline.h>
-#include <CadR/PrimitiveSet.h>
+#include <CadR/StagingData.h>
 #include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
-#include "Window.h"
+#include "PipelineLibrary.h"
+#include "VulkanWindow.h"
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
-#if _WIN32 // MSVC 2017 and 2019
 #include <filesystem>
-#else // gcc 7.4.0 (Ubuntu 18.04) does support path only as experimental
-#include <experimental/filesystem>
-namespace std { namespace filesystem { using std::experimental::filesystem::path; } }
-#endif
 #include <fstream>
 #include <iostream>
 #include <memory>
 
 using namespace std;
 
-using json=nlohmann::json;
+using json = nlohmann::json;
 
-typedef logic_error gltfError;
+typedef logic_error GltfError;
 
-// shader code in SPIR-V binary
-static const uint32_t coordinateShaderSpirv[]={
-#include "shaders/coordinates.vert.spv"
+
+// Shader data structures
+struct LightGpuData {
+	// we use vec4 instead of vec3 for the purpose of memory alignment; alpha component for light intensities is unused
+	glm::vec4 ambient;
+	glm::vec4 diffuse;
+	glm::vec4 specular;
+	glm::vec4 eyePosition;  ///< Light position in eye coordinates.
+	glm::vec3 eyePositionDir;  ///< Normalized eyePosition, e.g. direction to light source in eye coordinates.
 };
-static const uint32_t unspecifiedMaterialShaderSpirv[]={
-#include "shaders/unspecifiedMaterial.frag.spv"
+constexpr const uint32_t maxLights = 1;
+struct SceneGpuData {
+	glm::mat4 viewMatrix;    // current camera view matrix
+	float p11,p22,p33,p43;   // projectionMatrix - members that depend on zNear and zFar clipping planes
+	glm::vec3 ambientLight;  // we use vec4 instead of vec3 for the purpose of memory alignment; alpha component for light intensities is unused
+	uint32_t numLights;
+	LightGpuData lights[maxLights];
 };
 
 
-template<typename T,typename Map,typename Key>
-T mapGetWithDefault(const Map& m,const Key& k,T d)
+// application class
+class App {
+public:
+
+	App(int argc, char* argv[]);
+	~App();
+
+	void init();
+	void resize(VulkanWindow& window,
+		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	void frame(VulkanWindow& window);
+	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
+	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& mouseState);
+	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
+	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, VulkanWindow::ScanCode scanCode);
+
+	// Vulkan core objects
+	// (the order of members is not arbitrary but defines construction and destruction order)
+	// (it is probably good idea to destroy vulkanLib and vulkanInstance after the display connection)
+	CadR::VulkanLibrary vulkanLib;
+	CadR::VulkanInstance vulkanInstance;
+
+	// window needs to be destroyed after the swapchain
+	// (this is required especially on Wayland)
+	VulkanWindow window;
+
+	// Vulkan variables, handles and objects
+	// (they need to be destructed in non-arbitrary order in the destructor)
+	vk::PhysicalDevice physicalDevice;
+	uint32_t graphicsQueueFamily;
+	uint32_t presentationQueueFamily;
+	CadR::VulkanDevice device;
+	vk::Queue graphicsQueue;
+	vk::Queue presentationQueue;
+	vk::SurfaceFormatKHR surfaceFormat;
+	vk::RenderPass renderPass;
+	vk::SwapchainKHR swapchain;
+	vector<vk::ImageView> swapchainImageViews;
+	vector<vk::Framebuffer> framebuffers;
+	vk::Semaphore imageAvailableSemaphore;
+	vk::Semaphore renderFinishedSemaphore;
+	vk::Fence renderFinishedFence;
+
+	CadR::Renderer renderer;
+	PipelineLibrary pipelineLibrary;
+	vk::CommandPool commandPool;
+	vk::CommandBuffer commandBuffer;
+
+	// camera control
+	float fovy = 80.f / 180.f * glm::pi<float>();
+	float cameraHeading=0.f;
+	float cameraElevation=0.f;
+	float cameraDistance=5.f;
+	int startMouseX,startMouseY;
+	float startCameraHeading,startCameraElevation;
+
+	filesystem::path filePath;
+
+	CadR::HandlelessAllocation sceneDataAllocation;
+	CadR::StateSet stateSetRoot;
+	array<CadR::StateSet,32> stateSetDB;
+	array<CadR::Pipeline,32> pipelineDB;
+	vector<CadR::Geometry> geometryDB;
+	vector<CadR::Drawable> drawableDB;
+
+};
+
+
+// create_array<T,N>() allows for initialization of an std::array when passing the same value to all the constructors is needed
+// (for passing references, use std::ref() and std::cref() to pass them into create_array())
+template<typename T, size_t N, size_t index = N, typename T2, typename... Ts>
+constexpr array<T, N> create_array_ref(T2& t, Ts&... ts)
 {
-	auto it=m.find(k);
-	if(it!=m.end())
-		return *it;
+	if constexpr (index <= 1)
+		return array<T, N>{ t, ts... };
 	else
-		return d;
+		return create_array_ref<T, N, index-1>(t, t, ts...);
+}
+
+
+/// Construct application object
+App::App(int argc, char** argv)
+	// none of the following initializators shall be allowed to throw,
+	// otherwise a special care must be given to avoid memory leaks in the case of exception
+	: stateSetRoot(renderer)
+	, stateSetDB{ create_array_ref<CadR::StateSet, 32>(renderer) }
+	, pipelineDB{ create_array_ref<CadR::Pipeline, 32>(renderer) }
+	, sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
+{
+	// process command-line arguments
+	if(argc < 2) {
+		cout << "Please, specify glTF file to load." << endl;
+		exit(99);
+	}
+	filePath = argv[1];
+}
+
+
+App::~App()
+{
+	if(device) {
+
+		// wait for device idle state
+		// (to prevent errors during destruction of Vulkan resources)
+		try {
+			device.waitIdle();
+		} catch(vk::Error& e) {
+			cout << "Failed because of Vulkan exception: " << e.what() << endl;
+		}
+
+		// destroy handles
+		// (the handles are destructed in certain (not arbitrary) order)
+		drawableDB.clear();
+		geometryDB.clear();
+		sceneDataAllocation.free();
+		pipelineLibrary.destroy();
+		device.destroy(commandPool);
+		renderer.finalize();
+		device.destroy(renderFinishedFence);
+		device.destroy(renderFinishedSemaphore);
+		device.destroy(imageAvailableSemaphore);
+		for(auto f : framebuffers)  device.destroy(f);
+		for(auto v : swapchainImageViews)  device.destroy(v);
+		device.destroy(swapchain);
+		device.destroy(renderPass);
+		device.destroy();
+
+	}
+
+	window.destroy();
+#if defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_QT)
+	// On Xlib, VulkanWindow::finalize() needs to be called before instance destroy to avoid crash.
+	// It is workaround for the known bug in libXext: https://gitlab.freedesktop.org/xorg/lib/libxext/-/issues/3,
+	// that crashes the application inside XCloseDisplay(). The problem seems to be present
+	// especially on Nvidia drivers (reproduced on versions 470.129.06 and 515.65.01, for example).
+	//
+	// On Qt, VulkanWindow::finalize() needs to be called not too late after leaving main() because
+	// crash might follow. Probably Qt gets partly finalized. Seen on Linux with Qt 5.15.13 and Qt 6.4.2 on 2024-05-03.
+	// Calling VulkanWindow::finalize() before leaving main() seems to be a safe solution. For simplicity, we are doing it here.
+	VulkanWindow::finalize();
+#endif
+	vulkanInstance.destroy();
+}
+
+
+void App::init()
+{
+	// open file
+	ifstream f(filePath);
+	if(!f.is_open()) {
+		cout << "Cannot open file " << filePath << "." << endl;
+		exit(1);
+	}
+	f.exceptions(ifstream::badbit | ifstream::failbit);
+
+	// init Vulkan and window
+	VulkanWindow::init();
+	vulkanLib.load(CadR::VulkanLibrary::defaultName());
+	vulkanInstance.create(vulkanLib, "glTF reader", 0, "CADR", 0, VK_API_VERSION_1_2, nullptr,
+	                      VulkanWindow::requiredExtensions());
+	window.create(vulkanInstance, {1024,768}, "glTF reader", vulkanLib.vkGetInstanceProcAddr);
+
+	// init device and renderer
+	tuple<vk::PhysicalDevice, uint32_t, uint32_t> deviceAndQueueFamilies =
+			vulkanInstance.chooseDevice(vk::QueueFlagBits::eGraphics, window.surface());
+	device.create(
+		vulkanInstance, deviceAndQueueFamilies,
+		//"VK_KHR_swapchain",
+		{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"},
+		CadR::Renderer::requiredFeatures());
+	physicalDevice = std::get<0>(deviceAndQueueFamilies);
+	graphicsQueueFamily = std::get<1>(deviceAndQueueFamilies);
+	presentationQueueFamily = std::get<2>(deviceAndQueueFamilies);
+	window.setDevice(device, physicalDevice);
+	renderer.init(device, vulkanInstance, physicalDevice, graphicsQueueFamily);
+
+	// get queues
+	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
+	presentationQueue = device.getQueue(presentationQueueFamily, 0);
+
+	// choose surface formats
+	{
+		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(window.surface(), vulkanInstance);
+		constexpr const array allowedSurfaceFormats{
+			vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+			vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+			vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
+		};
+		if(availableSurfaceFormats.size()==1 && availableSurfaceFormats[0].format==vk::Format::eUndefined)
+			// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
+			// with the meaning you can use any valid vk::Format value.
+			// Now, it is forbidden, but let's handle any old driver.
+			surfaceFormat = allowedSurfaceFormats[0];
+		else {
+			for(vk::SurfaceFormatKHR sf : availableSurfaceFormats) {
+				auto it = std::find(allowedSurfaceFormats.begin(), allowedSurfaceFormats.end(), sf);
+				if(it != allowedSurfaceFormats.end()) {
+					surfaceFormat = *it;
+					goto surfaceFormatFound;
+				}
+			}
+			if(availableSurfaceFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
+				throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
+			surfaceFormat = availableSurfaceFormats[0];
+		surfaceFormatFound:;
+		}
+	}
+	/*vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
+		for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
+			vk::FormatProperties p=physicalDevice.getFormatProperties(f,vulkanInstance);
+			if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
+				return f;
+			}
+		}
+		throw std::runtime_error("No suitable depth buffer format.");
+	}(physicalDevice,vulkanInstance);*/
+
+	// render pass
+	renderPass =
+		device.createRenderPass(
+			vk::RenderPassCreateInfo(
+				vk::RenderPassCreateFlags(),  // flags
+				1,                            // attachmentCount
+				array<const vk::AttachmentDescription, 1>{  // pAttachments
+					vk::AttachmentDescription{  // color attachment
+						vk::AttachmentDescriptionFlags(),  // flags
+						surfaceFormat.format,              // format
+						vk::SampleCountFlagBits::e1,       // samples
+						vk::AttachmentLoadOp::eClear,      // loadOp
+						vk::AttachmentStoreOp::eStore,     // storeOp
+						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+						vk::ImageLayout::eUndefined,       // initialLayout
+						vk::ImageLayout::ePresentSrcKHR    // finalLayout
+					}/*,
+					vk::AttachmentDescription{  // depth attachment
+						vk::AttachmentDescriptionFlags(),  // flags
+						depthFormat,                       // format
+						vk::SampleCountFlagBits::e1,       // samples
+						vk::AttachmentLoadOp::eClear,      // loadOp
+						vk::AttachmentStoreOp::eDontCare,  // storeOp
+						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+						vk::ImageLayout::eUndefined,       // initialLayout
+						vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
+					}*/
+				}.data(),
+				1,  // subpassCount
+				&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
+					vk::SubpassDescriptionFlags(),     // flags
+					vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+					0,        // inputAttachmentCount
+					nullptr,  // pInputAttachments
+					1,        // colorAttachmentCount
+					&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
+						0,  // attachment
+						vk::ImageLayout::eColorAttachmentOptimal  // layout
+					),
+					nullptr,  // pResolveAttachments
+					/*&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
+						1,  // attachment
+						vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
+					)*/nullptr,
+					0,        // preserveAttachmentCount
+					nullptr   // pPreserveAttachments
+				),
+				1,  // dependencyCount
+				&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
+					VK_SUBPASS_EXTERNAL,   // srcSubpass
+					0,                     // dstSubpass
+					vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
+					vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
+					vk::AccessFlags(),     // srcAccessMask
+					vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
+					vk::DependencyFlags()  // dependencyFlags
+				)
+			)
+		);
+
+	// rendering semaphores and fences
+	imageAvailableSemaphore =
+		device.createSemaphore(
+			vk::SemaphoreCreateInfo(
+				vk::SemaphoreCreateFlags()  // flags
+			)
+		);
+	renderFinishedSemaphore =
+		device.createSemaphore(
+			vk::SemaphoreCreateInfo(
+				vk::SemaphoreCreateFlags()  // flags
+			)
+		);
+	renderFinishedFence =
+		device.createFence(
+			vk::FenceCreateInfo(
+				vk::FenceCreateFlagBits::eSignaled  // flags
+			)
+		);
+
+
+	// command buffer
+	commandPool =
+		device.createCommandPool(
+			vk::CommandPoolCreateInfo(
+				vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
+				graphicsQueueFamily  // queueFamilyIndex
+			)
+		);
+	commandBuffer =
+		device.allocateCommandBuffers(
+			vk::CommandBufferAllocateInfo(
+				commandPool,                       // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1                                  // commandBufferCount
+			)
+		)[0];
+
+	// stateSets and pipelines
+	pipelineLibrary.create(device);
+	vk::PipelineLayout pipelineLayout = pipelineLibrary.pipelineLayout();
+	for(size_t i=0; i<stateSetDB.size(); i++) {
+		CadR::Pipeline& p = pipelineDB[i];
+		p.init(nullptr, pipelineLayout, nullptr);
+		CadR::StateSet& s = stateSetDB[i];
+		s.pipeline = &p;
+		s.pipelineLayout = pipelineLayout;
+		stateSetRoot.childList.append(s);
+	}
+
+	// parse json
+	cout << "Processing file " << filePath << "..." << endl;
+	json glTF, newGltfItems;
+	f >> glTF;
+	f.close();
+
+	// read root objects
+	// (asset item is mandatory, the rest is optional)
+	auto getRootItem =
+		[](json& glTF, json& newGltfItems, const string& key) -> json::array_t&
+		{
+			auto it = glTF.find(key);
+			return (it != glTF.end())
+				? it->get_ref<json::array_t&>()
+				: newGltfItems[key].get_ref<json::array_t&>();
+		};
+	auto& asset = glTF.at("asset");
+	auto& scenes = getRootItem(glTF, newGltfItems, "scenes");
+	auto& nodes = getRootItem(glTF, newGltfItems, "nodes");
+	auto& meshes = getRootItem(glTF, newGltfItems, "meshes");
+	auto& accessors = getRootItem(glTF, newGltfItems, "accessors");
+	auto& buffers = getRootItem(glTF, newGltfItems, "buffers");
+	auto& bufferViews = getRootItem(glTF, newGltfItems, "bufferViews");
+	auto& materials = getRootItem(glTF, newGltfItems, "materials");
+
+	// print glTF info
+	// (version item is mandatory, the rest is optional)
+	auto getStringWithDefault =
+		[](json& node, const string& key, const string& defaultVal)
+		{
+			auto it = node.find(key);
+			return (it != node.end())
+				? it->get_ref<json::string_t&>()
+				: defaultVal;
+		};
+	cout << endl;
+	cout << "glTF info:" << endl;
+	cout << "   Version:     " << asset.at("version").get_ref<json::string_t&>() << endl;
+	cout << "   MinVersion:  " << getStringWithDefault(asset, "minVersion", "< none >") << endl;
+	cout << "   Generator:   " << getStringWithDefault(asset, "generator", "< none >") << endl;
+	cout << "   Copyright:   " << getStringWithDefault(asset, "copyright", "< none >") << endl;
+	cout << endl;
+
+	// print stats
+	cout << "Stats:" << endl;
+	cout << "   Scenes:  " << scenes.size() << endl;
+	cout << "   Nodes:   " << nodes.size() << endl;
+	cout << "   Meshes:  " << meshes.size() << endl;
+	cout << endl;
+
+	// read buffers
+	vector<vector<uint8_t>> bufferDataList;
+	bufferDataList.reserve(buffers.size());
+	for(auto& b : buffers) {
+
+		// get path
+		auto uriIt = b.find("uri");
+		if(uriIt == b.end())
+			throw GltfError("Unsupported functionality: Undefined buffer.uri.");
+		string s = uriIt->get_ref<json::string_t&>();
+		filesystem::path p = s;
+		if(p.is_relative())
+			p = filePath.parent_path() / p;
+
+		// open file
+		cout << "Opening buffer " << s << "..." << endl;
+		ifstream f(p);
+		if(!f.is_open())
+			throw GltfError("Error opening file " + p.string() + ".");
+		f.exceptions(ifstream::badbit | ifstream::failbit);
+
+		// read content
+		size_t size = filesystem::file_size(p);
+		auto& bufferData = bufferDataList.emplace_back(size);
+		f.read(reinterpret_cast<char*>(bufferData.data()), size);
+		f.close();
+	}
+
+	// mesh
+	cout << "Processing meshes..." << endl;
+	if(meshes.size() != 1)
+		throw GltfError("Only files with one mesh are supported for the moment.");
+	auto& mesh = meshes[0];
+
+	// primitives are mandatory
+	auto& primitives = mesh.at("primitives");
+	for(auto& primitive : primitives) {
+
+		// material
+		// (mesh.primitive.material is optional)
+		json* material;
+		auto it = primitive.find("material");
+		if(it != primitive.end()) {
+			size_t materialIndex = it->get_ref<json::number_unsigned_t&>();
+			material = &materials.at(materialIndex);
+		}
+		else
+			material = nullptr;
+
+		// mesh.primitive helper functions
+		auto getColorFromVec4f =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r = *reinterpret_cast<glm::vec4*>(srcPtr);
+				srcPtr += 16;
+				return glm::clamp(r, 0.f, 1.f);
+			};
+		auto getColorFromVec3f =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(glm::clamp(*reinterpret_cast<glm::vec3*>(srcPtr), 0.f, 1.f), 1.f);
+				srcPtr += 12;
+				return r;
+			};
+		auto getColorFromVec4us =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(
+					float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+					float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+					float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
+					float(reinterpret_cast<uint16_t*>(srcPtr)[3]) / 65535.f
+				);
+				srcPtr += 8;
+				return r;
+			};
+		auto getColorFromVec3us =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(
+					float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+					float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+					float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
+					1.f
+				);
+				srcPtr += 6;
+				return r;
+			};
+		auto getColorFromVec4ub =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(
+					float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+					float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+					float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
+					float(reinterpret_cast<uint8_t*>(srcPtr)[3]) / 255.f
+				);
+				srcPtr += 4;
+				return r;
+			};
+		auto getColorFromVec3ub =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(
+					float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+					float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+					float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
+					1.f
+				);
+				srcPtr += 3;
+				return r;
+			};
+		auto getTexCoordFromVec2f =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(*reinterpret_cast<glm::vec2*>(srcPtr), 0.f, 0.f);
+				srcPtr += 8;
+				return r;
+			};
+		auto getTexCoordFromVec2us =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(
+					float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+					float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+					0.f,
+					0.f
+				);
+				srcPtr += 4;
+				return r;
+			};
+		auto getTexCoordFromVec2ub =
+			[](uint8_t*& srcPtr) -> glm::vec4 {
+				glm::vec4 r(
+					float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+					float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+					0.f,
+					0.f
+				);
+				srcPtr += 2;
+				return r;
+			};
+		auto getDataSize =
+			[](json& accessor, size_t& numVertices, size_t elementSize) -> size_t
+			{
+				// get position count (accessor.count is mandatory and >=1)
+				json::number_unsigned_t count = accessor.at("count").get_ref<json::number_unsigned_t&>();
+
+				// update numVertices if still set to 0
+				if(numVertices != count) {
+					if(numVertices == 0) {
+						if(count != 0)
+							numVertices = count;
+						else
+							throw GltfError("Accessor's count member must be greater than zero.");
+					}
+					else
+						throw GltfError("Number of elements is not the same for all primitive attributes.");
+				}
+
+				// return data size
+				return numVertices * elementSize;
+			};
+		auto getDataPointer =
+			[](json& accessor, json::array_t& bufferViews, json::array_t& buffers, vector<vector<uint8_t>>& bufferDataList, size_t dataSize) -> void*
+			{
+				// accessor.sparse is not supported yet
+				if(accessor.find("sparse") != accessor.end())
+					throw GltfError("Unsupported functionality: Property sparse.");
+
+				// get accessor.bufferView (it is optional)
+				auto bufferViewIt = accessor.find("bufferView");
+				if(bufferViewIt == accessor.end())
+					throw GltfError("Unsupported functionality: Omitted bufferView.");
+				auto& bufferView = bufferViews.at(bufferViewIt->get_ref<json::number_unsigned_t&>());
+
+				// get accessor.byteOffset (it is optional with default value 0)
+				json::number_unsigned_t offset = accessor.value<json::number_unsigned_t>("byteOffset", 0);
+
+				// make sure we not run over bufferView.byteLength (byteLength is mandatory and >=1)
+				if(offset + dataSize > bufferView.at("byteLength").get_ref<json::number_unsigned_t&>())
+					throw GltfError("Accessor range is not completely inside its BufferView.");
+
+				// accessor.byteStride is not supported yet
+				if(accessor.find("byteStride") != accessor.end())
+					throw GltfError("Unsupported functionality: Property byteStride.");
+
+				// append bufferView.byteOffset (byteOffset is optional with default value 0)
+				offset += bufferView.value<json::number_unsigned_t>("byteOffset", 0);
+
+				// get bufferView.buffer (buffer is mandatory)
+				size_t bufferIndex = bufferView.at("buffer").get_ref<json::number_unsigned_t&>();
+
+				// get buffer
+				auto& buffer = buffers.at(bufferIndex);
+
+				// make sure we do not run over buffer.byteLength (byteLength is mandatory)
+				if(offset + dataSize > buffer.at("byteLength").get_ref<json::number_unsigned_t&>())
+					throw GltfError("BufferView range is not completely inside its Buffer.");
+
+				// return pointer to buffer data
+				auto& bufferData = bufferDataList[bufferIndex];
+				if(offset + dataSize > bufferData.size())
+					throw GltfError("BufferView range is not completely inside data range.");
+				return bufferData.data() + offset;
+			};
+
+		// attributes (mesh.primitive.attributes is mandatory)
+		auto& attributes = primitive.at("attributes");
+		uint32_t vertexSize = 0;
+		size_t numVertices = 0;
+		glm::vec3* positionData = nullptr;
+		glm::vec3* normalData = nullptr;
+		uint8_t* colorData = nullptr;
+		glm::vec4 (*getColorFunc)(uint8_t*& srcPtr);
+		uint8_t* texCoordData = nullptr;
+		glm::vec4 (*getTexCoordFunc)(uint8_t*& srcPtr);
+		for(auto it = attributes.begin(); it != attributes.end(); it++) {
+			if(it.key() == "POSITION") {
+
+				// vertex size
+				vertexSize += 16;
+
+				// accessor
+				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+				// accessor.type is mandatory and it must be VEC3 for position accessor
+				if(accessor.at("type").get_ref<json::string_t&>() != "VEC3")
+					throw GltfError("Position attribute is not of VEC3 type.");
+
+				// accessor.componentType is mandatory and it must be FLOAT (5126) for position accessor
+				if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
+					throw GltfError("Position attribute componentType is not float.");
+
+				// accessor.normalized is optional with default value false; it must be false for float componentType
+				if(auto it=accessor.find("normalized"); it!=accessor.end())
+					if(it->get_ref<json::boolean_t&>() == true)
+						throw GltfError("Position attribute normalized flag is true.");
+
+				// position data
+				positionData = reinterpret_cast<glm::vec3*>(
+					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
+					               getDataSize(accessor, numVertices, sizeof(glm::vec3))));
+
+			}
+			else if(it.key() == "NORMAL") {
+
+				// vertex size
+				vertexSize += 16;
+
+				// accessor
+				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+				// accessor.type is mandatory and it must be VEC3 for normal accessor
+				if(accessor.at("type").get_ref<json::string_t&>() != "VEC3")
+					throw GltfError("Normal attribute is not of VEC3 type.");
+
+				// accessor.componentType is mandatory and it must be FLOAT (5126) for normal accessor
+				if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
+					throw GltfError("Normal attribute componentType is not float.");
+
+				// accessor.normalized is optional with default value false; it must be false for float componentType
+				if(auto it=accessor.find("normalized"); it!=accessor.end())
+					if(it->get_ref<json::boolean_t&>() == true)
+						throw GltfError("Normal attribute normalized flag is true.");
+
+				// normal data
+				normalData = reinterpret_cast<glm::vec3*>(
+					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
+					               getDataSize(accessor, numVertices, sizeof(glm::vec3))));
+
+			}
+			else if(it.key() == "COLOR_0") {
+
+				// vertex size
+				vertexSize += 16;
+
+				// accessor
+				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+				// accessor.type is mandatory and it must be VEC3 or VEC4 for color accessors
+				json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+				if(t != "VEC3" && t != "VEC4")
+					throw GltfError("Color attribute is not of VEC3 or VEC4 type.");
+
+				// accessor.componentType is mandatory and it must be FLOAT (5126),
+				// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
+				json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
+				if(ct != 5126 && ct != 5121 && ct != 5123)
+					throw GltfError("Color attribute componentType is not float, unsigned byte, or unsigned short.");
+
+				// accessor.normalized is optional with default value false; it must be false for float componentType
+				if(auto it=accessor.find("normalized"); it!=accessor.end()) {
+					if(it->get_ref<json::boolean_t&>() == false) {
+						if(ct == 5121 || ct == 5123)
+							throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+					}
+					else
+						if(ct == 5126)
+							throw GltfError("Color attribute component type is set to float while normalized flag is true.");
+				} else
+					if(ct == 5121 || ct == 5123)
+						throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+
+				// color data and getColorFunc
+				size_t elementSize;
+				if(t == "VEC4")
+					switch(ct) {
+					case 5126: getColorFunc = getColorFromVec4f;  elementSize = 16; break;
+					case 5121: getColorFunc = getColorFromVec4ub; elementSize = 4;  break;
+					case 5123: getColorFunc = getColorFromVec4us; elementSize = 8;  break;
+					}
+				else // "VEC3"
+					switch(ct) {
+					case 5126: getColorFunc = getColorFromVec3f;  elementSize = 12; break;
+					case 5121: getColorFunc = getColorFromVec3ub; elementSize = 3;  break;
+					case 5123: getColorFunc = getColorFromVec3us; elementSize = 6;  break;
+					}
+				colorData = reinterpret_cast<uint8_t*>(
+					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
+					               getDataSize(accessor, numVertices, elementSize)));
+			}
+			else if(it.key() == "TEXCOORD_0") {
+
+				// vertex size
+				vertexSize += 16;
+
+				// accessor
+				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+				// accessor.type is mandatory and it must be VEC2 for texCoord accessors
+				json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+				if(t != "VEC2")
+					throw GltfError("TexCoord attribute is not of VEC2 type.");
+
+				// accessor.componentType is mandatory and it must be FLOAT (5126),
+				// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
+				json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
+				if(ct != 5126 && ct != 5121 && ct != 5123)
+					throw GltfError("TexCoord attribute componentType is not float, unsigned byte, or unsigned short.");
+
+				// accessor.normalized is optional with default value false; it must be false for float componentType
+				if(auto it=accessor.find("normalized"); it!=accessor.end()) {
+					if(it->get_ref<json::boolean_t&>() == false) {
+						if(ct == 5121 || ct == 5123)
+							throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+					}
+					else
+						if(ct == 5126)
+							throw GltfError("TexCoord attribute component type is set to float while normalized flag is true.");
+				} else
+					if(ct == 5121 || ct == 5123)
+						throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+
+				// texCoordData and getTexCoordFunc
+				size_t elementSize;
+				switch(ct) {
+				case 5126: getTexCoordFunc = getTexCoordFromVec2f;  elementSize = 8; break;
+				case 5121: getTexCoordFunc = getTexCoordFromVec2ub; elementSize = 2; break;
+				case 5123: getTexCoordFunc = getTexCoordFromVec2us; elementSize = 4; break;
+				}
+				texCoordData = reinterpret_cast<uint8_t*>(
+					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
+					               getDataSize(accessor, numVertices, elementSize)));
+			}
+			else
+				throw GltfError("Unsupported functionality: " + it.key() + " attribute.");
+		}
+
+		// indices
+		// (they are optional)
+		size_t numIndices;
+		uint32_t* indexData;
+		size_t indexDataSize;
+		unsigned indexComponentType;
+		if(auto indicesIt=primitive.find("indices"); indicesIt!=primitive.end()) {
+
+			// accessor
+			json& accessor = accessors.at(indicesIt.value().get_ref<json::number_unsigned_t&>());
+
+			// accessor.type is mandatory and it must be SCALAR for index accessors
+			json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+			if(t != "SCALAR")
+				throw GltfError("Indices are not of SCALAR type.");
+
+			// accessor.componentType is mandatory and it must be UNSIGNED_INT (5125) for index accessors;
+			// unsigned short and unsigned byte component types seems not allowed by the spec
+			// but they are used in Khronos sample models, for example Box.gltf
+			// (https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/2.0/Box/glTF/Box.gltf)
+			indexComponentType = unsigned(accessor.at("componentType").get_ref<json::number_unsigned_t&>());
+			if(indexComponentType != 5125 && indexComponentType != 5123 && indexComponentType != 5121)
+				throw GltfError("Index componentType is not unsigned int, unsigned short or unsigned byte.");
+
+			// accessor.normalized is optional and must be false for index accessor
+			if(auto it=accessor.find("normalized"); it!=accessor.end())
+				if(it->get_ref<json::boolean_t&>() == true)
+					throw GltfError("Indices cannot have normalized flag set to true.");
+
+			// get index count (accessor.count is mandatory and >=1)
+			numIndices = accessor.at("count").get_ref<json::number_unsigned_t&>();
+			if(numIndices == 0)
+				throw GltfError("Accessor's count member must be greater than zero.");
+
+			// index data
+			switch(indexComponentType) {
+			case 5125: indexDataSize = numIndices * sizeof(uint32_t); break;
+			case 5123: indexDataSize = numIndices * sizeof(uint16_t); break;
+			case 5121: indexDataSize = numIndices * sizeof(uint8_t); break;
+			}
+			indexData = reinterpret_cast<uint32_t*>(
+				getDataPointer(accessor, bufferViews, buffers, bufferDataList, indexDataSize));
+			indexDataSize = numIndices * sizeof(uint32_t);
+		}
+		else {
+			numIndices = numVertices;
+			indexData = nullptr;
+			indexDataSize = numIndices * sizeof(uint32_t);
+		}
+
+		// ignore empty primitives
+		if(indexData == nullptr && numVertices == 0)
+			continue;
+
+		// create Geometry
+		cout << "Creating geometry" << endl;
+		CadR::Geometry& g = geometryDB.emplace_back(renderer);
+
+		// set vertex data
+		CadR::StagingData sd = g.createVertexStagingData(numVertices * vertexSize);
+		uint8_t* p = sd.data<uint8_t>();
+		for(size_t i=0; i<numVertices; i++) {
+			if(positionData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = glm::vec4(*positionData, 0.f);
+				p += 16;
+				positionData++;
+			}
+			if(normalData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = glm::vec4(*normalData, 0.f);
+				p += 16;
+				normalData++;
+			}
+			if(colorData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = getColorFunc(colorData);
+				p += 16;
+			}
+			if(texCoordData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = getTexCoordFunc(texCoordData);
+				p += 16;
+			}
+		}
+
+		// set index data
+		sd = g.createIndexStagingData(indexDataSize);
+		uint32_t* pi = sd.data<uint32_t>();
+		if(indexData)
+			switch(indexComponentType) {
+			case 5125: memcpy(pi, indexData, indexDataSize); break;
+			case 5123: {
+				for(size_t i=0; i<numIndices; i++)
+					pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
+				break;
+			}
+			case 5121: {
+				for(size_t i=0; i<numIndices; i++)
+					pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
+				break;
+			}
+			}
+		else {
+			if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+				throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+			for(uint32_t i=0; i<uint32_t(numIndices); i++)
+				pi[i] = i;
+		}
+
+		// set primitiveSet data
+		struct PrimitiveSetGpuData {
+			uint32_t count;
+			uint32_t first;
+		};
+		sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+		PrimitiveSetGpuData* ps = sd.data<PrimitiveSetGpuData>();
+		ps->count = uint32_t(numIndices);
+		ps->first = 0;
+
+		// mesh.primitive.mode is optional with default value 4 (TRIANGLES)
+		unsigned mode;
+		if(auto it=primitive.find("mode"); it!=primitive.end())
+			mode = unsigned(it->get_ref<json::number_unsigned_t&>());
+		else
+			mode = 4;
+		if(mode != 4)
+			throw GltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
+
+		size_t pipelineIndex =
+			PipelineLibrary::getPipelineIndex(
+				normalData   != nullptr,  // phong
+				texCoordData != nullptr,  // texturing
+				colorData    != nullptr,  // perVertexColor
+				false,  // backFaceCulling
+				vk::FrontFace::eCounterClockwise  // frontFace
+			);
+		CadR::StateSet& ss = stateSetDB[pipelineIndex];
+
+		// drawable
+		CadR::Drawable& d = drawableDB.emplace_back(g, 0, sd, 128, 1, ss);
+		struct MaterialData {
+			glm::vec3 ambient;  // offset 0
+			uint32_t type;  // offset 12
+			glm::vec4 diffuseAndAlpha;  // offset 16
+			glm::vec3 specular;  // offset 32
+			float shininess;  // offset 44
+			glm::vec3 emission;  // offset 48
+			float pointSize;  // offset 60
+		};
+		MaterialData* m = sd.data<MaterialData>();
+		if(material) {
+			glm::vec4 baseColorFactor(1.f, 1.f, 1.f, 1.f);
+			auto pbrIt = material->find("pbrMetallicRoughness");
+			if(pbrIt != material->end()) {
+				auto baseColorFactorIt = pbrIt->find("baseColorFactor");
+				if(baseColorFactorIt != pbrIt->end()) {
+					json::array_t& baseColorFactorArray = baseColorFactorIt->get_ref<json::array_t&>();
+					baseColorFactor[0] = float(baseColorFactorArray.at(0).get_ref<json::number_float_t&>());
+					baseColorFactor[1] = float(baseColorFactorArray.at(1).get_ref<json::number_float_t&>());
+					baseColorFactor[2] = float(baseColorFactorArray.at(2).get_ref<json::number_float_t&>());
+					baseColorFactor[3] = float(baseColorFactorArray.at(3).get_ref<json::number_float_t&>());
+				}
+				auto baseColorTextureIt = pbrIt->find("baseColorTexture");
+				if(baseColorTextureIt != pbrIt->end())
+					throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
+				if(pbrIt->find("metallicFactor") != pbrIt->end() || pbrIt->find("roughnessFactor") != pbrIt->end() ||
+				   pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
+				{
+					throw GltfError("Unsupported functionality: metallic-roughness material model.");
+				}
+			}
+			m->ambient = glm::vec3(baseColorFactor);
+			m->type = 0;
+			m->diffuseAndAlpha = baseColorFactor;
+		}
+		else {
+			m->ambient = glm::vec3(1.f,1.f,1.f);
+			m->type = 0;
+			m->diffuseAndAlpha = glm::vec4(1.f,1.f,1.f,1.f);
+		}
+		m->specular = glm::vec3(0.f,0.f,0.f);
+		m->shininess = 0.f;
+		m->emission = glm::vec3(0.f,0.f,0.f);
+		m->pointSize = 0.f;
+		glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
+		*modelMatrix = glm::mat4(1.f);
+	}
+
+	// upload all staging buffers
+	renderer.executeCopyOperations();
+}
+
+
+void App::resize(VulkanWindow& window,
+	const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
+{
+	// clear resources
+	for(auto v : swapchainImageViews)  device.destroy(v);
+	swapchainImageViews.clear();
+	for(auto f : framebuffers)  device.destroy(f);
+	framebuffers.clear();
+
+	// perspective matrix given by FOV (Field Of View)
+	// FOV is given in vertical direction in radians
+	// The function perspectiveLH_ZO() produces exactly the matrix we need in Vulkan for right-handed, zero-to-one coordinate system.
+	// The coordinate system will have +x in the right direction, +y in down direction (as Vulkan does it), and +z forward into the scene.
+	// ZO - Zero to One is output depth range,
+	// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
+	// LH - LeftHand coordinate system, +Y is down, +Z points into the scene
+	constexpr float zNear = 0.5f;
+	constexpr float zFar = 100.f;
+	glm::mat4 projectionMatrix = glm::perspectiveLH_ZO(fovy, float(newSurfaceExtent.width)/newSurfaceExtent.height, zNear, zFar);
+
+	// pipeline specialization constants
+	const array<float,6> specializationConstants = {
+		projectionMatrix[2][0], projectionMatrix[2][1], projectionMatrix[2][3],
+		projectionMatrix[3][0], projectionMatrix[3][1], projectionMatrix[3][3],
+	};
+	const array specializationMap {
+		vk::SpecializationMapEntry{0,0,4},  // constantID, offset, size
+		vk::SpecializationMapEntry{1,4,4},
+		vk::SpecializationMapEntry{2,8,4},
+		vk::SpecializationMapEntry{3,12,4},
+		vk::SpecializationMapEntry{4,16,4},
+		vk::SpecializationMapEntry{5,20,4},
+	};
+	const vk::SpecializationInfo specializationInfo(  // pSpecializationInfo
+		6,  // mapEntryCount
+		specializationMap.data(),  // pMapEntries
+		6*sizeof(float),  // dataSize
+		specializationConstants.data()  // pData
+	);
+
+	// recreate pipelines
+	pipelineLibrary.create(device, newSurfaceExtent, specializationInfo, renderPass, renderer.pipelineCache());
+	for(size_t i=0; i<pipelineLibrary.numPipelines(); i++)
+		stateSetDB[i].pipeline->set(pipelineLibrary.pipeline(i));
+
+	// print info
+	cout << "Recreating swapchain (extent: " << newSurfaceExtent.width << "x" << newSurfaceExtent.height
+	     << ", extent by surfaceCapabilities: " << surfaceCapabilities.currentExtent.width << "x"
+	     << surfaceCapabilities.currentExtent.height << ", minImageCount: " << surfaceCapabilities.minImageCount
+	     << ", maxImageCount: " << surfaceCapabilities.maxImageCount << ")" << endl;
+
+	// create new swapchain
+	constexpr const uint32_t requestedImageCount = 2;
+	vk::UniqueHandle<vk::SwapchainKHR, CadR::VulkanDevice> newSwapchain =
+		device.createSwapchainKHRUnique(
+			vk::SwapchainCreateInfoKHR(
+				vk::SwapchainCreateFlagsKHR(),  // flags
+				window.surface(),               // surface
+				surfaceCapabilities.maxImageCount==0  // minImageCount
+					? max(requestedImageCount, surfaceCapabilities.minImageCount)
+					: clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
+				surfaceFormat.format,           // imageFormat
+				surfaceFormat.colorSpace,       // imageColorSpace
+				newSurfaceExtent,               // imageExtent
+				1,                              // imageArrayLayers
+				vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+				(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
+				uint32_t(2),  // queueFamilyIndexCount
+				array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+				surfaceCapabilities.currentTransform,    // preTransform
+				vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+				vk::PresentModeKHR::eFifo,  // presentMode
+				VK_TRUE,  // clipped
+				swapchain  // oldSwapchain
+			)
+		);
+	device.destroy(swapchain);
+	swapchain = newSwapchain.release();
+
+	// swapchain images and image views
+	vector<vk::Image> swapchainImages = device.getSwapchainImagesKHR(swapchain);
+	swapchainImageViews.reserve(swapchainImages.size());
+	for(vk::Image image : swapchainImages)
+		swapchainImageViews.emplace_back(
+			device.createImageView(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					image,                       // image
+					vk::ImageViewType::e2D,      // viewType
+					surfaceFormat.format,        // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			)
+		);
+
+	// framebuffers
+	framebuffers.reserve(swapchainImages.size());
+	for(size_t i=0, c=swapchainImages.size(); i<c; i++)
+		framebuffers.emplace_back(
+			device.createFramebuffer(
+				vk::FramebufferCreateInfo(
+					vk::FramebufferCreateFlags(),  // flags
+					renderPass,  // renderPass
+					1,  // attachmentCount
+					&swapchainImageViews[i],  // pAttachments
+					newSurfaceExtent.width,  // width
+					newSurfaceExtent.height,  // height
+					1  // layers
+				)
+			)
+		);
+}
+
+
+void App::frame(VulkanWindow&)
+{
+	// _sceneDataAllocation
+	uint32_t sceneDataSize = uint32_t(sizeof(SceneGpuData));
+	CadR::StagingData& sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
+	SceneGpuData* sceneData = sceneStagingData.data<SceneGpuData>();
+	sceneData->viewMatrix =
+		glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
+			glm::vec3(  // eye
+				+cameraDistance*sin(-cameraHeading)*cos(cameraElevation),  // x
+				-cameraDistance*sin(cameraElevation),  // y
+				-cameraDistance*cos(cameraHeading)*cos(cameraElevation)  // z
+			),
+			glm::vec3(0.f,0.f,0.f),  // center
+			glm::vec3(0.f,1.f,0.f)  // up
+		);
+	constexpr float zNear = 0.5f;
+	constexpr float zFar = 100.f;
+	glm::mat4 projectionMatrix = glm::perspectiveLH_ZO(fovy, float(window.surfaceExtent().width)/window.surfaceExtent().height, zNear, zFar);
+	sceneData->p11 = projectionMatrix[0][0];
+	sceneData->p22 = projectionMatrix[1][1];
+	sceneData->p33 = projectionMatrix[2][2];
+	sceneData->p43 = projectionMatrix[3][2];
+	sceneData->ambientLight = glm::vec4(0.2f, 0.2f, 0.2f, 1.f);
+	sceneData->numLights = 0;
+
+	// submit all copy operations that were not submitted yet
+	renderer.executeCopyOperations();
+
+	// wait for previous frame rendering work
+	// if still not finished
+	vk::Result r =
+		device.waitForFences(
+			renderFinishedFence,  // fences
+			VK_TRUE,  // waitAll
+			uint64_t(3e9)  // timeout
+		);
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eTimeout)
+			throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+		throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+	}
+	device.resetFences(renderFinishedFence);
+
+	// begin the frame
+	size_t frameNumber = renderer.beginFrame();
+
+	// acquire image
+	uint32_t imageIndex;
+	r =
+		device.acquireNextImageKHR(
+			swapchain,                // swapchain
+			uint64_t(3e9),            // timeout (3s)
+			imageAvailableSemaphore,  // semaphore to signal
+			vk::Fence(nullptr),       // fence to signal
+			&imageIndex               // pImageIndex
+		);
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eSuboptimalKHR) {
+			window.scheduleSwapchainResize();
+			return;
+		} else if(r == vk::Result::eErrorOutOfDateKHR) {
+			window.scheduleSwapchainResize();
+			return;
+		} else
+			throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
+	}
+
+	// begin command buffer recording
+	renderer.beginRecording(commandBuffer);
+
+	// prepare recording
+	size_t numDrawables = renderer.prepareSceneRendering(stateSetRoot);
+
+	// record compute shader preprocessing
+	renderer.recordDrawableProcessing(commandBuffer, numDrawables);
+
+	// record scene rendering
+	device.cmdPushConstants(
+		commandBuffer,  // commandBuffer
+		pipelineLibrary.pipelineLayout(),  // pipelineLayout
+		vk::ShaderStageFlagBits::eVertex,  // stageFlags
+		0,  // offset
+		sizeof(uint64_t),  // size
+		array<uint64_t,1>{  // pValues
+			renderer.drawablePayloadDeviceAddress(),  // payloadBufferPtr
+		}.data()
+	);
+	device.cmdPushConstants(
+		commandBuffer,  // commandBuffer
+		pipelineLibrary.pipelineLayout(),  // pipelineLayout
+		vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  // stageFlags
+		8,  // offset
+		sizeof(uint64_t),  // size
+		array<uint64_t,1>{  // pValues
+			sceneDataAllocation.deviceAddress(),  // sceneDataPtr
+		}.data()
+	);
+	renderer.recordSceneRendering(
+		commandBuffer,  // commandBuffer
+		stateSetRoot,  // stateSetRoot
+		renderPass,  // renderPass
+		framebuffers[imageIndex],  // framebuffer
+		vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+		2,  // clearValueCount
+		array<vk::ClearValue,2>{  // pClearValues
+			vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
+			vk::ClearDepthStencilValue(1.f, 0),
+		}.data()
+	);
+
+	// end command buffer recording
+	renderer.endRecording(commandBuffer);
+
+	// submit all copy operations that were not submitted yet
+	renderer.executeCopyOperations();
+
+	// submit frame
+	device.queueSubmit(
+		graphicsQueue,  // queue
+		vk::SubmitInfo(
+			1, &imageAvailableSemaphore,  // waitSemaphoreCount + pWaitSemaphores +
+			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
+				vk::PipelineStageFlagBits::eColorAttachmentOutput),
+			1, &commandBuffer,  // commandBufferCount + pCommandBuffers
+			1, &renderFinishedSemaphore  // signalSemaphoreCount + pSignalSemaphores
+		),
+		renderFinishedFence  // fence
+	);
+
+	// present
+	r =
+		device.presentKHR(
+			presentationQueue,  // queue
+			&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(  // presentInfo
+				1, &renderFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
+				1, &swapchain, &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+				nullptr  // pResults
+			)
+		);
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eSuboptimalKHR) {
+			window.scheduleSwapchainResize();
+			cout << "present result: Suboptimal" << endl;
+		} else if(r == vk::Result::eErrorOutOfDateKHR) {
+			window.scheduleSwapchainResize();
+			cout << "present error: OutOfDate" << endl;
+		} else
+			throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
+	}
+}
+
+
+void App::mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState)
+{
+	if(mouseState.buttons[VulkanWindow::MouseButton::Left]) {
+		cameraHeading = startCameraHeading + (mouseState.posX - startMouseX) * 0.01f;
+		cameraElevation = startCameraElevation + (mouseState.posY - startMouseY) * 0.01f;
+		window.scheduleFrame();
+	}
+}
+
+
+void App::mouseButton(VulkanWindow& window, size_t button, VulkanWindow::ButtonState buttonState,
+                      const VulkanWindow::MouseState& mouseState)
+{
+	if(button == VulkanWindow::MouseButton::Left) {
+		if(buttonState == VulkanWindow::ButtonState::Pressed) {
+			startMouseX = mouseState.posX;
+			startMouseY = mouseState.posY;
+			startCameraHeading = cameraHeading;
+			startCameraElevation = cameraElevation;
+		}
+		else {
+			cameraHeading = startCameraHeading + (mouseState.posX - startMouseX) * 0.01f;
+			cameraElevation = startCameraElevation + (mouseState.posY - startMouseY) * 0.01f;
+			window.scheduleFrame();
+		}
+	}
+}
+
+
+void App::mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState)
+{
+	cameraDistance -= wheelY;
+	window.scheduleFrame();
 }
 
 
@@ -56,7 +1297,7 @@ uint32_t getStride(int componentType,const string& type)
 	case 5123: componentSize=2; break;  // UNSIGNED_SHORT
 	case 5125:                          // UNSIGNED_INT
 	case 5126: componentSize=4; break;  // FLOAT
-	default: throw gltfError("Invalid accessor's componentType value.");
+	default:   throw GltfError("Invalid accessor's componentType value.");
 	}
 	if(type=="VEC3")  return 3*componentSize;
 	else if(type=="VEC4")  return 4*componentSize;
@@ -65,21 +1306,21 @@ uint32_t getStride(int componentType,const string& type)
 	else if(type=="MAT4")  return 16*componentSize;
 	else if(type=="MAT3")  return 9*componentSize;
 	else if(type=="MAT2")  return 4*componentSize;
-	else throw gltfError("Invalid accessor's type.");
+	else throw GltfError("Invalid accessor's type.");
 }
 
 
 vk::Format getFormat(int componentType,const string& type,bool normalize,bool wantInt=false)
 {
 	if(componentType>=5127)
-		throw gltfError("Invalid accessor's componentType.");
+		throw GltfError("Invalid accessor's componentType.");
 
 	// FLOAT component type
 	if(componentType==5126) {
 		if(normalize)
-			throw gltfError("Normalize set while accessor's componentType is FLOAT (5126).");
+			throw GltfError("Normalize set while accessor's componentType is FLOAT (5126).");
 		if(wantInt)
-			throw gltfError("Integer format asked while accessor's componentType is FLOAT (5126).");
+			throw GltfError("Integer format asked while accessor's componentType is FLOAT (5126).");
 		if(type=="VEC3")       return vk::Format::eR32G32B32Sfloat;
 		else if(type=="VEC4")  return vk::Format::eR32G32B32A32Sfloat;
 		else if(type=="VEC2")  return vk::Format::eR32G32Sfloat;
@@ -87,16 +1328,16 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 		else if(type=="MAT4")  return vk::Format::eR32G32B32A32Sfloat;
 		else if(type=="MAT3")  return vk::Format::eR32G32B32Sfloat;
 		else if(type=="MAT2")  return vk::Format::eR32G32Sfloat;
-		else throw gltfError("Invalid accessor's type.");
+		else throw GltfError("Invalid accessor's type.");
 	}
 
 	// UNSIGNED_INT component type
 	else if(componentType==5125)
-		throw gltfError("UNSIGNED_INT componentType shall be used only for accessors containing indices. No attribute format is supported.");
+		throw GltfError("UNSIGNED_INT componentType shall be used only for accessors containing indices. No attribute format is supported.");
 
 	// INT component type
 	else if(componentType==5124)
-		throw gltfError("Invalid componentType. INT is not valid value for glTF 2.0.");
+		throw GltfError("Invalid componentType. INT is not valid value for glTF 2.0.");
 
 	// SHORT and UNSIGNED_SHORT component type
 	else if(componentType>=5122) {
@@ -108,7 +1349,7 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 		else if(type=="MAT4")  base=91;
 		else if(type=="MAT3")  base=84;
 		else if(type=="MAT2")  base=77;
-		else throw gltfError("Invalid accessor's type.");
+		else throw GltfError("Invalid accessor's type.");
 		if(componentType==5122)  // signed SHORT
 			base+=1;  // VK_FORMAT_R16*_S*
 		if(wantInt)    return vk::Format(base+4);  // VK_FORMAT_R16*_[U|S]INT
@@ -126,7 +1367,7 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 		else if(type=="MAT4")  base=37;
 		else if(type=="MAT3")  base=23;
 		else if(type=="MAT2")  base=16;
-		else throw gltfError("Invalid accessor's type.");
+		else throw GltfError("Invalid accessor's type.");
 		if(componentType==5120)  // signed BYTE
 			base+=1;  // VK_FORMAT_R8*_S*
 		if(wantInt)    return vk::Format(base+4);  // VK_FORMAT_R16*_[U|S]INT
@@ -135,807 +1376,45 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 	}
 
 	// componentType bellow 5120
-	throw gltfError("Invalid accessor's componentType.");
+	throw GltfError("Invalid accessor's componentType.");
 	return vk::Format(0);
 }
 
 
-int main(int argc,char** argv) {
-
+int main(int argc,char** argv)
+{
 	try {
 
-		// get file to load
-		if(argc<2) {
-			cout<<"Please, specify glTF file to load."<<endl;
-			return 1;
-		}
-		filesystem::path filePath(argv[1]);
-
-		// open file
-		ifstream f(filePath);
-		if(!f.is_open()) {
-			cout<<"Can not open file "<<filePath<<"."<<endl;
-			return 1;
-		}
-		f.exceptions(ifstream::badbit|ifstream::failbit);
-
-		// init Vulkan and open window
-		CadR::VulkanLibrary vulkanLib(CadR::VulkanLibrary::defaultName());
-		CadR::VulkanInstance vulkanInstance(vulkanLib,"glTF reader",0,"CADR",0,VK_API_VERSION_1_2,nullptr,
-#ifdef _WIN32
-		                                    {"VK_KHR_surface","VK_KHR_win32_surface"});  // enabled extension names
-#else
-		                                    {"VK_KHR_surface","VK_KHR_xlib_surface"});  // enabled extension names
-#endif
-		CadUI::Window window(vulkanInstance);
-		tuple<vk::PhysicalDevice,uint32_t,uint32_t> deviceAndQueueFamilies=
-				vulkanInstance.chooseDevice(vk::QueueFlagBits::eGraphics, window.surface());
-		CadR::VulkanDevice device(
-			vulkanInstance,deviceAndQueueFamilies,
-			"VK_KHR_swapchain",
-			CadR::Renderer::requiredFeatures());
-		vk::PhysicalDevice physicalDevice=std::get<0>(deviceAndQueueFamilies);
-		uint32_t graphicsQueueFamily=std::get<1>(deviceAndQueueFamilies);
-		uint32_t presentationQueueFamily=std::get<2>(deviceAndQueueFamilies);
-		CadR::Renderer renderer(device,vulkanInstance,physicalDevice,graphicsQueueFamily);
-		CadR::Renderer::set(&renderer);
-
-		// get queues
-		vk::Queue graphicsQueue=device.getQueue(graphicsQueueFamily,0);
-		vk::Queue presentationQueue=device.getQueue(presentationQueueFamily,0);
-
-		// choose surface formats
-		vk::SurfaceFormatKHR surfaceFormat;
-		{
-			vector<vk::SurfaceFormatKHR> sfList=physicalDevice.getSurfaceFormatsKHR(window.surface(),vulkanInstance);
-			const vk::SurfaceFormatKHR wantedSurfaceFormat{vk::Format::eB8G8R8A8Unorm,vk::ColorSpaceKHR::eSrgbNonlinear};
-			surfaceFormat=
-				sfList.size()==1&&sfList[0].format==vk::Format::eUndefined
-					?wantedSurfaceFormat
-					:std::find(sfList.begin(),sfList.end(),
-					           wantedSurfaceFormat)!=sfList.end()
-						           ?wantedSurfaceFormat
-						           :sfList[0];
-		}
-		/*vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
-			for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
-				vk::FormatProperties p=physicalDevice.getFormatProperties(f,vulkanInstance);
-				if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
-					return f;
-				}
-			}
-			throw std::runtime_error("No suitable depth buffer format.");
-		}(physicalDevice,vulkanInstance);*/
-
-		// choose presentation mode
-		vk::PresentModeKHR presentMode=
-			[](vector<vk::PresentModeKHR>&& modes){  // presentMode
-					return find(modes.begin(),modes.end(),vk::PresentModeKHR::eMailbox)!=modes.end()
-						?vk::PresentModeKHR::eMailbox
-						:vk::PresentModeKHR::eFifo; // fifo is guaranteed to be supported
-				}(physicalDevice.getSurfacePresentModesKHR(window.surface(),window));
-
-		// render pass
-		auto renderPass=
-			device.createRenderPassUnique(
-				vk::RenderPassCreateInfo(
-					vk::RenderPassCreateFlags(),  // flags
-					1,                            // attachmentCount
-					array<const vk::AttachmentDescription,1>{  // pAttachments
-						vk::AttachmentDescription{  // color attachment
-							vk::AttachmentDescriptionFlags(),  // flags
-							surfaceFormat.format,              // format
-							vk::SampleCountFlagBits::e1,       // samples
-							vk::AttachmentLoadOp::eClear,      // loadOp
-							vk::AttachmentStoreOp::eStore,     // storeOp
-							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
-							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
-							vk::ImageLayout::eUndefined,       // initialLayout
-							vk::ImageLayout::ePresentSrcKHR    // finalLayout
-						}/*,
-						vk::AttachmentDescription{  // depth attachment
-							vk::AttachmentDescriptionFlags(),  // flags
-							depthFormat,                       // format
-							vk::SampleCountFlagBits::e1,       // samples
-							vk::AttachmentLoadOp::eClear,      // loadOp
-							vk::AttachmentStoreOp::eDontCare,  // storeOp
-							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
-							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
-							vk::ImageLayout::eUndefined,       // initialLayout
-							vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
-						}*/
-					}.data(),
-					1,  // subpassCount
-					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
-						vk::SubpassDescriptionFlags(),     // flags
-						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-						0,        // inputAttachmentCount
-						nullptr,  // pInputAttachments
-						1,        // colorAttachmentCount
-						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
-							0,  // attachment
-							vk::ImageLayout::eColorAttachmentOptimal  // layout
-						),
-						nullptr,  // pResolveAttachments
-						/*&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
-							1,  // attachment
-							vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
-						)*/nullptr,
-						0,        // preserveAttachmentCount
-						nullptr   // pPreserveAttachments
-					),
-					1,  // dependencyCount
-					&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
-						VK_SUBPASS_EXTERNAL,   // srcSubpass
-						0,                     // dstSubpass
-						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
-						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
-						vk::AccessFlags(),     // srcAccessMask
-						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead|vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
-						vk::DependencyFlags()  // dependencyFlags
-					)
-				)
-			);
-
-		// setup window
-		window.initVulkan(physicalDevice,device,surfaceFormat,graphicsQueueFamily,
-		                  presentationQueueFamily,renderPass.get(),presentMode);
-
-		// parse json
-		cout<<"Processing file "<<filePath<<"..."<<endl;
-		json j3;
-		f>>j3;
-
-		// print glTF info
-		cout<<endl;
-		cout<<"glTF info:"<<endl;
-		cout<<"   Version:     "<<j3["asset"]["version"]<<endl;
-		cout<<"   MinVersion:  "<<j3["asset"]["minVersion"]<<endl;
-		cout<<"   Generator:   "<<j3["asset"]["generator"]<<endl;
-		cout<<"   Copyright:   "<<j3["asset"]["copyright"]<<endl;
-		cout<<endl;
-
-		// read object lists
-		auto scenes=j3["scenes"];
-		auto nodes=j3["nodes"];
-		auto meshes=j3["meshes"];
-		auto accessors=j3["accessors"];
-		auto buffers=j3["buffers"];
-		auto bufferViews=j3["bufferViews"];
-
-		// print stats
-		cout<<"Stats:"<<endl;
-		cout<<"   Scenes:  "<<scenes.size()<<endl;
-		cout<<"   Nodes:   "<<nodes.size()<<endl;
-		cout<<"   Meshes:  "<<meshes.size()<<endl;
-		cout<<endl;
-
-		// pipelines
-		struct PipelineAndStateSet {
-			CadR::Pipeline pipeline;
-			CadR::StateSet stateSet;
-			PipelineAndStateSet(CadR::Renderer* r) : pipeline(r), stateSet(r)  {}
-			~PipelineAndStateSet()  { pipeline.destroyPipeline(); }
-		};
-		array<map<CadR::AttribSizeList,PipelineAndStateSet>,10> pipelineDB;
-
-		// CadR scene data
-		vector<CadR::Geometry> geometryDB;
-		vector<CadR::Drawable> drawableDB;
-		CadR::StateSet stateSetRoot(&renderer);
-
-		// shaders
-		auto coordinateShader=
-			device.createShaderModuleUnique(
-				vk::ShaderModuleCreateInfo(
-					vk::ShaderModuleCreateFlags(),  // flags
-					sizeof(coordinateShaderSpirv),  // codeSize
-					coordinateShaderSpirv  // pCode
-				)
-			);
-		auto unknownMaterialShader=
-			device.createShaderModuleUnique(
-				vk::ShaderModuleCreateInfo(
-					vk::ShaderModuleCreateFlags(),  // flags
-					sizeof(unspecifiedMaterialShaderSpirv),  // codeSize
-					unspecifiedMaterialShaderSpirv  // pCode
-				)
-			);
-
-		// pipeline layout
-		auto pipelineLayout=
-			device.createPipelineLayoutUnique(
-				vk::PipelineLayoutCreateInfo{
-					vk::PipelineLayoutCreateFlags(),  // flags
-					0,       // setLayoutCount
-					nullptr, // pSetLayouts
-					1,       // pushConstantRangeCount
-					&(const vk::PushConstantRange&)vk::PushConstantRange{  // pPushConstantRanges
-						vk::ShaderStageFlagBits::eVertex,  // stageFlags
-						0,  // offset
-						2*16*sizeof(float)  // size
-					}
-				}
-			);
-
-		// mesh
-		if(meshes.size()!=1)
-			throw gltfError("Only files with one mesh are supported for now.");
-		auto& mesh=meshes[0];
-
-		// primitive
-		auto primitives=mesh["primitives"];
-		for(auto primitive : primitives) {
-
-			// positionAccessorIndex
-			auto attributes=primitive["attributes"];
-			int positionAccessorIndex=mapGetWithDefault(attributes,"POSITION",-1);
-
-			// skip primitives without POSITION attribute
-			if(positionAccessorIndex==-1)
-				continue;
-
-			// numVertices
-			size_t numVertices=accessors.at(positionAccessorIndex)["count"];
-			if(numVertices==0)  // skip empty primitives
-				continue;
-
-			// accessor indices
-			//int normalAccessorIndex=mapGetWithDefault(attributes,"NORMAL",-1);
-			//int color0AccessorIndex=mapGetWithDefault(attributes,"COLOR_0",-1);
-			//int texCoord0AccessorIndex=mapGetWithDefault(attributes,"TEXCOORD_0",-1);
-
-			// rendering mode
-			auto mode=mapGetWithDefault(primitive,"mode",4);
-			if(mode!=4)
-				throw gltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
-
-			// attributes
-			CadR::AttribSizeList attribSizeList;
-			std::vector<vk::Format> attribFormatList;
-			vector<tuple<filesystem::path,size_t>> attribUriAndOffsetList;
-			unsigned numProcessedAttributes=0;
-			for(string name : {"POSITION","NORMAL","COLOR_0","TEXCOORD_0"}) {
-
-				// process only known attributes
-				if(attributes.find(name)==attributes.end())
-					continue;
-				else
-					numProcessedAttributes++;
-
-				// accessor
-				auto a=accessors.at(size_t(attributes[name]));
-				if(a.find("bufferView")==a.end())
-					throw gltfError("Unsupported functionality: Omitted bufferView.");
-				size_t bufferViewIndex=a["bufferView"];
-				size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
-				int componentType=a["componentType"];
-				if(componentType!=5126 && (name=="POSITION" || name=="NORMAL")) // float for POSITION and NORMAL attribute
-					throw gltfError("Invalid component type. Must be float.");
-				if(componentType==5125) // no UNSIGNED_INT
-					throw gltfError("Invalid component type.");
-				bool normalized=mapGetWithDefault(a,"normalized",false);
-				if(a["count"]!=numVertices)
-					throw gltfError("Attribute count does not match number of vertices inside the primitive.");
-				string type=a["type"];
-				if(type!="VEC3" && (name=="POSITION" || name=="NORMAL"))
-					throw gltfError("Invalid attribute type. Must be VEC3.");
-				if(a.find("sparse")!=a.end())
-					throw gltfError("Unsupported functionality: Property sparse.");
-
-				// bufferView
-				auto bv=bufferViews.at(bufferViewIndex);
-				size_t bufferIndex=bv["buffer"];
-				size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
-				//size_t bufferViewLength=bv["byteLength"];
-				size_t stride=mapGetWithDefault(bv,"byteStride",0);
-				uint32_t attribSize=getStride(componentType,type);
-				if(stride!=0 && stride!=attribSize)
-					throw gltfError("Unsupported functionality: Stride is not zero and not size of the attribute.");
-
-				// buffer
-				auto b=buffers.at(bufferIndex);
-				filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
-				//size_t bufferLength=b["byteLength"];
-
-				// attribSizeList
-				attribSizeList.push_back(attribSize);
-
-				// attribFormatList
-				attribFormatList.push_back(getFormat(componentType,type,normalized,false));
-
-				// file info
-				attribUriAndOffsetList.emplace_back(
-					bufferUri.is_absolute()  // file path
-						?bufferUri
-						:filePath.parent_path()/bufferUri,
-					bufferViewOffset+accessorOffset  // file offset
-				);
-			}
-			if(numProcessedAttributes!=attributes.size())
-				throw gltfError("Unsupported attribute(s).");
-
-			// indices
-			filesystem::path indicesFileUri;
-			size_t indicesFileOffset;
-			size_t numIndices;
-			int indicesComponentType;
-			if(auto it=primitive.find("indices"); it!=primitive.end()) {
-				size_t indicesAccessorIndex=*it;
-
-				// accessor
-				auto a=accessors.at(indicesAccessorIndex);
-				if(a.find("bufferView")==a.end())
-					throw gltfError("Unsupported functionality: Omitted bufferView for indices.");
-				size_t bufferViewIndex=a["bufferView"];
-				size_t accessorOffset=mapGetWithDefault(a,"byteOffset",0);
-				indicesComponentType=a["componentType"];
-				if(indicesComponentType!=5125 && indicesComponentType!=5123 && indicesComponentType!=5121)
-					throw gltfError("Invalid component type for Indices. It must be UNSIGNED_INT, UNSIGNED_SHORT or UNSIGNED_BYTE.");
-				numIndices=a["count"];
-				if(numIndices==0)
-					throw gltfError("Indices count in accessor is 0.");
-				string type=a["type"];
-				if(type!="SCALAR")
-					throw gltfError("Invalid attribute type for Indices. Must be SCALAR.");
-				if(a.find("sparse")!=a.end())
-					throw gltfError("Unsupported functionality: Property sparse for Indices.");
-
-				// bufferView
-				auto bv=bufferViews.at(bufferViewIndex);
-				size_t bufferIndex=bv["buffer"];
-				size_t bufferViewOffset=mapGetWithDefault(bv,"byteOffset",0);
-				//size_t bufferViewLength=bv["byteLength"];
-
-				// buffer
-				auto b=buffers.at(bufferIndex);
-				filesystem::path bufferUri=mapGetWithDefault<string>(b,"uri","");
-				//size_t bufferLength=b["byteLength"];
-
-				indicesFileUri=
-					bufferUri.is_absolute()
-						?bufferUri
-						:filePath.parent_path()/bufferUri;
-				indicesFileOffset=bufferViewOffset+accessorOffset;
-			}
-			else {
-				numIndices=numVertices;
-			}
-			if(numIndices>size_t(~uint32_t(0)))
-				throw gltfError("Too large primitive. Index out of 32-bit integer range.");
-
-			// create Geometry
-			cout<<"Creating geometry"<<endl;
-			CadR::Geometry& g=
-				geometryDB.emplace_back(
-					&renderer,  // renderer
-					attribSizeList,  // attribSizeList
-					numVertices,  // numVertices
-					numIndices,  // numIndices
-					1  // numPrimitiveSets
-				);
-
-			// read attributes
-			unsigned i=0;
-			for(auto& uriAndOffset:attribUriAndOffsetList) {
-
-				// open buffer file
-				const filesystem::path& bufferPath=std::get<0>(uriAndOffset);
-				cout<<"Opening buffer "<<bufferPath<<"..."<<endl;
-				ifstream f(bufferPath);
-				if(!f.is_open()) {
-					cout<<"Can not open file "<<bufferPath<<"."<<endl;
-					return 1;
-				}
-				f.exceptions(ifstream::badbit|ifstream::failbit);
-
-				// read buffer file
-				CadR::StagingBuffer& sb=g.createVertexStagingBuffer(i);
-				f.seekg(std::get<1>(uriAndOffset));
-				f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
-				f.close();
-				i++;
-			}
-
-			// read indices (or generate them)
-			if(!indicesFileUri.empty()) {
-
-				// open buffer file
-				cout<<"Opening buffer "<<indicesFileUri<<"..."<<endl;
-				ifstream f(indicesFileUri);
-				if(!f.is_open()) {
-					cout<<"Can not open file "<<indicesFileUri<<"."<<endl;
-					return 1;
-				}
-				f.exceptions(ifstream::badbit|ifstream::failbit);
-
-				// read buffer file
-				CadR::StagingBuffer& sb=g.createIndexStagingBuffer();
-				f.seekg(indicesFileOffset);
-				if(indicesComponentType==5125)  // UNSIGNED_INT
-					f.read(reinterpret_cast<istream::char_type*>(sb.data()),sb.size());
-				else if(indicesComponentType==5123) {  // UNSIGNED_SHORT
-					unique_ptr<uint16_t[]> tmp(new uint16_t[numIndices]);
-					f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint16_t));
-					uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-					for(size_t i=0; i<numIndices; i++)
-						b[i]=tmp[i];
-				}
-				else if(indicesComponentType==5121) {  // UNSIGNED_BYTE
-					unique_ptr<uint8_t[]> tmp(new uint8_t[numIndices]);
-					f.read(reinterpret_cast<istream::char_type*>(tmp.get()),numIndices*sizeof(uint8_t));
-					uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-					for(size_t i=0; i<numIndices; i++)
-						b[i]=tmp[i];
-				}
-				f.close();
-			}
-			else {
-
-				// generate indices
-				if(numIndices>=size_t(~uint32_t(0)))
-					throw gltfError("Too large primitive. Index out of 32-bit integer range.");
-				CadR::StagingBuffer& sb=g.createIndexStagingBuffer();
-				uint32_t* b=reinterpret_cast<uint32_t*>(sb.data());
-				for(uint32_t i=0,e=uint32_t(numIndices); i<e; i++)
-					b[i]=i;
-			}
-
-			// select pipeline
-			// (main distinction here is between fixed color materials (no lighting)
-			// and properly lit materials (all light computations))
-			size_t pipelineIndex;
-		#if 0
-			if(1)  // if material base color is black
-				// select fixed color pipeline
-				// (selection here is made between (1) unspecified per-vertex color (white is used),
-				// (2) per-vertex color, (3) emissive texture and (4) combination of emissive color and texture)
-				pipelineIndex=
-					(color0AccessorIndex   ==-1)?0x08:0x09;
-			else
-				// select lighting pipeline
-				pipelineIndex=
-					(texCoord0AccessorIndex==-1)?0:0x01 +
-					(color0AccessorIndex   ==-1)?0:0x02 +
-					(normalAccessorIndex   ==-1)?0:0x04;
-		#endif
-			pipelineIndex=0x08; // no COLOR_0
-
-			auto [stateSetMapIt,newStateSetCreated] = pipelineDB[pipelineIndex].emplace(attribSizeList,&renderer);
-			CadR::StateSet& ss=stateSetMapIt->second.stateSet;
-			if(newStateSetCreated) {
-
-				CadR::Pipeline* pipeline=&stateSetMapIt->second.pipeline;
-				pipeline->init(nullptr,pipelineLayout.get(),nullptr);
-
-				stateSetRoot.childList.append(ss);
-				ss.pipeline=pipeline;
-
-				window.resizeCallbacks.append(
-						[&device,&window,pipeline,
-						&coordinateShader,&unknownMaterialShader,
-						&renderer,&pipelineLayout,
-						attribSizeList=std::move(attribSizeList),
-						attribFormatList=std::move(attribFormatList)]()
-						{
-
-							cout<<"Resizing pipeline."<<endl;
-
-							// construct new pipeline
-							device.destroy(pipeline->get());
-							pipeline->set(
-								device.createGraphicsPipeline(
-									renderer.pipelineCache(),
-									vk::GraphicsPipelineCreateInfo(
-										vk::PipelineCreateFlags(),  // flags
-										2,  // stageCount
-										array<const vk::PipelineShaderStageCreateInfo,2>{  // pStages
-											vk::PipelineShaderStageCreateInfo{
-												vk::PipelineShaderStageCreateFlags(),  // flags
-												vk::ShaderStageFlagBits::eVertex,      // stage
-												coordinateShader.get(),  // module
-												"main",  // pName
-												nullptr  // pSpecializationInfo
-											},
-											vk::PipelineShaderStageCreateInfo{
-												vk::PipelineShaderStageCreateFlags(),  // flags
-												vk::ShaderStageFlagBits::eFragment,    // stage
-												unknownMaterialShader.get(),  // module
-												"main",  // pName
-												nullptr  // pSpecializationInfo
-											}
-										}.data(),
-										&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
-											vk::PipelineVertexInputStateCreateFlags(),  // flags
-											1,        // vertexBindingDescriptionCount
-											array<const vk::VertexInputBindingDescription,1>{  // pVertexBindingDescriptions
-												vk::VertexInputBindingDescription(
-													0,  // binding
-													attribSizeList[0],  // stride
-													vk::VertexInputRate::eVertex  // inputRate
-												),
-											}.data(),
-											1,        // vertexAttributeDescriptionCount
-											array<const vk::VertexInputAttributeDescription,1>{  // pVertexAttributeDescriptions
-												vk::VertexInputAttributeDescription(
-													0,  // location
-													0,  // binding
-													attribFormatList[0],  // format
-													0   // offset
-												),
-											}.data()
-										},
-										&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
-											vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-											vk::PrimitiveTopology::eTriangleList,  // topology
-											VK_FALSE  // primitiveRestartEnable
-										},
-										nullptr, // pTessellationState
-										&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
-											vk::PipelineViewportStateCreateFlags(),  // flags
-											1,  // viewportCount
-											&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(window.surfaceExtent().width),float(window.surfaceExtent().height),0.f,1.f),  // pViewports
-											1,  // scissorCount
-											&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent())  // pScissors
-										},
-										&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
-											vk::PipelineRasterizationStateCreateFlags(),  // flags
-											VK_FALSE,  // depthClampEnable
-											VK_FALSE,  // rasterizerDiscardEnable
-											vk::PolygonMode::eFill,  // polygonMode
-											vk::CullModeFlagBits::eNone,  // cullMode
-											vk::FrontFace::eCounterClockwise,  // frontFace
-											VK_FALSE,  // depthBiasEnable
-											0.f,  // depthBiasConstantFactor
-											0.f,  // depthBiasClamp
-											0.f,  // depthBiasSlopeFactor
-											1.f   // lineWidth
-										},
-										&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
-											vk::PipelineMultisampleStateCreateFlags(),  // flags
-											vk::SampleCountFlagBits::e1,  // rasterizationSamples
-											VK_FALSE,  // sampleShadingEnable
-											0.f,       // minSampleShading
-											nullptr,   // pSampleMask
-											VK_FALSE,  // alphaToCoverageEnable
-											VK_FALSE   // alphaToOneEnable
-										},
-										&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
-											vk::PipelineDepthStencilStateCreateFlags(),  // flags
-											VK_TRUE,  // depthTestEnable
-											VK_TRUE,  // depthWriteEnable
-											vk::CompareOp::eLess,  // depthCompareOp
-											VK_FALSE,  // depthBoundsTestEnable
-											VK_FALSE,  // stencilTestEnable
-											vk::StencilOpState(),  // front
-											vk::StencilOpState(),  // back
-											0.f,  // minDepthBounds
-											0.f   // maxDepthBounds
-										},
-										&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
-											vk::PipelineColorBlendStateCreateFlags(),  // flags
-											VK_FALSE,  // logicOpEnable
-											vk::LogicOp::eClear,  // logicOp
-											1,  // attachmentCount
-											&(const vk::PipelineColorBlendAttachmentState&)vk::PipelineColorBlendAttachmentState{  // pAttachments
-												VK_FALSE,  // blendEnable
-												vk::BlendFactor::eZero,  // srcColorBlendFactor
-												vk::BlendFactor::eZero,  // dstColorBlendFactor
-												vk::BlendOp::eAdd,       // colorBlendOp
-												vk::BlendFactor::eZero,  // srcAlphaBlendFactor
-												vk::BlendFactor::eZero,  // dstAlphaBlendFactor
-												vk::BlendOp::eAdd,       // alphaBlendOp
-												vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
-													vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
-											},
-											array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-										},
-										nullptr,  // pDynamicState
-										pipelineLayout.get(),  // layout
-										window.renderPass(),  // renderPass
-										0,  // subpass
-										nullptr,  // basePipelineHandle
-										-1 // basePipelineIndex
-									)
-								)
-							);
-
-						},
-						nullptr
-					);
-			}
-
-			// generate one PrimitiveSet
-			CadR::StagingBuffer& sb=g.createPrimitiveSetStagingBuffer();
-			CadR::PrimitiveSetGpuData* b=reinterpret_cast<CadR::PrimitiveSetGpuData*>(sb.data());
-			b[0]=CadR::PrimitiveSetGpuData{
-					uint32_t(numIndices),  // count
-					g.indexAllocation().startIndex,  // first
-					g.vertexAllocation().startIndex,  // vertexOffset
-					0,  // userData
-				};
-
-			// create Drawable
-			drawableDB.emplace_back(
-				g,  // geometry
-				0,  // primitiveSetIndex
-				0,  // shaderDataSize
-				1,  // numInstances
-				ss  // stateSet
-			);
-		}
-
-		// upload all staging buffers
-		renderer.executeCopyOperations();
-
-		// semaphores
-		auto imageAvailableSemaphore=
-			device.createSemaphoreUnique(
-				vk::SemaphoreCreateInfo(
-					vk::SemaphoreCreateFlags()  // flags
-				)
-			);
-		auto renderingFinishedSemaphore=
-			device.createSemaphoreUnique(
-				vk::SemaphoreCreateInfo(
-					vk::SemaphoreCreateFlags()  // flags
-				)
-			);
-
-		// primaryCommandBuffers
-		auto commandPool =
-			device.createCommandPoolUnique(
-				vk::CommandPoolCreateInfo(
-					vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
-					graphicsQueueFamily  // queueFamilyIndex
-				)
-			);
-		vector<vk::CommandBuffer> frameCommandBuffers;
-		window.resizeCallbacks.append(
-			[&device, &window, &commandPool, &frameCommandBuffers]() {
-				device.resetCommandPool(commandPool.get(), vk::CommandPoolResetFlags());
-				frameCommandBuffers =
-					device.allocateCommandBuffers(
-						vk::CommandBufferAllocateInfo(
-							commandPool.get(),                 // commandPool
-							vk::CommandBufferLevel::ePrimary,  // level
-							window.imageCount()                // commandBufferCount
-						)
-					);
-			},
-			nullptr
+		App app(argc, argv);
+		app.init();
+		app.window.setRecreateSwapchainCallback(
+			bind(
+				&App::resize,
+				&app,
+				placeholders::_1,
+				placeholders::_2,
+				placeholders::_3
+			)
+		);
+		app.window.setFrameCallback(
+			bind(&App::frame, &app, placeholders::_1)
+		);
+		app.window.setMouseMoveCallback(
+			bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2)
+		);
+		app.window.setMouseButtonCallback(
+			bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4)
+		);
+		app.window.setMouseWheelCallback(
+			bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4)
 		);
 
-
-		// camera control
-		float cameraHeading=0.f;
-		float cameraElevation=0.f;
-		float cameraDistance=5.f;
-		int startMouseX,startMouseY;
-		float startCameraHeading,startCameraElevation;
-		window.mouseMoveCallback.append(
-			[&cameraHeading,&cameraElevation,&startMouseX,&startMouseY,&startCameraHeading,&startCameraElevation]
-					(int x,int y,CadUI::MouseButtons buttonState)
-			{
-				if(buttonState.isDown(CadUI::MouseButtons::Left)) {
-					cameraHeading=startCameraHeading+(x-startMouseX)*0.01f;
-					cameraElevation=startCameraElevation+(y-startMouseY)*0.01f;
-				}
-			}
-		);
-		window.mouseButtonCallback.append(
-			[&cameraHeading,&cameraElevation,&startMouseX,&startMouseY,&startCameraHeading,&startCameraElevation]
-					(CadUI::ButtonEventType eventType,CadUI::MouseButtons changedButton,int x,int y,CadUI::MouseButtons)
-			{
-				if(changedButton==CadUI::MouseButtons::Left) {
-					if(eventType==CadUI::ButtonEventType::Pressed) {
-						startMouseX=x;
-						startMouseY=y;
-						startCameraHeading=cameraHeading;
-						startCameraElevation=cameraElevation;
-					}
-					else {
-						cameraHeading=startCameraHeading+(x-startMouseX)*0.01f;
-						cameraElevation=startCameraElevation+(y-startMouseY)*0.01f;
-					}
-				}
-			}
-		);
-		window.mouseWheelCallback.append(
-			[&cameraDistance](int z,int,int,CadUI::MouseButtons)
-			{
-				cameraDistance-=z;
-			}
-		);
-
-
-		// main loop
-		while(window.processEvents()) {
-			if(!window.updateSize())
-				continue;
-
-			// acquire next image
-			auto [imageIndex,success]=window.acquireNextImage(imageAvailableSemaphore.get());
-			if(!success)
-				continue;
-
-			// start frame
-			renderer.beginFrame();
-			vk::CommandBuffer commandBuffer = frameCommandBuffers[imageIndex];
-			renderer.beginRecording(commandBuffer);
-
-			// record command buffer
-			glm::mat4 perspectiveMatrix(
-				// make perspective:
-				// ZO - Zero to One is output depth range,
-				// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
-				// LH - LeftHand coordinate system, +Y is down, +Z points into the scene
-				glm::perspectiveLH_ZO(
-					glm::pi<float>()/2.f,  // fovy
-					float(window.surfaceExtent().width)/window.surfaceExtent().height,  // aspect
-					0.1f,  // zNear
-					10.f  // zFar
-				)
-			);
-			glm::mat4 viewMatrix(
-				glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
-					glm::vec3(  // eye
-						+cameraDistance*sin(-cameraHeading)*cos(cameraElevation),  // x
-						-cameraDistance*sin(cameraElevation),  // y
-						-cameraDistance*cos(cameraHeading)*cos(cameraElevation)  // z
-					),
-					glm::vec3(0.f,0.f,0.f),  // center
-					glm::vec3(0.f,1.f,0.f)  // up
-				)
-			);
-			device.cmdPushConstants(
-				commandBuffer,  // commandBuffer
-				pipelineLayout.get(),  // pipelineLayout
-				vk::ShaderStageFlagBits::eVertex,  // stageFlags
-				0,  // offset
-				16*sizeof(float),  // size
-				&perspectiveMatrix  // pValues
-			);
-			device.cmdPushConstants(
-				commandBuffer,  // commandBuffer
-				pipelineLayout.get(),  // pipelineLayout
-				vk::ShaderStageFlagBits::eVertex,  // stageFlags
-				64,  // offset
-				16*sizeof(float),  // size
-				&viewMatrix  // pValues
-			);
-			size_t numDrawables=renderer.prepareSceneRendering(stateSetRoot);
-			renderer.recordDrawableProcessing(commandBuffer,numDrawables);
-			renderer.recordSceneRendering(
-				commandBuffer,  // commandBuffer
-				stateSetRoot,  // stateSetRoot
-				window.renderPass(),  // renderPass
-				window.framebuffers()[imageIndex],  // framebuffer
-				vk::Rect2D(vk::Offset2D(0,0),window.surfaceExtent()),  // renderArea
-				1,  // clearValueCount
-				&(const vk::ClearValue&)vk::ClearColorValue(array<float,4>{0.f,0.f,1.f,1.f})  // clearValues
-			);
-
-			// end frame recording
-			renderer.endRecording(commandBuffer);
-			renderer.endFrame();
-
-			// submit and present
-			device.queueSubmit(
-				graphicsQueue,  // queue
-				vk::SubmitInfo(
-					1,&imageAvailableSemaphore.get(),    // waitSemaphoreCount+pWaitSemaphores
-					&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
-					1,&commandBuffer,                    // commandBufferCount+pCommandBuffers
-					1,&renderingFinishedSemaphore.get()  // signalSemaphoreCount+pSignalSemaphores
-				),
-				vk::Fence(nullptr)  // fence
-			);
-			window.present(presentationQueue,renderingFinishedSemaphore.get(),imageIndex);
-		}
+		// show window and run main loop
+		app.window.show();
+		VulkanWindow::mainLoop();
 
 		// finish all pending work on device
-		device.waitIdle();
+		app.device.waitIdle();
 
 	// catch exceptions
 	} catch(CadR::Error &e) {

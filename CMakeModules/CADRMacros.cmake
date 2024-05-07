@@ -1,33 +1,3 @@
-macro(_cadr_check_and_import target prop path)
-   set(status)
-   if(${${ARGV3}})
-      set(status FATAL_ERROR)
-   endif()
-   if(EXISTS "${path}")
-      set_property(TARGET ${target} APPEND PROPERTY ${prop} ${path})
-   else()
-      if(NOT (${${ARGV4}}) )
-         message(${status} "The imported target ${target} references file ${path} which doesn't seem to exist. Reported by ${CMAKE_CURRENT_LIST_FILE}")
-      endif()
-   endif()
-endmacro()
-
-
-macro(_cadr_populate_imported_target target install_prefix name)
-   set_property(TARGET ${target} APPEND PROPERTY IMPORTED_CONFIGURATIONS RELEASE)
-   set_property(TARGET ${target} APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
-   _cadr_check_and_import(${target} INTERFACE_INCLUDE_DIRECTORIES "${${install_prefix}}/include" ${ARGV3} ${ARGV4})
-   if(WIN32)
-      _cadr_check_and_import(${target} IMPORTED_LOCATION_RELEASE "${${install_prefix}}/bin/${name}.dll" ${ARGV3} ${ARGV4})
-      _cadr_check_and_import(${target} IMPORTED_LOCATION_DEBUG "${${install_prefix}}/bin/${name}d.dll" FALSE ${ARGV4})
-      _cadr_check_and_import(${target} IMPORTED_IMPLIB_RELEASE "${${install_prefix}}/lib/${name}.lib" ${ARGV3} ${ARGV4})
-      _cadr_check_and_import(${target} IMPORTED_IMPLIB_DEBUG "${${install_prefix}}/lib/${name}d.lib" FALSE ${ARGV4})
-   ELSE()
-      _cadr_check_and_import(${target} IMPORTED_LOCATION_RELEASE "${${install_prefix}}/bin/${name}.so" ${ARGV3} ${ARGV4})
-   ENDIF()
-endmacro()
-
-
 # returns target's path
 # (used generally as info to console during configuration process)
 macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
@@ -152,6 +122,83 @@ macro(add_shaders nameList depsList)
 		source_group("Shaders" FILES ${name})
 		source_group("Shaders/SPIR-V" FILES ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
 		list(APPEND ${depsList} ${name} ${CMAKE_CURRENT_BINARY_DIR}/${name}.spv)
+	endforeach()
+endmacro()
+
+
+# creates custom commands to convert GLSL shader to spir-v using preprocessor defines and output file name
+# and appends the shader and output file name to depsList; depsList contains name of files that should be included among the source files
+macro(add_shader name defines outputFileName depsList)
+	get_filename_component(directory ${name} DIRECTORY)
+	if(directory)
+		file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${directory}")
+	endif()
+	if(defines STREQUAL "")
+		set(commentText "Converting ${name} (defines: none) to spir-v...")
+	else()
+		set(commentText "Converting ${name} (defines: ${defines}) to spir-v...")
+	endif()
+	add_custom_command(COMMENT "${commentText}"
+	                   MAIN_DEPENDENCY "${name}"
+	                   OUTPUT "${outputFileName}"
+	                   COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" --target-env vulkan1.2 -x ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${name}" -o "${outputFileName}")
+	source_group("Shaders" FILES "${name}")
+	source_group("Shaders/SPIR-V" FILES "${CMAKE_CURRENT_BINARY_DIR}/${outputFileName}")
+	list(APPEND ${depsList} "${name}" "${CMAKE_CURRENT_BINARY_DIR}/${outputFileName}")
+endmacro()
+
+
+macro(_process_single_shader name outputName outputSuffix defines dependencyList)
+	if(defines STREQUAL "")
+		set(commentText "Converting ${name} (defines: none) to spir-v...")
+	else()
+		set(commentText "Converting ${name} (defines: ${defines}) to spir-v...")
+	endif()
+	add_custom_command(COMMENT "${commentText}"
+	                   MAIN_DEPENDENCY "${name}"
+	                   OUTPUT "${outputName}${outputSuffix}"
+	                   COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}"
+		                           --target-env vulkan1.2  # Vulkan 1.2 is required for VK_EXT_buffer_device_address
+		                           -x  # save binary output as text-based hexadecimal numbers
+		                           ${defines}  # define pre-processor macros
+		                           ${CMAKE_CURRENT_SOURCE_DIR}/${name}  # source file
+		                           -o ${outputName}${outputSuffix})  # output file
+	source_group("Shaders" FILES "${name}")
+	source_group("Shaders/spir-v" FILES "${CMAKE_CURRENT_BINARY_DIR}/${outputName}${outputSuffix}")
+	list(APPEND ${dependencyList} "${name}" "${CMAKE_CURRENT_BINARY_DIR}/${outputName}${outputSuffix}")
+endmacro()
+
+
+macro(process_shaders shaderList dependencyList)
+
+	# process CADR_SHADERS line by line
+	foreach(line ${shaderList})
+
+		# get shader file name
+		separate_arguments(stringList UNIX_COMMAND ${line})
+		list(LENGTH stringList listLen)
+		list(GET stringList 0 name)
+
+		# make sure target directory exists
+		get_filename_component(directory ${name} DIRECTORY)
+		if(directory)
+			file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${directory}")
+		endif()
+
+		# process shaders
+		if(listLen LESS 3)
+			set(outputName "${name}")
+			set(outputSuffix ".spv")
+			_process_single_shader("${name}" "${outputName}" "${outputSuffix}" "" ${dependencyList})
+		else()
+			list(GET stringList 1 outputName)
+			list(GET stringList 2 outputSuffix)
+			_process_single_shader("${name}" "${outputName}-overallMaterial" "${outputSuffix}" "" ${dependencyList})
+			_process_single_shader("${name}" "${outputName}-overallMaterial-texturing" "${outputSuffix}" "-DTEXTURING" ${dependencyList})
+			_process_single_shader("${name}" "${outputName}-perVertexColor" "${outputSuffix}" "-DPER_VERTEX_COLOR" ${dependencyList})
+			_process_single_shader("${name}" "${outputName}-perVertexColor-texturing" "${outputSuffix}" "-DPER_VERTEX_COLOR -DTEXTURING" ${dependencyList})
+		endif()
+
 	endforeach()
 endmacro()
 

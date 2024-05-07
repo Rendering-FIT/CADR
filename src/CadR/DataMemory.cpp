@@ -1,23 +1,21 @@
 #include <CadR/DataMemory.h>
-#include <CadR/DataStorage.h>
 #include <CadR/Renderer.h>
 #include <CadR/VulkanDevice.h>
 
 using namespace std;
 using namespace CadR;
 
-DataAllocation DataMemory::_zeroSizeAllocation(0, 0, nullptr, nullptr, nullptr);
-
 
 
 DataMemory::~DataMemory()
 {
-	// destroy buffers
-	VulkanDevice* device = _dataStorage->renderer()->device();
-	device->destroy(_buffer);
-
-	// free memory
-	device->freeMemory(_memory);
+	if(_buffer)
+	{
+		// release resources
+		VulkanDevice& device = _dataStorage->renderer().device();
+		device.destroy(_buffer);
+		device.freeMemory(_memory);
+	}
 }
 
 
@@ -36,10 +34,10 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 	}
 
 	// create _buffer
-	Renderer* renderer = dataStorage.renderer();
-	VulkanDevice* device = renderer->device();
+	Renderer& renderer = dataStorage.renderer();
+	VulkanDevice& device = renderer.device();
 	_buffer =
-		device->createBuffer(
+		device.createBuffer(
 			vk::BufferCreateInfo(
 				vk::BufferCreateFlags(),  // flags
 				size,  // size
@@ -52,10 +50,10 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 		);
 
 	// allocate _memory
-	_memory = renderer->allocatePointerAccessMemory(_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	_memory = renderer.allocatePointerAccessMemory(_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	// bind memory
-	device->bindBufferMemory(
+	device.bindBufferMemory(
 		_buffer,  // buffer
 		_memory,  // memory
 		0   // memoryOffset
@@ -63,7 +61,7 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 
 	// get buffer address
 	_bufferStartAddress =
-		device->getBufferDeviceAddress(
+		device.getBufferDeviceAddress(
 			vk::BufferDeviceAddressInfo(
 				_buffer  // buffer
 			)
@@ -83,14 +81,15 @@ DataMemory::DataMemory(DataStorage& dataStorage, vk::Buffer buffer, vk::DeviceMe
 	       "DataMemory::DataMemory(): The buffer, memory and size parameters must all be either non-zero/non-null or zero/null.");
 
 	// assign resources
+	// (do not throw in the code above before these are assigned to avoid leaked handles)
 	_buffer = buffer;
 	_memory = memory;
 
 	// get buffer address
-	Renderer* renderer = dataStorage.renderer();
-	VulkanDevice* device = renderer->device();
-	_bufferStartAddress = 
-		device->getBufferDeviceAddress(
+	Renderer& renderer = dataStorage.renderer();
+	VulkanDevice& device = renderer.device();
+	_bufferStartAddress =
+		device.getBufferDeviceAddress(
 			vk::BufferDeviceAddressInfo(
 				_buffer  // buffer
 			)
@@ -103,12 +102,23 @@ DataMemory::DataMemory(DataStorage& dataStorage, vk::Buffer buffer, vk::DeviceMe
 }
 
 
+DataMemory::DataMemory(DataStorage& dataStorage, nullptr_t)
+	: _dataStorage(&dataStorage)
+{
+	_bufferStartAddress = 0;
+	_bufferEndAddress = 0;
+	_usedBlock2StartAddress = 0;
+	_usedBlock2EndAddress = 0;
+	_usedBlock1StartAddress = 0;
+	_usedBlock1EndAddress = 0;
+}
+
+
 DataMemory* DataMemory::tryCreate(DataStorage& dataStorage, size_t size)
 {
-	Renderer* renderer = dataStorage.renderer();
-	VulkanDevice* device = renderer->device();
-	assert(device && "CadR::Renderer object is not initialized. It's device is null.");
-	vk::Device d = device->get();
+	Renderer& renderer = dataStorage.renderer();
+	VulkanDevice& device = renderer.device();
+	vk::Device d = device.get();
 
 	// try create buffer
 	vk::Buffer b;
@@ -125,22 +135,22 @@ DataMemory* DataMemory::tryCreate(DataStorage& dataStorage, size_t size)
 			),
 			nullptr,
 			&b,
-			*device
+			device
 		);
 	if(r != vk::Result::eSuccess)
 		return nullptr;
 
 	// allocate _memory
-	vk::DeviceMemory m = renderer->allocatePointerAccessMemoryNoThrow(b, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vk::DeviceMemory m = renderer.allocatePointerAccessMemoryNoThrow(b, vk::MemoryPropertyFlagBits::eDeviceLocal);
 	if(!m) {
-		d.destroyBuffer(b, nullptr, *device);
+		d.destroyBuffer(b, nullptr, device);
 		return nullptr;
 	}
 
 	// bind memory
 	r =
 		static_cast<vk::Result>(
-			device->vkBindBufferMemory(
+			device.vkBindBufferMemory(
 				d,  // device
 				b,  // buffer
 				m,  // memory
@@ -148,19 +158,27 @@ DataMemory* DataMemory::tryCreate(DataStorage& dataStorage, size_t size)
 			)
 		);
 	if(r != vk::Result::eSuccess) {
-		d.freeMemory(m, nullptr, *device);
-		d.destroyBuffer(b, nullptr, *device);
+		d.freeMemory(m, nullptr, device);
+		d.destroyBuffer(b, nullptr, device);
 		return nullptr;
 	}
 
 	// create DataMemory
-	// (this might throw, theoretically)
-	return new DataMemory(dataStorage, b, m, size);
+	// (if it throws, it correctly releases b and m)
+	try {
+		return new DataMemory(dataStorage, b, m, size);
+	}
+	catch(bad_alloc&) {
+		d.freeMemory(m, nullptr, device);
+		d.destroyBuffer(b, nullptr, device);
+		throw;
+	}
 }
 
 
 void DataMemory::cancelAllAllocations()
 {
+#if 0 // disabled as it is questionable what it should exactly do
 	auto destroyLastBlock =
 		[](DataMemory& m, AllocationBlockList& l, AllocationBlockIterator endAllocation)
 		{
@@ -197,4 +215,5 @@ void DataMemory::cancelAllAllocations()
 		};
 	destroyRegularBlocks(*this, _allocationBlockList1);
 	destroyRegularBlocks(*this, _allocationBlockList2);
+#endif
 }

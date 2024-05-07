@@ -1,4 +1,4 @@
-#version 450
+#version 460
 #extension GL_EXT_buffer_reference : require
 #extension GL_ARB_gpu_shader_int64 : require
 #if 0  // debug print; this makes possible to use debugPrintfEXT() in this shader;
@@ -10,62 +10,92 @@
 layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
 
 
-layout(buffer_reference, std430, buffer_reference_align=16) buffer PrimitiveSetReference {
+layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer PrimitiveSetRef {
    uint count;
    uint first;
-   uint vertexOffset;
-   uint vertexData;
 };
 
-struct DrawableGpuData {
-   PrimitiveSetReference primitiveSetReference;
-   uint64_t shaderDataAddr;
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer DrawableGpuDataRef {
+   uint64_t vertexDataHandle;
+   uint64_t indexDataHandle;
+   uint64_t primitiveSetHandle;
+   uint64_t shaderDataHandle;
+   uint primitiveSetOffset;
    uint numInstances;
-   uint dummy;
+};
+const uint DrawableGpuDataSize = 40;
+
+layout(buffer_reference, std430, buffer_reference_align=32) restrict readonly buffer IndirectDataRef {
+   uint vertexCount;
+   uint instanceCount;
+   uint firstVertex;
+   uint baseInstance;
+};
+const uint IndirectDataSize = 16;
+
+layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly buffer PayloadDataRef {
+   uint64_t vertexDataPtr;
+   uint64_t indexDataPtr;
+   uint64_t shaderDataPtr;
+};
+const uint PayloadDataSize = 24;
+
+layout(buffer_reference, std430, buffer_reference_align=8) buffer HandleTableRef {
+   uint64_t pointers[4096];
 };
 
 
-layout(std430, binding=0) restrict readonly buffer DrawableBuffer {
-   DrawableGpuData drawableBuffer[];  // one buffer for the whole scene
+// push constants
+layout(push_constant) uniform pushConstants {
+   HandleTableRef handleTable;
+   uint64_t drawableListPtr;  // one buffer for the whole scene
+   uint64_t indirectDataPtr;  // one buffer for the whole scene
+   uint64_t payloadDataPtr;  // one buffer for the whole scene
 };
-layout(std430, binding=1) restrict readonly buffer MatrixListControlBuffer {
-   uint matrixListControlBuffer[];
-};
-layout(std430, binding=2) restrict writeonly buffer DrawIndirectBuffer {
-   uint drawIndirectBuffer[];  // one buffer for the whole scene
-};
-layout(std430, binding=3) restrict writeonly buffer DataPointerBuffer {
-   uint64_t dataPointerBuffer[];  // one buffer for the whole scene
-};
+
+
+uint64_t lookupHandle(uint64_t handle)
+{
+#if defined HANDLE_LEVEL_1
+   return handleTable.pointers[uint(handle)];
+#elif defined HANDLE_LEVEL_2
+   HandleTableRef table2 = HandleTableRef(handleTable.pointers[uint(handle >> 11)]);
+   return table2.pointers[uint(handle) & 0x7ff];
+#elif defined HANDLE_LEVEL_3
+   HandleTableRef table2 = HandleTableRef(handleTable.pointers[uint(handle >> 22)]);
+   HandleTableRef table3 = HandleTableRef(table2.pointers[uint(handle >> 11) & 0x7ff]);
+   return table3.pointers[uint(handle) & 0x7ff];
+#endif
+}
 
 
 void main()
 {
-   // drawable buffer data
-   PrimitiveSetReference primitiveSetReference = drawableBuffer[gl_WorkGroupID.x].primitiveSetReference;
-   uint64_t shaderDataAddr = drawableBuffer[gl_WorkGroupID.x].shaderDataAddr;
-   uint numInstances = drawableBuffer[gl_WorkGroupID.x].numInstances;
+   // read drawable data
+   DrawableGpuDataRef d = DrawableGpuDataRef(drawableListPtr + (gl_WorkGroupID.x * DrawableGpuDataSize));
+   PrimitiveSetRef ps = PrimitiveSetRef(lookupHandle(d.primitiveSetHandle) + d.primitiveSetOffset);
 
-   // matrix control data
-   //uint matrixListOffset64=0;//matrixListControlBuffer[matrixControlOffset4+0];
-   //uint numMatrices=1;//matrixListControlBuffer[matrixControlOffset4+1];
+   // write indirect data
+   IndirectDataRef indirectData = IndirectDataRef(indirectDataPtr + (gl_WorkGroupID.x * IndirectDataSize));
+   indirectData.vertexCount = ps.count;
+   indirectData.instanceCount = d.numInstances;
+   indirectData.firstVertex = ps.first;
+   indirectData.baseInstance = 0;
 
-   // write indirect buffer data
-   uint indirectBufferOffset4 = gl_WorkGroupID.x*5;
-   drawIndirectBuffer[indirectBufferOffset4+0] = primitiveSetReference.count; // indexCount
-   drawIndirectBuffer[indirectBufferOffset4+1] = numInstances; // instanceCount
-   drawIndirectBuffer[indirectBufferOffset4+2] = primitiveSetReference.first; // firstIndex
-   drawIndirectBuffer[indirectBufferOffset4+3] = primitiveSetReference.vertexOffset; // vertexOffset
-   drawIndirectBuffer[indirectBufferOffset4+4] = gl_WorkGroupID.x; // base instance
-   dataPointerBuffer[gl_WorkGroupID.x] = shaderDataAddr;
+   // write payload
+   PayloadDataRef pd = PayloadDataRef(payloadDataPtr + (gl_WorkGroupID.x * PayloadDataSize));
+   pd.vertexDataPtr = lookupHandle(d.vertexDataHandle);
+   pd.indexDataPtr  = lookupHandle(d.indexDataHandle);
+   pd.shaderDataPtr = lookupHandle(d.shaderDataHandle);
 
 #if 0  // debug print; to enable it, you also need to (1) enable GL_EXT_debug_printf extension on the beginning of this shader,
        // you need to (2) enable VK_KHR_shader_non_semantic_info device extension (look for VK_KHR_shader_non_semantic_info
        // text in InitAndFinalize.cpp) and you need to (3) have Vulkan Configurator (vkconfig) running and you need to
        // (4) enable "Debug Printf" in Vulkan Configurator in Shader-Based validation;
        //  you might also need to increase "Printf buffer size"
-   debugPrintfEXT("DrawCommand %i, indirect offset %i, indexCount %i, instanceCount %i, firstIndex %i, vertexOffset %i, shaderDataAddr 0x%x.\n",
-                  gl_WorkGroupID.x, indirectBufferOffset4, primitiveSetReference.count, numInstances,
-                  primitiveSetReference.first, primitiveSetReference.vertexOffset, shaderDataAddr);
+   debugPrintfEXT("Drawable %u, GpuData: 0x%lx, VertexDataPtr: 0x%lx (handle: %u), IndexDataPtr: 0x%lx (handle: %u), PrimitiveSet: 0x%lx (handle: %u, memoryOffset: %u, count %u, first: %u, numInstances: %u), ShaderData: 0x%lx, IndirectData: 0x%lx, PayloadData: 0x%lx.\n",
+                  gl_WorkGroupID.x, uint64_t(d), lookupHandle(d.vertexDataHandle), uint(d.vertexDataHandle), lookupHandle(d.indexDataHandle), uint(d.indexDataHandle),
+                  uint64_t(ps), uint(d.primitiveSetHandle), d.primitiveSetOffset, ps.count, ps.first, d.numInstances,
+                  lookupHandle(d.shaderDataHandle), uint64_t(indirectData), uint64_t(pd));
 #endif
 }

@@ -17,8 +17,6 @@ endif()
 
 # public headers
 set(CADR_PUBLIC_HEADERS
-    AllocationManagers.h
-    AttribSizeList.h
     CallbackList.h
     CircularAllocationMemory.h
     DataAllocation.h
@@ -28,18 +26,15 @@ set(CADR_PUBLIC_HEADERS
     Exceptions.h
     FrameInfo.h
     Geometry.h
-    GeometryMemory.h
-    GeometryStorage.h
+    HandleTable.h
     ParentChildList.h
     Pipeline.h
     PrimitiveSet.h
     Renderer.h
     RenderPass.h
-    StagingBuffer.h
     StagingData.h
     StagingDataAllocation.h
     StagingMemory.h
-    StagingManager.h
     StateSet.h
     VulkanDevice.h
     VulkanInstance.h
@@ -52,36 +47,35 @@ set(CADR_PRIVATE_HEADERS
 
 # sources
 set(CADR_SOURCES
-    AllocationManagers.cpp
     DataAllocation.cpp
     DataMemory.cpp
     DataStorage.cpp
     Drawable.cpp
     Geometry.cpp
-    GeometryMemory.cpp
-    GeometryStorage.cpp
+    HandleTable.cpp
     Pipeline.cpp
     PrimitiveSet.cpp
     Renderer.cpp
     RenderPass.cpp
-    StagingBuffer.cpp
     StagingData.cpp
     StagingDataAllocation.cpp
     StagingMemory.cpp
-    StagingManager.cpp
     StateSet.cpp
     VulkanDevice.cpp
     VulkanInstance.cpp
     VulkanLibrary.cpp
    )
 
+# dependencies
+find_package(Vulkan REQUIRED)
+find_package(Boost REQUIRED)
+
 # shaders
-set(CADR_SHADERS
-    shaders/processDrawables.comp
-   )
+add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_1 shaders/processDrawables-l1.comp.spv CADR_SHADER_DEPS)
+add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_2 shaders/processDrawables-l2.comp.spv CADR_SHADER_DEPS)
+add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_3 shaders/processDrawables-l3.comp.spv CADR_SHADER_DEPS)
 
 # CADR library
-add_shaders("${CADR_SHADERS}" CADR_SHADER_DEPS)
 add_library(${LIB_NAME}
     ${CADR_USER_DEFINED_DYNAMIC_OR_STATIC}
     ${CADR_PUBLIC_HEADERS}
@@ -89,10 +83,6 @@ add_library(${LIB_NAME}
     ${CADR_SOURCES}
     ${CADR_SHADER_DEPS}
     )
-
-# dependencies
-find_package(Vulkan REQUIRED)
-find_package(Boost REQUIRED)
 
 # compile definitions
 if(WIN32)
@@ -125,30 +115,30 @@ endif()
 # target includes
 get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set_target_properties(${LIB_NAME} PROPERTIES
-   INCLUDE_DIRECTORIES "${parent_dir}"
-   INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
-   )
+	INCLUDE_DIRECTORIES "${parent_dir}"
+	INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
+	)
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # headers installation
 install(FILES
-   ${CADR_PUBLIC_HEADERS}
-   DESTINATION include/${LIB_NAME}
-   )
+	${CADR_PUBLIC_HEADERS}
+	DESTINATION include/${LIB_NAME}
+	)
 
 # libraries installation
 install(TARGETS ${LIB_NAME}
-   LIBRARY DESTINATION lib
-   ARCHIVE DESTINATION lib
-   RUNTIME DESTINATION bin
-   )
+	LIBRARY DESTINATION lib
+	ARCHIVE DESTINATION lib
+	RUNTIME DESTINATION bin
+	)
 
 # cmake configuration file
 configure_file(
-   CADRConfig.cmake.in
-   CADRConfig.cmake
-   @ONLY
-   )
+	CADRConfig.cmake.in
+	CADRConfig.cmake
+	@ONLY
+	)
 
 # install cmake configuration file
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CADRConfig.cmake"

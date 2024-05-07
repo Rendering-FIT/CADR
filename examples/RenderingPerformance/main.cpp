@@ -1,4 +1,5 @@
 #include <CadR/Drawable.h>
+#include <CadR/Exceptions.h>
 #include <CadR/Geometry.h>
 #include <CadR/Pipeline.h>
 #include <CadR/PrimitiveSet.h>
@@ -21,8 +22,8 @@ using namespace CadR;
 
 // constants
 static const vk::Extent2D imageExtent(1920, 1080);
-static const constexpr auto shortTestDuration = chrono::milliseconds(1500);
-static const constexpr auto longTestDuration = chrono::seconds(30);
+static const constexpr auto shortTestDuration = chrono::milliseconds(2000);
+static const constexpr auto longTestDuration = chrono::seconds(20);
 static const string appName = "RenderingPerformance";
 static const string vulkanAppName = "CadR performance test";
 static const uint32_t vulkanAppVersion = VK_MAKE_VERSION(0, 0, 0);
@@ -36,9 +37,14 @@ enum class TestType
 	Undefined,
 	TrianglePerformance,
 	TriangleStripPerformance,
+	DrawablePerformance,
+	PrimitiveSetPerformance,
 	BakedBoxesPerformance,
-	BoxDrawablePerformance,
-	DrawablePerformance
+	BakedBoxesScene,
+	InstancedBoxesPerformance,
+	InstancedBoxesScene,
+	IndependentBoxesPerformance,
+	IndependentBoxesScene,
 };
 
 
@@ -49,15 +55,43 @@ enum class RenderingSetup {
 constexpr size_t RenderingSetupCount = 2;
 
 
+struct SceneGpuData {
+	glm::mat4 viewMatrix;   // current camera view matrix
+	float p11,p22,p33,p43;  // projectionMatrix - members that depend on zNear and zFar clipping planes
+};
+
+
+struct PrimitiveSetGpuData {
+	uint32_t count;
+	uint32_t first;
+};
+
+
+struct ShaderData {
+	glm::vec3 ambient;
+	uint32_t materialType;
+	glm::vec3 diffuse;
+	float alpha;
+	glm::vec3 specular;
+	float shininess;
+	glm::vec3 emission;
+	float pointSize;
+};
+static_assert(sizeof(ShaderData) == 64, "Size of ShaderData is not 64.");
+
+
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[]={
 #include "shader.vert.spv"
 };
-static const uint32_t fsPerformanceSpirv[]={
-#include "shader-performance.frag.spv"
+static const uint32_t vsIdBufferSpirv[]={
+#include "shader-idBuffer.vert.spv"
 };
-static const uint32_t fsPickingSpirv[]={
-#include "shader-picking.frag.spv"
+static const uint32_t fsSpirv[]={
+#include "shader.frag.spv"
+};
+static const uint32_t fsIdBufferSpirv[]={
+#include "shader-idBuffer.frag.spv"
 };
 
 
@@ -72,8 +106,13 @@ public:
 	void mainLoop();
 	void frame(bool collectInfo);
 	void printResults();
-	tuple<Geometry*, vector<Drawable*>> generateInvisibleTriangleScene(
-		StateSet& stateSet, glm::uvec2 screenSize, size_t requestedNumTriangles, TestType testType);
+	void generateInvisibleTriangleScene(glm::uvec2 screenSize,
+		size_t requestedNumTriangles, TestType testType);
+	void generateBoxesScene(glm::uvec3 numBoxes, glm::vec3 center, glm::vec3 boxToBoxDistance,
+		glm::vec3 boxSize, bool instanced, bool singleGeometry);
+	void generateBakedBoxesScene(glm::uvec3 numBoxes,
+		glm::vec3 center, glm::vec3 boxToBoxDistance, glm::vec3 boxSize);
+	void deleteScene();
 
 	// no move constructor and operator
 	App(App&&) = delete;
@@ -118,75 +157,209 @@ public:
 	glm::vec4 backgroundColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
 	list<FrameInfo> frameInfoList;
 	chrono::steady_clock::duration realTestTime;
-	uint32_t numContainers;
-	vector<CadR::StateSetDrawableContainer*> id2containerMap;
+	uint32_t numStateSets;
+	vector<CadR::StateSet*> id2stateSetMap;
 	CadR::StateSet stateSetRoot;
 	CadR::Pipeline pipeline;
-	Geometry* geometry = nullptr;
-	vector<Drawable*> drawableList;
+	CadR::HandlelessAllocation sceneDataAllocation;
+	union {
+		struct {
+			glm::mat4 projection;
+			glm::mat4 view;
+		} matrix;
+		array<glm::mat4,2> projectionAndViewMatrix;
+	};
+	vector<Geometry*> geometryList;
+	vector<Drawable> drawableList;
 
 };
 
 
 
-tuple<Geometry*, vector<Drawable*>> App::generateInvisibleTriangleScene(
-	StateSet& stateSet, glm::uvec2 screenSize, size_t requestedNumTriangles, TestType testType)
+void App::deleteScene()
 {
+	//for(Drawable* d : drawableList)  delete d;
+	for(Geometry* g : geometryList)  delete g;
+	drawableList.clear();
+	geometryList.clear();
+}
+
+
+void App::generateInvisibleTriangleScene(glm::uvec2 screenSize, size_t requestedNumTriangles, TestType testType)
+{
+	deleteScene();
+
 	if(screenSize.x <= 1 || screenSize.y <= 1)
-		return {};
+		return;
 
 	// initialize variables
 	// (final number of triangles stored in numTriangles is always equal or a little higher
 	// than requestedNumTriangles, but at the end we create primitive set to render only
 	// requestedNumTriangles)
-	uint32_t numStrips = uint32_t(screenSize.x - 1 + screenSize.y - 1);
-	size_t numTrianglesPerStrip = (requestedNumTriangles + numStrips - 1) / numStrips;
-	if(testType == TestType::BakedBoxesPerformance || testType == TestType::BoxDrawablePerformance)
-		numTrianglesPerStrip = ((numTrianglesPerStrip + 11) / 12) * 12;  // make it divisible by 12
-	size_t numTriangles = numTrianglesPerStrip * numStrips;
-	float triangleDistanceX = float(screenSize.x) / numTrianglesPerStrip;
-	float triangleDistanceY = float(screenSize.y) / numTrianglesPerStrip;
+	uint32_t numSeries = uint32_t(screenSize.x - 1 + screenSize.y - 1);
+	size_t numTrianglesInSeries = (requestedNumTriangles + numSeries - 1) / numSeries;
+	if(testType == TestType::BakedBoxesPerformance || testType == TestType::IndependentBoxesPerformance ||
+	   testType == TestType::InstancedBoxesPerformance)
+	{
+		numTrianglesInSeries = ((numTrianglesInSeries + 11) / 12) * 12;  // make it divisible by 12
+	}
+	size_t numTriangles = numTrianglesInSeries * numSeries;
+	float triangleDistanceX = float(screenSize.x) / numTrianglesInSeries;
+	float triangleDistanceY = float(screenSize.y) / numTrianglesInSeries;
 
-	// alloc geometry
+	// create geometry
+	geometryList.reserve(1);
+	geometryList.emplace_back(new Geometry(renderer));
+	Geometry* geometry = geometryList.back();
+
+	// numVertices
 	size_t numVertices;
-	switch(testType)
+	switch (testType)
 	{
 		case TestType::TrianglePerformance:
-		case TestType::DrawablePerformance:
+		case TestType::PrimitiveSetPerformance:
 			numVertices = numTriangles * 3;
 			break;
 		case TestType::TriangleStripPerformance:
-			numVertices = numStrips * (numTrianglesPerStrip + 2);
+			numVertices = numSeries * (numTrianglesInSeries + 2);
+			break;
+		case TestType::DrawablePerformance:
+			numVertices = 3;
 			break;
 		case TestType::BakedBoxesPerformance:
-		case TestType::BoxDrawablePerformance:
+		case TestType::IndependentBoxesPerformance:
 			numVertices = numTriangles / 12 * 8;
+			break;
+		case TestType::InstancedBoxesPerformance:
+			numVertices = 8;
 			break;
 		default:
 			numVertices = 0;
 	}
-	size_t numPrimitiveSets;
-	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance || testType == TestType::BakedBoxesPerformance)
-		numPrimitiveSets = 1;
+
+	// generate vertex positions,
+	// first horizontal strips followed by vertical strips
+	StagingData positionStagingData = geometry->createVertexStagingData(numVertices * sizeof(glm::vec3));
+	glm::vec3* positions = positionStagingData.data<glm::vec3>();
+	size_t i = 0;
+	if (testType == TestType::TrianglePerformance || testType == TestType::PrimitiveSetPerformance)
+	{
+		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
+			for (size_t x = 0; x < numTrianglesInSeries; x++)
+			{
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
+				positions[i++] = glm::vec3((float(x) + 0.5f) * triangleDistanceX, float(y) + 0.6f, 0.9f);
+			}
+		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
+			for (size_t y = 0; y < numTrianglesInSeries; y++)
+			{
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.6f, (float(y) + 0.5f) * triangleDistanceY, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
+			}
+	}
+	else if (testType == TestType::TriangleStripPerformance)
+	{
+		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
+		{
+			size_t x;
+			for (x = 0; x <= numTrianglesInSeries; x += 2)
+			{
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
+			}
+			if (x == numTrianglesInSeries + 1)
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
+		}
+		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
+		{
+			size_t y;
+			for (y = 0; y <= numTrianglesInSeries; y += 2)
+			{
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
+			}
+			if (y == numTrianglesInSeries + 1)
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
+		}
+	}
 	else if (testType == TestType::DrawablePerformance)
-		numPrimitiveSets = requestedNumTriangles;
-	else if (testType == TestType::BoxDrawablePerformance)
-		numPrimitiveSets = (requestedNumTriangles + 11) / 12;
-	unique_ptr<Geometry> geometry = make_unique<Geometry>(&renderer, AttribSizeList{ 12 }, numVertices, numTriangles*3, numPrimitiveSets);
+	{
+		positions[i++] = glm::vec3(0.f,  0.6f, 0.9f);
+		positions[i++] = glm::vec3(0.f,  0.8f, 0.9f);
+		positions[i++] = glm::vec3(0.2f, 0.6f, 0.9f);
+	}
+	else if (testType == TestType::BakedBoxesPerformance || testType == TestType::IndependentBoxesPerformance)
+	{
+		// we generate boxes in horizontal and vertical strips
+		// (numTrianglesPerStrip divided by 12 gives number of boxes in the strip)
+		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
+		{
+			size_t x;
+			for (x = 0; x < numTrianglesInSeries; x += 12)
+			{
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.8f);
+				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.8f);
+				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.6f, 0.9f);
+				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.8f, 0.9f);
+				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.6f, 0.8f);
+				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.8f, 0.8f);
+			}
+		}
+		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
+		{
+			size_t y;
+			for (y = 0; y < numTrianglesInSeries; y += 12)
+			{
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.8f);
+				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.8f);
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY + 0.2f, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY + 0.2f, 0.9f);
+				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY + 0.2f, 0.8f);
+				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY + 0.2f, 0.8f);
+			}
+		}
+	}
+	else if (testType == TestType::InstancedBoxesPerformance)
+	{
+		// generate single box
+		positions[i++] = glm::vec3(0.f,  0.6f, 0.9f);
+		positions[i++] = glm::vec3(0.f,  0.8f, 0.9f);
+		positions[i++] = glm::vec3(0.f,  0.6f, 0.8f);
+		positions[i++] = glm::vec3(0.f,  0.8f, 0.8f);
+		positions[i++] = glm::vec3(0.2f, 0.6f, 0.9f);
+		positions[i++] = glm::vec3(0.2f, 0.8f, 0.9f);
+		positions[i++] = glm::vec3(0.2f, 0.6f, 0.8f);
+		positions[i++] = glm::vec3(0.2f, 0.8f, 0.8f);
+	}
 
 	// generate indices
-	StagingBuffer& indexStagingBuffer = geometry->createIndexStagingBuffer();
-	uint32_t* indices = indexStagingBuffer.data<uint32_t>();
-	if (testType == TestType::TrianglePerformance || testType == TestType::DrawablePerformance)
-		for (uint32_t i = 0, c = uint32_t(numTriangles) * 3; i < c; i++)
+	size_t numIndices;
+	switch (testType) {
+	case TestType::DrawablePerformance: numIndices = 3; break;
+	case TestType::InstancedBoxesPerformance: numIndices = 36; break;
+	default: numIndices = numTriangles * 3; break;
+	}
+	StagingData indexStagingData = geometry->createIndexStagingData(numIndices * sizeof(uint32_t));
+	uint32_t* indices = indexStagingData.data<uint32_t>();
+	if (testType == TestType::TrianglePerformance || testType == TestType::PrimitiveSetPerformance ||
+		testType == TestType::DrawablePerformance)
+	{
+		for (uint32_t i = 0, c = uint32_t(numIndices); i < c; i++)
 			indices[i] = i;
+	}
 	else if (testType == TestType::TriangleStripPerformance)
 	{
 		size_t i = 0;
-		for (uint32_t s = 0; s < numStrips; s++)
+		for (uint32_t s = 0; s < numSeries; s++)
 		{
-			uint32_t si = s * uint32_t(numTrianglesPerStrip + 2);
-			for (uint32_t ti = 0; ti < uint32_t(numTrianglesPerStrip); ti++)
+			uint32_t si = s * uint32_t(numTrianglesInSeries + 2);
+			for (uint32_t ti = 0; ti < uint32_t(numTrianglesInSeries); ti++)
 			{
 				indices[i++] = si + ti;
 				indices[i++] = si + ti + 1;
@@ -194,9 +367,10 @@ tuple<Geometry*, vector<Drawable*>> App::generateInvisibleTriangleScene(
 			}
 		}
 	}
-	else if (testType == TestType::BakedBoxesPerformance || testType == TestType::BoxDrawablePerformance)
+	else if (testType == TestType::BakedBoxesPerformance || testType == TestType::IndependentBoxesPerformance ||
+	         testType == TestType::InstancedBoxesPerformance)
 	{
-		for (uint32_t i = 0, c = uint32_t(numTriangles) * 3, j = 0; i < c;)
+		for (uint32_t i = 0, c = uint32_t(numIndices), j = 0; i < c;)
 		{
 			// -x face
 			indices[i++] = j + 0;
@@ -244,143 +418,436 @@ tuple<Geometry*, vector<Drawable*>> App::generateInvisibleTriangleScene(
 		}
 	}
 
-	// generate vertex positions,
-	// first horizontal strips followed by vertical strips
-	StagingBuffer& positionStagingBuffer = geometry->createVertexStagingBuffer(0);
-	glm::vec3* positions = positionStagingBuffer.data<glm::vec3>();
-	size_t i = 0;
-	if (testType == TestType::TrianglePerformance || testType == TestType::DrawablePerformance)
+	// numPrimitiveSets
+	size_t numPrimitiveSets;
+	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance ||
+	    testType == TestType::DrawablePerformance || testType == TestType::BakedBoxesPerformance ||
+	    testType == TestType::InstancedBoxesPerformance)
 	{
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-			for (size_t x = 0; x < numTrianglesPerStrip; x++)
-			{
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
-				positions[i++] = glm::vec3((float(x) + 0.5f) * triangleDistanceX, float(y) + 0.6f, 0.9f);
-			}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-			for (size_t y = 0; y < numTrianglesPerStrip; y++)
-			{
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, (float(y) + 0.5f) * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
-			}
+		numPrimitiveSets = 1;
 	}
-	else if (testType == TestType::TriangleStripPerformance)
-	{
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-		{
-			size_t x;
-			for (x = 0; x <= numTrianglesPerStrip; x += 2)
-			{
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
-			}
-			if (x == numTrianglesPerStrip + 1)
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-		}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-		{
-			size_t y;
-			for (y = 0; y <= numTrianglesPerStrip; y += 2)
-			{
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
-			}
-			if (y == numTrianglesPerStrip + 1)
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-		}
-	}
-	else if (testType == TestType::BakedBoxesPerformance || testType == TestType::BoxDrawablePerformance)
-	{
-		float s = triangleDistanceX * 10.f;  // boxes are spaced by 12 so make the size 10
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-		{
-			size_t x;
-			for (x = 0; x < numTrianglesPerStrip; x += 12)
-			{
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.8f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.8f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + s, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + s, float(y) + 0.8f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + s, float(y) + 0.6f, 0.8f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + s, float(y) + 0.8f, 0.8f);
-			}
-		}
-		s = triangleDistanceY * 10.f;  // boxes are spaced by 12 so make the size 10
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-		{
-			size_t y;
-			for (y = 0; y < numTrianglesPerStrip; y += 12)
-			{
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.8f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.8f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY + s, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY + s, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY + s, 0.8f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY + s, 0.8f);
-			}
-		}
-	}
+	else if (testType == TestType::PrimitiveSetPerformance)
+		numPrimitiveSets = requestedNumTriangles;  // only requestedNumTriangles is rendered, although numTriangles were generated
+	else if (testType == TestType::IndependentBoxesPerformance)
+		numPrimitiveSets = (requestedNumTriangles + 11) / 12;
 
 	// generate primitiveSets
-	StagingBuffer& primitiveSetStagingBuffer = geometry->createPrimitiveSetStagingBuffer();
-	PrimitiveSetGpuData* primitiveSets = primitiveSetStagingBuffer.data<PrimitiveSetGpuData>();
-	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance || testType == TestType::BakedBoxesPerformance)
+	StagingData primitiveSetStagingData = geometry->createPrimitiveSetStagingData(numPrimitiveSets * sizeof(PrimitiveSetGpuData));
+	PrimitiveSetGpuData* primitiveSets = primitiveSetStagingData.data<PrimitiveSetGpuData>();
+	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance ||
+	    testType == TestType::BakedBoxesPerformance)
 	{
-		primitiveSets[0] = { uint32_t(requestedNumTriangles)*3, 0, 0, 0 };
+		primitiveSets[0] = { uint32_t(requestedNumTriangles)*3, 0 };  // only requestedNumTriangles is rendered, although numTriangles were generated
 	}
 	else if (testType == TestType::DrawablePerformance)
 	{
-		for (size_t i = 0; i < requestedNumTriangles; i++)
-			primitiveSets[i] = { 3, uint32_t(i) * 3, 0, 0 };
+		primitiveSets[0] = { 3, 0 };
 	}
-	else if (testType == TestType::BoxDrawablePerformance)
+	else if (testType == TestType::PrimitiveSetPerformance)
 	{
-		size_t numBoxes = (requestedNumTriangles + 11) / 12;
-		for (size_t i = 0; i < numBoxes; i++)
-			primitiveSets[i] = { 36, uint32_t(i) * 36, 0, 0 };
+		for (size_t i = 0; i < numPrimitiveSets; i++)
+			primitiveSets[i] = { 3, uint32_t(i) * 3 };
 	}
+	else if (testType == TestType::IndependentBoxesPerformance)
+	{
+		for (size_t i = 0; i < numPrimitiveSets; i++)
+			primitiveSets[i] = { 36, uint32_t(i) * 36 };
+	}
+	else if (testType == TestType::InstancedBoxesPerformance)
+	{
+		primitiveSets[0] = { 36, 0 };
+	}
+
 
 	// create drawable(s)
-	struct DrawableList : vector<Drawable*> {
-		~DrawableList() {
-			for(Drawable* d : *this)
-				delete d;
-		}
-	} drawableList;
-	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance || testType == TestType::BakedBoxesPerformance)
+	StagingData shaderStagingData;
+	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance ||
+	    testType == TestType::BakedBoxesPerformance)
 	{
-		drawableList.emplace_back(make_unique<Drawable>(*geometry, 0, 0, 1, stateSet).release());
+		drawableList.reserve(1);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
+		drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
+
+		uint8_t* b = shaderStagingData.data<uint8_t>();
+		ShaderData* d = reinterpret_cast<ShaderData*>(b);
+		memset(d, 0, sizeof(ShaderData));
+		d->diffuse = glm::vec3(1.f, 1.f, 0.f);
+		d->alpha = 1.f;
+		constexpr const glm::mat4 identityMatrix(1.f);
+		memcpy(b+64, &identityMatrix, 64);
 	}
 	else if (testType == TestType::DrawablePerformance)
 	{
-		drawableList.reserve(requestedNumTriangles);
-		for (uint32_t i=0, c=uint32_t(requestedNumTriangles); i<c; i++)
-			drawableList.emplace_back(make_unique<Drawable>(*geometry, i, 0, 1, stateSet).release());
+		drawableList.reserve(requestedNumTriangles);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
+		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
+		{
+			size_t x;
+			for (x = 0; x < numTrianglesInSeries; x++)
+			{
+				drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
+
+				uint8_t* b = shaderStagingData.data<uint8_t>();
+				ShaderData* d = reinterpret_cast<ShaderData*>(b);
+				memset(d, 0, sizeof(ShaderData));
+				d->diffuse = glm::vec3(1.f, 1.f, 0.f);
+				d->alpha = 1.f;
+				*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
+					glm::vec3(x * triangleDistanceX, y, 0.f));
+
+				if(drawableList.size() == requestedNumTriangles)
+					return;
+			}
+		}
+		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
+		{
+			size_t y;
+			for (y = 0; y < numTrianglesInSeries; y++)
+			{
+				drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
+
+				uint8_t* b = shaderStagingData.data<uint8_t>();
+				ShaderData* d = reinterpret_cast<ShaderData*>(b);
+				memset(d, 0, sizeof(ShaderData));
+				d->diffuse = glm::vec3(1.f, 1.f, 0.f);
+				d->alpha = 1.f;
+				*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
+					glm::vec3(float(x) + 0.6f, y * triangleDistanceY - 0.6f, 0.f));
+
+				if(drawableList.size() == requestedNumTriangles)
+					return;
+			}
+		}
 	}
-	else if (testType == TestType::BoxDrawablePerformance)
+	else if (testType == TestType::PrimitiveSetPerformance)
 	{
-		uint32_t numBoxes = uint32_t((requestedNumTriangles + 11) / 12);
-		drawableList.reserve(numBoxes);
-		for (uint32_t i = 0; i < numBoxes; i++)
-			drawableList.emplace_back(make_unique<Drawable>(*geometry, i, 0, 1, stateSet).release());
+		drawableList.reserve(requestedNumTriangles);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
+		for (uint32_t offset=0, e=uint32_t(requestedNumTriangles)*sizeof(PrimitiveSetGpuData); offset<e; offset+=sizeof(PrimitiveSetGpuData))
+		{
+			drawableList.emplace_back(*geometry, offset, shaderStagingData, 128, 1, stateSetRoot);
+
+			uint8_t* b = shaderStagingData.data<uint8_t>();
+			ShaderData* d = reinterpret_cast<ShaderData*>(b);
+			memset(d, 0, sizeof(ShaderData));
+			d->diffuse = glm::vec3(1.f, 1.f, 0.f);
+			d->alpha = 1.f;
+			constexpr const glm::mat4 identityMatrix(1.f);
+			memcpy(b+64, &identityMatrix, 64);
+		}
+	}
+	else if (testType == TestType::InstancedBoxesPerformance)
+	{
+		size_t numInstances = numTriangles / 12;
+		drawableList.reserve(1);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
+		drawableList.emplace_back(*geometry, 0, shaderStagingData, 64+(64*numInstances), uint32_t(numInstances), stateSetRoot);
+
+		uint8_t* b = shaderStagingData.data<uint8_t>();
+		ShaderData* d = reinterpret_cast<ShaderData*>(b);
+		memset(d, 0, sizeof(ShaderData));
+		d->diffuse = glm::vec3(1.f, 1.f, 0.f);
+		d->alpha = 1.f;
+		b += 64;
+		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
+		{
+			size_t x;
+			for (x = 0; x < numTrianglesInSeries; x += 12)
+			{
+				*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
+					glm::vec3(x * triangleDistanceX, y, 0.f));
+				b += 64;
+			}
+		}
+		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
+		{
+			size_t y;
+			for (y = 0; y < numTrianglesInSeries; y += 12)
+			{
+				*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
+					glm::vec3(float(x) + 0.6f, y * triangleDistanceY - 0.6f, 0.f));
+				b += 64;
+			}
+		}
+	}
+	else if (testType == TestType::IndependentBoxesPerformance)
+	{
+		drawableList.reserve(numPrimitiveSets);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
+		for (uint32_t offset=0, e=uint32_t(numPrimitiveSets)*sizeof(PrimitiveSetGpuData); offset<e; offset+=sizeof(PrimitiveSetGpuData))
+		{
+			drawableList.emplace_back(*geometry, offset, shaderStagingData, 128, 1, stateSetRoot);
+
+			uint8_t* b = shaderStagingData.data<uint8_t>();
+			ShaderData* d = reinterpret_cast<ShaderData*>(b);
+			memset(d, 0, sizeof(ShaderData));
+			d->diffuse = glm::vec3(1.f, 1.f, 0.f);
+			d->alpha = 1.f;
+			constexpr const glm::mat4 identityMatrix(1.f);
+			memcpy(b+64, &identityMatrix, 64);
+		}
+	}
+}
+
+
+static const uint32_t boxIndices[36] =
+{
+	0, 2, 1,  1, 2, 3,  // face x,y
+	0, 1, 4,  4, 1, 5,  // face x,z
+	0, 4, 2,  2, 4, 6,  // face y,z
+	4, 5, 6,  6, 5, 7,  // face x,y
+	2, 6, 3,  3, 6, 7,  // face x,z
+	1, 3, 5,  5, 3, 7,  // face y,z
+};
+
+
+void App::generateBoxesScene(
+	glm::uvec3 numBoxes,
+	glm::vec3 center,
+	glm::vec3 boxToBoxDistance,
+	glm::vec3 boxSize,
+	bool instanced,
+	bool singleGeometry)
+{
+	deleteScene();
+
+	// make sure valid parameters were passed in
+	if(instanced == true && singleGeometry == false)
+		throw runtime_error("RenderingPerformance::generateBoxScene(): Invalid function arguments. "
+		                    "If parameter instanced is true, singleGeometry parameter must be true as well.");
+	if(numBoxes.x == 0 || numBoxes.y == 0 || numBoxes.z == 0)
+		return;
+
+	// generate Geometries
+	size_t boxesCount = numBoxes.x * numBoxes.y * numBoxes.z;
+	size_t numGeometries = (singleGeometry) ? 1 : boxesCount;
+	size_t geometryIndex = geometryList.size();
+	geometryList.reserve(numGeometries);
+	for(size_t i=0; i<numGeometries; i++) {
+
+		// create Geometry
+		geometryList.emplace_back(new Geometry(renderer));
+		Geometry* geometry = geometryList.back();
+
+		// alloc positions
+		StagingData positionStagingData = geometry->createVertexStagingData(8 * sizeof(glm::vec3));
+		glm::vec3* positions = positionStagingData.data<glm::vec3>();
+
+		// generate vertex positions
+		glm::vec3 d = boxSize / 2.f;
+		positions[0] = glm::vec3(-d.x, -d.y, -d.z);
+		positions[1] = glm::vec3( d.x, -d.y, -d.z);
+		positions[2] = glm::vec3(-d.x,  d.y, -d.z);
+		positions[3] = glm::vec3( d.x,  d.y, -d.z);
+		positions[4] = glm::vec3(-d.x, -d.y,  d.z);
+		positions[5] = glm::vec3( d.x, -d.y,  d.z);
+		positions[6] = glm::vec3(-d.x,  d.y,  d.z);
+		positions[7] = glm::vec3( d.x,  d.y,  d.z);
+
+		// indices
+		StagingData indexStagingData = geometry->createIndexStagingData(sizeof(boxIndices));
+		uint32_t* indices = indexStagingData.data<uint32_t>();
+		memcpy(indices, boxIndices, sizeof(boxIndices));
+
+		// primitiveSet
+		StagingData primitiveSetStagingData = geometry->createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+		PrimitiveSetGpuData* primitiveSet = primitiveSetStagingData.data<PrimitiveSetGpuData>();
+		primitiveSet->count = 36;
+		primitiveSet->first = 0;
 	}
 
-	vector<Drawable*> dl;
-	drawableList.swap(dl);
-	return make_tuple(geometry.release(), dl);
+	// create Drawables
+	StagingData shaderStagingData;
+	if(instanced)
+	{
+		drawableList.reserve(1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
+		drawableList.emplace_back(*geometryList.front(), 0, shaderStagingData, 64+(64*boxesCount), uint32_t(boxesCount), stateSetRoot);
+
+		// shader staging data
+		uint8_t* b = shaderStagingData.data<uint8_t>();
+		ShaderData* d = reinterpret_cast<ShaderData*>(b);
+		memset(d, 0, sizeof(ShaderData));
+		d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
+		d->alpha = 1.f;
+		b += 64;
+
+		// generate transformations
+		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
+		for(uint32_t k=0; k<numBoxes.z; k++) {
+			auto planeZ = origin.z + (k * boxToBoxDistance.z);
+			for(uint32_t j=0; j<numBoxes.y; j++) {
+				auto lineY = origin.y + (j * boxToBoxDistance.y);
+				for(uint32_t i=0; i<numBoxes.x; i++)
+				{
+					*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
+						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
+					b += 64;
+				}
+			}
+		}
+	}
+	else
+	{
+		drawableList.reserve(boxesCount);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
+
+		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
+		for(uint32_t k=0; k<numBoxes.z; k++) {
+			auto planeZ = origin.z + (k * boxToBoxDistance.z);
+			for(uint32_t j=0; j<numBoxes.y; j++) {
+				auto lineY = origin.y + (j * boxToBoxDistance.y);
+				for(uint32_t i=0; i<numBoxes.x; i++)
+				{
+					Geometry& g = (singleGeometry) ? *geometryList.front() : *geometryList[geometryIndex++];
+					drawableList.emplace_back(g, 0, shaderStagingData, 128, 1, stateSetRoot);
+
+					// shader staging data
+					uint8_t* b = shaderStagingData.data<uint8_t>();
+					ShaderData* d = reinterpret_cast<ShaderData*>(b);
+					memset(d, 0, sizeof(ShaderData));
+					d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
+					d->alpha = 1.f;
+					*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
+						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
+				}
+			}
+		}
+	}
+}
+
+
+void App::generateBakedBoxesScene(
+	glm::uvec3 numBoxes,
+	glm::vec3 center,
+	glm::vec3 boxToBoxDistance,
+	glm::vec3 boxSize)
+{
+	deleteScene();
+
+	// make sure valid parameters were passed in
+	if(numBoxes.x == 0 || numBoxes.y == 0 || numBoxes.z == 0)
+		return;
+
+	// create Geometry
+	geometryList.reserve(1);
+	geometryList.emplace_back(new Geometry(renderer));
+	Geometry* geometry = geometryList.back();
+
+	// alloc positions
+	size_t numPositions = numBoxes.x * numBoxes.y * numBoxes.z * 8;
+	StagingData positionStagingData = geometry->createVertexStagingData(numPositions * sizeof(glm::vec3));
+	glm::vec3* positions = positionStagingData.data<glm::vec3>();
+
+	// generate vertex positions
+	glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
+	glm::vec3 d = boxSize / 2.f;
+	size_t index = 0;
+	for(uint32_t k=0; k<numBoxes.z; k++) {
+		auto planeZ = origin.z + (k * boxToBoxDistance.z);
+		for(uint32_t j=0; j<numBoxes.y; j++) {
+			auto lineY = origin.y + (j * boxToBoxDistance.y);
+			for(uint32_t i=0; i<numBoxes.x; i++)
+			{
+				glm::vec3 t = glm::vec3(origin.x + (i * boxToBoxDistance.x), lineY, planeZ);
+				positions[index++] = t + glm::vec3(-d.x, -d.y, -d.z);
+				positions[index++] = t + glm::vec3( d.x, -d.y, -d.z);
+				positions[index++] = t + glm::vec3(-d.x,  d.y, -d.z);
+				positions[index++] = t + glm::vec3( d.x,  d.y, -d.z);
+				positions[index++] = t + glm::vec3(-d.x, -d.y,  d.z);
+				positions[index++] = t + glm::vec3( d.x, -d.y,  d.z);
+				positions[index++] = t + glm::vec3(-d.x,  d.y,  d.z);
+				positions[index++] = t + glm::vec3( d.x,  d.y,  d.z);
+			}
+		}
+	}
+	assert(index == numPositions);
+
+	// alloc indices
+	uint32_t numIndices = numBoxes.x * numBoxes.y * numBoxes.z * 36;
+	StagingData indexStagingData = geometry->createIndexStagingData(numIndices * sizeof(uint32_t));
+	uint32_t* indices = indexStagingData.data<uint32_t>();
+
+	// generate indices
+	index = 0;
+	uint32_t boxIndexOffset = 0;
+	for(uint32_t k=0; k<numBoxes.z; k++) {
+		for(uint32_t j=0; j<numBoxes.y; j++) {
+			for(uint32_t i=0; i<numBoxes.x; i++)
+			{
+				// face x,y
+				indices[index++] = boxIndexOffset + 0;
+				indices[index++] = boxIndexOffset + 2;
+				indices[index++] = boxIndexOffset + 1;
+				indices[index++] = boxIndexOffset + 1;
+				indices[index++] = boxIndexOffset + 2;
+				indices[index++] = boxIndexOffset + 3;
+
+				// face x,z
+				indices[index++] = boxIndexOffset + 0;
+				indices[index++] = boxIndexOffset + 1;
+				indices[index++] = boxIndexOffset + 4;
+				indices[index++] = boxIndexOffset + 4;
+				indices[index++] = boxIndexOffset + 1;
+				indices[index++] = boxIndexOffset + 5;
+
+				// face y,z
+				indices[index++] = boxIndexOffset + 0;
+				indices[index++] = boxIndexOffset + 4;
+				indices[index++] = boxIndexOffset + 2;
+				indices[index++] = boxIndexOffset + 2;
+				indices[index++] = boxIndexOffset + 4;
+				indices[index++] = boxIndexOffset + 6;
+
+				// face x,y
+				indices[index++] = boxIndexOffset + 4;
+				indices[index++] = boxIndexOffset + 5;
+				indices[index++] = boxIndexOffset + 6;
+				indices[index++] = boxIndexOffset + 6;
+				indices[index++] = boxIndexOffset + 5;
+				indices[index++] = boxIndexOffset + 7;
+
+				// face x,z
+				indices[index++] = boxIndexOffset + 2;
+				indices[index++] = boxIndexOffset + 6;
+				indices[index++] = boxIndexOffset + 3;
+				indices[index++] = boxIndexOffset + 3;
+				indices[index++] = boxIndexOffset + 6;
+				indices[index++] = boxIndexOffset + 7;
+
+				// face y,z
+				indices[index++] = boxIndexOffset + 1;
+				indices[index++] = boxIndexOffset + 3;
+				indices[index++] = boxIndexOffset + 5;
+				indices[index++] = boxIndexOffset + 5;
+				indices[index++] = boxIndexOffset + 3;
+				indices[index++] = boxIndexOffset + 7;
+
+				boxIndexOffset += 8;
+			}
+		}
+	}
+	assert(index == numIndices);
+
+	// primitiveSet
+	StagingData primitiveSetStagingData = geometry->createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+	PrimitiveSetGpuData* primitiveSet = primitiveSetStagingData.data<PrimitiveSetGpuData>();
+	primitiveSet->count = numIndices;
+	primitiveSet->first = 0;
+
+	// create Drawables
+	StagingData shaderStagingData;
+	drawableList.reserve(1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
+	drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
+
+	// shader staging data
+	uint8_t* b = shaderStagingData.data<uint8_t>();
+	ShaderData* sd = reinterpret_cast<ShaderData*>(b);
+	memset(sd, 0, sizeof(ShaderData));
+	sd->diffuse = glm::vec3(1.f, 0.5f, 1.f);
+	sd->alpha = 1.f;
+	*reinterpret_cast<glm::mat4*>(b+64) = glm::mat4(1.f);
 }
 
 
 /// Construct application object
 App::App(int argc, char** argv)
-	: stateSetRoot(&renderer)
-	, pipeline(&renderer)
+	: stateSetRoot(renderer)
+	, pipeline(renderer)
+	, sceneDataAllocation(renderer.dataStorage())
 {
 	// process command-line arguments
 	bool printHelp = false;
@@ -405,25 +872,45 @@ App::App(int argc, char** argv)
 					start = &argv[i][7];
 
 				// parse test name
-				if(strcmp(start, "TriangleStripPerformance") == 0) {
+				if(strcmp(start, "TrianglePerformance") == 0) {
+					testType = TestType::TrianglePerformance;
+					requestedNumTriangles = size_t(10 * 1e6);
+				}
+				else if(strcmp(start, "TriangleStripPerformance") == 0) {
 					testType = TestType::TriangleStripPerformance;
 					requestedNumTriangles = size_t(10 * 1e6);
 				}
-				else if(strcmp(start, "TrianglePerformance") == 0) {
-					testType = TestType::TrianglePerformance;
-					requestedNumTriangles = size_t(10 * 1e6);
+				else if(strcmp(start, "DrawablePerformance") == 0) {
+					testType = TestType::DrawablePerformance;
+					requestedNumTriangles = size_t(0.1 * 1e6);
+				}
+				else if(strcmp(start, "PrimitiveSetPerformance") == 0) {
+					testType = TestType::PrimitiveSetPerformance;
+					requestedNumTriangles = size_t(0.1 * 1e6);
 				}
 				else if(strcmp(start, "BakedBoxesPerformance") == 0) {
 					testType = TestType::BakedBoxesPerformance;
 					requestedNumTriangles = size_t(12 * 1e6);
 				}
-				else if(strcmp(start, "BoxDrawablePerformance") == 0) {
-					testType = TestType::BoxDrawablePerformance;
-					requestedNumTriangles = size_t(1.2 * 1e6);
+				else if(strcmp(start, "BakedBoxesScene") == 0) {
+					testType = TestType::BakedBoxesScene;
+					requestedNumTriangles = size_t(12 * 1e6);
 				}
-				else if(strcmp(start, "DrawablePerformance") == 0) {
-					testType = TestType::DrawablePerformance;
-					requestedNumTriangles = size_t(0.1 * 1e6);
+				else if(strcmp(start, "InstancedBoxesPerformance") == 0) {
+					testType = TestType::InstancedBoxesPerformance;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
+				else if(strcmp(start, "InstancedBoxesScene") == 0) {
+					testType = TestType::InstancedBoxesScene;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
+				else if(strcmp(start, "IndependentBoxesPerformance") == 0) {
+					testType = TestType::IndependentBoxesPerformance;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
+				else if(strcmp(start, "IndependentBoxesScene") == 0) {
+					testType = TestType::IndependentBoxesScene;
+					requestedNumTriangles = size_t(12 * 1e6);
 				}
 				else {
 					cout << "Invalid test type \"" << start << "\"." << endl;
@@ -528,15 +1015,34 @@ App::App(int argc, char** argv)
 		        "      the argument must be composed of numbers only\n"
 		        "   -t <test-name> or --test=<test-name> - select particular test;\n"
 		        "      valid values of <test-name>:\n"
-		        "         TriangleStripPerformance - connected triangles forming strip;\n"
-		        "                                    this is the default option\n"
-		        "         TrianglePerformance - separate triangles\n"
-		        "         BakedBoxesPerformance - boxes baked into single Drawable,\n"
-		        "                                 e.g. single draw call\n"
-		        "         BoxDrawablePerformance - each box in its own Drawable,\n"
-		        "                                  e.g. one draw call per box\n"
-		        "         DrawablePerformance - each triangle in its own Drawable,\n"
-		        "                               e.g. one draw call per triangle\n"
+		        "         TrianglePerformance - separated triangles rendered inbetween pixel\n"
+		        "                               sampling locations; single Geometry and\n"
+		        "                               single Drawable\n"
+		        "         TriangleStripPerformance - connected triangles forming long strips;\n"
+		        "                               the strips are rendered inbetween pixel\n"
+		        "                               sampling locations; single Geometry and\n"
+		        "                               single Drawable; this is the default option\n"
+		        "         DrawablePerformance - each triangle is rendered by its own Drawable;\n"
+		        "                               triangles are rendered inbetween pixel\n"
+		        "                               sampling locations\n"
+		        "         PrimitiveSetPerformance - each triangle is rendered by its own\n"
+		        "                               Drawable and its own PrimitiveSet; triangles\n"
+		        "                               are rendered inbetween pixel sampling locations\n"
+		        "         BakedBoxesPerformance - boxes baked into single Drawable, e.g. single\n"
+		        "                               draw call; boxes are small enough to be\n"
+		        "                               rendered inbetween pixel sampling locations\n"
+		        "         BakedBoxesScene - screen visible boxes; the boxes are baked into\n"
+		        "                               a single Drawable\n"
+		        "         InstancedBoxesPerformance - box in single Geometry instanced by a\n"
+		        "                               single Drawable; boxes are small enough to be\n"
+		        "                               rendered inbetween pixel sampling locations\n"
+		        "         InstancedBoxesScene - screen visible boxes; box instanced by a\n"
+		        "                               single Drawable\n"
+		        "         IndependentBoxesPerformance - each box rendered by its own Drawable;\n"
+		        "                               boxes are small enough to be rendered\n"
+		        "                               inbetween pixel sampling locations\n"
+		        "         IndependentBoxesScene - screen visible boxes; each box rendered by\n"
+		        "                               its own Drawable\n"
 		        "   -r <rendering-setup> or --rendering-setup=<rendering-setup> - name of\n"
 		        "      rendering setup; valid values of <rendering-setup>:\n"
 		        "         Performance - rendering pipeline focused on performance without\n"
@@ -553,6 +1059,18 @@ App::App(int argc, char** argv)
 		        "   --help or -h - prints this usage information" << endl;
 		exit(99);
 	}
+
+	// projection and view matrix
+	matrix.projection =
+		glm::orthoLH_ZO(
+			0.f,  // left
+			float(imageExtent.width),  // right
+			0.f,  // bottom
+			float(imageExtent.height),  // top
+			0.5f,  // near
+			100.f  // far
+		);
+	matrix.view = glm::mat4(1.f);
 }
 
 
@@ -569,8 +1087,9 @@ App::~App()
 		}
 
 		// delete scene
-		for(Drawable* d : drawableList)  delete d;
-		delete geometry;
+		drawableList.clear();
+		for(Geometry* g : geometryList)  delete g;
+		geometryList.clear();
 
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
@@ -638,11 +1157,16 @@ void App::init()
 	// test setup
 	cout << "Test:" << endl;
 	switch(testType) {
-	case TestType::TrianglePerformance:      cout << "   TrianglePerformance" << endl; break;
-	case TestType::TriangleStripPerformance: cout << "   TriangleStripPerformance" << endl; break;
-	case TestType::BakedBoxesPerformance:    cout << "   BakedBoxesPerformance" << endl; break;
-	case TestType::BoxDrawablePerformance:   cout << "   BoxDrawablePerformance" << endl; break;
-	case TestType::DrawablePerformance:      cout << "   DrawablePerformance" << endl; break;
+	case TestType::TrianglePerformance:       cout << "   TrianglePerformance" << endl; break;
+	case TestType::TriangleStripPerformance:  cout << "   TriangleStripPerformance" << endl; break;
+	case TestType::DrawablePerformance:       cout << "   DrawablePerformance" << endl; break;
+	case TestType::PrimitiveSetPerformance:   cout << "   PrimitiveSetPerformance" << endl; break;
+	case TestType::BakedBoxesPerformance:     cout << "   BakedBoxesPerformance" << endl; break;
+	case TestType::BakedBoxesScene:           cout << "   BakedBoxesScene" << endl; break;
+	case TestType::InstancedBoxesPerformance: cout << "   InstancedBoxesPerformance" << endl; break;
+	case TestType::InstancedBoxesScene:       cout << "   InstancedBoxesScene" << endl; break;
+	case TestType::IndependentBoxesPerformance: cout << "   IndependentBoxesPerformance" << endl; break;
+	case TestType::IndependentBoxesScene:     cout << "   IndependentBoxesScene" << endl; break;
 	default: cout << "   Undefined" << endl;
 	};
 	cout << "Rendering setup:" << endl;
@@ -659,7 +1183,11 @@ void App::init()
 		physicalDevice,
 		graphicsQueueFamily,
 		graphicsQueueFamily,
+	#if 0 // enable to use debugPrintfEXT in shader code
+		vector<const char*>{"VK_KHR_shader_non_semantic_info"},  //extensions
+	#else
 		nullptr,  // extensions
+	#endif
 		Renderer::requiredFeatures()  // features
 	);
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
@@ -962,16 +1490,16 @@ void App::init()
 		device.createShaderModule(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
-				sizeof(vsSpirv),  // codeSize
-				vsSpirv  // pCode
+				(renderingSetup == RenderingSetup::Picking) ? sizeof(vsIdBufferSpirv) : sizeof(vsSpirv),  // codeSize
+				(renderingSetup == RenderingSetup::Picking) ? vsIdBufferSpirv : vsSpirv  // pCode
 			)
 		);
 	fsModule =
 		device.createShaderModule(
 			vk::ShaderModuleCreateInfo(
 				vk::ShaderModuleCreateFlags(),  // flags
-				(renderingSetup == RenderingSetup::Picking) ? sizeof(fsPickingSpirv) : sizeof(fsPerformanceSpirv),  // codeSize
-				(renderingSetup == RenderingSetup::Picking) ? fsPickingSpirv : fsPerformanceSpirv // pCode
+				(renderingSetup == RenderingSetup::Picking) ? sizeof(fsIdBufferSpirv) : sizeof(fsSpirv),  // codeSize
+				(renderingSetup == RenderingSetup::Picking) ? fsIdBufferSpirv : fsSpirv // pCode
 			)
 		);
 
@@ -982,14 +1510,41 @@ void App::init()
 				vk::PipelineLayoutCreateFlags(),  // flags
 				0,       // setLayoutCount
 				nullptr, // pSetLayouts
-				1,       // pushConstantRangeCount
-				&(const vk::PushConstantRange&)vk::PushConstantRange{  // pPushConstantRanges
-					vk::ShaderStageFlagBits::eVertex,  // stageFlags
-					0,  // offset
-					2*16*sizeof(float)  // size
-				}
+				2,  // pushConstantRangeCount
+				array{  // pPushConstantRanges
+					vk::PushConstantRange{
+						vk::ShaderStageFlagBits::eVertex,  // stageFlags
+						0,  // offset
+						2*sizeof(uint64_t)  // size
+					},
+					vk::PushConstantRange{
+						vk::ShaderStageFlagBits::eFragment,  // stageFlags
+						8,  // offset
+						sizeof(uint64_t) + sizeof(uint32_t)  // size
+					},
+				}.data()
 			}
 		);
+
+	// pipeline specialization constants
+	const array<float,6> specializationConstants{
+		matrix.projection[2][0], matrix.projection[2][1], matrix.projection[2][3],
+		matrix.projection[3][0], matrix.projection[3][1], matrix.projection[3][3],
+	};
+	const array specializationMap {
+		vk::SpecializationMapEntry{0,0,4},  // constantID, offset, size
+		vk::SpecializationMapEntry{1,4,4},
+		vk::SpecializationMapEntry{2,8,4},
+		vk::SpecializationMapEntry{3,12,4},
+		vk::SpecializationMapEntry{4,16,4},
+		vk::SpecializationMapEntry{5,20,4},
+	};
+	const vk::SpecializationInfo specializationInfo(  // pSpecializationInfo
+		6,  // mapEntryCount
+		specializationMap.data(),  // pMapEntries
+		6*sizeof(float),  // dataSize
+		specializationConstants.data()  // pData
+	);
 
 	// pipeline
 	auto pipelineUnique =
@@ -1006,7 +1561,7 @@ void App::init()
 						vk::ShaderStageFlagBits::eVertex,      // stage
 						vsModule,  // module
 						"main",  // pName
-						nullptr  // pSpecializationInfo
+						&specializationInfo  // pSpecializationInfo
 					},
 					vk::PipelineShaderStageCreateInfo{
 						vk::PipelineShaderStageCreateFlags(),  // flags
@@ -1018,20 +1573,12 @@ void App::init()
 				}.data(),
 
 				// vertex input
-				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+				&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
 					vk::PipelineVertexInputStateCreateFlags(),  // flags
-					1,  // vertexBindingDescriptionCount
-					array{  // pVertexBindingDescriptions
-						vk::VertexInputBindingDescription(
-							0, 12, vk::VertexInputRate::eVertex
-						),
-					}.data(),
-					1,  // vertexAttributeDescriptionCount
-					array{  // pVertexAttributeDescriptions
-						vk::VertexInputAttributeDescription(
-							0, 0, vk::Format::eR32G32B32Sfloat, 0
-						),
-					}.data()
+					0,  // vertexBindingDescriptionCount
+					nullptr,  // pVertexBindingDescriptions
+					0,  // vertexAttributeDescriptionCount
+					nullptr  // pVertexAttributeDescriptions
 				},
 
 				// input assembly
@@ -1140,6 +1687,9 @@ void App::init()
 		);
 	pipeline.init(pipelineUnique.release(), pipelineLayoutUnique.release(), nullptr);
 
+	// _sceneDataAllocation
+	sceneDataAllocation.alloc(sizeof(SceneGpuData));
+
 	// command pool
 	commandPool =
 		device.createCommandPool(
@@ -1169,26 +1719,54 @@ void App::init()
 
 	// scene
 	stateSetRoot.pipeline = &pipeline;
-	tie(geometry, drawableList) = generateInvisibleTriangleScene(
-		stateSetRoot, glm::vec2(imageExtent.width, imageExtent.height), requestedNumTriangles, testType);
+	switch(testType) {
+	case TestType::TrianglePerformance:
+	case TestType::TriangleStripPerformance:
+	case TestType::DrawablePerformance:
+	case TestType::PrimitiveSetPerformance:
+	case TestType::BakedBoxesPerformance:
+	case TestType::InstancedBoxesPerformance:
+	case TestType::IndependentBoxesPerformance:
+		generateInvisibleTriangleScene(glm::vec2(imageExtent.width, imageExtent.height), requestedNumTriangles, testType);
+		break;
+	case TestType::BakedBoxesScene: {
+		float maxSize = float(min(imageExtent.width, imageExtent.height)) * 0.9f;
+		generateBakedBoxesScene(
+			glm::uvec3(100, 100, 100),  // numBoxes
+			glm::vec3(maxSize / 2.f),  // center
+			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
+			glm::vec3(1.f, 1.f, 1.f));  // boxSize
+		break;
+	}
+	case TestType::InstancedBoxesScene: {
+		float maxSize = float(min(imageExtent.width, imageExtent.height)) * 0.9f;
+		generateBoxesScene(
+			glm::uvec3(100, 100, 100),  // numBoxes
+			glm::vec3(maxSize / 2.f),  // center
+			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
+			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			true,  // instanced
+			true);  // singleGeometry
+		break;
+	}
+	case TestType::IndependentBoxesScene: {
+		float maxSize = float(min(imageExtent.width, imageExtent.height)) * 0.9f;
+		generateBoxesScene(
+			glm::uvec3(100, 100, 100),  // numBoxes
+			glm::vec3(maxSize / 2.f),  // center
+			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
+			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			false,  // instanced
+			false);  // singleGeometry
+		break;
+	}
+	default: break;
+	};
 }
 
 
 void App::frame(bool collectInfo)
 {
-	// construct camera matrices
-	glm::mat4 matrices[2];
-	matrices[0] =
-		glm::orthoLH_ZO(
-			0.f,  // left
-			float(imageExtent.width),  // right
-			float(imageExtent.height),  // bottom
-			0.f,  // top
-			0.5f,  // near
-			100.f  // far
-		);
-	matrices[1] = glm::mat4(1);
-
 	// begin the frame
 	renderer.setCollectFrameInfo(collectInfo, calibratedTimestampsSupported);
 	renderer.beginFrame();
@@ -1199,31 +1777,54 @@ void App::frame(bool collectInfo)
 	// begin command buffer recording
 	renderer.beginRecording(commandBuffer);
 
-	// record camera matrices
+	// update SceneGpuData
+	CadR::StagingData stagingSceneData = sceneDataAllocation.createStagingData();
+	SceneGpuData* sceneData = stagingSceneData.data<SceneGpuData>();
+	assert(sizeof(SceneGpuData) == sceneDataAllocation.size());
+	//sceneData->projectionMatrix = projectionMatrix;
+	sceneData->viewMatrix = matrix.view;
+	sceneData->p11 = matrix.projection[0][0];
+	sceneData->p22 = matrix.projection[1][1];
+	sceneData->p33 = matrix.projection[2][2];
+	sceneData->p43 = matrix.projection[3][2];
+
+	// prepare recording
+	numStateSets = 1;  // value zero reserved for no container
+	size_t numDrawables = renderer.prepareSceneRendering(stateSetRoot);
+	id2stateSetMap.clear();
+	if(id2stateSetMap.capacity() < numStateSets)
+		id2stateSetMap.reserve(numStateSets+(numStateSets>>4));  // make the capacity 1/16 bigger to avoid reallocations on slowly growing scenes
+	else if(id2stateSetMap.capacity() >= 4*numStateSets) {
+		auto stateSets = decltype(id2stateSetMap){};
+		id2stateSetMap.swap(stateSets);
+		id2stateSetMap.reserve(numStateSets+(numStateSets>>4));  // make the capacity 1/16 bigger to avoid reallocations on slowly growing scenes
+	}
+	id2stateSetMap.emplace_back(nullptr);  // no container for value zero
+
+	// record compute shader preprocessing
+	renderer.recordDrawableProcessing(commandBuffer, numDrawables);
+
+	// record scene rendering
 	device.cmdPushConstants(
 		commandBuffer,  // commandBuffer
 		pipeline.layout(),  // pipelineLayout
 		vk::ShaderStageFlagBits::eVertex,  // stageFlags
 		0,  // offset
-		(16+4)*sizeof(float),  // size
-		&matrices  // pValues
+		sizeof(uint64_t),  // size
+		array<uint64_t,1>{  // pValues
+			renderer.drawablePayloadDeviceAddress(),  // payloadBufferPtr
+		}.data()
 	);
-
-	// prepare recording
-	numContainers = 1;  // value zero reserved for no container
-	size_t numDrawables = renderer.prepareSceneRendering(stateSetRoot);
-	id2containerMap.clear();
-	if(id2containerMap.capacity() < numContainers)
-		id2containerMap.reserve(numContainers+(numContainers>>4));  // make the capacity 1/16 bigger to avoid reallocations on slowly growing scenes
-	else if(id2containerMap.capacity() >= 2*numContainers) {
-		auto stateSetDrawableContainers = decltype(id2containerMap){};
-		id2containerMap.swap(stateSetDrawableContainers);
-		id2containerMap.reserve(numContainers+(numContainers>>4));  // make the capacity 1/16 bigger to avoid reallocations on slowly growing scenes
-	}
-	id2containerMap.emplace_back(nullptr);  // no container for value zero
-
-	// record scene rendering
-	renderer.recordDrawableProcessing(commandBuffer, numDrawables);
+	device.cmdPushConstants(
+		commandBuffer,  // commandBuffer
+		pipeline.layout(),  // pipelineLayout
+		vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  // stageFlags
+		8,  // offset
+		sizeof(uint64_t),  // size
+		array<uint64_t,1>{  // pValues
+			sceneDataAllocation.deviceAddress(),  // sceneDataPtr
+		}.data()
+	);
 	renderer.recordSceneRendering(
 		commandBuffer,  // commandBuffer
 		stateSetRoot,  // stateSetRoot
@@ -1295,23 +1896,45 @@ void App::printResults()
 	// (using log-level D_OFF to do it always because it was requested by cmd-line argument)
 	if (testType == TestType::TrianglePerformance)
 		cout << "Triangle performance test of " << size_t(requestedNumTriangles/1e6) << " Mtri ("
-				<< requestedNumTriangles << " triangles) inside 1 drawable." << endl;
+		     << requestedNumTriangles << " triangles) inside 1 drawable." << endl;
 	else if (testType == TestType::TriangleStripPerformance)
 		cout << "Triangle strip performance test of " << size_t(requestedNumTriangles/1e6) << " Mtri ("
-				<< requestedNumTriangles << " triangles) inside 1 drawable." << endl;
-	else if (testType == TestType::BakedBoxesPerformance)
-		cout << "Baked boxes performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
-				<< "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
-				<< requestedNumTriangles << " triangles in 1 drawable)." << endl;
-	else if (testType == TestType::BoxDrawablePerformance)
-		cout << "Drawable per box performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
-				<< "M (" << size_t((requestedNumTriangles + 11) / 12) << ") boxes ("
-				<< requestedNumTriangles << " triangles in " << size_t((requestedNumTriangles + 11) / 12)
-				<< " drawables)." << endl;
+		     << requestedNumTriangles << " triangles) inside 1 drawable." << endl;
 	else if (testType == TestType::DrawablePerformance)
 		cout << "Drawable performance test of " << size_t(requestedNumTriangles / 1e6)
-				<< " Mtri in " << size_t(requestedNumTriangles / 1e6) << " Mdrawables ("
-				<< requestedNumTriangles << " triangles in " << requestedNumTriangles << " drawables)." << endl;
+		     << " Mtri in " << size_t(requestedNumTriangles / 1e6) << " Mdrawables ("
+		     << requestedNumTriangles << " triangles in " << requestedNumTriangles << " drawables)." << endl;
+	else if (testType == TestType::PrimitiveSetPerformance)
+		cout << "PrimitiveSet performance test of " << size_t(requestedNumTriangles / 1e6)
+		     << " Mtri in " << size_t(requestedNumTriangles / 1e6) << " Mdrawables ("
+		     << requestedNumTriangles << " triangles in " << requestedNumTriangles << " drawables)." << endl;
+	else if (testType == TestType::BakedBoxesPerformance)
+		cout << "Baked boxes performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in 1 drawable)." << endl;
+	else if (testType == TestType::BakedBoxesScene)
+		cout << "Baked boxes scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in 1 drawable)." << endl;
+	else if (testType == TestType::InstancedBoxesPerformance)
+		cout << "Instanced boxes performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in 1 drawable with "
+		     << size_t(requestedNumTriangles + 11) / 12 << " transformations)." << endl;
+	else if (testType == TestType::InstancedBoxesScene)
+		cout << "Instanced boxes scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in 1 drawable with "
+		     << size_t(requestedNumTriangles + 11) / 12 << " transformations)." << endl;
+	else if (testType == TestType::IndependentBoxesPerformance)
+		cout << "Independent boxes performance test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t((requestedNumTriangles + 11) / 12) << ") boxes ("
+		     << requestedNumTriangles << " triangles in " << size_t((requestedNumTriangles + 11) / 12)
+		     << " drawables)." << endl;
+	else if (testType == TestType::IndependentBoxesScene)
+		cout << "Independent boxes scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in " << size_t(requestedNumTriangles + 11) / 12 << " drawables)." << endl;
 
 	// if no measurements
 	if(frameInfoList.empty()) {
@@ -1323,18 +1946,24 @@ void App::printResults()
 	struct FrameTimeInfo
 	{
 		size_t frameId;
+		double totalTime;
 		double cpuTime;
 		double gpuTime;
-		double totalTime;
+		double gpuPreparations;
+		double gpuDrawableProcessing;
+		double gpuRendering;
 	};
 	vector<FrameTimeInfo> frameTimeList;
 	frameTimeList.reserve(frameInfoList.size());
 	for(FrameInfo& info : frameInfoList) {
-		double cpuTime = double(info.endFrameCpu - info.beginFrameCpu) * renderer.cpuTimestampPeriod();
-		double gpuTime = double(info.endRenderingGpu - info.beginRenderingGpu) * renderer.gpuTimestampPeriod();
-		double totalTime = max(double(info.endRenderingGpu - info.beginFrameGpu) * renderer.gpuTimestampPeriod(),
+		double cpuTime = double(info.cpuEndFrame - info.cpuBeginFrame) * renderer.cpuTimestampPeriod();
+		double gpuTime = double(info.gpuEndExecution - info.gpuBeginExecution) * renderer.gpuTimestampPeriod();
+		double totalTime = max(double(info.gpuEndExecution - info.gpuBeginFrame) * renderer.gpuTimestampPeriod(),
 		                       cpuTime);
-		frameTimeList.emplace_back(FrameTimeInfo{info.frameNumber, cpuTime, gpuTime, totalTime});
+		double gpuPreparations = double(info.gpuAfterTransfersAndBeforeDrawableProcessing - info.gpuBeginExecution) * renderer.gpuTimestampPeriod();
+		double gpuDrawableProcessing = double(info.gpuAfterDrawableProcessingAndBeforeRendering - info.gpuAfterTransfersAndBeforeDrawableProcessing) * renderer.gpuTimestampPeriod();
+		double gpuRendering = double(info.gpuEndExecution - info.gpuAfterDrawableProcessingAndBeforeRendering) * renderer.gpuTimestampPeriod();
+		frameTimeList.emplace_back(FrameTimeInfo{info.frameNumber, totalTime, cpuTime, gpuTime, gpuPreparations, gpuDrawableProcessing, gpuRendering });
 	}
 
 	// print median frame
@@ -1352,6 +1981,9 @@ void App::printResults()
 	cout << "      Total time:  " << median(frameTimeList, [](FrameTimeInfo& i) { return i.totalTime; }) * 1000 << "ms" << endl;
 	cout << "      Cpu time:    " << median(frameTimeList, [](FrameTimeInfo& i) { return i.cpuTime; }) * 1000 << "ms" << endl;
 	cout << "      Gpu time:    " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuTime; }) * 1000 << "ms" << endl;
+	cout << "      Gpu preparation time:          " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuPreparations; }) * 1000 << "ms" << endl;
+	cout << "      Gpu drawable processing time:  " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuDrawableProcessing; }) * 1000 << "ms" << endl;
+	cout << "      Gpu rendering time:            " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuRendering; }) * 1000 << "ms" << endl;
 
 	// print frame times
 	auto printValue =
@@ -1389,7 +2021,6 @@ int main(int argc, char** argv) {
 
 	try {
 
-		{ App ax(argc, argv); }
 		App app(argc, argv);
 		app.init();
 		app.mainLoop();

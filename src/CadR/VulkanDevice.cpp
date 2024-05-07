@@ -39,6 +39,11 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkDestroySampler     =getProcAddr<PFN_vkDestroySampler     >("vkDestroySampler");
 	vkCreateFramebuffer  =getProcAddr<PFN_vkCreateFramebuffer  >("vkCreateFramebuffer");
 	vkDestroyFramebuffer =getProcAddr<PFN_vkDestroyFramebuffer >("vkDestroyFramebuffer");
+	vkCreateSwapchainKHR =getProcAddr<PFN_vkCreateSwapchainKHR >("vkCreateSwapchainKHR");
+	vkDestroySwapchainKHR=getProcAddr<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR");
+	vkGetSwapchainImagesKHR=getProcAddr<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
+	vkAcquireNextImageKHR=getProcAddr<PFN_vkAcquireNextImageKHR>("vkAcquireNextImageKHR");
+	vkQueuePresentKHR    =getProcAddr<PFN_vkQueuePresentKHR    >("vkQueuePresentKHR");
 	vkCreateShaderModule =getProcAddr<PFN_vkCreateShaderModule >("vkCreateShaderModule");
 	vkDestroyShaderModule=getProcAddr<PFN_vkDestroyShaderModule>("vkDestroyShaderModule");
 	vkCreateDescriptorSetLayout=getProcAddr<PFN_vkCreateDescriptorSetLayout>("vkCreateDescriptorSetLayout");
@@ -79,6 +84,7 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkCmdDrawIndexedIndirect=getProcAddr<PFN_vkCmdDrawIndexedIndirect>("vkCmdDrawIndexedIndirect");
 	vkCmdDrawIndexed     =getProcAddr<PFN_vkCmdDrawIndexed     >("vkCmdDrawIndexed");
 	vkCmdDraw            =getProcAddr<PFN_vkCmdDraw            >("vkCmdDraw");
+	vkCmdDrawIndirect    =getProcAddr<PFN_vkCmdDrawIndirect    >("vkCmdDrawIndirect");
 	vkCmdDispatch        =getProcAddr<PFN_vkCmdDispatch        >("vkCmdDispatch");
 	vkCmdDispatchIndirect=getProcAddr<PFN_vkCmdDispatchIndirect>("vkCmdDispatchIndirect");
 	vkCmdDispatchBase    =getProcAddr<PFN_vkCmdDispatchBase    >("vkCmdDispatchBase");
@@ -116,7 +122,7 @@ void VulkanDevice::create(VulkanInstance& instance,
                           uint32_t graphicsQueueFamily,
                           uint32_t presentationQueueFamily,
                           const vk::ArrayProxy<const char*const> enabledExtensions,
-                          const vk::PhysicalDeviceFeatures* enabledFeatures)
+                          const vk::PhysicalDeviceFeatures& enabledFeatures)
 {
 	size_t numQueues = (graphicsQueueFamily==presentationQueueFamily) ? 1 : 2;
 	std::array<vk::DeviceQueueCreateInfo, 2> queueInfos = {
@@ -138,7 +144,7 @@ void VulkanDevice::create(VulkanInstance& instance,
 		uint32_t(numQueues), queueInfos.data(),  // queueCreateInfo
 		0, nullptr,  // enabledLayersCount
 		enabledExtensions.size(), enabledExtensions.data(),  // enabledExtensions
-		enabledFeatures  // enabledFeatures
+		&enabledFeatures  // enabledFeatures
 	);
 	create(instance, physicalDevice, createInfo);
 }
@@ -149,7 +155,7 @@ void VulkanDevice::create(VulkanInstance& instance,
                           uint32_t graphicsQueueFamily,
                           uint32_t presentationQueueFamily,
                           const vk::ArrayProxy<const char*const> enabledExtensions,
-                          const vk::PhysicalDeviceFeatures2* enabledFeatures2)
+                          const vk::PhysicalDeviceFeatures2& enabledFeatures2)
 {
 	size_t numQueues = (graphicsQueueFamily==presentationQueueFamily) ? 1 : 2;
 	std::array<vk::DeviceQueueCreateInfo, 2> queueInfos = {
@@ -173,7 +179,7 @@ void VulkanDevice::create(VulkanInstance& instance,
 		enabledExtensions.size(), enabledExtensions.data(),  // enabledExtensions
 		nullptr  // enabledFeatures
 	);
-	createInfo.setPNext(enabledFeatures2);
+	createInfo.setPNext(&enabledFeatures2);
 	create(instance, physicalDevice, createInfo);
 }
 
