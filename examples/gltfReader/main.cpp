@@ -935,41 +935,82 @@ void App::init()
 		};
 		MaterialData* m = sd.data<MaterialData>();
 		if(material) {
-			glm::vec4 baseColorFactor(1.f, 1.f, 1.f, 1.f);
-			auto pbrIt = material->find("pbrMetallicRoughness");
-			if(pbrIt != material->end()) {
-				auto baseColorFactorIt = pbrIt->find("baseColorFactor");
-				if(baseColorFactorIt != pbrIt->end()) {
+
+			// pbr material variables
+			glm::vec4 baseColorFactor;
+			float metallicFactor;
+			float roughnessFactor;
+
+			// read pbr material properties
+			if(auto pbrIt = material->find("pbrMetallicRoughness"); pbrIt != material->end()) {
+
+				// read baseColorFactor
+				if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
 					json::array_t& baseColorFactorArray = baseColorFactorIt->get_ref<json::array_t&>();
 					baseColorFactor[0] = float(baseColorFactorArray.at(0).get_ref<json::number_float_t&>());
 					baseColorFactor[1] = float(baseColorFactorArray.at(1).get_ref<json::number_float_t&>());
 					baseColorFactor[2] = float(baseColorFactorArray.at(2).get_ref<json::number_float_t&>());
 					baseColorFactor[3] = float(baseColorFactorArray.at(3).get_ref<json::number_float_t&>());
 				}
-				auto baseColorTextureIt = pbrIt->find("baseColorTexture");
-				if(baseColorTextureIt != pbrIt->end())
+
+				// read properties
+				metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
+				roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
+
+				// not supported properties
+				if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end())
 					throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
-				if(pbrIt->find("metallicFactor") != pbrIt->end() || pbrIt->find("roughnessFactor") != pbrIt->end() ||
-				   pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-				{
+				if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
 					throw GltfError("Unsupported functionality: metallic-roughness material model.");
-				}
+
 			}
+			else
+			{
+				// default values when pbrMetallicRoughness is not present
+				baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+				metallicFactor = 1.f;
+				roughnessFactor = 1.f;
+			}
+
+			// not supported material properties
+			if(material->find("normalTexture") != material->end())
+				throw GltfError("Unsupported functionality: normal texture.");
+			if(material->find("occlusionTexture") != material->end())
+				throw GltfError("Unsupported functionality: occlusion texture.");
+			if(material->find("emissiveTexture") != material->end())
+				throw GltfError("Unsupported functionality: emissive texture.");
+			if(material->find("emissiveFactor") != material->end())
+				throw GltfError("Unsupported functionality: emissive factor.");
+			if(material->find("alphaMode") != material->end())
+				throw GltfError("Unsupported functionality: alpha mode.");
+			if(material->find("alphaCutoff") != material->end())
+				throw GltfError("Unsupported functionality: alpha cutoff.");
+
+			// set material data
 			m->ambient = glm::vec3(baseColorFactor);
 			m->type = 0;
 			m->diffuseAndAlpha = baseColorFactor;
+			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
+			m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+
 		}
 		else {
+
+			// set default material data
 			m->ambient = glm::vec3(1.f,1.f,1.f);
 			m->type = 0;
 			m->diffuseAndAlpha = glm::vec4(1.f,1.f,1.f,1.f);
+			m->specular = glm::vec3(0.f,0.f,0.f);
+			m->shininess = 0.f;
+
 		}
-		m->specular = glm::vec3(0.f,0.f,0.f);
-		m->shininess = 0.f;
+
+		// set remaining material members and modelMatrix
 		m->emission = glm::vec3(0.f,0.f,0.f);
 		m->pointSize = 0.f;
 		glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
 		*modelMatrix = glm::mat4(1.f);
+
 	}
 
 	// upload all staging buffers

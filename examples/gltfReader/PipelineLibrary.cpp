@@ -172,8 +172,17 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
                              const vk::SpecializationInfo& specializationInfo, vk::RenderPass renderPass,
                              vk::PipelineCache pipelineCache)
 {
+	// init shaders
+	// and handle device change
 	create(device);
 
+	// destroy previous pipelines
+	for(size_t i=0; i<_pipelines.size(); i++) {
+		device.destroy(_pipelines[i]);
+		_pipelines[i] = nullptr;
+	}
+
+	// create new pipelines
 	for(size_t i=0; i<_pipelines.size(); i++)
 		_pipelines[i] =
 			_device->createGraphicsPipeline(
