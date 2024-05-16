@@ -98,6 +98,7 @@ public:
 	template<typename T> T getProcAddr(const std::string& name) const;
 
 	operator vk::Device() const;
+	operator VkDevice() const;
 	explicit operator bool() const;
 	bool operator!() const;
 
@@ -620,6 +621,7 @@ template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { retu
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 
 inline VulkanDevice::operator vk::Device() const  { return _device; }
+inline VulkanDevice::operator VkDevice() const  { return _device; }
 inline VulkanDevice::operator bool() const  { return _device.operator bool(); }
 inline bool VulkanDevice::operator!() const  { return _device.operator!(); }
 inline uint32_t VulkanDevice::version() const  { return _version; }

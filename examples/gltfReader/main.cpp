@@ -96,8 +96,8 @@ public:
 	float cameraHeading=0.f;
 	float cameraElevation=0.f;
 	float cameraDistance=5.f;
-	int startMouseX,startMouseY;
-	float startCameraHeading,startCameraElevation;
+	float startMouseX, startMouseY;
+	float startCameraHeading, startCameraElevation;
 
 	filesystem::path filePath;
 
@@ -924,6 +924,8 @@ void App::init()
 
 		// drawable
 		CadR::Drawable& d = drawableDB.emplace_back(g, 0, sd, 128, 1, ss);
+
+		// material
 		struct MaterialData {
 			glm::vec3 ambient;  // offset 0
 			uint32_t type;  // offset 12

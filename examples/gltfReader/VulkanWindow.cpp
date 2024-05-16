@@ -39,7 +39,10 @@
 # include <QWheelEvent>
 # include <fstream>
 #endif
+#include <algorithm>
+#include <cassert>
 #include <stdexcept>
+#include <string>
 #include <iostream>  // for debugging
 
 using namespace std;
@@ -789,27 +792,30 @@ void VulkanWindow::init(void* data)
 }
 
 
-void VulkanWindow::init(int& argc, char* argv[])
-{
-	// use argc and argv
-	// for QGuiApplication initialization
 #if defined(USE_PLATFORM_QT)
 
+// use argc and argv
+// for QGuiApplication initialization
+void VulkanWindow::init(int& argc, char* argv[])
+{
 	if(qGuiApplication)
 		return;
 
 	// construct QGuiApplication
 	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
 	new(qGuiApplication) QGuiApplication(argc, argv);
+}
 
 #else
 
-	// on all other platforms,
-	// just perform init()
+// on all other platforms,
+// just perform init()
+void VulkanWindow::init(int&, char*[])
+{
 	init();
+}
 
 #endif
-}
 
 
 void VulkanWindow::finalize() noexcept
@@ -1430,8 +1436,8 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 }
 
 
-vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title,
-                                    PFN_vkGetInstanceProcAddr getInstanceProcAddr)
+VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent, const char* title,
+                                  PFN_vkGetInstanceProcAddr getInstanceProcAddr)
 {
 	// asserts for valid usage
 	assert(instance && "The parameter instance must not be null.");
@@ -1500,7 +1506,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	VkResult r =
 		vulkanCreateWin32SurfaceKHR(
 			_instance,  // instance
-			&VkWin32SurfaceCreateInfoKHR{  // pCreateInfo
+			&(const VkWin32SurfaceCreateInfoKHR&)VkWin32SurfaceCreateInfoKHR{  // pCreateInfo
 				VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,  // sType
 				nullptr,  // pNext
 				0,  // flags
@@ -1741,8 +1747,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		[](GLFWwindow* window, double xpos, double ypos)
 		{
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-			int x = lround(xpos);
-			int y = lround(ypos);
+			float x = float(xpos);
+			float y = float(ypos);
 			if(w->_mouseState.posX != x ||
 			   w->_mouseState.posY != y)
 			{
@@ -1780,7 +1786,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		[](GLFWwindow* window, double xoffset, double yoffset) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			if(w->_mouseWheelCallback)
-				w->_mouseWheelCallback(*w, -lround(xoffset*120), lround(yoffset*120), w->_mouseState);
+				w->_mouseWheelCallback(*w, -float(xoffset)*120, float(yoffset)*120, w->_mouseState);
 		}
 	);
 	glfwSetKeyCallback(
@@ -1846,7 +1852,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 }
 
 
-void VulkanWindow::setDevice(vk::Device device, vk::PhysicalDevice physicalDevice)
+void VulkanWindow::setDevice(VkDevice device, VkPhysicalDevice physicalDevice)
 {
 	assert(_instance && "VulkanWindow::setDevice(): Call VulkanWindow::create() first.");
 
@@ -1938,7 +1944,7 @@ void VulkanWindow::renderFrame()
 		else {
 			QSize size = _window->size();
 			auto ratio = _window->devicePixelRatio();
-			_surfaceExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
+			_surfaceExtent = VkExtent2D{uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f)};
 			_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
 			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
@@ -1951,7 +1957,7 @@ void VulkanWindow::renderFrame()
 		// (this may happen on Win32-based and Xlib-based systems, for instance;
 		// in reality, it never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5)
 		// because window minimalizing just unmaps the window)
-		if(_surfaceExtent == vk::Extent2D(0,0))
+		if(_surfaceExtent.width == 0 && _surfaceExtent.height == 0)
 			return;  // new frame will be scheduled on the next window resize
 
 		// recreate swapchain
@@ -2034,7 +2040,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
 		};
 	auto handleMouseMove =
-		[](VulkanWindowPrivate* w, int x, int y)
+		[](VulkanWindowPrivate* w, float x, float y)
 		{
 			if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
 				w->_mouseState.relX = x - w->_mouseState.posX;
@@ -2057,8 +2063,8 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
 
 			// handle mouse move, if any
-			int x = GET_X_LPARAM(lParam);
-			int y = GET_Y_LPARAM(lParam);
+			float x = float(GET_X_LPARAM(lParam));
+			float y = float(GET_Y_LPARAM(lParam));
 			if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
 				w->_mouseState.relX = x - w->_mouseState.posX;
 				w->_mouseState.relY = y - w->_mouseState.posY;
@@ -2166,7 +2172,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		case WM_MOUSEMOVE: {
 			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
 			handleModifiers(w, wParam);
-			handleMouseMove(w, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+			handleMouseMove(w, float(GET_X_LPARAM(lParam)), float(GET_Y_LPARAM(lParam)));
 			return 0;
 		}
 
@@ -2203,7 +2209,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
 			if(ScreenToClient(hwnd, &p) == 0)
 				thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
-			handleMouseMove(w, p.x, p.y);
+			handleMouseMove(w, float(p.x), float(p.y));
 			if(w->_mouseWheelCallback)
 				w->_mouseWheelCallback(*w, 0, GET_WHEEL_DELTA_WPARAM(wParam), w->_mouseState);
 			return 0;
@@ -2214,7 +2220,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
 			if(ScreenToClient(hwnd, &p) == 0)
 				thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
-			handleMouseMove(w, p.x, p.y);
+			handleMouseMove(w, float(p.x), float(p.y));
 			if(w->_mouseWheelCallback)
 				w->_mouseWheelCallback(*w, GET_WHEEL_DELTA_WPARAM(wParam), 0, w->_mouseState);
 			return 0;
@@ -2463,7 +2469,7 @@ void VulkanWindow::mainLoop()
 			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  state & Mod4Mask);
 		};
 	auto handleMouseMove =
-		[](VulkanWindow* w, int newX, int newY)
+		[](VulkanWindow* w, float newX, float newY)
 		{
 			if(w->_mouseState.posX != newX ||
 				w->_mouseState.posY != newY)
@@ -2529,13 +2535,13 @@ void VulkanWindow::mainLoop()
 		// mouse events
 		if(e.type == MotionNotify) {
 			handleModifiers(w, e.xmotion.state);
-			handleMouseMove(w, e.xmotion.x, e.xmotion.y);
+			handleMouseMove(w, float(e.xmotion.x), float(e.xmotion.y));
 			continue;
 		}
 		if(e.type == ButtonPress) {
 			cout << "state: " << e.xbutton.state << endl;
 			handleModifiers(w, e.xbutton.state);
-			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
+			handleMouseMove(w, float(e.xbutton.x), float(e.xbutton.y));
 			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
 				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, true);
@@ -2543,14 +2549,14 @@ void VulkanWindow::mainLoop()
 					w->_mouseButtonCallback(*w, button, ButtonState::Pressed, w->_mouseState);
 			}
 			else {
-				int wheelX, wheelY;
+				float wheelX, wheelY;
 				if(e.xbutton.button <= Button5) {
-					wheelX = 0;
-					wheelY = (e.xbutton.button == Button5) ? -120 : 120;
+					wheelX = 0.f;
+					wheelY = (e.xbutton.button == Button5) ? -120.f : 120.f;
 				}
 				else {
-					wheelX = (e.xbutton.button == 6) ? -120 : 120;
-					wheelY = 0;
+					wheelX = (e.xbutton.button == 6) ? -120.f : 120.f;
+					wheelY = 0.f;
 				}
 				if(w->_mouseWheelCallback)
 					w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
@@ -2559,7 +2565,7 @@ void VulkanWindow::mainLoop()
 		}
 		if(e.type == ButtonRelease) {
 			handleModifiers(w, e.xbutton.state);
-			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
+			handleMouseMove(w, float(e.xbutton.x), float(e.xbutton.y));
 			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
 				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, false);
@@ -3004,8 +3010,8 @@ void VulkanWindowPrivate::pointerListenerEnter(void* data, wl_pointer* pointer, 
 	assert(windowUnderPointer && "wl_surface userData does not contain pointer to VulkanWindow.");
 
 	// update mouse state
-	int x = surface_x >> 8;
-	int y = surface_y >> 8;
+	float x = float(wl_fixed_to_double(surface_x));
+	float y = float(wl_fixed_to_double(surface_y));
 	if(windowUnderPointer->_mouseState.posX != x ||
 	   windowUnderPointer->_mouseState.posY != y)
 	{
@@ -3031,8 +3037,8 @@ void VulkanWindowPrivate::pointerListenerMotion(void* data, wl_pointer* pointer,
 	if(windowUnderPointer == nullptr)
 		return;
 
-	int x = surface_x >> 8;
-	int y = surface_y >> 8;
+	float x = float(wl_fixed_to_double(surface_x));
+	float y = float(wl_fixed_to_double(surface_y));
 	if(windowUnderPointer->_mouseState.posX != x ||
 	   windowUnderPointer->_mouseState.posY != y)
 	{
@@ -3078,8 +3084,8 @@ void VulkanWindowPrivate::pointerListenerAxis(void* data, wl_pointer* pointer, u
 	if(windowUnderPointer == nullptr)
 		return;
 
-	int v = (value * 8) / 256;
-	int wheelX, wheelY;
+	float v = float(wl_fixed_to_double(value)) * 8;
+	float wheelX, wheelY;
 	if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
 		wheelX = 0;
 		wheelY = -v;
@@ -3196,6 +3202,50 @@ void VulkanWindow::hide()
 
 void VulkanWindow::mainLoop()
 {
+	// mouse functions
+	auto handleModifiers =
+		[](VulkanWindow* w) -> void
+		{
+			SDL_Keymod m = SDL_GetModState();
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  m & (SDL_KMOD_LCTRL |SDL_KMOD_RCTRL));
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & (SDL_KMOD_LSHIFT|SDL_KMOD_RSHIFT));
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Alt,   m & (SDL_KMOD_LALT  |SDL_KMOD_RALT));
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  m & (SDL_KMOD_LGUI  |SDL_KMOD_RGUI));
+		};
+	auto handleMouseMove =
+		[](VulkanWindow* w, float newX, float newY) -> void
+		{
+			if(w->_mouseState.posX != newX ||
+			   w->_mouseState.posY != newY)
+			{
+				w->_mouseState.relX = newX - w->_mouseState.posX;
+				w->_mouseState.relY = newY - w->_mouseState.posY;
+				w->_mouseState.posX = newX;
+				w->_mouseState.posY = newY;
+				if(w->_mouseMoveCallback)
+					w->_mouseMoveCallback(*w, w->_mouseState);
+			}
+		};
+	auto handleMouseButton =
+		[](VulkanWindow* w, SDL_Event& event, ButtonState buttonState) -> void
+		{
+			// button
+			MouseButton::EnumType mouseButton;
+			switch(event.button.button) {
+			case SDL_BUTTON_LEFT:   mouseButton = MouseButton::Left; break;
+			case SDL_BUTTON_RIGHT:  mouseButton = MouseButton::Right; break;
+			case SDL_BUTTON_MIDDLE: mouseButton = MouseButton::Middle; break;
+			case SDL_BUTTON_X1:     mouseButton = MouseButton::X1; break;
+			case SDL_BUTTON_X2:     mouseButton = MouseButton::X2; break;
+			default: mouseButton = MouseButton::Unknown;
+			}
+
+			// callback with new button state
+			w->_mouseState.buttons.set(mouseButton, buttonState==ButtonState::Pressed);
+			if(w->_mouseButtonCallback)
+				w->_mouseButtonCallback(*w, mouseButton, buttonState, w->_mouseState);
+		};
+
 	// main loop
 	SDL_Event event;
 	running = true;
@@ -3293,6 +3343,63 @@ void VulkanWindow::mainLoop()
 			else {
 				w->hide();
 				VulkanWindow::exitMainLoop();
+			}
+			break;
+		}
+
+		case SDL_EVENT_MOUSE_MOTION: {
+			VulkanWindow* w = getWindow(event.motion.windowID);
+			handleModifiers(w);
+			handleMouseMove(w, event.motion.x, event.motion.y);
+			break;
+		}
+		case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+			VulkanWindow* w = getWindow(event.button.windowID);
+			handleModifiers(w);
+			handleMouseMove(w, event.button.x, event.button.y);
+			handleMouseButton(w, event, ButtonState::Pressed);
+			break;
+		}
+		case SDL_EVENT_MOUSE_BUTTON_UP: {
+			VulkanWindow* w = getWindow(event.button.windowID);
+			handleModifiers(w);
+			handleMouseMove(w, event.button.x, event.button.y);
+			handleMouseButton(w, event, ButtonState::Released);
+			break;
+		}
+
+		case SDL_EVENT_MOUSE_WHEEL:
+		{
+			VulkanWindow* w = getWindow(event.button.windowID);
+
+			if(w->_mouseWheelCallback)
+			{
+				handleModifiers(w);
+
+				// handle wheel rotation
+				// (value is relative since last wheel event)
+				float wheelX = event.wheel.x*120;
+				float wheelY = event.wheel.y*120;
+				w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
+			}
+			break;
+		}
+
+		case SDL_EVENT_KEY_DOWN: {
+			VulkanWindow* w = getWindow(event.key.windowID);
+			if(w->_keyCallback && event.key.repeat == 0)
+			{
+				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
+				w->_keyCallback(*w, KeyState::Pressed, scanCode);
+			}
+			break;
+		}
+		case SDL_EVENT_KEY_UP: {
+			VulkanWindow* w = getWindow(event.key.windowID);
+			if(w->_keyCallback && event.key.repeat == 0)
+			{
+				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
+				w->_keyCallback(*w, KeyState::Released, scanCode);
 			}
 			break;
 		}
@@ -3424,7 +3531,7 @@ void VulkanWindow::mainLoop()
 			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  m & (KMOD_LGUI|KMOD_RGUI));
 		};
 	auto handleMouseMove =
-		[](VulkanWindow* w, int newX, int newY) -> void
+		[](VulkanWindow* w, float newX, float newY) -> void
 		{
 			if(w->_mouseState.posX != newX ||
 			   w->_mouseState.posY != newY)
@@ -3561,14 +3668,14 @@ void VulkanWindow::mainLoop()
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.motion.windowID), windowPointerName));
 			handleModifiers(w);
-			handleMouseMove(w, event.motion.x, event.motion.y);
+			handleMouseMove(w, float(event.motion.x), float(event.motion.y));
 			break;
 		}
 		case SDL_MOUSEBUTTONDOWN: {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.button.windowID), windowPointerName));
 			handleModifiers(w);
-			handleMouseMove(w, event.button.x, event.button.y);
+			handleMouseMove(w, float(event.button.x), float(event.button.y));
 			handleMouseButton(w, event, ButtonState::Pressed);
 			break;
 		}
@@ -3576,7 +3683,7 @@ void VulkanWindow::mainLoop()
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.button.windowID), windowPointerName));
 			handleModifiers(w);
-			handleMouseMove(w, event.button.x, event.button.y);
+			handleMouseMove(w, float(event.button.x), float(event.button.y));
 			handleMouseButton(w, event, ButtonState::Released);
 			break;
 		}
@@ -3591,13 +3698,13 @@ void VulkanWindow::mainLoop()
 
 				// handle wheel rotation
 				// (value is relative since last wheel event)
-#if SDL_MAJOR_VERSION == 2 && SDL_MINOR_VERSION >= 18
-				int wheelX = lround(event.wheel.preciseX*120);
-				int wheelY = lround(event.wheel.preciseY*120);
-#else
-				int wheelX = event.wheel.x*120;
-				int wheelY = event.wheel.y*120;
-#endif
+			#if SDL_MAJOR_VERSION == 2 && SDL_MINOR_VERSION >= 18
+				float wheelX = event.wheel.preciseX * 120;
+				float wheelY = event.wheel.preciseY * 120;
+			#else
+				float wheelX = float(event.wheel.x) * 120;
+				float wheelY = float(event.wheel.y) * 120;
+			#endif
 				w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
 			}
 			break;
@@ -3911,7 +4018,7 @@ bool QtRenderingWindow::event(QEvent* event)
 				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  m & Qt::MetaModifier);
 			};
 		auto handleMouseMove =
-			[](VulkanWindow* vulkanWindow, int newX, int newY)
+			[](VulkanWindow* vulkanWindow, float newX, float newY)
 			{
 				if(vulkanWindow->_mouseState.posX != newX ||
 				   vulkanWindow->_mouseState.posY != newY)
@@ -3925,21 +4032,16 @@ bool QtRenderingWindow::event(QEvent* event)
 				}
 			};
 		auto handleMouseButton =
-			[](VulkanWindow* vulkanWindow, QMouseEvent* e, VulkanWindow::MouseButton::EnumType mouseButton, VulkanWindow::ButtonState buttonState) -> bool
+			[](VulkanWindow* vulkanWindow, float x, float y, VulkanWindow::MouseButton::EnumType mouseButton, VulkanWindow::ButtonState buttonState) -> bool
 			{
 				// handle mouse move, if any
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-				QPoint p = e->position().toPoint();
-#else
-				QPoint p = e->pos();
-#endif
-				if(vulkanWindow->_mouseState.posX != p.x() ||
-				   vulkanWindow->_mouseState.posY != p.y())
+				if(vulkanWindow->_mouseState.posX != x ||
+				   vulkanWindow->_mouseState.posY != y)
 				{
-					vulkanWindow->_mouseState.relX = p.x() - vulkanWindow->_mouseState.posX;
-					vulkanWindow->_mouseState.relY = p.y() - vulkanWindow->_mouseState.posY;
-					vulkanWindow->_mouseState.posX = p.x();
-					vulkanWindow->_mouseState.posY = p.y();
+					vulkanWindow->_mouseState.relX = x - vulkanWindow->_mouseState.posX;
+					vulkanWindow->_mouseState.relY = y - vulkanWindow->_mouseState.posY;
+					vulkanWindow->_mouseState.posX = x;
+					vulkanWindow->_mouseState.posY = y;
 					if(vulkanWindow->_mouseMoveCallback)
 						vulkanWindow->_mouseMoveCallback(*vulkanWindow, vulkanWindow->_mouseState);
 				}
@@ -4003,23 +4105,33 @@ bool QtRenderingWindow::event(QEvent* event)
 		case QEvent::Type::MouseMove: {
 			QMouseEvent* e = static_cast<QMouseEvent*>(event);
 			handleModifiers(vulkanWindow, e);
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-			QPoint p = e->position().toPoint();
-#else
-			QPoint p = e->pos();
-#endif
+		#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+			QPointF p = e->position() * devicePixelRatio();
+		#else
+			QPointF p = e->localPos() * devicePixelRatio();
+		#endif
 			handleMouseMove(vulkanWindow, p.x(), p.y());
 			return true;
 		}
 		case QEvent::Type::MouseButtonPress: {
 			QMouseEvent* e = static_cast<QMouseEvent*>(event);
+		#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+			QPointF p = e->position() * devicePixelRatio();
+		#else
+			QPointF p = e->localPos() * devicePixelRatio();
+		#endif
 			handleModifiers(vulkanWindow, e);
-			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonState::Pressed);
+			return handleMouseButton(vulkanWindow, p.x(), p.y(), getMouseButton(e), VulkanWindow::ButtonState::Pressed);
 		}
 		case QEvent::Type::MouseButtonRelease: {
 			QMouseEvent* e = static_cast<QMouseEvent*>(event);
+		#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+			QPointF p = e->position() * devicePixelRatio();
+		#else
+			QPointF p = e->localPos() * devicePixelRatio();
+		#endif
 			handleModifiers(vulkanWindow, e);
-			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonState::Released);
+			return handleMouseButton(vulkanWindow, p.x(), p.y(), getMouseButton(e), VulkanWindow::ButtonState::Released);
 		}
 		case QEvent::Type::Wheel: {
 
@@ -4027,7 +4139,7 @@ bool QtRenderingWindow::event(QEvent* event)
 			handleModifiers(vulkanWindow, e);
 
 			// handle mouse move, if any
-			QPoint p = e->position().toPoint();
+			QPointF p = e->position() * devicePixelRatio();
 			handleMouseMove(vulkanWindow, p.x(), p.y());
 
 			// handle wheel rotation
@@ -4047,11 +4159,11 @@ bool QtRenderingWindow::event(QEvent* event)
 				if(!k->isAutoRepeat()) {
 
 					// scan code
-# ifdef _WIN32
+				#ifdef _WIN32
 					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
-# else
+				#else
 					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
-# endif
+				#endif
 
 					// callback
 					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, scanCode);
@@ -4065,11 +4177,11 @@ bool QtRenderingWindow::event(QEvent* event)
 				if(!k->isAutoRepeat()) {
 
 					// scan code
-# ifdef _WIN32
+				#ifdef _WIN32
 					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
-# else
+				#else
 					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
-# endif
+				#endif
 
 					// callback
 					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, scanCode);

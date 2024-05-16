@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.h>
 #include <functional>
 #include <bitset>
 
@@ -12,7 +12,7 @@ public:
 	// general function prototypes
 	typedef void FrameCallback(VulkanWindow& window);
 	typedef void RecreateSwapchainCallback(VulkanWindow& window,
-		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+		const VkSurfaceCapabilitiesKHR& surfaceCapabilities, VkExtent2D newSurfaceExtent);
 	typedef void CloseCallback(VulkanWindow& window);
 
 	// input structures and enums
@@ -37,8 +37,8 @@ public:
 		};
 	};
 	struct MouseState {
-		int posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
-		int relX, relY;  // relative against the state of previous mouse callback
+		float posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
+		float relX, relY;  // relative against the state of previous mouse callback
 		std::bitset<16> buttons;
 		std::bitset<16> mods;
 	};
@@ -69,7 +69,7 @@ public:
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
 	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonState buttonState, const MouseState& mouseState);
-	typedef void MouseWheelCallback(VulkanWindow& window, int wheelX, int wheelY, const MouseState& mouseState);
+	typedef void MouseWheelCallback(VulkanWindow& window, float wheelX, float wheelY, const MouseState& mouseState);
 	typedef void KeyCallback(VulkanWindow& window, KeyState newKeyState, ScanCode scanCode);
 
 protected:
@@ -163,15 +163,15 @@ protected:
 #endif
 
 	std::function<FrameCallback> _frameCallback;
-	vk::Instance _instance;
-	vk::PhysicalDevice _physicalDevice;
-	vk::Device _device;
-	vk::SurfaceKHR _surface;
+	VkInstance _instance = nullptr;
+	VkPhysicalDevice _physicalDevice = nullptr;
+	VkDevice _device = nullptr;
+	VkSurfaceKHR _surface = nullptr;
 	PFN_vkGetInstanceProcAddr _vulkanGetInstanceProcAddr = nullptr;
 	PFN_vkDeviceWaitIdle _vulkanDeviceWaitIdle;
 	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR _vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR;
 
-	vk::Extent2D _surfaceExtent = vk::Extent2D(0,0);
+	VkExtent2D _surfaceExtent = {0,0};
 	bool _swapchainResizePending = true;
 	std::function<RecreateSwapchainCallback> _recreateSwapchainCallback;
 	std::function<CloseCallback> _closeCallback;
@@ -202,9 +202,9 @@ public:
 	VulkanWindow& operator=(const VulkanWindow&) = delete;
 
 	// general methods
-	vk::SurfaceKHR create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window",
-	                      PFN_vkGetInstanceProcAddr getInstanceProcAddr = ::vkGetInstanceProcAddr);
-	void setDevice(vk::Device device, vk::PhysicalDevice physicalDevice);
+	VkSurfaceKHR create(VkInstance instance, VkExtent2D surfaceExtent, const char* title = "Vulkan window",
+	                    PFN_vkGetInstanceProcAddr getInstanceProcAddr = ::vkGetInstanceProcAddr);
+	void setDevice(VkDevice device, VkPhysicalDevice physicalDevice);
 	void show();
 	void hide();
 	void setVisible(bool value);
@@ -236,8 +236,8 @@ public:
 	const std::function<KeyCallback>& keyCallback() const;
 
 	// getters
-	vk::SurfaceKHR surface() const;
-	vk::Extent2D surfaceExtent() const;
+	VkSurfaceKHR surface() const;
+	VkExtent2D surfaceExtent() const;
 	bool isVisible() const;
 
 	// schedule methods
@@ -281,8 +281,8 @@ inline const std::function<VulkanWindow::MouseMoveCallback>& VulkanWindow::mouse
 inline const std::function<VulkanWindow::MouseButtonCallback>& VulkanWindow::mouseButtonCallback() const  { return _mouseButtonCallback; }
 inline const std::function<VulkanWindow::MouseWheelCallback>& VulkanWindow::mouseWheelCallback() const  { return _mouseWheelCallback; }
 inline const std::function<VulkanWindow::KeyCallback>& VulkanWindow::keyCallback() const  { return _keyCallback; }
-inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
-inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
+inline VkSurfaceKHR VulkanWindow::surface() const  { return _surface; }
+inline VkExtent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
