@@ -473,91 +473,89 @@ void App::init()
 
 		// mesh.primitive helper functions
 		auto getColorFromVec4f =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
+			[](uint8_t* srcPtr) -> glm::vec4 {
 				glm::vec4 r = *reinterpret_cast<glm::vec4*>(srcPtr);
-				srcPtr += 16;
 				return glm::clamp(r, 0.f, 1.f);
 			};
 		auto getColorFromVec3f =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(glm::clamp(*reinterpret_cast<glm::vec3*>(srcPtr), 0.f, 1.f), 1.f);
-				srcPtr += 12;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						glm::clamp(*reinterpret_cast<glm::vec3*>(srcPtr), 0.f, 1.f),
+						1.f
+					);
 			};
 		auto getColorFromVec4us =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(
-					float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
-					float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
-					float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
-					float(reinterpret_cast<uint16_t*>(srcPtr)[3]) / 65535.f
-				);
-				srcPtr += 8;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+						float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+						float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
+						float(reinterpret_cast<uint16_t*>(srcPtr)[3]) / 65535.f
+					);
 			};
 		auto getColorFromVec3us =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(
-					float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
-					float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
-					float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
-					1.f
-				);
-				srcPtr += 6;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+						float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+						float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
+						1.f
+					);
 			};
 		auto getColorFromVec4ub =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(
-					float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
-					float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
-					float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
-					float(reinterpret_cast<uint8_t*>(srcPtr)[3]) / 255.f
-				);
-				srcPtr += 4;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+						float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+						float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
+						float(reinterpret_cast<uint8_t*>(srcPtr)[3]) / 255.f
+					);
 			};
 		auto getColorFromVec3ub =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(
-					float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
-					float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
-					float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
-					1.f
-				);
-				srcPtr += 3;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+						float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+						float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
+						1.f
+					);
 			};
 		auto getTexCoordFromVec2f =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(*reinterpret_cast<glm::vec2*>(srcPtr), 0.f, 0.f);
-				srcPtr += 8;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						*reinterpret_cast<glm::vec2*>(srcPtr),
+						0.f,
+						0.f
+					);
 			};
 		auto getTexCoordFromVec2us =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(
-					float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
-					float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
-					0.f,
-					0.f
-				);
-				srcPtr += 4;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+						float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+						0.f,
+						0.f
+					);
 			};
 		auto getTexCoordFromVec2ub =
-			[](uint8_t*& srcPtr) -> glm::vec4 {
-				glm::vec4 r(
-					float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
-					float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
-					0.f,
-					0.f
-				);
-				srcPtr += 2;
-				return r;
+			[](uint8_t* srcPtr) -> glm::vec4 {
+				return
+					glm::vec4(
+						float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+						float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+						0.f,
+						0.f
+					);
 			};
-		auto getDataSize =
-			[](json& accessor, size_t& numVertices, size_t elementSize) -> size_t
+		auto updateNumVertices =
+			[](json& accessor, size_t& numVertices) -> void
 			{
 				// get position count (accessor.count is mandatory and >=1)
 				json::number_unsigned_t count = accessor.at("count").get_ref<json::number_unsigned_t&>();
@@ -573,12 +571,10 @@ void App::init()
 					else
 						throw GltfError("Number of elements is not the same for all primitive attributes.");
 				}
-
-				// return data size
-				return numVertices * elementSize;
 			};
-		auto getDataPointer =
-			[](json& accessor, json::array_t& bufferViews, json::array_t& buffers, vector<vector<uint8_t>>& bufferDataList, size_t dataSize) -> void*
+		auto getDataPointerAndStride =
+			[](json& accessor, json::array_t& bufferViews, json::array_t& buffers, vector<vector<uint8_t>>& bufferDataList,
+			   size_t numElements, size_t elementSize) -> tuple<void*, unsigned>
 			{
 				// accessor.sparse is not supported yet
 				if(accessor.find("sparse") != accessor.end())
@@ -590,16 +586,16 @@ void App::init()
 					throw GltfError("Unsupported functionality: Omitted bufferView.");
 				auto& bufferView = bufferViews.at(bufferViewIt->get_ref<json::number_unsigned_t&>());
 
+				// bufferView.byteStride (it is optional (but mandatory in some cases), if not provided, data are tightly packed)
+				unsigned stride = unsigned(bufferView.value<json::number_unsigned_t>("byteStride", elementSize));
+				size_t dataSize = (numElements-1) * stride + elementSize;
+
 				// get accessor.byteOffset (it is optional with default value 0)
 				json::number_unsigned_t offset = accessor.value<json::number_unsigned_t>("byteOffset", 0);
 
 				// make sure we not run over bufferView.byteLength (byteLength is mandatory and >=1)
 				if(offset + dataSize > bufferView.at("byteLength").get_ref<json::number_unsigned_t&>())
 					throw GltfError("Accessor range is not completely inside its BufferView.");
-
-				// accessor.byteStride is not supported yet
-				if(accessor.find("byteStride") != accessor.end())
-					throw GltfError("Unsupported functionality: Property byteStride.");
 
 				// append bufferView.byteOffset (byteOffset is optional with default value 0)
 				offset += bufferView.value<json::number_unsigned_t>("byteOffset", 0);
@@ -614,11 +610,11 @@ void App::init()
 				if(offset + dataSize > buffer.at("byteLength").get_ref<json::number_unsigned_t&>())
 					throw GltfError("BufferView range is not completely inside its Buffer.");
 
-				// return pointer to buffer data
+				// return pointer to buffer data and data stride
 				auto& bufferData = bufferDataList[bufferIndex];
 				if(offset + dataSize > bufferData.size())
 					throw GltfError("BufferView range is not completely inside data range.");
-				return bufferData.data() + offset;
+				return { bufferData.data() + offset, stride };
 			};
 
 		// attributes (mesh.primitive.attributes is mandatory)
@@ -627,10 +623,14 @@ void App::init()
 		size_t numVertices = 0;
 		glm::vec3* positionData = nullptr;
 		glm::vec3* normalData = nullptr;
+		unsigned positionDataStride;
+		unsigned normalDataStride;
 		uint8_t* colorData = nullptr;
-		glm::vec4 (*getColorFunc)(uint8_t*& srcPtr);
+		glm::vec4 (*getColorFunc)(uint8_t* srcPtr);
 		uint8_t* texCoordData = nullptr;
-		glm::vec4 (*getTexCoordFunc)(uint8_t*& srcPtr);
+		glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
+		unsigned colorDataStride;
+		unsigned texCoordDataStride;
 		for(auto it = attributes.begin(); it != attributes.end(); it++) {
 			if(it.key() == "POSITION") {
 
@@ -653,10 +653,13 @@ void App::init()
 					if(it->get_ref<json::boolean_t&>() == true)
 						throw GltfError("Position attribute normalized flag is true.");
 
-				// position data
-				positionData = reinterpret_cast<glm::vec3*>(
-					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
-					               getDataSize(accessor, numVertices, sizeof(glm::vec3))));
+				// update numVertices
+				updateNumVertices(accessor, numVertices);
+
+				// position data and stride
+				tie(reinterpret_cast<void*&>(positionData), positionDataStride) =
+					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+					                        numVertices, sizeof(glm::vec3));
 
 			}
 			else if(it.key() == "NORMAL") {
@@ -680,10 +683,13 @@ void App::init()
 					if(it->get_ref<json::boolean_t&>() == true)
 						throw GltfError("Normal attribute normalized flag is true.");
 
-				// normal data
-				normalData = reinterpret_cast<glm::vec3*>(
-					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
-					               getDataSize(accessor, numVertices, sizeof(glm::vec3))));
+				// update numVertices
+				updateNumVertices(accessor, numVertices);
+
+				// normal data and stride
+				tie(reinterpret_cast<void*&>(normalData), normalDataStride) =
+					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+					                        numVertices, sizeof(glm::vec3));
 
 			}
 			else if(it.key() == "COLOR_0") {
@@ -718,7 +724,10 @@ void App::init()
 					if(ct == 5121 || ct == 5123)
 						throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
 
-				// color data and getColorFunc
+				// update numVertices
+				updateNumVertices(accessor, numVertices);
+
+				// getColorFunc and elementSize
 				size_t elementSize;
 				if(t == "VEC4")
 					switch(ct) {
@@ -732,9 +741,12 @@ void App::init()
 					case 5121: getColorFunc = getColorFromVec3ub; elementSize = 3;  break;
 					case 5123: getColorFunc = getColorFromVec3us; elementSize = 6;  break;
 					}
-				colorData = reinterpret_cast<uint8_t*>(
-					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
-					               getDataSize(accessor, numVertices, elementSize)));
+
+				// color data and stride
+				tie(reinterpret_cast<void*&>(colorData), colorDataStride) =
+					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+					                        numVertices, elementSize);
+
 			}
 			else if(it.key() == "TEXCOORD_0") {
 
@@ -768,16 +780,22 @@ void App::init()
 					if(ct == 5121 || ct == 5123)
 						throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
 
-				// texCoordData and getTexCoordFunc
+				// update numVertices
+				updateNumVertices(accessor, numVertices);
+
+				// getTexCoordFunc and elementSize
 				size_t elementSize;
 				switch(ct) {
 				case 5126: getTexCoordFunc = getTexCoordFromVec2f;  elementSize = 8; break;
 				case 5121: getTexCoordFunc = getTexCoordFromVec2ub; elementSize = 2; break;
 				case 5123: getTexCoordFunc = getTexCoordFromVec2us; elementSize = 4; break;
 				}
-				texCoordData = reinterpret_cast<uint8_t*>(
-					getDataPointer(accessor, bufferViews, buffers, bufferDataList,
-					               getDataSize(accessor, numVertices, elementSize)));
+
+				// texCoord data and stride
+				tie(reinterpret_cast<void*&>(texCoordData), texCoordDataStride) =
+					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+					                        numVertices, elementSize);
+
 			}
 			else
 				throw GltfError("Unsupported functionality: " + it.key() + " attribute.");
@@ -818,13 +836,16 @@ void App::init()
 				throw GltfError("Accessor's count member must be greater than zero.");
 
 			// index data
+			size_t elementSize;
 			switch(indexComponentType) {
-			case 5125: indexDataSize = numIndices * sizeof(uint32_t); break;
-			case 5123: indexDataSize = numIndices * sizeof(uint16_t); break;
-			case 5121: indexDataSize = numIndices * sizeof(uint8_t); break;
+			case 5125: elementSize = sizeof(uint32_t); break;
+			case 5123: elementSize = sizeof(uint16_t); break;
+			case 5121: elementSize = sizeof(uint8_t); break;
 			}
-			indexData = reinterpret_cast<uint32_t*>(
-				getDataPointer(accessor, bufferViews, buffers, bufferDataList, indexDataSize));
+			size_t tmp;
+			tie(reinterpret_cast<void*&>(indexData), tmp) =
+				getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+				                        numIndices, elementSize);
 			indexDataSize = numIndices * sizeof(uint32_t);
 		}
 		else {
@@ -841,83 +862,32 @@ void App::init()
 		cout << "Creating geometry" << endl;
 		CadR::Geometry& g = geometryDB.emplace_back(renderer);
 
-		// set vertex data
-		CadR::StagingData sd = g.createVertexStagingData(numVertices * vertexSize);
-		uint8_t* p = sd.data<uint8_t>();
-		for(size_t i=0; i<numVertices; i++) {
-			if(positionData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = glm::vec4(*positionData, 0.f);
-				p += 16;
-				positionData++;
-			}
-			if(normalData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = glm::vec4(*normalData, 0.f);
-				p += 16;
-				normalData++;
-			}
-			if(colorData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = getColorFunc(colorData);
-				p += 16;
-			}
-			if(texCoordData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = getTexCoordFunc(texCoordData);
-				p += 16;
-			}
-		}
-
-		// set index data
-		sd = g.createIndexStagingData(indexDataSize);
-		uint32_t* pi = sd.data<uint32_t>();
-		if(indexData)
-			switch(indexComponentType) {
-			case 5125: memcpy(pi, indexData, indexDataSize); break;
-			case 5123: {
-				for(size_t i=0; i<numIndices; i++)
-					pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
-				break;
-			}
-			case 5121: {
-				for(size_t i=0; i<numIndices; i++)
-					pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
-				break;
-			}
-			}
-		else {
-			if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
-				throw GltfError("Too large primitive. Index out of 32-bit integer range.");
-			for(uint32_t i=0; i<uint32_t(numIndices); i++)
-				pi[i] = i;
-		}
-
 		// set primitiveSet data
 		struct PrimitiveSetGpuData {
 			uint32_t count;
 			uint32_t first;
 		};
-		sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+		CadR::StagingData sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
 		PrimitiveSetGpuData* ps = sd.data<PrimitiveSetGpuData>();
 		ps->count = uint32_t(numIndices);
 		ps->first = 0;
 
 		// mesh.primitive.mode is optional with default value 4 (TRIANGLES)
-		unsigned mode;
-		if(auto it=primitive.find("mode"); it!=primitive.end())
-			mode = unsigned(it->get_ref<json::number_unsigned_t&>());
-		else
-			mode = 4;
+		unsigned mode = unsigned(primitive.value<json::number_unsigned_t>("mode", 4));
 		if(mode != 4)
 			throw GltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
 
+		// no support for textures yet
+		texCoordData = nullptr;
+
+		// get stateSet and pipeline index
+		bool doubleSided = (material) ? material->value<json::boolean_t>("doubleSided", false) : false;
 		size_t pipelineIndex =
 			PipelineLibrary::getPipelineIndex(
 				normalData   != nullptr,  // phong
 				texCoordData != nullptr,  // texturing
 				colorData    != nullptr,  // perVertexColor
-				false,  // backFaceCulling
+				!doubleSided,             // backFaceCulling
 				vk::FrontFace::eCounterClockwise  // frontFace
 			);
 		CadR::StateSet& ss = stateSetDB[pipelineIndex];
@@ -999,19 +969,73 @@ void App::init()
 		else {
 
 			// set default material data
-			m->ambient = glm::vec3(1.f,1.f,1.f);
+			m->ambient = glm::vec3(1.f, 1.f, 1.f);
 			m->type = 0;
-			m->diffuseAndAlpha = glm::vec4(1.f,1.f,1.f,1.f);
-			m->specular = glm::vec3(0.f,0.f,0.f);
+			m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
+			m->specular = glm::vec3(0.f, 0.f, 0.f);
 			m->shininess = 0.f;
 
 		}
 
 		// set remaining material members and modelMatrix
-		m->emission = glm::vec3(0.f,0.f,0.f);
+		m->emission = glm::vec3(0.f, 0.f, 0.f);
 		m->pointSize = 0.f;
 		glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
 		*modelMatrix = glm::mat4(1.f);
+
+		// set vertex data
+		sd = g.createVertexStagingData(numVertices * vertexSize);
+		uint8_t* p = sd.data<uint8_t>();
+		for(size_t i=0; i<numVertices; i++) {
+			if(positionData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = glm::vec4(*positionData, 1.f);
+				p += 16;
+				positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
+			}
+			if(normalData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = glm::vec4(*normalData, 0.f);
+				p += 16;
+				normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
+			}
+			if(colorData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = getColorFunc(colorData);
+				p += 16;
+				colorData += colorDataStride;
+			}
+			if(texCoordData) {
+				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+				*v = getTexCoordFunc(texCoordData);
+				p += 16;
+				texCoordData += texCoordDataStride;
+			}
+		}
+
+		// set index data
+		sd = g.createIndexStagingData(indexDataSize);
+		uint32_t* pi = sd.data<uint32_t>();
+		if(indexData)
+			switch(indexComponentType) {
+			case 5125: memcpy(pi, indexData, indexDataSize); break;
+			case 5123: {
+				for(size_t i=0; i<numIndices; i++)
+					pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
+				break;
+			}
+			case 5121: {
+				for(size_t i=0; i<numIndices; i++)
+					pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
+				break;
+			}
+			}
+		else {
+			if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+				throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+			for(uint32_t i=0; i<uint32_t(numIndices); i++)
+				pi[i] = i;
+		}
 
 	}
 

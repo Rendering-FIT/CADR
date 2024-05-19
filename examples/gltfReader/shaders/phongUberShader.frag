@@ -148,7 +148,7 @@ void main(void)
 
 	#ifdef PER_VERTEX_COLOR
 		uint materialType = floatBitsToInt(data.ambientAndMaterialType.w);
-		vec3 ambient = ((materialType & 0x20) == 0) ? data.ambientAndMaterialType.rgb : inColor.rgb;
+		vec3 ambient = ((materialType & 0x20) == 0) ? inColor.rgb : data.ambientAndMaterialType.rgb;
 		vec3 diffuse = inColor.rgb;
 		float alpha  = ((materialType & 0x40) == 0) ? data.diffuseAndAlpha.a : inColor.a;
 	#else
