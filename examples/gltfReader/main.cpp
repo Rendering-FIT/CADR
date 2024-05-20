@@ -384,9 +384,12 @@ void App::init()
 		[](json& glTF, json& newGltfItems, const string& key) -> json::array_t&
 		{
 			auto it = glTF.find(key);
-			return (it != glTF.end())
-				? it->get_ref<json::array_t&>()
-				: newGltfItems[key].get_ref<json::array_t&>();
+			if(it != glTF.end())
+				return it->get_ref<json::array_t&>();
+			auto ref = newGltfItems[key];
+			if(ref.is_null())
+				ref = json::array();
+			return ref.get_ref<json::array_t&>();
 		};
 	auto& asset = glTF.at("asset");
 	auto& scenes = getRootItem(glTF, newGltfItems, "scenes");
@@ -988,14 +991,16 @@ void App::init()
 		uint8_t* p = sd.data<uint8_t>();
 		for(size_t i=0; i<numVertices; i++) {
 			if(positionData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = glm::vec4(*positionData, 1.f);
+				glm::vec4 pos(*positionData, 1.f);
+				pos.y = -pos.y;
+				*reinterpret_cast<glm::vec4*>(p)= pos;
 				p += 16;
 				positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
 			}
 			if(normalData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = glm::vec4(*normalData, 0.f);
+				glm::vec4 normal = glm::vec4(*normalData, 0.f);
+				normal.y = -normal.y;
+				*reinterpret_cast<glm::vec4*>(p) = normal;
 				p += 16;
 				normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
 			}
