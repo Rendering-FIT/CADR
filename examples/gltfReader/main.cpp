@@ -441,7 +441,7 @@ void App::init()
 
 		// open file
 		cout << "Opening buffer " << s << "..." << endl;
-		ifstream f(p);
+		ifstream f(p, ios::in|ios::binary);
 		if(!f.is_open())
 			throw GltfError("Error opening file " + p.string() + ".");
 		f.exceptions(ifstream::badbit | ifstream::failbit);
