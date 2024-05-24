@@ -1077,11 +1077,13 @@ void App::init()
 
 					// read baseColorFactor
 					if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
-						json::array_t& baseColorFactorArray = baseColorFactorIt->get_ref<json::array_t&>();
-						baseColorFactor[0] = float(baseColorFactorArray.at(0).get_ref<json::number_float_t&>());
-						baseColorFactor[1] = float(baseColorFactorArray.at(1).get_ref<json::number_float_t&>());
-						baseColorFactor[2] = float(baseColorFactorArray.at(2).get_ref<json::number_float_t&>());
-						baseColorFactor[3] = float(baseColorFactorArray.at(3).get_ref<json::number_float_t&>());
+						json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
+						if(a.size() != 4)
+							throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
+						baseColorFactor[0] = float(a[0].get_ref<json::number_float_t&>());
+						baseColorFactor[1] = float(a[1].get_ref<json::number_float_t&>());
+						baseColorFactor[2] = float(a[2].get_ref<json::number_float_t&>());
+						baseColorFactor[3] = float(a[3].get_ref<json::number_float_t&>());
 					}
 
 					// read properties
@@ -1103,6 +1105,19 @@ void App::init()
 					roughnessFactor = 1.f;
 				}
 
+				// read emissiveFactor
+				glm::vec3 emissiveFactor;
+				if(auto emissiveFactorIt = material->find("emissiveFactor"); emissiveFactorIt != material->end()) {
+					json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
+					if(a.size() != 3)
+						throw GltfError("Material.emissiveFactor is not vector of three components.");
+					emissiveFactor[0] = float(a[0].get_ref<json::number_float_t&>());
+					emissiveFactor[1] = float(a[1].get_ref<json::number_float_t&>());
+					emissiveFactor[2] = float(a[2].get_ref<json::number_float_t&>());
+				}
+				else
+					emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
+
 				// not supported material properties
 				if(material->find("normalTexture") != material->end())
 					throw GltfError("Unsupported functionality: normal texture.");
@@ -1110,8 +1125,6 @@ void App::init()
 					throw GltfError("Unsupported functionality: occlusion texture.");
 				if(material->find("emissiveTexture") != material->end())
 					throw GltfError("Unsupported functionality: emissive texture.");
-				if(material->find("emissiveFactor") != material->end())
-					throw GltfError("Unsupported functionality: emissive factor.");
 				if(material->find("alphaMode") != material->end())
 					throw GltfError("Unsupported functionality: alpha mode.");
 				if(material->find("alphaCutoff") != material->end())
@@ -1123,6 +1136,8 @@ void App::init()
 				m->diffuseAndAlpha = baseColorFactor;
 				m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
 				m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+				m->emission = emissiveFactor;
+				m->pointSize = 0.f;
 
 			}
 			else {
@@ -1133,12 +1148,10 @@ void App::init()
 				m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
 				m->specular = glm::vec3(0.f, 0.f, 0.f);
 				m->shininess = 0.f;
+				m->emission = glm::vec3(0.f, 0.f, 0.f);
+				m->pointSize = 0.f;
 
 			}
-
-			// set remaining material members
-			m->emission = glm::vec3(0.f, 0.f, 0.f);
-			m->pointSize = 0.f;
 
 			// copy transformation matrices
 			// (transformation matrices follow material data on offset 64)
