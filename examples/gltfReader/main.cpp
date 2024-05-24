@@ -11,6 +11,7 @@
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
@@ -453,595 +454,754 @@ void App::init()
 		f.close();
 	}
 
-	// mesh
-	cout << "Processing meshes..." << endl;
-	if(meshes.size() != 1)
-		throw GltfError("Only files with one mesh are supported for the moment.");
-	auto& mesh = meshes[0];
+	// read nodes
+	struct Node {
+		vector<size_t> children;
+		glm::mat4 matrix;
+		size_t meshIndex;
+	};
+	vector<Node> nodeList(nodes.size());
+	for(size_t i=0,c=nodes.size(); i<c; i++) {
 
-	// primitives are mandatory
-	auto& primitives = mesh.at("primitives");
-	for(auto& primitive : primitives) {
+		// get references
+		json::object_t& jobj = nodes[i].get_ref<json::object_t&>();
+		Node& node = nodeList[i];
 
-		// material
-		// (mesh.primitive.material is optional)
-		json* material;
-		auto it = primitive.find("material");
-		if(it != primitive.end()) {
-			size_t materialIndex = it->get_ref<json::number_unsigned_t&>();
-			material = &materials.at(materialIndex);
-		}
-		else
-			material = nullptr;
+		// matrix
+		if(auto it = jobj.find("matrix"); it != jobj.end()) {
 
-		// mesh.primitive helper functions
-		auto getColorFromVec4f =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				glm::vec4 r = *reinterpret_cast<glm::vec4*>(srcPtr);
-				return glm::clamp(r, 0.f, 1.f);
-			};
-		auto getColorFromVec3f =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						glm::clamp(*reinterpret_cast<glm::vec3*>(srcPtr), 0.f, 1.f),
-						1.f
-					);
-			};
-		auto getColorFromVec4us =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
-						float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
-						float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
-						float(reinterpret_cast<uint16_t*>(srcPtr)[3]) / 65535.f
-					);
-			};
-		auto getColorFromVec3us =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
-						float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
-						float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
-						1.f
-					);
-			};
-		auto getColorFromVec4ub =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
-						float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
-						float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
-						float(reinterpret_cast<uint8_t*>(srcPtr)[3]) / 255.f
-					);
-			};
-		auto getColorFromVec3ub =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
-						float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
-						float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
-						1.f
-					);
-			};
-		auto getTexCoordFromVec2f =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						*reinterpret_cast<glm::vec2*>(srcPtr),
-						0.f,
-						0.f
-					);
-			};
-		auto getTexCoordFromVec2us =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
-						float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
-						0.f,
-						0.f
-					);
-			};
-		auto getTexCoordFromVec2ub =
-			[](uint8_t* srcPtr) -> glm::vec4 {
-				return
-					glm::vec4(
-						float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
-						float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
-						0.f,
-						0.f
-					);
-			};
-		auto updateNumVertices =
-			[](json& accessor, size_t& numVertices) -> void
-			{
-				// get position count (accessor.count is mandatory and >=1)
-				json::number_unsigned_t count = accessor.at("count").get_ref<json::number_unsigned_t&>();
+			// translation, rotation and scale must not be present
+			if(jobj.find("translation") != jobj.end() || jobj.find("rotation") != jobj.end() ||
+			   jobj.find("scale") != jobj.end())
+				throw GltfError("If matrix is provided for the node, translation, rotation and scale must not be present.");
 
-				// update numVertices if still set to 0
-				if(numVertices != count) {
-					if(numVertices == 0) {
-						if(count != 0)
-							numVertices = count;
-						else
-							throw GltfError("Accessor's count member must be greater than zero.");
-					}
-					else
-						throw GltfError("Number of elements is not the same for all primitive attributes.");
-				}
-			};
-		auto getDataPointerAndStride =
-			[](json& accessor, json::array_t& bufferViews, json::array_t& buffers, vector<vector<uint8_t>>& bufferDataList,
-			   size_t numElements, size_t elementSize) -> tuple<void*, unsigned>
-			{
-				// accessor.sparse is not supported yet
-				if(accessor.find("sparse") != accessor.end())
-					throw GltfError("Unsupported functionality: Property sparse.");
-
-				// get accessor.bufferView (it is optional)
-				auto bufferViewIt = accessor.find("bufferView");
-				if(bufferViewIt == accessor.end())
-					throw GltfError("Unsupported functionality: Omitted bufferView.");
-				auto& bufferView = bufferViews.at(bufferViewIt->get_ref<json::number_unsigned_t&>());
-
-				// bufferView.byteStride (it is optional (but mandatory in some cases), if not provided, data are tightly packed)
-				unsigned stride = unsigned(bufferView.value<json::number_unsigned_t>("byteStride", elementSize));
-				size_t dataSize = (numElements-1) * stride + elementSize;
-
-				// get accessor.byteOffset (it is optional with default value 0)
-				json::number_unsigned_t offset = accessor.value<json::number_unsigned_t>("byteOffset", 0);
-
-				// make sure we not run over bufferView.byteLength (byteLength is mandatory and >=1)
-				if(offset + dataSize > bufferView.at("byteLength").get_ref<json::number_unsigned_t&>())
-					throw GltfError("Accessor range is not completely inside its BufferView.");
-
-				// append bufferView.byteOffset (byteOffset is optional with default value 0)
-				offset += bufferView.value<json::number_unsigned_t>("byteOffset", 0);
-
-				// get bufferView.buffer (buffer is mandatory)
-				size_t bufferIndex = bufferView.at("buffer").get_ref<json::number_unsigned_t&>();
-
-				// get buffer
-				auto& buffer = buffers.at(bufferIndex);
-
-				// make sure we do not run over buffer.byteLength (byteLength is mandatory)
-				if(offset + dataSize > buffer.at("byteLength").get_ref<json::number_unsigned_t&>())
-					throw GltfError("BufferView range is not completely inside its Buffer.");
-
-				// return pointer to buffer data and data stride
-				auto& bufferData = bufferDataList[bufferIndex];
-				if(offset + dataSize > bufferData.size())
-					throw GltfError("BufferView range is not completely inside data range.");
-				return { bufferData.data() + offset, stride };
-			};
-
-		// attributes (mesh.primitive.attributes is mandatory)
-		auto& attributes = primitive.at("attributes");
-		uint32_t vertexSize = 0;
-		size_t numVertices = 0;
-		glm::vec3* positionData = nullptr;
-		glm::vec3* normalData = nullptr;
-		unsigned positionDataStride;
-		unsigned normalDataStride;
-		uint8_t* colorData = nullptr;
-		glm::vec4 (*getColorFunc)(uint8_t* srcPtr);
-		uint8_t* texCoordData = nullptr;
-		glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
-		unsigned colorDataStride;
-		unsigned texCoordDataStride;
-		for(auto it = attributes.begin(); it != attributes.end(); it++) {
-			if(it.key() == "POSITION") {
-
-				// vertex size
-				vertexSize += 16;
-
-				// accessor
-				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
-
-				// accessor.type is mandatory and it must be VEC3 for position accessor
-				if(accessor.at("type").get_ref<json::string_t&>() != "VEC3")
-					throw GltfError("Position attribute is not of VEC3 type.");
-
-				// accessor.componentType is mandatory and it must be FLOAT (5126) for position accessor
-				if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
-					throw GltfError("Position attribute componentType is not float.");
-
-				// accessor.normalized is optional with default value false; it must be false for float componentType
-				if(auto it=accessor.find("normalized"); it!=accessor.end())
-					if(it->get_ref<json::boolean_t&>() == true)
-						throw GltfError("Position attribute normalized flag is true.");
-
-				// update numVertices
-				updateNumVertices(accessor, numVertices);
-
-				// position data and stride
-				tie(reinterpret_cast<void*&>(positionData), positionDataStride) =
-					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-					                        numVertices, sizeof(glm::vec3));
-
-			}
-			else if(it.key() == "NORMAL") {
-
-				// vertex size
-				vertexSize += 16;
-
-				// accessor
-				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
-
-				// accessor.type is mandatory and it must be VEC3 for normal accessor
-				if(accessor.at("type").get_ref<json::string_t&>() != "VEC3")
-					throw GltfError("Normal attribute is not of VEC3 type.");
-
-				// accessor.componentType is mandatory and it must be FLOAT (5126) for normal accessor
-				if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
-					throw GltfError("Normal attribute componentType is not float.");
-
-				// accessor.normalized is optional with default value false; it must be false for float componentType
-				if(auto it=accessor.find("normalized"); it!=accessor.end())
-					if(it->get_ref<json::boolean_t&>() == true)
-						throw GltfError("Normal attribute normalized flag is true.");
-
-				// update numVertices
-				updateNumVertices(accessor, numVertices);
-
-				// normal data and stride
-				tie(reinterpret_cast<void*&>(normalData), normalDataStride) =
-					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-					                        numVertices, sizeof(glm::vec3));
-
-			}
-			else if(it.key() == "COLOR_0") {
-
-				// vertex size
-				vertexSize += 16;
-
-				// accessor
-				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
-
-				// accessor.type is mandatory and it must be VEC3 or VEC4 for color accessors
-				json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
-				if(t != "VEC3" && t != "VEC4")
-					throw GltfError("Color attribute is not of VEC3 or VEC4 type.");
-
-				// accessor.componentType is mandatory and it must be FLOAT (5126),
-				// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
-				json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
-				if(ct != 5126 && ct != 5121 && ct != 5123)
-					throw GltfError("Color attribute componentType is not float, unsigned byte, or unsigned short.");
-
-				// accessor.normalized is optional with default value false; it must be false for float componentType
-				if(auto it=accessor.find("normalized"); it!=accessor.end()) {
-					if(it->get_ref<json::boolean_t&>() == false) {
-						if(ct == 5121 || ct == 5123)
-							throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
-					}
-					else
-						if(ct == 5126)
-							throw GltfError("Color attribute component type is set to float while normalized flag is true.");
-				} else
-					if(ct == 5121 || ct == 5123)
-						throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
-
-				// update numVertices
-				updateNumVertices(accessor, numVertices);
-
-				// getColorFunc and elementSize
-				size_t elementSize;
-				if(t == "VEC4")
-					switch(ct) {
-					case 5126: getColorFunc = getColorFromVec4f;  elementSize = 16; break;
-					case 5121: getColorFunc = getColorFromVec4ub; elementSize = 4;  break;
-					case 5123: getColorFunc = getColorFromVec4us; elementSize = 8;  break;
-					}
-				else // "VEC3"
-					switch(ct) {
-					case 5126: getColorFunc = getColorFromVec3f;  elementSize = 12; break;
-					case 5121: getColorFunc = getColorFromVec3ub; elementSize = 3;  break;
-					case 5123: getColorFunc = getColorFromVec3us; elementSize = 6;  break;
-					}
-
-				// color data and stride
-				tie(reinterpret_cast<void*&>(colorData), colorDataStride) =
-					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-					                        numVertices, elementSize);
-
-			}
-			else if(it.key() == "TEXCOORD_0") {
-
-				// vertex size
-				vertexSize += 16;
-
-				// accessor
-				json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
-
-				// accessor.type is mandatory and it must be VEC2 for texCoord accessors
-				json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
-				if(t != "VEC2")
-					throw GltfError("TexCoord attribute is not of VEC2 type.");
-
-				// accessor.componentType is mandatory and it must be FLOAT (5126),
-				// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
-				json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
-				if(ct != 5126 && ct != 5121 && ct != 5123)
-					throw GltfError("TexCoord attribute componentType is not float, unsigned byte, or unsigned short.");
-
-				// accessor.normalized is optional with default value false; it must be false for float componentType
-				if(auto it=accessor.find("normalized"); it!=accessor.end()) {
-					if(it->get_ref<json::boolean_t&>() == false) {
-						if(ct == 5121 || ct == 5123)
-							throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
-					}
-					else
-						if(ct == 5126)
-							throw GltfError("TexCoord attribute component type is set to float while normalized flag is true.");
-				} else
-					if(ct == 5121 || ct == 5123)
-						throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
-
-				// update numVertices
-				updateNumVertices(accessor, numVertices);
-
-				// getTexCoordFunc and elementSize
-				size_t elementSize;
-				switch(ct) {
-				case 5126: getTexCoordFunc = getTexCoordFromVec2f;  elementSize = 8; break;
-				case 5121: getTexCoordFunc = getTexCoordFromVec2ub; elementSize = 2; break;
-				case 5123: getTexCoordFunc = getTexCoordFromVec2us; elementSize = 4; break;
-				}
-
-				// texCoord data and stride
-				tie(reinterpret_cast<void*&>(texCoordData), texCoordDataStride) =
-					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-					                        numVertices, elementSize);
-
-			}
-			else
-				throw GltfError("Unsupported functionality: " + it.key() + " attribute.");
-		}
-
-		// indices
-		// (they are optional)
-		size_t numIndices;
-		uint32_t* indexData;
-		size_t indexDataSize;
-		unsigned indexComponentType;
-		if(auto indicesIt=primitive.find("indices"); indicesIt!=primitive.end()) {
-
-			// accessor
-			json& accessor = accessors.at(indicesIt.value().get_ref<json::number_unsigned_t&>());
-
-			// accessor.type is mandatory and it must be SCALAR for index accessors
-			json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
-			if(t != "SCALAR")
-				throw GltfError("Indices are not of SCALAR type.");
-
-			// accessor.componentType is mandatory and it must be UNSIGNED_INT (5125) for index accessors;
-			// unsigned short and unsigned byte component types seems not allowed by the spec
-			// but they are used in Khronos sample models, for example Box.gltf
-			// (https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/2.0/Box/glTF/Box.gltf)
-			indexComponentType = unsigned(accessor.at("componentType").get_ref<json::number_unsigned_t&>());
-			if(indexComponentType != 5125 && indexComponentType != 5123 && indexComponentType != 5121)
-				throw GltfError("Index componentType is not unsigned int, unsigned short or unsigned byte.");
-
-			// accessor.normalized is optional and must be false for index accessor
-			if(auto it=accessor.find("normalized"); it!=accessor.end())
-				if(it->get_ref<json::boolean_t&>() == true)
-					throw GltfError("Indices cannot have normalized flag set to true.");
-
-			// get index count (accessor.count is mandatory and >=1)
-			numIndices = accessor.at("count").get_ref<json::number_unsigned_t&>();
-			if(numIndices == 0)
-				throw GltfError("Accessor's count member must be greater than zero.");
-
-			// index data
-			size_t elementSize;
-			switch(indexComponentType) {
-			case 5125: elementSize = sizeof(uint32_t); break;
-			case 5123: elementSize = sizeof(uint16_t); break;
-			case 5121: elementSize = sizeof(uint8_t); break;
-			}
-			size_t tmp;
-			tie(reinterpret_cast<void*&>(indexData), tmp) =
-				getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-				                        numIndices, elementSize);
-			indexDataSize = numIndices * sizeof(uint32_t);
+			// read matrix
+			json::array_t& a = it->second.get_ref<json::array_t&>();
+			if(a.size() != 16)
+				throw GltfError("Node.matrix is not vector of 16 components.");
+			float* f = glm::value_ptr(node.matrix);
+			for(unsigned j=0; j<16; j++)
+				f[j] = float(a[j].get_ref<json::number_float_t&>());
 		}
 		else {
-			numIndices = numVertices;
-			indexData = nullptr;
-			indexDataSize = numIndices * sizeof(uint32_t);
+
+			// initialize matrix to zeros
+			memset(&node.matrix, 0, sizeof(node.matrix));
+
+			// read scale
+			glm::vec3 scale;
+			if(auto it = jobj.find("scale"); it != jobj.end()) {
+				json::array_t& a = it->second.get_ref<json::array_t&>();
+				if(a.size() != 3)
+					throw GltfError("Node.scale is not vector of three components.");
+				scale.x = float(a[0].get_ref<json::number_float_t&>());
+				scale.y = float(a[1].get_ref<json::number_float_t&>());
+				scale.z = float(a[2].get_ref<json::number_float_t&>());
+			}
+			else
+				scale = { 1.f, 1.f, 1.f };
+
+			// read rotation
+			if(auto it = jobj.find("rotation"); it != jobj.end()) {
+				throw GltfError("Node.rotation is not supported yet.");
+#if 0
+				json::array_t& a = it->second.get_ref<json::array_t&>();
+				if(a.size() != 4)
+					throw GltfError("Node.rotation is not vector of four components.");
+				node.rotation[0] = float(a[0].get_ref<json::number_float_t&>());
+				node.rotation[1] = float(a[1].get_ref<json::number_float_t&>());
+				node.rotation[2] = float(a[2].get_ref<json::number_float_t&>());
+				node.rotation[3] = float(a[3].get_ref<json::number_float_t&>());
+#endif
+			}
+			else {
+				node.matrix[0][0] = scale.x;
+				node.matrix[1][1] = scale.y;
+				node.matrix[2][2] = scale.z;
+				node.matrix[3][3] = 1.f;
+			}
+
+			// read translation
+			if(auto it = jobj.find("translation"); it != jobj.end()) {
+				json::array_t& a = it->second.get_ref<json::array_t&>();
+				if(a.size() != 3)
+					throw GltfError("Node.translation is not vector of three components.");
+				node.matrix[3][0] = float(a[0].get_ref<json::number_float_t&>());
+				node.matrix[3][1] = float(a[1].get_ref<json::number_float_t&>());
+				node.matrix[3][2] = float(a[2].get_ref<json::number_float_t&>());
+			}
+
 		}
 
-		// ignore empty primitives
-		if(indexData == nullptr && numVertices == 0)
+		// read children
+		if(auto it = jobj.find("children"); it != jobj.end()) {
+			json::array_t& a = it->second.get_ref<json::array_t&>();
+			size_t size = a.size();
+			node.children.resize(size);
+			for(unsigned j=0; j<size; j++)
+				node.children[j] = size_t(a[j].get_ref<json::number_unsigned_t&>());
+		}
+
+		// read mesh index
+		if(auto it = jobj.find("mesh"); it != jobj.end())
+			node.meshIndex = size_t(it->second.get_ref<json::number_unsigned_t&>());
+		else
+			node.meshIndex = ~size_t(0);
+	}
+
+	// get default scene
+	size_t numScenes = scenes.size();
+	if(numScenes == 0)
+		return;
+	size_t sceneIndex = glTF.value<json::number_unsigned_t>("scene", ~size_t(0));
+	if(sceneIndex == ~size_t(0)) {
+		cout << "There is no default scene in the file. Using the first scene." << endl;
+		sceneIndex = 0;
+	}
+	json& scene = scenes.at(sceneIndex);
+
+	// iterate through root nodes
+	vector<vector<glm::mat4>> meshMatrixList(meshes.size());
+	if(auto rootNodesIt=scene.find("nodes"); rootNodesIt!=scene.end()) {
+		json& rootNodes = *rootNodesIt;
+		for(auto it=rootNodes.begin(); it!= rootNodes.end(); it++) {
+
+			// process node function
+			auto processNode =
+				[](size_t nodeIndex, const glm::mat4& parentMatrix, vector<Node>& nodeList,
+				   vector<vector<glm::mat4>>& meshMatrixList, const auto& processNode) -> void
+				{
+					// get node
+					Node& node = nodeList.at(nodeIndex);
+
+					// compute local matrix
+					glm::mat4 m = parentMatrix * node.matrix;
+
+					// assign one more instancing matrix to the mesh
+					if(node.meshIndex != ~size_t(0))
+						meshMatrixList.at(node.meshIndex).emplace_back(m);
+
+					// process children
+					for(size_t i=0,c=node.children.size(); i<c; i++)
+						processNode(node.children[i], m, nodeList, meshMatrixList, processNode);
+				};
+
+			// get node
+			size_t rootNodeIndex = size_t(it->get_ref<json::number_unsigned_t&>());
+			Node& node = nodeList.at(rootNodeIndex);
+
+			// assign one more instancing matrix to the mesh
+			if(node.meshIndex != ~size_t(0))
+				meshMatrixList.at(node.meshIndex).emplace_back(node.matrix);
+
+			// process children
+			for(size_t i=0,c=node.children.size(); i<c; i++)
+				processNode(node.children[i], node.matrix, nodeList, meshMatrixList, processNode);
+
+		}
+	}
+
+	// process meshes
+	cout << "Processing meshes..." << endl;
+	for(size_t i=0,c=meshes.size(); i<c; i++) {
+
+		// ignore non-instanced meshes
+		if(meshMatrixList[i].empty())
 			continue;
 
-		// create Geometry
-		cout << "Creating geometry" << endl;
-		CadR::Geometry& g = geometryDB.emplace_back(renderer);
+		// get mesh
+		auto& mesh = meshes[i];
 
-		// set primitiveSet data
-		struct PrimitiveSetGpuData {
-			uint32_t count;
-			uint32_t first;
-		};
-		CadR::StagingData sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
-		PrimitiveSetGpuData* ps = sd.data<PrimitiveSetGpuData>();
-		ps->count = uint32_t(numIndices);
-		ps->first = 0;
+		// process primitives
+		// (mesh.primitives are mandatory)
+		auto& primitives = mesh.at("primitives");
+		for(auto& primitive : primitives) {
 
-		// mesh.primitive.mode is optional with default value 4 (TRIANGLES)
-		unsigned mode = unsigned(primitive.value<json::number_unsigned_t>("mode", 4));
-		if(mode != 4)
-			throw GltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
-
-		// no support for textures yet
-		texCoordData = nullptr;
-
-		// get stateSet and pipeline index
-		bool doubleSided = (material) ? material->value<json::boolean_t>("doubleSided", false) : false;
-		size_t pipelineIndex =
-			PipelineLibrary::getPipelineIndex(
-				normalData   != nullptr,  // phong
-				texCoordData != nullptr,  // texturing
-				colorData    != nullptr,  // perVertexColor
-				!doubleSided,             // backFaceCulling
-				vk::FrontFace::eCounterClockwise  // frontFace
-			);
-		CadR::StateSet& ss = stateSetDB[pipelineIndex];
-
-		// drawable
-		CadR::Drawable& d = drawableDB.emplace_back(g, 0, sd, 128, 1, ss);
-
-		// material
-		struct MaterialData {
-			glm::vec3 ambient;  // offset 0
-			uint32_t type;  // offset 12
-			glm::vec4 diffuseAndAlpha;  // offset 16
-			glm::vec3 specular;  // offset 32
-			float shininess;  // offset 44
-			glm::vec3 emission;  // offset 48
-			float pointSize;  // offset 60
-		};
-		MaterialData* m = sd.data<MaterialData>();
-		if(material) {
-
-			// pbr material variables
-			glm::vec4 baseColorFactor;
-			float metallicFactor;
-			float roughnessFactor;
-
-			// read pbr material properties
-			if(auto pbrIt = material->find("pbrMetallicRoughness"); pbrIt != material->end()) {
-
-				// read baseColorFactor
-				if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
-					json::array_t& baseColorFactorArray = baseColorFactorIt->get_ref<json::array_t&>();
-					baseColorFactor[0] = float(baseColorFactorArray.at(0).get_ref<json::number_float_t&>());
-					baseColorFactor[1] = float(baseColorFactorArray.at(1).get_ref<json::number_float_t&>());
-					baseColorFactor[2] = float(baseColorFactorArray.at(2).get_ref<json::number_float_t&>());
-					baseColorFactor[3] = float(baseColorFactorArray.at(3).get_ref<json::number_float_t&>());
-				}
-
-				// read properties
-				metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
-				roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
-
-				// not supported properties
-				if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end())
-					throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
-				if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-					throw GltfError("Unsupported functionality: metallic-roughness material model.");
-
+			// material
+			// (mesh.primitive.material is optional)
+			json* material;
+			auto it = primitive.find("material");
+			if(it != primitive.end()) {
+				size_t materialIndex = it->get_ref<json::number_unsigned_t&>();
+				material = &materials.at(materialIndex);
 			}
 			else
-			{
-				// default values when pbrMetallicRoughness is not present
-				baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-				metallicFactor = 1.f;
-				roughnessFactor = 1.f;
+				material = nullptr;
+
+			// mesh.primitive helper functions
+			auto getColorFromVec4f =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					glm::vec4 r = *reinterpret_cast<glm::vec4*>(srcPtr);
+					return glm::clamp(r, 0.f, 1.f);
+				};
+			auto getColorFromVec3f =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							glm::clamp(*reinterpret_cast<glm::vec3*>(srcPtr), 0.f, 1.f),
+							1.f
+						);
+				};
+			auto getColorFromVec4us =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+							float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+							float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
+							float(reinterpret_cast<uint16_t*>(srcPtr)[3]) / 65535.f
+						);
+				};
+			auto getColorFromVec3us =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+							float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+							float(reinterpret_cast<uint16_t*>(srcPtr)[2]) / 65535.f,
+							1.f
+						);
+				};
+			auto getColorFromVec4ub =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+							float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+							float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
+							float(reinterpret_cast<uint8_t*>(srcPtr)[3]) / 255.f
+						);
+				};
+			auto getColorFromVec3ub =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+							float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+							float(reinterpret_cast<uint8_t*>(srcPtr)[2]) / 255.f,
+							1.f
+						);
+				};
+			auto getTexCoordFromVec2f =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							*reinterpret_cast<glm::vec2*>(srcPtr),
+							0.f,
+							0.f
+						);
+				};
+			auto getTexCoordFromVec2us =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							float(reinterpret_cast<uint16_t*>(srcPtr)[0]) / 65535.f,
+							float(reinterpret_cast<uint16_t*>(srcPtr)[1]) / 65535.f,
+							0.f,
+							0.f
+						);
+				};
+			auto getTexCoordFromVec2ub =
+				[](uint8_t* srcPtr) -> glm::vec4 {
+					return
+						glm::vec4(
+							float(reinterpret_cast<uint8_t*>(srcPtr)[0]) / 255.f,
+							float(reinterpret_cast<uint8_t*>(srcPtr)[1]) / 255.f,
+							0.f,
+							0.f
+						);
+				};
+			auto updateNumVertices =
+				[](json& accessor, size_t& numVertices) -> void
+				{
+					// get position count (accessor.count is mandatory and >=1)
+					json::number_unsigned_t count = accessor.at("count").get_ref<json::number_unsigned_t&>();
+
+					// update numVertices if still set to 0
+					if(numVertices != count) {
+						if(numVertices == 0) {
+							if(count != 0)
+								numVertices = count;
+							else
+								throw GltfError("Accessor's count member must be greater than zero.");
+						}
+						else
+							throw GltfError("Number of elements is not the same for all primitive attributes.");
+					}
+				};
+			auto getDataPointerAndStride =
+				[](json& accessor, json::array_t& bufferViews, json::array_t& buffers, vector<vector<uint8_t>>& bufferDataList,
+				   size_t numElements, size_t elementSize) -> tuple<void*, unsigned>
+				{
+					// accessor.sparse is not supported yet
+					if(accessor.find("sparse") != accessor.end())
+						throw GltfError("Unsupported functionality: Property sparse.");
+
+					// get accessor.bufferView (it is optional)
+					auto bufferViewIt = accessor.find("bufferView");
+					if(bufferViewIt == accessor.end())
+						throw GltfError("Unsupported functionality: Omitted bufferView.");
+					auto& bufferView = bufferViews.at(bufferViewIt->get_ref<json::number_unsigned_t&>());
+
+					// bufferView.byteStride (it is optional (but mandatory in some cases), if not provided, data are tightly packed)
+					unsigned stride = unsigned(bufferView.value<json::number_unsigned_t>("byteStride", elementSize));
+					size_t dataSize = (numElements-1) * stride + elementSize;
+
+					// get accessor.byteOffset (it is optional with default value 0)
+					json::number_unsigned_t offset = accessor.value<json::number_unsigned_t>("byteOffset", 0);
+
+					// make sure we not run over bufferView.byteLength (byteLength is mandatory and >=1)
+					if(offset + dataSize > bufferView.at("byteLength").get_ref<json::number_unsigned_t&>())
+						throw GltfError("Accessor range is not completely inside its BufferView.");
+
+					// append bufferView.byteOffset (byteOffset is optional with default value 0)
+					offset += bufferView.value<json::number_unsigned_t>("byteOffset", 0);
+
+					// get bufferView.buffer (buffer is mandatory)
+					size_t bufferIndex = bufferView.at("buffer").get_ref<json::number_unsigned_t&>();
+
+					// get buffer
+					auto& buffer = buffers.at(bufferIndex);
+
+					// make sure we do not run over buffer.byteLength (byteLength is mandatory)
+					if(offset + dataSize > buffer.at("byteLength").get_ref<json::number_unsigned_t&>())
+						throw GltfError("BufferView range is not completely inside its Buffer.");
+
+					// return pointer to buffer data and data stride
+					auto& bufferData = bufferDataList[bufferIndex];
+					if(offset + dataSize > bufferData.size())
+						throw GltfError("BufferView range is not completely inside data range.");
+					return { bufferData.data() + offset, stride };
+				};
+
+			// attributes (mesh.primitive.attributes is mandatory)
+			auto& attributes = primitive.at("attributes");
+			uint32_t vertexSize = 0;
+			size_t numVertices = 0;
+			glm::vec3* positionData = nullptr;
+			glm::vec3* normalData = nullptr;
+			unsigned positionDataStride;
+			unsigned normalDataStride;
+			uint8_t* colorData = nullptr;
+			glm::vec4 (*getColorFunc)(uint8_t* srcPtr);
+			uint8_t* texCoordData = nullptr;
+			glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
+			unsigned colorDataStride;
+			unsigned texCoordDataStride;
+			for(auto it = attributes.begin(); it != attributes.end(); it++) {
+				if(it.key() == "POSITION") {
+
+					// vertex size
+					vertexSize += 16;
+
+					// accessor
+					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+					// accessor.type is mandatory and it must be VEC3 for position accessor
+					if(accessor.at("type").get_ref<json::string_t&>() != "VEC3")
+						throw GltfError("Position attribute is not of VEC3 type.");
+
+					// accessor.componentType is mandatory and it must be FLOAT (5126) for position accessor
+					if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
+						throw GltfError("Position attribute componentType is not float.");
+
+					// accessor.normalized is optional with default value false; it must be false for float componentType
+					if(auto it=accessor.find("normalized"); it!=accessor.end())
+						if(it->get_ref<json::boolean_t&>() == true)
+							throw GltfError("Position attribute normalized flag is true.");
+
+					// update numVertices
+					updateNumVertices(accessor, numVertices);
+
+					// position data and stride
+					tie(reinterpret_cast<void*&>(positionData), positionDataStride) =
+						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+												numVertices, sizeof(glm::vec3));
+
+				}
+				else if(it.key() == "NORMAL") {
+
+					// vertex size
+					vertexSize += 16;
+
+					// accessor
+					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+					// accessor.type is mandatory and it must be VEC3 for normal accessor
+					if(accessor.at("type").get_ref<json::string_t&>() != "VEC3")
+						throw GltfError("Normal attribute is not of VEC3 type.");
+
+					// accessor.componentType is mandatory and it must be FLOAT (5126) for normal accessor
+					if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
+						throw GltfError("Normal attribute componentType is not float.");
+
+					// accessor.normalized is optional with default value false; it must be false for float componentType
+					if(auto it=accessor.find("normalized"); it!=accessor.end())
+						if(it->get_ref<json::boolean_t&>() == true)
+							throw GltfError("Normal attribute normalized flag is true.");
+
+					// update numVertices
+					updateNumVertices(accessor, numVertices);
+
+					// normal data and stride
+					tie(reinterpret_cast<void*&>(normalData), normalDataStride) =
+						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+												numVertices, sizeof(glm::vec3));
+
+				}
+				else if(it.key() == "COLOR_0") {
+
+					// vertex size
+					vertexSize += 16;
+
+					// accessor
+					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+					// accessor.type is mandatory and it must be VEC3 or VEC4 for color accessors
+					json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+					if(t != "VEC3" && t != "VEC4")
+						throw GltfError("Color attribute is not of VEC3 or VEC4 type.");
+
+					// accessor.componentType is mandatory and it must be FLOAT (5126),
+					// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
+					json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
+					if(ct != 5126 && ct != 5121 && ct != 5123)
+						throw GltfError("Color attribute componentType is not float, unsigned byte, or unsigned short.");
+
+					// accessor.normalized is optional with default value false; it must be false for float componentType
+					if(auto it=accessor.find("normalized"); it!=accessor.end()) {
+						if(it->get_ref<json::boolean_t&>() == false) {
+							if(ct == 5121 || ct == 5123)
+								throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+						}
+						else
+							if(ct == 5126)
+								throw GltfError("Color attribute component type is set to float while normalized flag is true.");
+					} else
+						if(ct == 5121 || ct == 5123)
+							throw GltfError("Color attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+
+					// update numVertices
+					updateNumVertices(accessor, numVertices);
+
+					// getColorFunc and elementSize
+					size_t elementSize;
+					if(t == "VEC4")
+						switch(ct) {
+						case 5126: getColorFunc = getColorFromVec4f;  elementSize = 16; break;
+						case 5121: getColorFunc = getColorFromVec4ub; elementSize = 4;  break;
+						case 5123: getColorFunc = getColorFromVec4us; elementSize = 8;  break;
+						}
+					else // "VEC3"
+						switch(ct) {
+						case 5126: getColorFunc = getColorFromVec3f;  elementSize = 12; break;
+						case 5121: getColorFunc = getColorFromVec3ub; elementSize = 3;  break;
+						case 5123: getColorFunc = getColorFromVec3us; elementSize = 6;  break;
+						}
+
+					// color data and stride
+					tie(reinterpret_cast<void*&>(colorData), colorDataStride) =
+						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+												numVertices, elementSize);
+
+				}
+				else if(it.key() == "TEXCOORD_0") {
+
+					// vertex size
+					vertexSize += 16;
+
+					// accessor
+					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+					// accessor.type is mandatory and it must be VEC2 for texCoord accessors
+					json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+					if(t != "VEC2")
+						throw GltfError("TexCoord attribute is not of VEC2 type.");
+
+					// accessor.componentType is mandatory and it must be FLOAT (5126),
+					// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
+					json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
+					if(ct != 5126 && ct != 5121 && ct != 5123)
+						throw GltfError("TexCoord attribute componentType is not float, unsigned byte, or unsigned short.");
+
+					// accessor.normalized is optional with default value false; it must be false for float componentType
+					if(auto it=accessor.find("normalized"); it!=accessor.end()) {
+						if(it->get_ref<json::boolean_t&>() == false) {
+							if(ct == 5121 || ct == 5123)
+								throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+						}
+						else
+							if(ct == 5126)
+								throw GltfError("TexCoord attribute component type is set to float while normalized flag is true.");
+					} else
+						if(ct == 5121 || ct == 5123)
+							throw GltfError("TexCoord attribute component type is set to unsigned byte or unsigned short while normalized flag is not true.");
+
+					// update numVertices
+					updateNumVertices(accessor, numVertices);
+
+					// getTexCoordFunc and elementSize
+					size_t elementSize;
+					switch(ct) {
+					case 5126: getTexCoordFunc = getTexCoordFromVec2f;  elementSize = 8; break;
+					case 5121: getTexCoordFunc = getTexCoordFromVec2ub; elementSize = 2; break;
+					case 5123: getTexCoordFunc = getTexCoordFromVec2us; elementSize = 4; break;
+					}
+
+					// texCoord data and stride
+					tie(reinterpret_cast<void*&>(texCoordData), texCoordDataStride) =
+						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+												numVertices, elementSize);
+
+				}
+				else
+					throw GltfError("Unsupported functionality: " + it.key() + " attribute.");
 			}
 
-			// not supported material properties
-			if(material->find("normalTexture") != material->end())
-				throw GltfError("Unsupported functionality: normal texture.");
-			if(material->find("occlusionTexture") != material->end())
-				throw GltfError("Unsupported functionality: occlusion texture.");
-			if(material->find("emissiveTexture") != material->end())
-				throw GltfError("Unsupported functionality: emissive texture.");
-			if(material->find("emissiveFactor") != material->end())
-				throw GltfError("Unsupported functionality: emissive factor.");
-			if(material->find("alphaMode") != material->end())
-				throw GltfError("Unsupported functionality: alpha mode.");
-			if(material->find("alphaCutoff") != material->end())
-				throw GltfError("Unsupported functionality: alpha cutoff.");
+			// indices
+			// (they are optional)
+			size_t numIndices;
+			uint32_t* indexData;
+			size_t indexDataSize;
+			unsigned indexComponentType;
+			if(auto indicesIt=primitive.find("indices"); indicesIt!=primitive.end()) {
 
-			// set material data
-			m->ambient = glm::vec3(baseColorFactor);
-			m->type = 0;
-			m->diffuseAndAlpha = baseColorFactor;
-			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
-			m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+				// accessor
+				json& accessor = accessors.at(indicesIt.value().get_ref<json::number_unsigned_t&>());
+
+				// accessor.type is mandatory and it must be SCALAR for index accessors
+				json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+				if(t != "SCALAR")
+					throw GltfError("Indices are not of SCALAR type.");
+
+				// accessor.componentType is mandatory and it must be UNSIGNED_INT (5125) for index accessors;
+				// unsigned short and unsigned byte component types seems not allowed by the spec
+				// but they are used in Khronos sample models, for example Box.gltf
+				// (https://github.com/KhronosGroup/glTF-Sample-Models/blob/main/2.0/Box/glTF/Box.gltf)
+				indexComponentType = unsigned(accessor.at("componentType").get_ref<json::number_unsigned_t&>());
+				if(indexComponentType != 5125 && indexComponentType != 5123 && indexComponentType != 5121)
+					throw GltfError("Index componentType is not unsigned int, unsigned short or unsigned byte.");
+
+				// accessor.normalized is optional and must be false for index accessor
+				if(auto it=accessor.find("normalized"); it!=accessor.end())
+					if(it->get_ref<json::boolean_t&>() == true)
+						throw GltfError("Indices cannot have normalized flag set to true.");
+
+				// get index count (accessor.count is mandatory and >=1)
+				numIndices = accessor.at("count").get_ref<json::number_unsigned_t&>();
+				if(numIndices == 0)
+					throw GltfError("Accessor's count member must be greater than zero.");
+
+				// index data
+				size_t elementSize;
+				switch(indexComponentType) {
+				case 5125: elementSize = sizeof(uint32_t); break;
+				case 5123: elementSize = sizeof(uint16_t); break;
+				case 5121: elementSize = sizeof(uint8_t); break;
+				}
+				size_t tmp;
+				tie(reinterpret_cast<void*&>(indexData), tmp) =
+					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+											numIndices, elementSize);
+				indexDataSize = numIndices * sizeof(uint32_t);
+			}
+			else {
+				numIndices = numVertices;
+				indexData = nullptr;
+				indexDataSize = numIndices * sizeof(uint32_t);
+			}
+
+			// ignore empty primitives
+			if(indexData == nullptr && numVertices == 0)
+				continue;
+
+			// create Geometry
+			cout << "Creating geometry" << endl;
+			CadR::Geometry& g = geometryDB.emplace_back(renderer);
+
+			// set primitiveSet data
+			struct PrimitiveSetGpuData {
+				uint32_t count;
+				uint32_t first;
+			};
+			CadR::StagingData sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+			PrimitiveSetGpuData* ps = sd.data<PrimitiveSetGpuData>();
+			ps->count = uint32_t(numIndices);
+			ps->first = 0;
+
+			// mesh.primitive.mode is optional with default value 4 (TRIANGLES)
+			unsigned mode = unsigned(primitive.value<json::number_unsigned_t>("mode", 4));
+			if(mode != 4)
+				throw GltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
+
+			// no support for textures yet
+			texCoordData = nullptr;
+
+			// get stateSet and pipeline index
+			bool doubleSided = (material) ? material->value<json::boolean_t>("doubleSided", false) : false;
+			size_t pipelineIndex =
+				PipelineLibrary::getPipelineIndex(
+					normalData   != nullptr,  // phong
+					texCoordData != nullptr,  // texturing
+					colorData    != nullptr,  // perVertexColor
+					!doubleSided,             // backFaceCulling
+					vk::FrontFace::eCounterClockwise  // frontFace
+				);
+			CadR::StateSet& ss = stateSetDB[pipelineIndex];
+
+			// drawable
+			vector<glm::mat4>& matrixList = meshMatrixList[i];
+			uint32_t numInstances = uint32_t(matrixList.size());
+			CadR::Drawable& d = drawableDB.emplace_back(g, 0, sd, 64+(numInstances*64), numInstances, ss);
+
+			// material
+			struct MaterialData {
+				glm::vec3 ambient;  // offset 0
+				uint32_t type;  // offset 12
+				glm::vec4 diffuseAndAlpha;  // offset 16
+				glm::vec3 specular;  // offset 32
+				float shininess;  // offset 44
+				glm::vec3 emission;  // offset 48
+				float pointSize;  // offset 60
+			};
+			MaterialData* m = sd.data<MaterialData>();
+			if(material) {
+
+				// pbr material variables
+				glm::vec4 baseColorFactor;
+				float metallicFactor;
+				float roughnessFactor;
+
+				// read pbr material properties
+				if(auto pbrIt = material->find("pbrMetallicRoughness"); pbrIt != material->end()) {
+
+					// read baseColorFactor
+					if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
+						json::array_t& baseColorFactorArray = baseColorFactorIt->get_ref<json::array_t&>();
+						baseColorFactor[0] = float(baseColorFactorArray.at(0).get_ref<json::number_float_t&>());
+						baseColorFactor[1] = float(baseColorFactorArray.at(1).get_ref<json::number_float_t&>());
+						baseColorFactor[2] = float(baseColorFactorArray.at(2).get_ref<json::number_float_t&>());
+						baseColorFactor[3] = float(baseColorFactorArray.at(3).get_ref<json::number_float_t&>());
+					}
+
+					// read properties
+					metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
+					roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
+
+					// not supported properties
+					if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end())
+						throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
+					if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
+						throw GltfError("Unsupported functionality: metallic-roughness material model.");
+
+				}
+				else
+				{
+					// default values when pbrMetallicRoughness is not present
+					baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+					metallicFactor = 1.f;
+					roughnessFactor = 1.f;
+				}
+
+				// not supported material properties
+				if(material->find("normalTexture") != material->end())
+					throw GltfError("Unsupported functionality: normal texture.");
+				if(material->find("occlusionTexture") != material->end())
+					throw GltfError("Unsupported functionality: occlusion texture.");
+				if(material->find("emissiveTexture") != material->end())
+					throw GltfError("Unsupported functionality: emissive texture.");
+				if(material->find("emissiveFactor") != material->end())
+					throw GltfError("Unsupported functionality: emissive factor.");
+				if(material->find("alphaMode") != material->end())
+					throw GltfError("Unsupported functionality: alpha mode.");
+				if(material->find("alphaCutoff") != material->end())
+					throw GltfError("Unsupported functionality: alpha cutoff.");
+
+				// set material data
+				m->ambient = glm::vec3(baseColorFactor);
+				m->type = 0;
+				m->diffuseAndAlpha = baseColorFactor;
+				m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
+				m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+
+			}
+			else {
+
+				// set default material data
+				m->ambient = glm::vec3(1.f, 1.f, 1.f);
+				m->type = 0;
+				m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
+				m->specular = glm::vec3(0.f, 0.f, 0.f);
+				m->shininess = 0.f;
+
+			}
+
+			// set remaining material members
+			m->emission = glm::vec3(0.f, 0.f, 0.f);
+			m->pointSize = 0.f;
+
+			// copy transformation matrices
+			// (transformation matrices follow material data on offset 64)
+			glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
+			memcpy(modelMatrix, matrixList.data(), numInstances*64);
+
+			// set vertex data
+			sd = g.createVertexStagingData(numVertices * vertexSize);
+			uint8_t* p = sd.data<uint8_t>();
+			for(size_t i=0; i<numVertices; i++) {
+				if(positionData) {
+					glm::vec4 pos(*positionData, 1.f);
+					pos.y = -pos.y;
+					*reinterpret_cast<glm::vec4*>(p)= pos;
+					p += 16;
+					positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
+				}
+				if(normalData) {
+					glm::vec4 normal = glm::vec4(*normalData, 0.f);
+					normal.y = -normal.y;
+					*reinterpret_cast<glm::vec4*>(p) = normal;
+					p += 16;
+					normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
+				}
+				if(colorData) {
+					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+					*v = getColorFunc(colorData);
+					p += 16;
+					colorData += colorDataStride;
+				}
+				if(texCoordData) {
+					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+					*v = getTexCoordFunc(texCoordData);
+					p += 16;
+					texCoordData += texCoordDataStride;
+				}
+			}
+
+			// set index data
+			sd = g.createIndexStagingData(indexDataSize);
+			uint32_t* pi = sd.data<uint32_t>();
+			if(indexData)
+				switch(indexComponentType) {
+				case 5125: memcpy(pi, indexData, indexDataSize); break;
+				case 5123: {
+					for(size_t i=0; i<numIndices; i++)
+						pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
+					break;
+				}
+				case 5121: {
+					for(size_t i=0; i<numIndices; i++)
+						pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
+					break;
+				}
+				}
+			else {
+				if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+					throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+				for(uint32_t i=0; i<uint32_t(numIndices); i++)
+					pi[i] = i;
+			}
 
 		}
-		else {
-
-			// set default material data
-			m->ambient = glm::vec3(1.f, 1.f, 1.f);
-			m->type = 0;
-			m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
-			m->specular = glm::vec3(0.f, 0.f, 0.f);
-			m->shininess = 0.f;
-
-		}
-
-		// set remaining material members and modelMatrix
-		m->emission = glm::vec3(0.f, 0.f, 0.f);
-		m->pointSize = 0.f;
-		glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
-		*modelMatrix = glm::mat4(1.f);
-
-		// set vertex data
-		sd = g.createVertexStagingData(numVertices * vertexSize);
-		uint8_t* p = sd.data<uint8_t>();
-		for(size_t i=0; i<numVertices; i++) {
-			if(positionData) {
-				glm::vec4 pos(*positionData, 1.f);
-				pos.y = -pos.y;
-				*reinterpret_cast<glm::vec4*>(p)= pos;
-				p += 16;
-				positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
-			}
-			if(normalData) {
-				glm::vec4 normal = glm::vec4(*normalData, 0.f);
-				normal.y = -normal.y;
-				*reinterpret_cast<glm::vec4*>(p) = normal;
-				p += 16;
-				normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
-			}
-			if(colorData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = getColorFunc(colorData);
-				p += 16;
-				colorData += colorDataStride;
-			}
-			if(texCoordData) {
-				glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-				*v = getTexCoordFunc(texCoordData);
-				p += 16;
-				texCoordData += texCoordDataStride;
-			}
-		}
-
-		// set index data
-		sd = g.createIndexStagingData(indexDataSize);
-		uint32_t* pi = sd.data<uint32_t>();
-		if(indexData)
-			switch(indexComponentType) {
-			case 5125: memcpy(pi, indexData, indexDataSize); break;
-			case 5123: {
-				for(size_t i=0; i<numIndices; i++)
-					pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
-				break;
-			}
-			case 5121: {
-				for(size_t i=0; i<numIndices; i++)
-					pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
-				break;
-			}
-			}
-		else {
-			if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
-				throw GltfError("Too large primitive. Index out of 32-bit integer range.");
-			for(uint32_t i=0; i<uint32_t(numIndices); i++)
-				pi[i] = i;
-		}
-
 	}
 
 	// upload all staging buffers
