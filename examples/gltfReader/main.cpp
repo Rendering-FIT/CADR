@@ -485,9 +485,6 @@ void App::init()
 		}
 		else {
 
-			// initialize matrix to zeros
-			memset(&node.matrix, 0, sizeof(node.matrix));
-
 			// read scale
 			glm::vec3 scale;
 			if(auto it = jobj.find("scale"); it != jobj.end()) {
@@ -503,18 +500,23 @@ void App::init()
 
 			// read rotation
 			if(auto it = jobj.find("rotation"); it != jobj.end()) {
-				throw GltfError("Node.rotation is not supported yet.");
-#if 0
 				json::array_t& a = it->second.get_ref<json::array_t&>();
 				if(a.size() != 4)
 					throw GltfError("Node.rotation is not vector of four components.");
-				node.rotation[0] = float(a[0].get_ref<json::number_float_t&>());
-				node.rotation[1] = float(a[1].get_ref<json::number_float_t&>());
-				node.rotation[2] = float(a[2].get_ref<json::number_float_t&>());
-				node.rotation[3] = float(a[3].get_ref<json::number_float_t&>());
-#endif
+				glm::quat q;
+				q.x = float(a[0].get_ref<json::number_float_t&>());
+				q.y = float(a[1].get_ref<json::number_float_t&>());
+				q.z = float(a[2].get_ref<json::number_float_t&>());
+				q.w = float(a[3].get_ref<json::number_float_t&>());
+				glm::mat3 m = glm::mat3(q);
+				node.matrix[0] = glm::vec4(m[0] * scale.x, 0.f);
+				node.matrix[1] = glm::vec4(m[1] * scale.y, 0.f);;
+				node.matrix[2] = glm::vec4(m[2] * scale.z, 0.f);;
+				node.matrix[3] = glm::vec4(0.f, 0.f, 0.f, 1.f);
 			}
 			else {
+				// initialize matrix by scale only
+				memset(&node.matrix, 0, sizeof(node.matrix));
 				node.matrix[0][0] = scale.x;
 				node.matrix[1][1] = scale.y;
 				node.matrix[2][2] = scale.z;
@@ -1045,7 +1047,7 @@ void App::init()
 					texCoordData != nullptr,  // texturing
 					colorData    != nullptr,  // perVertexColor
 					!doubleSided,             // backFaceCulling
-					vk::FrontFace::eCounterClockwise  // frontFace
+					vk::FrontFace::eClockwise  // frontFace - we would use CounterClockwise but y axis was inverted to get Vulkan coordiate system; as the result, CounterClockwise turned to Clockwise
 				);
 			CadR::StateSet& ss = stateSetDB[pipelineIndex];
 
