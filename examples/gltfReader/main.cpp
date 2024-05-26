@@ -481,7 +481,7 @@ void App::init()
 				throw GltfError("Node.matrix is not vector of 16 components.");
 			float* f = glm::value_ptr(node.matrix);
 			for(unsigned j=0; j<16; j++)
-				f[j] = float(a[j].get_ref<json::number_float_t&>());
+				f[j] = float(a[j].get<json::number_float_t>());
 		}
 		else {
 
@@ -491,9 +491,9 @@ void App::init()
 				json::array_t& a = it->second.get_ref<json::array_t&>();
 				if(a.size() != 3)
 					throw GltfError("Node.scale is not vector of three components.");
-				scale.x = float(a[0].get_ref<json::number_float_t&>());
-				scale.y = float(a[1].get_ref<json::number_float_t&>());
-				scale.z = float(a[2].get_ref<json::number_float_t&>());
+				scale.x = float(a[0].get<json::number_float_t>());
+				scale.y = float(a[1].get<json::number_float_t>());
+				scale.z = float(a[2].get<json::number_float_t>());
 			}
 			else
 				scale = { 1.f, 1.f, 1.f };
@@ -504,10 +504,10 @@ void App::init()
 				if(a.size() != 4)
 					throw GltfError("Node.rotation is not vector of four components.");
 				glm::quat q;
-				q.x = float(a[0].get_ref<json::number_float_t&>());
-				q.y = float(a[1].get_ref<json::number_float_t&>());
-				q.z = float(a[2].get_ref<json::number_float_t&>());
-				q.w = float(a[3].get_ref<json::number_float_t&>());
+				q.x = float(a[0].get<json::number_float_t>());
+				q.y = float(a[1].get<json::number_float_t>());
+				q.z = float(a[2].get<json::number_float_t>());
+				q.w = float(a[3].get<json::number_float_t>());
 				glm::mat3 m = glm::mat3(q);
 				node.matrix[0] = glm::vec4(m[0] * scale.x, 0.f);
 				node.matrix[1] = glm::vec4(m[1] * scale.y, 0.f);;
@@ -528,9 +528,9 @@ void App::init()
 				json::array_t& a = it->second.get_ref<json::array_t&>();
 				if(a.size() != 3)
 					throw GltfError("Node.translation is not vector of three components.");
-				node.matrix[3][0] = float(a[0].get_ref<json::number_float_t&>());
-				node.matrix[3][1] = float(a[1].get_ref<json::number_float_t&>());
-				node.matrix[3][2] = float(a[2].get_ref<json::number_float_t&>());
+				node.matrix[3][0] = float(a[0].get<json::number_float_t>());
+				node.matrix[3][1] = float(a[1].get<json::number_float_t>());
+				node.matrix[3][2] = float(a[2].get<json::number_float_t>());
 			}
 
 		}
@@ -592,13 +592,19 @@ void App::init()
 			size_t rootNodeIndex = size_t(it->get_ref<json::number_unsigned_t&>());
 			Node& node = nodeList.at(rootNodeIndex);
 
+			// compute root matrix
+			// (we need to flip y axis)
+			glm::mat4 m = node.matrix;
+			for(unsigned i=0; i<4; i++)
+				m[i][1] = -m[i][1];
+
 			// assign one more instancing matrix to the mesh
 			if(node.meshIndex != ~size_t(0))
-				meshMatrixList.at(node.meshIndex).emplace_back(node.matrix);
+				meshMatrixList.at(node.meshIndex).emplace_back(m);
 
 			// process children
 			for(size_t i=0,c=node.children.size(); i<c; i++)
-				processNode(node.children[i], node.matrix, nodeList, meshMatrixList, processNode);
+				processNode(node.children[i], m, nodeList, meshMatrixList, processNode);
 
 		}
 	}
@@ -1047,7 +1053,7 @@ void App::init()
 					texCoordData != nullptr,  // texturing
 					colorData    != nullptr,  // perVertexColor
 					!doubleSided,             // backFaceCulling
-					vk::FrontFace::eClockwise  // frontFace - we would use CounterClockwise but y axis was inverted to get Vulkan coordiate system; as the result, CounterClockwise turned to Clockwise
+					vk::FrontFace::eCounterClockwise  // frontFace
 				);
 			CadR::StateSet& ss = stateSetDB[pipelineIndex];
 
@@ -1166,14 +1172,12 @@ void App::init()
 			for(size_t i=0; i<numVertices; i++) {
 				if(positionData) {
 					glm::vec4 pos(*positionData, 1.f);
-					pos.y = -pos.y;
 					*reinterpret_cast<glm::vec4*>(p)= pos;
 					p += 16;
 					positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
 				}
 				if(normalData) {
 					glm::vec4 normal = glm::vec4(*normalData, 0.f);
-					normal.y = -normal.y;
 					*reinterpret_cast<glm::vec4*>(p) = normal;
 					p += 16;
 					normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
