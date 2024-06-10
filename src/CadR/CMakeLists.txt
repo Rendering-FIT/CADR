@@ -33,7 +33,6 @@ set(CADR_PUBLIC_HEADERS
     Renderer.h
     RenderPass.h
     StagingData.h
-    StagingDataAllocation.h
     StagingMemory.h
     StateSet.h
     VulkanDevice.h
@@ -58,7 +57,6 @@ set(CADR_SOURCES
     Renderer.cpp
     RenderPass.cpp
     StagingData.cpp
-    StagingDataAllocation.cpp
     StagingMemory.cpp
     StateSet.cpp
     VulkanDevice.cpp

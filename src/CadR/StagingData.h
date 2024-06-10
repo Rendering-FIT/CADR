@@ -8,14 +8,21 @@ struct DataAllocationRecord;
 
 
 /** \brief StagingData is used to update data in particular DataAllocation
- *  using stagging buffer approach.
+ *  or HandlelessAllocation using stagging buffer approach.
  *
- *  It represents single piece of memory associated with
- *  particular DataAllocation and StagingDataAllocation.
- *  The user updates the memory and after calling submit(), copy operation
- *  is scheduled to update memory associated with particular DataAllocation.
+ *  It represents single piece of memory allocated in StagingMemory object.
+ *  StagingData object is created by calling DataAllocation::alloc()
+ *  or HandlelessAllocation::alloc(). The user is expected to update
+ *  the memory pointed by data() until the next frame rendering, or until
+ *  the next call to Renderer::submitCopyOperations(). The whole memory block
+ *  is expected to be updated, otherwise undefined content will be uploaded
+ *  from all not updated parts of the memory.
  *
- *  \sa StagingDataAllocation, DataAllocation
+ *  After next frame rendering process is started or after the call to
+ *  Renderer::submitCopyOperations() StagingData object is invalid
+ *  and shall not be used any more.
+ *
+ *  \sa DataAllocation, HandlelessAllocation, DataAllocationRecord
  */
 class CADR_EXPORT StagingData {
 protected:

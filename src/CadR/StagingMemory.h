@@ -8,14 +8,20 @@ class DataMemory;
 class Renderer;
 
 
-/** \brief StagingMemory represents memory that is suballocated to StagingData
- *  and StagingDataAllocation objects.
+/** \brief StagingMemory represents memory used to upload data to
+ *  DataAllocation and HandlelessAllocation objects.
  *
- *  The memory serves as staging buffer. The user updates the staging buffer
- *  and calls StagingData::submit(). The update operation is scheduled
- *  to copy staging data into the data associated with particular DataAllocation.
+ *  The memory serves as staging buffer for possibly large group
+ *  of DataAllocations and HandlelessAllocations that
+ *  are updated together in one transfer operation, thus
+ *  performing fast updates of large amount of objects.
  *
- *  \sa StagingData, StagingDataAllocation, DataAllocation, DataStorage, DataMemory
+ *  Each DataAllocation and HandlelessAllocation update is
+ *  performed through StagingData. The data update is expected to
+ *  be completed before call to Renderer::submitCopyOperations()
+ *  or next frame rendering start.
+ *
+ *  \sa StagingData, DataAllocation, HandlelessAllocation, DataStorage, DataMemory
  */
 class StagingMemory {
 protected:

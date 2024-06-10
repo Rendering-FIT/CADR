@@ -115,9 +115,14 @@ tuple<uint64_t,size_t> StagingMemory::recordUpload(vk::CommandBuffer commandBuff
 {
 	assert(_attachedDataMemory && "StagingMemory::upload(): DataMemory must be attached to StagingMemory before calling upload().");
 
+	// number of bytes to transfer
+	// (return zero when no data to transfer exist)
+	uint64_t numBytesToTransfer = _allocatedRangeEndAddress - _allocatedRangeStartAddress;
+	if(numBytesToTransfer == 0)
+		return { 0, 0 };
+
 	// record new transfer
 	VulkanDevice& device = _renderer->device();
-	uint64_t numBytesToTransfer = _allocatedRangeEndAddress - _allocatedRangeStartAddress;
 	uint64_t srcOffset = _allocatedRangeStartAddress - _bufferStartAddress;
 	uint64_t dstOffset = _offsetIntoDataMemory + srcOffset;
 	device.flushMappedMemoryRanges(
@@ -140,9 +145,10 @@ tuple<uint64_t,size_t> StagingMemory::recordUpload(vk::CommandBuffer commandBuff
 			numBytesToTransfer)  // size
 	);
 
-	// update blocked range
+	// update blocked and allocated range
 	// (blocked range marks place where transfer is in progress)
 	_blockedRangeEndAddress = _allocatedRangeEndAddress;
+	_allocatedRangeStartAddress = _allocatedRangeEndAddress;
 
 	// return end of blocked range and amount of bytes to transfer
 	return { _blockedRangeEndAddress, numBytesToTransfer };

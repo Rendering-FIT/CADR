@@ -46,7 +46,7 @@ public:
 public:
 
 	// construction and destruction
-	Drawable(Renderer& r);  ///< Constructs empty object.
+	Drawable(Renderer& r) noexcept;  ///< Constructs empty object.
 	Drawable(Geometry& geometry, uint32_t primitiveSetOffset, uint32_t numInstances, StateSet& stateSet);
 	Drawable(Geometry& geometry, uint32_t primitiveSetOffset, StagingData& shaderStagingData,
 	         size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet);
@@ -102,7 +102,7 @@ namespace CadR {
 inline constexpr DrawableGpuData::DrawableGpuData(uint64_t vertexDataHandle_, uint64_t indexDataHandle_, uint64_t primitiveSetHandle_, uint64_t shaderDataHandle_, uint32_t primitiveSetOffset_, uint32_t numInstances_)
 	: vertexDataHandle(vertexDataHandle_), indexDataHandle(indexDataHandle_), primitiveSetHandle(primitiveSetHandle_), shaderDataHandle(shaderDataHandle_), primitiveSetOffset(primitiveSetOffset_), numInstances(numInstances_)  {}
 
-inline Drawable::Drawable(Renderer& r) : _shaderData(r.dataStorage(), DataAllocation::noHandle)  {}
+inline Drawable::Drawable(Renderer& r) noexcept : _shaderData(r.dataStorage(), DataAllocation::noHandle)  {}
 inline bool Drawable::isValid() const  { return _indexIntoStateSet!=~0u; }
 inline void Drawable::uploadShaderData(void* data, size_t size)  { _shaderData.upload(data, size); }
 inline StagingData Drawable::createStagingShaderData()  { return _shaderData.createStagingData(); }
