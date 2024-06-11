@@ -8,61 +8,61 @@ include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)
 
 # linkage
 if(CADR_DYNAMIC_LINKAGE)
-   set(CADR_USER_DEFINED_DYNAMIC_OR_STATIC "SHARED")
-   add_definitions(-D${LIB_NAME_UPPER}_LIBRARY)
+	set(CADR_USER_DEFINED_DYNAMIC_OR_STATIC "SHARED")
+	add_definitions(-D${LIB_NAME_UPPER}_LIBRARY)
 else()
-   set(CADR_USER_DEFINED_DYNAMIC_OR_STATIC "STATIC")
-   add_definitions(-D${LIB_NAME_UPPER}_LIBRARY_STATIC)
+	set(CADR_USER_DEFINED_DYNAMIC_OR_STATIC "STATIC")
+	add_definitions(-D${LIB_NAME_UPPER}_LIBRARY_STATIC)
 endif()
 
 # public headers
 set(CADR_PUBLIC_HEADERS
-    CallbackList.h
-    CircularAllocationMemory.h
-    DataAllocation.h
-    DataMemory.h
-    DataStorage.h
-    Drawable.h
-    Exceptions.h
-    FrameInfo.h
-    Geometry.h
-    HandleTable.h
-    ParentChildList.h
-    Pipeline.h
-    PrimitiveSet.h
-    Renderer.h
-    RenderPass.h
-    StagingData.h
-    StagingMemory.h
-    StateSet.h
-    VulkanDevice.h
-    VulkanInstance.h
-    VulkanLibrary.h
-   )
+	CallbackList.h
+	CircularAllocationMemory.h
+	DataAllocation.h
+	DataMemory.h
+	DataStorage.h
+	Drawable.h
+	Exceptions.h
+	FrameInfo.h
+	Geometry.h
+	HandleTable.h
+	ParentChildList.h
+	Pipeline.h
+	PrimitiveSet.h
+	Renderer.h
+	RenderPass.h
+	StagingData.h
+	StagingMemory.h
+	StateSet.h
+	VulkanDevice.h
+	VulkanInstance.h
+	VulkanLibrary.h
+	)
 
 # private headers
 set(CADR_PRIVATE_HEADERS
-   )
+	)
 
 # sources
 set(CADR_SOURCES
-    DataAllocation.cpp
-    DataMemory.cpp
-    DataStorage.cpp
-    Drawable.cpp
-    Geometry.cpp
-    HandleTable.cpp
-    Pipeline.cpp
-    PrimitiveSet.cpp
-    Renderer.cpp
-    RenderPass.cpp
-    StagingData.cpp
-    StagingMemory.cpp
-    StateSet.cpp
-    VulkanDevice.cpp
-    VulkanInstance.cpp
-    VulkanLibrary.cpp
-   )
+	DataAllocation.cpp
+	DataMemory.cpp
+	DataStorage.cpp
+	Drawable.cpp
+	Geometry.cpp
+	HandleTable.cpp
+	Pipeline.cpp
+	PrimitiveSet.cpp
+	Renderer.cpp
+	RenderPass.cpp
+	StagingData.cpp
+	StagingMemory.cpp
+	StateSet.cpp
+	VulkanDevice.cpp
+	VulkanInstance.cpp
+	VulkanLibrary.cpp
+	)
 
 # dependencies
 find_package(Vulkan REQUIRED)
@@ -75,12 +75,12 @@ add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_3 shaders/processDrawabl
 
 # CADR library
 add_library(${LIB_NAME}
-    ${CADR_USER_DEFINED_DYNAMIC_OR_STATIC}
-    ${CADR_PUBLIC_HEADERS}
-    ${CADR_PRIVATE_HEADERS}
-    ${CADR_SOURCES}
-    ${CADR_SHADER_DEPS}
-    )
+	${CADR_USER_DEFINED_DYNAMIC_OR_STATIC}
+	${CADR_PUBLIC_HEADERS}
+	${CADR_PRIVATE_HEADERS}
+	${CADR_SOURCES}
+	${CADR_SHADER_DEPS}
+	)
 
 # compile definitions
 if(WIN32)
@@ -104,12 +104,6 @@ else()
 	)
 endif()
 
-# target libraries
-target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)
-if(UNIX)
-	target_link_libraries(${LIB_NAME} dl stdc++fs)
-endif()
-
 # target includes
 get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set_target_properties(${LIB_NAME} PROPERTIES
@@ -117,6 +111,15 @@ set_target_properties(${LIB_NAME} PROPERTIES
 	INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
 	)
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
+# target libraries
+target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)
+if(UNIX)
+	target_link_libraries(${LIB_NAME} dl stdc++fs)
+endif()
+
+# other target settings
+set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD 17)
 
 # headers installation
 install(FILES

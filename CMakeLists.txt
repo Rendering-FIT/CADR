@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.8.0) # arguments for discussion about particular cmake version: Ubuntu 16.04 LTS uses version 3.5, version 3.7 supports LESS_EQUAL,
-                                      # version 3.8 properly detects OpenGL targets, Ubuntu 18.04 LTS uses version 3.10
+cmake_minimum_required(VERSION 3.21.0) # arguments for discussion about minimal cmake version:
+                                       # CXX_STANDARD 20 is available since 3.12, Ubuntu 20.04 LTS uses 3.16.3,
+                                       # Vulkan::Headers and Vulkan::glslangValidator targets are available since 3.21,
+                                       # Ubuntu 22.04 LTS uses 3.22.1
 
 project(CADR)
 
@@ -23,9 +25,6 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # MSVC
 if(MSVC)
-
-	# enable C++17
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17")
 
 	# enable exceptions
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
