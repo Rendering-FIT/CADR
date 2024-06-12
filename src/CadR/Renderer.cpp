@@ -223,20 +223,20 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 	}
 
 	// transientCommandPool and uploadingCommandBuffer
-	_transientCommandPool=
+	_transientCommandPool =
 		_device->createCommandPool(
 			vk::CommandPoolCreateInfo(
 				vk::CommandPoolCreateFlagBits::eTransient|vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
 				_graphicsQueueFamily  // queueFamilyIndex
 			)
 		);
-	_uploadingCommandBuffer=
-		_device->allocateCommandBuffers(
-			vk::CommandBufferAllocateInfo(
-				_transientCommandPool,             // commandPool
-				vk::CommandBufferLevel::ePrimary,  // level
-				1                                  // commandBufferCount
-			)
+	_uploadingCommandBuffer =
+			_device->allocateCommandBuffers(
+				vk::CommandBufferAllocateInfo(
+					_transientCommandPool,             // commandPool
+					vk::CommandBufferLevel::ePrimary,  // level
+					1                                  // commandBufferCount
+				)
 		)[0];
 
 	// precompiledCommandPool and readTimestampCommandBuffer
@@ -372,37 +372,20 @@ size_t Renderer::beginFrame()
 		_completedFrameInfoList = getFrameInfos();
 
 	// collect frame statistics
-	if(collectFrameInfo()) {
+	if(_collectFrameInfo) {
 
-		// prepare stats processing
+		// prepare frame info collecting
 		_timestampIndex = 0;
 		_inProgressFrameInfoList.emplace_back();
-		FrameInfoStuff& stats = _inProgressFrameInfoList.back();
-		stats.info.frameNumber = _frameNumber;
+		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
+		frameInfo.frameNumber = _frameNumber;
 
-		// get calibrated timestamps
-		if(_useCalibratedTimestamps) {
-			array<uint64_t,2> ts;
-			uint64_t maxDeviation;
-			_device->getCalibratedTimestampsEXT(
-				2,  // timestampCount
-				array{  // pTimestampInfos
-					vk::CalibratedTimestampInfoEXT(vk::TimeDomainEXT::eDevice),
-					vk::CalibratedTimestampInfoEXT(_timestampHostTimeDomain),
-				}.data(),
-				ts.data(),  // pTimestamps
-				&maxDeviation  // pMaxDeviation
-			);
-			stats.info.gpuBeginFrame = ts[0];
-			stats.info.cpuBeginFrame = ts[1];
-		}
-		else {
-			stats.info.gpuBeginFrame = getGpuTimestamp();
-			stats.info.cpuBeginFrame = getCpuTimestamp();
-		}
+		// get cpu and gpu timestamps
+		// that are possibly calibrated
+		tie(frameInfo.cpuBeginFrame, frameInfo.gpuBeginFrame) = getCpuAndGpuTimestamps();
 
 		// create timestamp pool
-		stats.timestampPool =
+		frameInfo.timestampPool =
 			_device->createQueryPoolUnique(
 				vk::QueryPoolCreateInfo(
 					vk::QueryPoolCreateFlags(),  // flags
@@ -429,7 +412,7 @@ void Renderer::beginRecording(vk::CommandBuffer commandBuffer)
 	);
 
 	// schedule write of gpu timestamp
-	if(collectFrameInfo()) {
+	if(_collectFrameInfo) {
 		_device->cmdResetQueryPool(
 			commandBuffer,  // commandBuffer
 			_inProgressFrameInfoList.back().timestampPool.get(),  // queryPool
@@ -450,7 +433,15 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 {
 	// prepare recording
 	// and get number of drawables we will render
-	size_t numDrawables = stateSetRoot.prepareRecording();
+	size_t numDrawables;
+	if(_collectFrameInfo == false)
+		numDrawables = stateSetRoot.prepareRecording();
+	else {
+		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
+		frameInfo.cpuPrepareRecordingBegin = getCpuTimestamp();
+		numDrawables = stateSetRoot.prepareRecording();
+		frameInfo.cpuPrepareRecordingEnd = getCpuTimestamp();
+	}
 
 	// reallocate drawable buffer
 	// if too small
@@ -629,7 +620,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 	);
 
 	// write of gpu timestamp
-	if(collectFrameInfo())
+	if(_collectFrameInfo)
 		_device->cmdWriteTimestamp(
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eTransfer,  // pipelineStage
@@ -664,7 +655,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 	}
 
 	// write of gpu timestamp
-	if(collectFrameInfo())
+	if(_collectFrameInfo)
 		_device->cmdWriteTimestamp(
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eComputeShader,  // pipelineStage
@@ -707,7 +698,14 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& st
 
 	// execute all StateSets
 	size_t drawableCounter = 0;
-	stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
+	if(_collectFrameInfo == false)
+		stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
+	else {
+		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
+		frameInfo.cpuRecordStateSetsBegin = getCpuTimestamp();
+		stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
+		frameInfo.cpuRecordStateSetsEnd = getCpuTimestamp();
+	}
 	assert(drawableCounter <= _drawableBufferSize/sizeof(DrawableGpuData) && "Buffer overflow. This should not happen.");
 
 	// end render pass
@@ -736,22 +734,11 @@ void Renderer::endFrame()
 	if(collectFrameInfo()) {
 
 		// write cpu timestamp
-		auto& [stats,timestampPool] = _inProgressFrameInfoList.back();
-		assert(stats.frameNumber==_frameNumber && "Do not start new frame until the recording of previous one is finished.");
+		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
+		assert(frameInfo.frameNumber==_frameNumber && "Do not start new frame until the recording of previous one is finished.");
 		assert(_timestampIndex==FrameInfo::gpuTimestampPoolSize && "Wrong number of gpu timestamps.");
-		if(_useCalibratedTimestamps) {
-			uint64_t ts;
-			uint64_t maxDeviation;
-			_device->getCalibratedTimestampsEXT(
-				1,  // timestampCount
-				array{ vk::CalibratedTimestampInfoEXT(_timestampHostTimeDomain) }.data(),  // pTimestampInfos
-				&ts,  // pTimestamps
-				&maxDeviation  // pMaxDeviation
-			);
-			stats.cpuEndFrame = ts;
-		}
-		else
-			stats.cpuEndFrame = getCpuTimestamp();
+		frameInfo.cpuEndFrame = getCpuTimestamp();
+
 	}
 }
 
@@ -861,6 +848,7 @@ void Renderer::executeCopyOperations()
 	// end recording
 	_device->endCommandBuffer(_uploadingCommandBuffer);
 
+	// if empty, ignore the transfer
 	if(numBytes == 0) {
 		DataStorage::uploadDone(transferRec);
 		return;
@@ -870,7 +858,7 @@ void Renderer::executeCopyOperations()
 	_device->queueSubmit(
 		_graphicsQueue,  // queue
 		vk::SubmitInfo(  // submits (vk::ArrayProxy)
-			0,nullptr,nullptr,           // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
+			0,nullptr,nullptr,          // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
 			1,&_uploadingCommandBuffer,  // commandBufferCount,pCommandBuffers
 			0,nullptr                    // signalSemaphoreCount,pSignalSemaphores
 		),
@@ -888,7 +876,7 @@ void Renderer::executeCopyOperations()
 		if(r==vk::Result::eTimeout)
 			throw std::runtime_error("GPU timeout. Task is probably hanging.");
 		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
-	}
+		}
 
 	// dispose UploadSet
 	// (it was already uploaded and it is not needed any more)
@@ -906,6 +894,11 @@ void Renderer::setCollectFrameInfo(bool on, bool useCalibratedTimestamps)
 }
 
 
+/**
+ *  Turns the collection of frame info on or off, while setting sime collection parameters.
+ *
+ *  The function shall not be called between beginFrame() and endFrame().
+ */
 void Renderer::setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::TimeDomainEXT timestampHostTimeDomain)
 {
 	_collectFrameInfo = on;
@@ -926,16 +919,16 @@ list<FrameInfo> Renderer::getFrameInfos()
 	while(!_inProgressFrameInfoList.empty()) {
 
 		// query for results
-		auto& [stats,timestampPool] = _inProgressFrameInfoList.front();
+		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.front();
 		array<uint64_t, FrameInfo::gpuTimestampPoolSize> timestamps;
 		vk::Result r =
 			_device->getQueryPoolResults(
-				timestampPool.get(),  // queryPool
-				0,                    // firstQuery
+				frameInfo.timestampPool.get(),    // queryPool
+				0,                                // firstQuery
 				FrameInfo::gpuTimestampPoolSize,  // queryCount
 				FrameInfo::gpuTimestampPoolSize*sizeof(uint64_t),  // dataSize
-				timestamps.data(),    // pData
-				sizeof(uint64_t),     // stride
+				timestamps.data(),            // pData
+				sizeof(uint64_t),             // stride
 				vk::QueryResultFlagBits::e64  // flags
 			);
 
@@ -946,11 +939,11 @@ list<FrameInfo> Renderer::getFrameInfos()
 		// if success, append the result in l
 		// and go to the next _inProgressStats item
 		if(r == vk::Result::eSuccess) {
-			stats.gpuBeginExecution = timestamps[0];
-			stats.gpuAfterTransfersAndBeforeDrawableProcessing = timestamps[1];
-			stats.gpuAfterDrawableProcessingAndBeforeRendering = timestamps[2];
-			stats.gpuEndExecution = timestamps[3];
-			l.emplace_back(stats);
+			frameInfo.gpuBeginExecution = timestamps[0];
+			frameInfo.gpuAfterTransfersAndBeforeDrawableProcessing = timestamps[1];
+			frameInfo.gpuAfterDrawableProcessingAndBeforeRendering = timestamps[2];
+			frameInfo.gpuEndExecution = timestamps[3];
+			l.emplace_back(frameInfo);
 			_inProgressFrameInfoList.pop_front();
 			continue;
 		}
@@ -982,64 +975,117 @@ static inline double getCpuTimestampPeriod()
 
 uint64_t Renderer::getCpuTimestamp() const
 {
-#ifdef _WIN32
-	LARGE_INTEGER counter;
-	QueryPerformanceCounter(&counter);
-	return uint64_t(counter.QuadPart);
-#else
-	struct timespec tv;
-	clock_gettime(CLOCK_MONOTONIC_RAW, &tv);
-	return tv.tv_nsec + tv.tv_sec*1000000000ull;
-#endif
+	if(_useCalibratedTimestamps) {
+		uint64_t ts;
+		uint64_t maxDeviation;
+		_device->getCalibratedTimestampsEXT(
+			1,  // timestampCount
+			array{ vk::CalibratedTimestampInfoEXT(_timestampHostTimeDomain) }.data(),  // pTimestampInfos
+			&ts,  // pTimestamps
+			&maxDeviation  // pMaxDeviation
+		);
+		return ts;
+	}
+	else {
+	#ifdef _WIN32
+		LARGE_INTEGER counter;
+		QueryPerformanceCounter(&counter);
+		return uint64_t(counter.QuadPart);
+	#else
+		struct timespec tv;
+		clock_gettime(CLOCK_MONOTONIC_RAW, &tv);
+		return tv.tv_nsec + tv.tv_sec*1000000000ull;
+	#endif
+	}
 }
 
 
 uint64_t Renderer::getGpuTimestamp() const
 {
-	// submit command buffer
-	_device->queueSubmit(
-		_graphicsQueue,  // queue
-		vk::SubmitInfo(  // submits (vk::ArrayProxy)
-			0, nullptr, nullptr,              // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
-			1, &_readTimestampCommandBuffer,  // commandBufferCount,pCommandBuffers
-			0, nullptr                        // signalSemaphoreCount,pSignalSemaphores
-		),
-		_fence  // fence
-	);
-
-	// wait for work to complete
-	vk::Result r = _device->waitForFences(
-		_fence,        // fences (vk::ArrayProxy)
-		VK_TRUE,       // waitAll
-		uint64_t(3e9)  // timeout (3s)
-	);
-	_device->resetFences(_fence);
-	if(r != vk::Result::eSuccess) {
-		if(r == vk::Result::eTimeout)
-			throw std::runtime_error("GPU timeout. Task is probably hanging.");
-		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
+	if(_useCalibratedTimestamps) {
+		uint64_t ts;
+		uint64_t maxDeviation;
+		_device->getCalibratedTimestampsEXT(
+			1,  // timestampCount
+			array{  // pTimestampInfos
+				vk::CalibratedTimestampInfoEXT(vk::TimeDomainEXT::eDevice),
+			}.data(),
+			&ts,  // pTimestamps
+			&maxDeviation  // pMaxDeviation
+		);
+		return ts;
 	}
+	else {
 
-	// read timestamp 
-	uint64_t t;
-	r = _device->getQueryPoolResults(
-		_readTimestampQueryPool,  // queryPool
-		0,                    // firstQuery
-		1,  // queryCount
-		1*sizeof(uint64_t),  // dataSize
-		&t,    // pData
-		sizeof(uint64_t),     // stride
-		vk::QueryResultFlagBits::e64  // flags
-	);
+		// submit command buffer
+		_device->queueSubmit(
+			_graphicsQueue,  // queue
+			vk::SubmitInfo(  // submits (vk::ArrayProxy)
+				0, nullptr, nullptr,              // waitSemaphoreCount,pWaitSemaphores,pWaitDstStageMask
+				1, &_readTimestampCommandBuffer,  // commandBufferCount,pCommandBuffers
+				0, nullptr                        // signalSemaphoreCount,pSignalSemaphores
+			),
+			_fence  // fence
+		);
 
-	// if not ready, something is wrong with Vulkan
-	if(r == vk::Result::eNotReady)
-		return 0;
+		// wait for work to complete
+		vk::Result r = _device->waitForFences(
+			_fence,        // fences (vk::ArrayProxy)
+			VK_TRUE,       // waitAll
+			uint64_t(3e9)  // timeout (3s)
+		);
+		_device->resetFences(_fence);
+		if(r != vk::Result::eSuccess) {
+			if(r == vk::Result::eTimeout)
+				throw std::runtime_error("GPU timeout. Task is probably hanging.");
+			throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
+		}
 
-	// if error for some strange reason, return 0
-	if(r != vk::Result::eSuccess)
-		return 0;
+		// read timestamp 
+		uint64_t ts;
+		r = _device->getQueryPoolResults(
+			_readTimestampQueryPool,  // queryPool
+			0,                    // firstQuery
+			1,  // queryCount
+			1*sizeof(uint64_t),  // dataSize
+			&ts,    // pData
+			sizeof(uint64_t),     // stride
+			vk::QueryResultFlagBits::e64  // flags
+		);
 
-	// return timestamp
-	return t;
+		// if not ready, something is wrong with Vulkan
+		if(r == vk::Result::eNotReady)
+			return 0;
+
+		// if error for some strange reason, return 0
+		if(r != vk::Result::eSuccess)
+			return 0;
+
+		// return timestamp
+		return ts;
+	}
+}
+
+
+tuple<uint64_t, uint64_t> Renderer::getCpuAndGpuTimestamps() const
+{
+	if(_useCalibratedTimestamps) {
+		array<uint64_t,2> ts;
+		uint64_t maxDeviation;
+		_device->getCalibratedTimestampsEXT(
+			2,  // timestampCount
+			array{  // pTimestampInfos
+				vk::CalibratedTimestampInfoEXT(_timestampHostTimeDomain),
+				vk::CalibratedTimestampInfoEXT(vk::TimeDomainEXT::eDevice),
+			}.data(),
+			ts.data(),  // pTimestamps
+			&maxDeviation  // pMaxDeviation
+		);
+		return make_tuple(ts[0], ts[1]);
+	}
+	else {
+		uint64_t gpuTS = getGpuTimestamp();
+		uint64_t cpuTS = getCpuTimestamp();
+		return make_tuple(cpuTS, gpuTS);
+	}
 }

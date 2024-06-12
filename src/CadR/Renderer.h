@@ -64,11 +64,10 @@ protected:
 	bool _collectFrameInfo = false;  ///< True if frame timing information collecting is enabled.
 	bool _useCalibratedTimestamps;  ///< True if use of calibrated timestamps is enabled. It requires VK_EXT_calibrated_timestamps Vulkan extension to be present and enabled.
 	vk::TimeDomainEXT _timestampHostTimeDomain;  ///< Time domain used for the cpu timestamps.
-	struct FrameInfoStuff {
-		FrameInfo info;  ///< FrameInfo data.
+	struct FrameInfoCollector : public FrameInfo {  ///< The structure is used during collection of FrameInfo.
 		vk::UniqueHandle<vk::QueryPool,VulkanDevice> timestampPool;  ///< QueryPool for timestamps that are collected during frame rendering.
 	};
-	std::list<FrameInfoStuff> _inProgressFrameInfoList;  ///< List of FrameInfo structures whose data are still being collected.
+	std::list<FrameInfoCollector> _inProgressFrameInfoList;  ///< List of FrameInfo structures whose data are still being collected.
 	std::list<FrameInfo> _completedFrameInfoList;  ///< List of FrameInfo structures whose data are complete and ready to be handed to the user.
 	uint32_t _timestampIndex;  ///< Timestamp index used during recording of frame to track the index of the next timestamp that will be recorded to the command buffer.
 
@@ -78,21 +77,28 @@ protected:
 
 public:
 
+	// general static functions
 	static Renderer& get();
 	static void set(Renderer& r);
 	static const vk::PhysicalDeviceFeatures2& requiredFeatures();
 
+	// deleted constructors and operators
+	Renderer(const Renderer&) = delete;
+	Renderer(Renderer&&) = delete;
+	Renderer& operator=(const Renderer&) = delete;
+	Renderer& operator=(Renderer&&) = delete;
+
+	// construction, initialization and destruction
 	Renderer(bool makeDefault=true);
 	Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
 	         uint32_t graphicsQueueFamily,bool makeDefault=true);
-	Renderer(const Renderer&) = delete;
-	Renderer& operator=(const Renderer&) = delete;
 	~Renderer();
 	void init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
 	          uint32_t graphicsQueueFamily,bool makeDefault=true);
 	void finalize();
 	void leakResources();
 
+	// frame API
 	size_t beginFrame();  ///< Call this method to mark the beginning of the frame rendering. It returns the frame number assigned to this frame. It is the same number as frameNumber() will return from now on until the next call to beginFrame().
 	void beginRecording(vk::CommandBuffer commandBuffer);  ///< Start recording of the command buffer.
 	size_t prepareSceneRendering(StateSet& stateSetRoot);
@@ -103,6 +109,7 @@ public:
 	void endRecording(vk::CommandBuffer commandBuffer);  ///< Finish recording of the command buffer.
 	void endFrame();  ///< Mark the end of frame recording. This is usually called after the command buffer is submitted to gpu for execution.
 
+	// getters
 	VulkanDevice& device() const;
 	uint32_t graphicsQueueFamily() const;
 	vk::Queue graphicsQueue() const;
@@ -110,16 +117,20 @@ public:
 	size_t standardBufferAlignment() const;
 	size_t alignStandardBuffer(size_t offset) const;
 
+	// frame related API
 	size_t frameNumber() const;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
 	bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps = false);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::TimeDomainEXT timestampHostTimeDomain);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
 	std::list<FrameInfo> getFrameInfos();  ///< Returns list of FrameInfo for the frames whose collecting of information already completed. Some info is collected as gpu progresses on the frame rendering. The method returns info only about those frames whose collecting of information already finished. To avoid unnecessary memory consumption, unretrieved FrameInfos are deleted after some time. To avoid lost FrameInfos, it is enough to call getFrameInfos() once between each endFrame() and beginFrame() of two consecutive frames.
+	FrameInfo& getCurrentFrameInfo();  ///< Returns current FrameInfo being collected just now. It is must be called between beginFrame() and endFrame() and collecting of frame info must be switched on (see setCollectFrameInfo()).
 	double cpuTimestampPeriod() const;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
 	float gpuTimestampPeriod() const;  ///< The time period of gpu timestamp being incremented by 1. The period is given in seconds.
+	std::tuple<uint64_t, uint64_t> getCpuAndGpuTimestamps() const;
 	uint64_t getCpuTimestamp() const;  ///< Returns the cpu timestamp.
 	uint64_t getGpuTimestamp() const;  ///< Returns the gpu timestamp.
 
+	// data and buffers
 	DataStorage& dataStorage() const;
 	vk::Buffer drawableBuffer() const;
 	size_t drawableBufferSize() const;
@@ -130,12 +141,14 @@ public:
 	vk::Buffer drawablePayloadBuffer() const;
 	vk::DeviceAddress drawablePayloadDeviceAddress() const;
 
+	// pipelines and commandPools
 	vk::PipelineCache pipelineCache() const;
 	vk::Pipeline processDrawablesPipeline(size_t handleLevel) const;
 	vk::PipelineLayout processDrawablesPipelineLayout() const;
 	vk::CommandPool transientCommandPool() const;
 	vk::CommandPool precompiledCommandPool() const;
 
+	// memory
 	vk::DeviceMemory allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	vk::DeviceMemory allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	vk::DeviceMemory allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
@@ -164,6 +177,7 @@ inline size_t Renderer::standardBufferAlignment() const  { return _standardBuffe
 inline size_t Renderer::alignStandardBuffer(size_t offset) const  { size_t a=_standardBufferAlignment-1; return (offset+a)&(~a); }
 inline size_t Renderer::frameNumber() const  { return _frameNumber; }
 inline bool Renderer::collectFrameInfo() const  { return _collectFrameInfo; }
+inline FrameInfo& Renderer::getCurrentFrameInfo()  { return _inProgressFrameInfoList.back(); }
 inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
 inline float Renderer::gpuTimestampPeriod() const  { return _gpuTimestampPeriod; }
 inline DataStorage& Renderer::dataStorage() const  { return _dataStorage; }
