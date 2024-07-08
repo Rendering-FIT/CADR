@@ -211,9 +211,18 @@ void App::init()
 			vulkanInstance.chooseDevice(vk::QueueFlagBits::eGraphics, window.surface());
 	device.create(
 		vulkanInstance, deviceAndQueueFamilies,
-		//"VK_KHR_swapchain",
+#if 1 // enable or disable validation extensions
+		"VK_KHR_swapchain",
+		CadR::Renderer::requiredFeatures()
+#else
 		{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"},
-		CadR::Renderer::requiredFeatures());
+		[]() {
+			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
+			f.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess = true;
+			return f;
+		}().get<vk::PhysicalDeviceFeatures2>()
+#endif
+	);
 	physicalDevice = std::get<0>(deviceAndQueueFamilies);
 	graphicsQueueFamily = std::get<1>(deviceAndQueueFamilies);
 	presentationQueueFamily = std::get<2>(deviceAndQueueFamilies);

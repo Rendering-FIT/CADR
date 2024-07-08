@@ -16,6 +16,9 @@ struct DrawableGpuData;
 
 
 class CADR_EXPORT Renderer {
+public:
+	using RequiredFeaturesStructChain = vk::StructureChain<vk::PhysicalDeviceFeatures2,
+		vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan12Features>;
 protected:
 
 	VulkanDevice* _device;
@@ -72,7 +75,7 @@ protected:
 	uint32_t _timestampIndex;  ///< Timestamp index used during recording of frame to track the index of the next timestamp that will be recorded to the command buffer.
 
 	static Renderer* _defaultRenderer;
-	static vk::PhysicalDeviceFeatures2 _requiredFeatures;
+	static RequiredFeaturesStructChain _requiredFeatures;
 	friend struct RendererStaticInitializer;
 
 public:
@@ -81,6 +84,7 @@ public:
 	static Renderer& get();
 	static void set(Renderer& r);
 	static const vk::PhysicalDeviceFeatures2& requiredFeatures();
+	static const RequiredFeaturesStructChain& requiredFeaturesStructChain();
 
 	// deleted constructors and operators
 	Renderer(const Renderer&) = delete;
@@ -168,7 +172,8 @@ namespace CadR {
 
 inline Renderer& Renderer::get()  { return *_defaultRenderer; }
 inline void Renderer::set(Renderer& r)  { _defaultRenderer = &r; }
-inline const vk::PhysicalDeviceFeatures2& Renderer::requiredFeatures()  { return _requiredFeatures; }
+inline const vk::PhysicalDeviceFeatures2& Renderer::requiredFeatures()  { return _requiredFeatures.get(); }
+inline const Renderer::RequiredFeaturesStructChain& Renderer::requiredFeaturesStructChain()  { return _requiredFeatures; }
 inline VulkanDevice& Renderer::device() const  { assert(_device && "Renderer::device(): Renderer must be initialized with valid VulkanDevice to call this function."); return *_device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
 inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }

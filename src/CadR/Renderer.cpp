@@ -9,19 +9,15 @@ using namespace std;
 using namespace CadR;
 
 // required features
-// (Currently, CadR::Renderer requires shaderInt64 and bufferDeviceAddress features.)
-vk::PhysicalDeviceFeatures2 Renderer::_requiredFeatures;
-static vk::PhysicalDeviceVulkan11Features vulkan11Features;
-static vk::PhysicalDeviceVulkan12Features vulkan12Features;
+// (Currently, CadR::Renderer requires multiDrawIndirect, shaderInt64, shaderDrawParameters and bufferDeviceAddress features.)
+Renderer::RequiredFeaturesStructChain Renderer::_requiredFeatures;
 namespace CadR {
 	struct RendererStaticInitializer {
 		RendererStaticInitializer() {
-			Renderer::_requiredFeatures.pNext = &vulkan11Features;
-			Renderer::_requiredFeatures.features.multiDrawIndirect = true;
-			Renderer::_requiredFeatures.features.shaderInt64 = true;
-			vulkan11Features.pNext = &vulkan12Features;
-			vulkan11Features.shaderDrawParameters = true;
-			vulkan12Features.bufferDeviceAddress = true;
+			Renderer::_requiredFeatures.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect = true;
+			Renderer::_requiredFeatures.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 = true;
+			Renderer::_requiredFeatures.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters = true;
+			Renderer::_requiredFeatures.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress = true;
 		}
 	};
 }
