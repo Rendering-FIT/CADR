@@ -343,5 +343,5 @@ vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlagBits queueOpe
 		compatibleDevices.swap(filteredDevices);
 	}
 
-	return move(compatibleDevices);
+	return compatibleDevices;
 }

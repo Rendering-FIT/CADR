@@ -128,10 +128,10 @@ constexpr array<T, N> create_array_ref(T2& t, Ts&... ts)
 App::App(int argc, char** argv)
 	// none of the following initializators shall be allowed to throw,
 	// otherwise a special care must be given to avoid memory leaks in the case of exception
-	: stateSetRoot(renderer)
+	: sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
+	, stateSetRoot(renderer)
 	, stateSetDB{ create_array_ref<CadR::StateSet, 32>(renderer) }
 	, pipelineDB{ create_array_ref<CadR::Pipeline, 32>(renderer) }
-	, sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
 {
 	// process command-line arguments
 	if(argc < 2) {
@@ -1069,7 +1069,7 @@ void App::init()
 			// drawable
 			vector<glm::mat4>& matrixList = meshMatrixList[i];
 			uint32_t numInstances = uint32_t(matrixList.size());
-			CadR::Drawable& d = drawableDB.emplace_back(g, 0, sd, 64+(numInstances*64), numInstances, ss);
+			drawableDB.emplace_back(g, 0, sd, 64+(numInstances*64), numInstances, ss);
 
 			// material
 			struct MaterialData {
@@ -1362,7 +1362,7 @@ void App::frame(VulkanWindow&)
 {
 	// _sceneDataAllocation
 	uint32_t sceneDataSize = uint32_t(sizeof(SceneGpuData));
-	CadR::StagingData& sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
+	CadR::StagingData sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
 	SceneGpuData* sceneData = sceneStagingData.data<SceneGpuData>();
 	sceneData->viewMatrix =
 		glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
@@ -1403,7 +1403,7 @@ void App::frame(VulkanWindow&)
 	device.resetFences(renderFinishedFence);
 
 	// begin the frame
-	size_t frameNumber = renderer.beginFrame();
+	renderer.beginFrame();
 
 	// acquire image
 	uint32_t imageIndex;

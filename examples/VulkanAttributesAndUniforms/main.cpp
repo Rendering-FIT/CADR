@@ -9,6 +9,7 @@
 #include <array>
 #include <iostream>
 #include <limits>
+#include <memory>
 
 using namespace std;
 
