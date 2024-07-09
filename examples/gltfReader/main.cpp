@@ -1360,6 +1360,23 @@ void App::resize(VulkanWindow& window,
 
 void App::frame(VulkanWindow&)
 {
+	// wait for previous frame rendering work
+	// if still not finished
+	// (we might start copy operations before, but we need to exclude TableHandles that must stay intact
+	// until the rendering is finished)
+	vk::Result r =
+		device.waitForFences(
+			renderFinishedFence,  // fences
+			VK_TRUE,  // waitAll
+			uint64_t(3e9)  // timeout
+		);
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eTimeout)
+			throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+		throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+	}
+	device.resetFences(renderFinishedFence);
+
 	// _sceneDataAllocation
 	uint32_t sceneDataSize = uint32_t(sizeof(SceneGpuData));
 	CadR::StagingData sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
@@ -1384,26 +1401,11 @@ void App::frame(VulkanWindow&)
 	sceneData->ambientLight = glm::vec4(0.2f, 0.2f, 0.2f, 1.f);
 	sceneData->numLights = 0;
 
+	// begin the frame
+	size_t frameNumber = renderer.beginFrame();
+
 	// submit all copy operations that were not submitted yet
 	renderer.executeCopyOperations();
-
-	// wait for previous frame rendering work
-	// if still not finished
-	vk::Result r =
-		device.waitForFences(
-			renderFinishedFence,  // fences
-			VK_TRUE,  // waitAll
-			uint64_t(3e9)  // timeout
-		);
-	if(r != vk::Result::eSuccess) {
-		if(r == vk::Result::eTimeout)
-			throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
-		throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
-	}
-	device.resetFences(renderFinishedFence);
-
-	// begin the frame
-	renderer.beginFrame();
 
 	// acquire image
 	uint32_t imageIndex;
