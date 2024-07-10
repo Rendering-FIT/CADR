@@ -40,7 +40,7 @@ layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly bu
 };
 const uint PayloadDataSize = 24;
 
-layout(buffer_reference, std430, buffer_reference_align=8) buffer HandleTableRef {
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer HandleTableRef {
 	uint64_t pointers[4096];
 };
 

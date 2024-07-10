@@ -33,6 +33,7 @@ struct LightGpuData {
 	glm::vec4 specular;
 	glm::vec4 eyePosition;  ///< Light position in eye coordinates.
 	glm::vec3 eyePositionDir;  ///< Normalized eyePosition, e.g. direction to light source in eye coordinates.
+	uint32_t dummy;  ///< Alignment to 16 byte.
 };
 constexpr const uint32_t maxLights = 1;
 struct SceneGpuData {
@@ -42,6 +43,7 @@ struct SceneGpuData {
 	uint32_t numLights;
 	LightGpuData lights[maxLights];
 };
+static_assert(sizeof(SceneGpuData) == 96+(80*maxLights), "Wrong SceneGpuData data size");
 
 
 // application class
@@ -79,10 +81,14 @@ public:
 	vk::Queue graphicsQueue;
 	vk::Queue presentationQueue;
 	vk::SurfaceFormatKHR surfaceFormat;
+	vk::Format depthFormat;
 	vk::RenderPass renderPass;
 	vk::SwapchainKHR swapchain;
 	vector<vk::ImageView> swapchainImageViews;
 	vector<vk::Framebuffer> framebuffers;
+	vk::Image depthImage;
+	vk::DeviceMemory depthImageMemory;
+	vk::ImageView depthImageView;
 	vk::Semaphore imageAvailableSemaphore;
 	vk::Semaphore renderFinishedSemaphore;
 	vk::Fence renderFinishedFence;
@@ -167,6 +173,9 @@ App::~App()
 		device.destroy(imageAvailableSemaphore);
 		for(auto f : framebuffers)  device.destroy(f);
 		for(auto v : swapchainImageViews)  device.destroy(v);
+		device.destroy(depthImage);
+		device.freeMemory(depthImageMemory);
+		device.destroy(depthImageView);
 		device.destroy(swapchain);
 		device.destroy(renderPass);
 		device.destroy();
@@ -233,50 +242,58 @@ void App::init()
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
 	presentationQueue = device.getQueue(presentationQueueFamily, 0);
 
-	// choose surface formats
-	{
-		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(window.surface(), vulkanInstance);
-		constexpr const array allowedSurfaceFormats{
-			vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
-			vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
-			vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
-		};
-		if(availableSurfaceFormats.size()==1 && availableSurfaceFormats[0].format==vk::Format::eUndefined)
-			// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
-			// with the meaning you can use any valid vk::Format value.
-			// Now, it is forbidden, but let's handle any old driver.
-			surfaceFormat = allowedSurfaceFormats[0];
-		else {
-			for(vk::SurfaceFormatKHR sf : availableSurfaceFormats) {
-				auto it = std::find(allowedSurfaceFormats.begin(), allowedSurfaceFormats.end(), sf);
-				if(it != allowedSurfaceFormats.end()) {
-					surfaceFormat = *it;
-					goto surfaceFormatFound;
+	// choose surface format
+	surfaceFormat =
+		[](vk::PhysicalDevice physicalDevice, CadR::VulkanInstance& vulkanInstance, vk::SurfaceKHR surface)
+		{
+			constexpr const array candidateFormats{
+				vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+				vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+				vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
+			};
+			vector<vk::SurfaceFormatKHR> availableFormats =
+				physicalDevice.getSurfaceFormatsKHR(surface, vulkanInstance);
+			if(availableFormats.size()==1 && availableFormats[0].format==vk::Format::eUndefined)
+				// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
+				// with the meaning you can use any valid vk::Format value.
+				// Now, it is forbidden, but let's handle any old driver.
+				return candidateFormats[0];
+			else {
+				for(vk::SurfaceFormatKHR sf : availableFormats) {
+					auto it = std::find(candidateFormats.begin(), candidateFormats.end(), sf);
+					if(it != candidateFormats.end())
+						return *it;
 				}
+				if(availableFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
+					throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
+				return availableFormats[0];
 			}
-			if(availableSurfaceFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
-				throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
-			surfaceFormat = availableSurfaceFormats[0];
-		surfaceFormatFound:;
-		}
-	}
-	/*vk::Format depthFormat=[](vk::PhysicalDevice physicalDevice,CadR::VulkanInstance& vulkanInstance){
-		for(vk::Format f:array<vk::Format,3>{vk::Format::eD32Sfloat,vk::Format::eD32SfloatS8Uint,vk::Format::eD24UnormS8Uint}) {
-			vk::FormatProperties p=physicalDevice.getFormatProperties(f,vulkanInstance);
-			if(p.optimalTilingFeatures&vk::FormatFeatureFlagBits::eDepthStencilAttachment) {
-				return f;
+		}(physicalDevice, vulkanInstance, window.surface());
+
+	// choose depth format
+	depthFormat =
+		[](vk::PhysicalDevice physicalDevice, CadR::VulkanInstance& vulkanInstance)
+		{
+			constexpr const array<vk::Format, 3> candidateFormats {
+				vk::Format::eD32Sfloat,
+				vk::Format::eD32SfloatS8Uint,
+				vk::Format::eD24UnormS8Uint,
+			};
+			for(vk::Format f : candidateFormats) {
+				vk::FormatProperties p = physicalDevice.getFormatProperties(f, vulkanInstance);
+				if(p.optimalTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment)
+					return f;
 			}
-		}
-		throw std::runtime_error("No suitable depth buffer format.");
-	}(physicalDevice,vulkanInstance);*/
+			throw std::runtime_error("No suitable depth buffer format.");
+		}(physicalDevice, vulkanInstance);
 
 	// render pass
 	renderPass =
 		device.createRenderPass(
 			vk::RenderPassCreateInfo(
 				vk::RenderPassCreateFlags(),  // flags
-				1,                            // attachmentCount
-				array<const vk::AttachmentDescription, 1>{  // pAttachments
+				2,                            // attachmentCount
+				array<const vk::AttachmentDescription, 2>{  // pAttachments
 					vk::AttachmentDescription{  // color attachment
 						vk::AttachmentDescriptionFlags(),  // flags
 						surfaceFormat.format,              // format
@@ -287,7 +304,7 @@ void App::init()
 						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 						vk::ImageLayout::eUndefined,       // initialLayout
 						vk::ImageLayout::ePresentSrcKHR    // finalLayout
-					}/*,
+					},
 					vk::AttachmentDescription{  // depth attachment
 						vk::AttachmentDescriptionFlags(),  // flags
 						depthFormat,                       // format
@@ -298,7 +315,7 @@ void App::init()
 						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 						vk::ImageLayout::eUndefined,       // initialLayout
 						vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
-					}*/
+					},
 				}.data(),
 				1,  // subpassCount
 				&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
@@ -312,23 +329,45 @@ void App::init()
 						vk::ImageLayout::eColorAttachmentOptimal  // layout
 					),
 					nullptr,  // pResolveAttachments
-					/*&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
+					&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
 						1,  // attachment
 						vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
-					)*/nullptr,
+					),
 					0,        // preserveAttachmentCount
 					nullptr   // pPreserveAttachments
 				),
-				1,  // dependencyCount
-				&(const vk::SubpassDependency&)vk::SubpassDependency(  // pDependencies
-					VK_SUBPASS_EXTERNAL,   // srcSubpass
-					0,                     // dstSubpass
-					vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
-					vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // dstStageMask
-					vk::AccessFlags(),     // srcAccessMask
-					vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite),  // dstAccessMask
-					vk::DependencyFlags()  // dependencyFlags
-				)
+				2,  // dependencyCount
+				array{  // pDependencies
+					vk::SubpassDependency(
+						VK_SUBPASS_EXTERNAL,   // srcSubpass
+						0,                     // dstSubpass
+						vk::PipelineStageFlags(  // srcStageMask
+							vk::PipelineStageFlagBits::eColorAttachmentOutput |
+							vk::PipelineStageFlagBits::eComputeShader |
+							vk::PipelineStageFlagBits::eTransfer),
+						vk::PipelineStageFlags(  // dstStageMask
+							vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eVertexInput |
+							vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader |
+							vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests |
+							vk::PipelineStageFlagBits::eColorAttachmentOutput),
+						vk::AccessFlags(vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eTransferWrite),  // srcAccessMask
+						vk::AccessFlags(  // dstAccessMask
+							vk::AccessFlagBits::eIndirectCommandRead | vk::AccessFlagBits::eIndexRead |
+							vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eColorAttachmentWrite |
+							vk::AccessFlagBits::eDepthStencilAttachmentWrite),
+						vk::DependencyFlags()  // dependencyFlags
+					),
+					vk::SubpassDependency(
+						0,                    // srcSubpass
+						VK_SUBPASS_EXTERNAL,  // dstSubpass
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),
+						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eBottomOfPipe),  // dstStageMask
+						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentWrite),
+						vk::AccessFlags(),     // dstAccessMask
+						vk::DependencyFlags()  // dependencyFlags
+					),
+				}.data()
+
 			)
 		);
 
@@ -1243,6 +1282,9 @@ void App::resize(VulkanWindow& window,
 	// clear resources
 	for(auto v : swapchainImageViews)  device.destroy(v);
 	swapchainImageViews.clear();
+	device.destroy(depthImage);
+	device.free(depthImageMemory);
+	device.destroy(depthImageView);
 	for(auto f : framebuffers)  device.destroy(f);
 	framebuffers.clear();
 
@@ -1339,6 +1381,71 @@ void App::resize(VulkanWindow& window,
 			)
 		);
 
+	// depth image
+	depthImage =
+		device.createImage(
+			vk::ImageCreateInfo(
+				vk::ImageCreateFlags(),  // flags
+				vk::ImageType::e2D,      // imageType
+				depthFormat,             // format
+				vk::Extent3D(newSurfaceExtent.width, newSurfaceExtent.height, 1),  // extent
+				1,                       // mipLevels
+				1,                       // arrayLayers
+				vk::SampleCountFlagBits::e1,  // samples
+				vk::ImageTiling::eOptimal,    // tiling
+				vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr,                      // pQueueFamilyIndices
+				vk::ImageLayout::eUndefined   // initialLayout
+			)
+		);
+
+	// memory for images
+	vk::PhysicalDeviceMemoryProperties memoryProperties = vulkanInstance.getPhysicalDeviceMemoryProperties(physicalDevice);
+	auto allocateMemory =
+		[](CadR::VulkanDevice& device, vk::Image image, vk::MemoryPropertyFlags requiredFlags,
+		   const vk::PhysicalDeviceMemoryProperties& memoryProperties) -> vk::DeviceMemory
+		{
+			vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(image);
+			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+				if(memoryRequirements.memoryTypeBits & (1<<i))
+					if((memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags)
+						return
+							device.allocateMemory(
+								vk::MemoryAllocateInfo(
+									memoryRequirements.size,  // allocationSize
+									i                         // memoryTypeIndex
+								)
+							);
+			throw std::runtime_error("No suitable memory type found for the image.");
+		};
+	depthImageMemory = allocateMemory(device, depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal, memoryProperties);
+	device.bindImageMemory(
+		depthImage,  // image
+		depthImageMemory,  // memory
+		0  // memoryOffset
+	);
+
+	// image views
+	depthImageView =
+		device.createImageView(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),  // flags
+				depthImage,                  // image
+				vk::ImageViewType::e2D,      // viewType
+				depthFormat,                 // format
+				vk::ComponentMapping(),      // components
+				vk::ImageSubresourceRange(   // subresourceRange
+					vk::ImageAspectFlagBits::eDepth,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				)
+			)
+		);
+
 	// framebuffers
 	framebuffers.reserve(swapchainImages.size());
 	for(size_t i=0, c=swapchainImages.size(); i<c; i++)
@@ -1347,8 +1454,11 @@ void App::resize(VulkanWindow& window,
 				vk::FramebufferCreateInfo(
 					vk::FramebufferCreateFlags(),  // flags
 					renderPass,  // renderPass
-					1,  // attachmentCount
-					&swapchainImageViews[i],  // pAttachments
+					2,  // attachmentCount
+					array{  // pAttachments
+						swapchainImageViews[i],
+						depthImageView,
+					}.data(),
 					newSurfaceExtent.width,  // width
 					newSurfaceExtent.height,  // height
 					1  // layers
@@ -1398,7 +1508,7 @@ void App::frame(VulkanWindow&)
 	sceneData->p22 = projectionMatrix[1][1];
 	sceneData->p33 = projectionMatrix[2][2];
 	sceneData->p43 = projectionMatrix[3][2];
-	sceneData->ambientLight = glm::vec4(0.2f, 0.2f, 0.2f, 1.f);
+	sceneData->ambientLight = glm::vec3(0.2f, 0.2f, 0.2f);
 	sceneData->numLights = 0;
 
 	// begin the frame

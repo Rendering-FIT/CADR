@@ -582,6 +582,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 		return;
 
 	// fill Drawable buffer with content
+#if 0 // cache flushing is performed by vkQueueSubmit()
 	_device->flushMappedMemoryRanges(
 		1,  // memoryRangeCount
 		array{  // pMemoryRanges
@@ -592,6 +593,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 			),
 		}.data()
 	);
+#endif
 	_device->cmdCopyBuffer(
 		commandBuffer,  // commandBuffer
 		_drawableStagingBuffer,  // srcBuffer
@@ -609,7 +611,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 		vk::DependencyFlags(),  // dependencyFlags
 		vk::MemoryBarrier(  // memoryBarriers
 			vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
-			vk::AccessFlagBits::eShaderRead  // dstAccessMask
+			vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite  // dstAccessMask
 		),
 		nullptr,  // bufferMemoryBarriers
 		nullptr  // imageMemoryBarriers
@@ -660,10 +662,12 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 		);
 
 	// barrier before rendering
+#if 0 // this is handled by subpass dependency
 	_device->cmdPipelineBarrier(
 		commandBuffer,  // commandBuffer
 		vk::PipelineStageFlagBits::eComputeShader,  // srcStageMask
-		vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eVertexShader,  // dstStageMask
+		vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eVertexShader |  // dstStageMask
+			vk::PipelineStageFlagBits::eFragmentShader,
 		vk::DependencyFlags(),  // dependencyFlags
 		vk::MemoryBarrier(  // memoryBarriers
 			vk::AccessFlagBits::eShaderWrite,  // srcAccessMask
@@ -672,6 +676,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 		nullptr,  // bufferMemoryBarriers
 		nullptr  // imageMemoryBarriers
 	);
+#endif
 }
 
 
