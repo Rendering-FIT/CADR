@@ -391,19 +391,12 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 		}
 
 		// if all allocations are free in AllocationBlock, destroy AllocationBlock
-		if(fwdThis->magicValue == UINT64_MAX-1 && fwdThis->index == RecordsPerBlock+2-1) {
+		if(fwdThis->magicValue == UINT64_MAX-1 && fwdThis->index == RecordsPerBlock+2-1 &&
+		   reinterpret_cast<LastAllocation*>(fwdThis)->nextAllocation != nullptr)
+		{
 			AllocationBlock* b = reinterpret_cast<AllocationBlock*>(reinterpret_cast<uint8_t*>(fwdThis) -
 				size_t(&static_cast<AllocationBlock*>(nullptr)->allocations[RecordsPerBlock+2-1]));
-			if(b == &m->_allocationBlockList2.back()) {
-				m->destroyAllocationBlock(*b);
-				if(!m->_allocationBlockList2.empty())
-					m->_usedBlock2EndAllocation = m->_allocationBlockList2.back().allocations.end() - 1;
-			}
-			else if(b == &m->_allocationBlockList1.back()) {
-				m->destroyAllocationBlock(*b);
-				if(!m->_allocationBlockList1.empty())
-					m->_usedBlock1EndAllocation = m->_allocationBlockList1.back().allocations.end() - 1;
-			}
+			m->destroyAllocationBlock(*b);
 		}
 	}
 }
