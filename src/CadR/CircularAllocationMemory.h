@@ -152,6 +152,12 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 			// allocating the very last item before the ending one
 			a = &(*_usedBlock2EndAllocation);
 			_usedBlock2EndAllocation++;
+
+			// write address into the ending allocation
+			// (when one more allocation is made, the value will be replaced its address,
+			// so the value might be increased by padding of the next allocation)
+			SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock2EndAllocation));
+			next->address = _usedBlock2EndAddress;
 		}
 		else
 		{
@@ -220,6 +226,12 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 			// allocating the very last item before the ending one
 			a = &(*_usedBlock1EndAllocation);
 			_usedBlock1EndAllocation++;
+
+			// write address into the ending allocation
+			// (when one more allocation is made, the value will be replaced its address,
+			// so the value might be increased by padding of the next allocation)
+			SpecialAllocation* next = reinterpret_cast<SpecialAllocation*>(&(*_usedBlock1EndAllocation));
+			next->address = _usedBlock1EndAddress;
 		}
 		else
 		{
@@ -526,33 +538,9 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal(A
 {
 	// get nextAddress
 	// (the address of the next allocation)
-	uint64_t nextAddress;
-	AllocationRecord* n = a + 1;
-	auto magicValue = reinterpret_cast<SpecialAllocation*>(n)->magicValue;
-	if(magicValue != UINT64_MAX-1) {
-		// set nextAddress from next allocation's address field
-		//
-		// Following cases are handled here:
-		// - if magicValue <  UINT64_MAX-2 => it is valid allocation, so we return its address
-		// - if magicValue == UINT64_MAX-2 => it is next-to-be-allocated allocation and we return the address it contains
-		// - if magicValue == UINT64_MAX   => it is freed allocation and we return its original address
-		nextAddress = reinterpret_cast<SpecialAllocation*>(n)->address;
-	}
-	else {
-		// handle the end of the AllocationBlock
-		//
-		// if magicValue == UINT64_MAX-1 => it indicates the last element in AllocationBlock
-		if(reinterpret_cast<LastAllocation*>(n)->address == 0)
-			// no newer allocation => return _usedBlock[1|2]EndAddress
-			nextAddress =
-				(_usedBlock1EndAddress < reinterpret_cast<SpecialAllocation*>(a)->address)
-				? _usedBlock2EndAddress
-				: _usedBlock1EndAddress;
-		else {
-			// next AllocationBlock was destroyed => return remembered address of next allocation
-			nextAddress = reinterpret_cast<LastAllocation*>(n)->address;
-		}
-	}
+	static_assert(&reinterpret_cast<SpecialAllocation*>(nullptr)->address == &reinterpret_cast<LastAllocation*>(nullptr)->address,
+		"Offset of address member in SpecialAllocation and LastAllocation must be the same.");
+	uint64_t nextAddress = reinterpret_cast<SpecialAllocation*>(a+1)->address;
 
 	// update _usedBytes
 	_usedBytes -= nextAddress - reinterpret_cast<SpecialAllocation*>(a)->address;
