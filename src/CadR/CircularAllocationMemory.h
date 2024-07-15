@@ -89,14 +89,22 @@ protected:
 	// basic allocation/deallocation functions
 	AllocationRecord* createAllocation2(uint64_t addr);
 	AllocationRecord* createAllocation1(uint64_t addr);
-	static void destroyAllocation(AllocationRecord* a) noexcept;
+	static void destroyAllocation(AllocationRecord* a, int blockNumber) noexcept;
 	AllocationBlock& createAllocationBlock();
 	void destroyAllocationBlock(AllocationBlock& b) noexcept;
 	static void resetDataMemoryPointers(uint64_t aThisAddress,
-		CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m) noexcept;
+		CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m, int blockNumber) noexcept;
 	template<typename... Args>
 		AllocationRecord* allocInternal(size_t numBytes, Args... args);
 	void freeInternal(AllocationRecord* a) noexcept;
+
+	// zero-sized allocations (for special purposes)
+	template<typename... Args>
+		AllocationRecord* allocInternal2ZeroSize(Args... args);
+	template<typename... Args>
+		AllocationRecord* allocInternal1ZeroSize(Args... args);
+	void freeInternal2ZeroSize(AllocationRecord* a) noexcept;
+	void freeInternal1ZeroSize(AllocationRecord* a) noexcept;
 
 public:
 
@@ -268,10 +276,10 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 // This might happen only when the allocation on the start address is freed.
 template<typename AllocationRecord, size_t RecordsPerBlock>
 void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::resetDataMemoryPointers(uint64_t aThisAddress,
-	CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m) noexcept
+	CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m, int blockNumber) noexcept
 {
 	// does the last freed allocation belong to block2 or block1?
-	if(aThisAddress == m->_usedBlock2StartAddress) {
+	if(blockNumber == 2) {
 		if(m->_usedBlock1EndAddress == m->_bufferStartAddress) {
 			// empty Block1 -> reset Block2 pointers
 			m->_usedBlock2EndAddress = m->_bufferStartAddress;
@@ -290,7 +298,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::resetDataMemor
 		}
 	}
 	else
-	// aThis->address == m->_usedBlock1StartAddress
+	// blockNumber == 1
 	{
 		// reset Block1 pointers
 		m->_usedBlock1EndAddress = m->_bufferStartAddress;
@@ -301,7 +309,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::resetDataMemor
 
 
 template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocation(AllocationRecord* a) noexcept
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocation(AllocationRecord* a, int blockNumber) noexcept
 {
 	SpecialAllocation* aThis = reinterpret_cast<SpecialAllocation*>(a);
 	SpecialAllocation* aPrev = reinterpret_cast<SpecialAllocation*>(a - 1);
@@ -350,12 +358,12 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 				if(fwdThis->magicValue == UINT64_MAX-2)
 				{
 					// magicValue is UINT64_MAX-2 => all allocations were destroyed => we just reset DataMemory pointers
-					resetDataMemoryPointers(aThis->address, m);
+					resetDataMemoryPointers(aThis->address, m, blockNumber);
 					return;
 				}
 				else {
 					// magicValue is valid allocation (<UINT64_MAX-2) => let's take its address
-					if(aThis->address == m->_usedBlock2StartAddress)
+					if(blockNumber == 2)
 						m->_usedBlock2StartAddress = fwdThis->address;
 					else
 						m->_usedBlock1StartAddress = fwdThis->address;
@@ -369,7 +377,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 				if(p == nullptr)
 				{
 					// no second AllocationBlock and nothing remains in the first one -> everything is freed
-					resetDataMemoryPointers(aThis->address, m);
+					resetDataMemoryPointers(aThis->address, m, blockNumber);
 					return;
 				}
 				else
@@ -381,20 +389,20 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 						if(reinterpret_cast<SpecialAllocation*>(p)->index != RecordsPerBlock+2-1)
 							p++;
 						else {
-							resetDataMemoryPointers(aThis->address, m);
+							resetDataMemoryPointers(aThis->address, m, blockNumber);
 							goto afterSettingAddress;
 						}
 
 					// did we reached the end of allocations?
 					if(reinterpret_cast<SpecialAllocation*>(p)->magicValue == UINT64_MAX-2) {
 						// no more allocations in the Block[1|2]
-						resetDataMemoryPointers(aThis->address, m);
+						resetDataMemoryPointers(aThis->address, m, blockNumber);
 					}
 					else {
 						// we reached the oldest allocation in the Block[1|2]
-						if(aThis->address == m->_usedBlock2StartAddress)
+						if(blockNumber == 2)
 							m->_usedBlock2StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
-						else // aThis->address == m->_usedBlock1StartAddress
+						else // blockNumber == 1
 							m->_usedBlock1StartAddress = reinterpret_cast<SpecialAllocation*>(p)->address;
 					}
 					afterSettingAddress:;
@@ -534,19 +542,61 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::a
 
 
 template<typename AllocationRecord, size_t RecordsPerBlock>
+template<typename... Args>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocInternal2ZeroSize(Args... args)
+{
+	// create DataAllocation
+	AllocationRecord* a = createAllocation2(_usedBlock2EndAddress);
+	a->init(_usedBlock2EndAddress, 0, args...);
+	return a;
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock>
+template<typename... Args>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocInternal1ZeroSize(Args... args)
+{
+	// create DataAllocation
+	AllocationRecord* a = createAllocation1(_usedBlock1EndAddress);
+	a->init(_usedBlock1EndAddress, 0, args...);
+	return a;
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock>
 void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal(AllocationRecord* a) noexcept
 {
 	// get nextAddress
 	// (the address of the next allocation)
 	static_assert(&reinterpret_cast<SpecialAllocation*>(nullptr)->address == &reinterpret_cast<LastAllocation*>(nullptr)->address,
 		"Offset of address member in SpecialAllocation and LastAllocation must be the same.");
+	uint64_t thisAddress = reinterpret_cast<SpecialAllocation*>(a)->address;
 	uint64_t nextAddress = reinterpret_cast<SpecialAllocation*>(a+1)->address;
 
 	// update _usedBytes
-	_usedBytes -= nextAddress - reinterpret_cast<SpecialAllocation*>(a)->address;
+	_usedBytes -= nextAddress - thisAddress;
+
+	// blockNumber
+	int blockNumber =
+		(thisAddress >= _usedBlock2StartAddress)
+			? 2 : 1;
 
 	// destroy allocation
-	destroyAllocation(a);
+	destroyAllocation(a, blockNumber);
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal2ZeroSize(AllocationRecord* a) noexcept
+{
+	destroyAllocation(a, 2);
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal1ZeroSize(AllocationRecord* a) noexcept
+{
+	destroyAllocation(a, 1);
 }
 
 
