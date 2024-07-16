@@ -2,12 +2,10 @@
 set(examples_folder_name "Examples")
 
 set(PACKAGES
-	VulkanDepthBuffer
 	OpenGLInteroperability
 	HelloQtWindow
 	RenderingPerformance
 	VulkanAttributesAndUniforms
-	VulkanDynamicFuncs
 	VulkanComputeShader
 	VulkanInfo
 	gltfReader

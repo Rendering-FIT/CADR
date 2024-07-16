@@ -1,4 +1,4 @@
-set(APP_NAME tut02-vulkanInfo)
+set(APP_NAME vulkanInfo)
 
 project(${APP_NAME})
 
