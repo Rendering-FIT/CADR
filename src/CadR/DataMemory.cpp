@@ -24,12 +24,12 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 {
 	// handle zero-sized buffer
 	if(size == 0) {
-		_bufferStartAddress = 0;
+		_block1EndAddress = 0;
+		_block1StartAddress = 0;
+		_block2EndAddress = 0;
+		_block2StartAddress = 0;
 		_bufferEndAddress = 0;
-		_usedBlock2StartAddress = 0;
-		_usedBlock2EndAddress = 0;
-		_usedBlock1StartAddress = 0;
-		_usedBlock1EndAddress = 0;
+		_bufferStartAddress = 0;
 		return;
 	}
 
@@ -67,10 +67,10 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 			)
 		);
 	_bufferEndAddress = _bufferStartAddress + size;
-	_usedBlock2StartAddress = _bufferStartAddress;
-	_usedBlock2EndAddress = _bufferStartAddress;
-	_usedBlock1StartAddress = _bufferStartAddress;
-	_usedBlock1EndAddress = _bufferStartAddress;
+	_block1EndAddress = _bufferStartAddress;
+	_block1StartAddress = _bufferStartAddress;
+	_block2EndAddress = _bufferStartAddress;
+	_block2StartAddress = _bufferStartAddress;
 }
 
 
@@ -95,22 +95,22 @@ DataMemory::DataMemory(DataStorage& dataStorage, vk::Buffer buffer, vk::DeviceMe
 			)
 		);
 	_bufferEndAddress = _bufferStartAddress + size;
-	_usedBlock2StartAddress = _bufferStartAddress;
-	_usedBlock2EndAddress = _bufferStartAddress;
-	_usedBlock1StartAddress = _bufferStartAddress;
-	_usedBlock1EndAddress = _bufferStartAddress;
+	_block1EndAddress = _bufferStartAddress;
+	_block1StartAddress = _bufferStartAddress;
+	_block2EndAddress = _bufferStartAddress;
+	_block2StartAddress = _bufferStartAddress;
 }
 
 
 DataMemory::DataMemory(DataStorage& dataStorage, nullptr_t)
 	: _dataStorage(&dataStorage)
 {
-	_bufferStartAddress = 0;
+	_block1EndAddress = 0;
+	_block1StartAddress = 0;
+	_block2EndAddress = 0;
+	_block2StartAddress = 0;
 	_bufferEndAddress = 0;
-	_usedBlock2StartAddress = 0;
-	_usedBlock2EndAddress = 0;
-	_usedBlock1StartAddress = 0;
-	_usedBlock1EndAddress = 0;
+	_bufferStartAddress = 0;
 }
 
 
@@ -195,8 +195,8 @@ void DataMemory::cancelAllAllocations()
 			}
 			m.destroyAllocationBlock(b);
 		};
-	destroyLastBlock(*this, _allocationBlockList2, _usedBlock2EndAllocation);
 	destroyLastBlock(*this, _allocationBlockList1, _usedBlock1EndAllocation);
+	destroyLastBlock(*this, _allocationBlockList2, _usedBlock2EndAllocation);
 
 	auto destroyRegularBlocks =
 		[](DataMemory& m, AllocationBlockList& l)
@@ -213,7 +213,7 @@ void DataMemory::cancelAllAllocations()
 				m.destroyAllocationBlock(b);
 			}
 		};
-	destroyRegularBlocks(*this, _allocationBlockList1);
 	destroyRegularBlocks(*this, _allocationBlockList2);
+	destroyRegularBlocks(*this, _allocationBlockList1);
 #endif
 }

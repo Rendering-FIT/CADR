@@ -14,10 +14,10 @@ using namespace CadR;
 class DataMemoryTest : public DataMemory {
 protected:
 	void verifyAllocationBlockEmpty() const {
-		if(!_allocationBlockList2.empty() && &(*_usedBlock2EndAllocation) != &(*(_allocationBlockList2.front().allocations.begin()+1)))
-			throw runtime_error("DataMemory's allocationBlock2 is not empty.");
-		if(!_allocationBlockList1.empty() && _usedBlock1EndAllocation != _allocationBlockList1.front().allocations.begin()+1)
+		if(!_allocationBlockList1.empty() && &(*_block1EndAllocation) != &(*(_allocationBlockList1.front().allocations.begin()+1)))
 			throw runtime_error("DataMemory's allocationBlock1 is not empty.");
+		if(!_allocationBlockList2.empty() && _block2EndAllocation != _allocationBlockList2.front().allocations.begin()+1)
+			throw runtime_error("DataMemory's allocationBlock2 is not empty.");
 	}
 public:
 	static void verifyAllocationBlockEmpty(const DataMemory& m) {
