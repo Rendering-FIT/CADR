@@ -64,6 +64,9 @@ set(CADR_SOURCES
 	VulkanLibrary.cpp
 	)
 
+# grouping of source files
+source_group("Source Files" FILES ${CADR_PUBLIC_HEADERS} ${CADR_PRIVATE_HEADERS} ${CADR_SOURCES})
+
 # dependencies
 find_package(Vulkan REQUIRED)
 find_package(Boost REQUIRED)

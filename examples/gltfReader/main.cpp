@@ -59,7 +59,7 @@ public:
 	void frame(VulkanWindow& window);
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& mouseState);
-	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
+	void mouseWheel(VulkanWindow& window, float wheelX, float wheelY, const VulkanWindow::MouseState& mouseState);
 	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, VulkanWindow::ScanCode scanCode);
 
 	// Vulkan core objects
@@ -1652,7 +1652,7 @@ void App::mouseButton(VulkanWindow& window, size_t button, VulkanWindow::ButtonS
 }
 
 
-void App::mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState)
+void App::mouseWheel(VulkanWindow& window, float wheelX, float wheelY, const VulkanWindow::MouseState& mouseState)
 {
 	cameraDistance -= wheelY;
 	window.scheduleFrame();
