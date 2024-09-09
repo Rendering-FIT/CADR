@@ -112,19 +112,6 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 	if((nonCoherentAtomSize & _nonCoherentAtom_addition) != 0)  // is it power of two?
 		throw std::runtime_error("Platform problem: nonCoherentAtomSize is not power of two.");
 
-	// _bufferSizeList
-	_bufferSizeList[0] =   0x10000;  // 64KiB
-	_bufferSizeList[1] =  0x200000;  // 2MiB
-	_bufferSizeList[2] = 0x2000000;  // 32MiB
-
-	// update _bufferSizeList[2] based on amount of gpu local memory
-	vk::PhysicalDeviceMemoryProperties m = instance.getPhysicalDeviceMemoryProperties(physicalDevice);
-	vk::DeviceSize localMemorySize = 0;
-	for(uint32_t i=0; i<m.memoryHeapCount; i++)
-		if(m.memoryHeaps[i].flags & vk::MemoryHeapFlagBits::eDeviceLocal)
-			localMemorySize += m.memoryHeaps[i].size;
-	_bufferSizeList[2] = max(_bufferSizeList[2], size_t((localMemorySize*1.125) / 1024));
-
 	// timestamp periods
 	_gpuTimestampPeriod = p.limits.timestampPeriod * 1e-9f;
 	_cpuTimestampPeriod = getCpuTimestampPeriod();
@@ -843,17 +830,15 @@ void Renderer::executeCopyOperations()
 	);
 
 	// record command buffer
-	auto [transferRec, numBytes] = _dataStorage.recordUpload(_uploadingCommandBuffer);
+	auto [transferResourceReleaser, numBytes] = _dataStorage.recordUploads(_uploadingCommandBuffer);
 	_currentFrameUploadBytes += numBytes;
 
 	// end recording
 	_device->endCommandBuffer(_uploadingCommandBuffer);
 
 	// if empty, ignore the transfer
-	if(numBytes == 0) {
-		DataStorage::uploadDone(transferRec);
+	if(numBytes == 0)
 		return;
-	}
 
 	// submit command buffer
 	_device->queueSubmit(
@@ -881,7 +866,7 @@ void Renderer::executeCopyOperations()
 
 	// dispose UploadSet
 	// (it was already uploaded and it is not needed any more)
-	DataStorage::uploadDone(transferRec);
+	DataStorage::uploadDone(transferResourceReleaser);
 }
 
 

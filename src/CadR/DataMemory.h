@@ -34,9 +34,16 @@ protected:
 	DataStorage* _dataStorage;  ///< DataStorage owning this DataMemory.
 	vk::Buffer _buffer;
 	vk::DeviceMemory _memory;
-	std::vector<StagingMemory*> _stagingMemoryList;
+	StagingMemory* _lastStagingMemory1 = nullptr;
+	StagingMemory* _lastStagingMemory2 = nullptr;
+	DataAllocationRecord* _lastStagingMarker1 = nullptr;
+	DataAllocationRecord* _lastStagingMarker2 = nullptr;
+	DataAllocationRecord* _firstNotTransferredMarker1 = nullptr;
+	DataAllocationRecord* _firstNotTransferredMarker2 = nullptr;
 
 	DataMemory(DataStorage& dataStorage);
+	void releaseMemoryMarker1Chain(DataAllocationRecord* a);
+	void releaseMemoryMarker2Chain(DataAllocationRecord* a);
 	friend DataStorage;
 	friend StagingMemory;
 
@@ -69,6 +76,8 @@ public:
 	DataAllocationRecord* alloc(size_t numBytes);
 	static void free(DataAllocationRecord* a) noexcept;
 	void cancelAllAllocations();
+	[[nodiscard]] std::tuple<void*,void*,size_t> recordUploads(vk::CommandBuffer);
+	void uploadDone(void*, void*) noexcept;
 
 };
 
@@ -86,7 +95,6 @@ inline vk::Buffer DataMemory::buffer() const  { return _buffer; }
 inline vk::DeviceMemory DataMemory::memory() const  { return _memory; }
 inline vk::DeviceAddress DataMemory::deviceAddress() const  { return _bufferStartAddress; }
 inline size_t DataMemory::usedBytes() const  { return _usedBytes; }
-inline DataAllocationRecord* DataMemory::alloc(size_t numBytes)  { return allocInternal(numBytes, this); }
 inline void DataMemory::free(DataAllocationRecord* a) noexcept  { a->dataMemory->freeInternal(a); }
 
 // functions moved here from DataAllocation.h to avoid circular include dependency

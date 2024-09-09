@@ -29,10 +29,6 @@ StagingMemory::StagingMemory(Renderer& renderer, size_t size)
 		_bufferStartAddress = 0;
 		_bufferEndAddress = 0;
 		_bufferSize = 0;
-		_blockedRangeStartAddress = 0;
-		_blockedRangeEndAddress = 0;
-		_allocatedRangeStartAddress = 0;
-		_allocatedRangeEndAddress = 0;
 		return;
 	}
 
@@ -73,89 +69,4 @@ StagingMemory::StagingMemory(Renderer& renderer, size_t size)
 		);
 	_bufferEndAddress = _bufferStartAddress + size;
 	_bufferSize = size;
-	_blockedRangeStartAddress = _bufferStartAddress;
-	_blockedRangeEndAddress = _bufferStartAddress;
-	_allocatedRangeStartAddress = _bufferStartAddress;
-	_allocatedRangeEndAddress = _bufferStartAddress;
-}
-
-
-void StagingMemory::attach(DataMemory& m, uint64_t offset)
-{
-	assert(_attachedDataMemory == nullptr && "StagingMemory is already attached.");
-
-	_attachedDataMemory = &m;
-	_offsetIntoDataMemory = offset;
-	_blockedRangeStartAddress = _bufferStartAddress;
-	_blockedRangeEndAddress = _bufferStartAddress;
-	_allocatedRangeStartAddress = _bufferStartAddress;
-	_allocatedRangeEndAddress = _bufferStartAddress;
-	m._stagingMemoryList.push_back(this);
-}
-
-
-void StagingMemory::detach() noexcept
-{
-	assert(_attachedDataMemory != nullptr && "StagingMemory is not attached.");
-
-	if(_attachedDataMemory->_stagingMemoryList.back() == this)
-		_attachedDataMemory->_stagingMemoryList.pop_back();
-	else {
-		auto it = find(_attachedDataMemory->_stagingMemoryList.begin(), _attachedDataMemory->_stagingMemoryList.end(), this);
-		assert(it != _attachedDataMemory->_stagingMemoryList.end() && "StagingMemory is not in the list.");
-		if(it != _attachedDataMemory->_stagingMemoryList.end())
-			_attachedDataMemory->_stagingMemoryList.erase(it);
-	}
-
-	_attachedDataMemory = nullptr;
-}
-
-
-tuple<uint64_t,size_t> StagingMemory::recordUpload(vk::CommandBuffer commandBuffer)
-{
-	assert(_attachedDataMemory && "StagingMemory::upload(): DataMemory must be attached to StagingMemory before calling upload().");
-
-	// number of bytes to transfer
-	// (return zero when no data to transfer exist)
-	uint64_t numBytesToTransfer = _allocatedRangeEndAddress - _allocatedRangeStartAddress;
-	if(numBytesToTransfer == 0)
-		return { 0, 0 };
-
-	// record new transfer
-	VulkanDevice& device = _renderer->device();
-	uint64_t srcOffset = _allocatedRangeStartAddress - _bufferStartAddress;
-	uint64_t dstOffset = _offsetIntoDataMemory + srcOffset;
-	device.flushMappedMemoryRanges(
-		1,  // memoryRangeCount
-		array{  // pMemoryRanges
-			vk::MappedMemoryRange(
-				_memory,  // memory
-				0,//_allocatedRangeStartAddress - _bufferStartAddress,  // offset
-				VK_WHOLE_SIZE//_drawableBufferSize  // size
-			),
-		}.data()
-	);
-	device.cmdCopyBuffer(
-		commandBuffer,  // commandBuffer
-		_buffer,  // srcBuffer
-		_attachedDataMemory->buffer(),  // dstBuffer
-		vk::BufferCopy(  // regions
-			srcOffset,  // srcOffset
-			dstOffset,  // dstOffset
-			numBytesToTransfer)  // size
-	);
-
-	// update blocked and allocated range
-	// (blocked range marks place where transfer is in progress)
-	_blockedRangeEndAddress = _allocatedRangeEndAddress;
-	_allocatedRangeStartAddress = _allocatedRangeEndAddress;
-
-	// return end of blocked range and amount of bytes to transfer
-	return { _blockedRangeEndAddress, numBytesToTransfer };
-}
-
-
-void StagingMemory::uploadDone(uint64_t id) noexcept
-{
-	_blockedRangeStartAddress = id;
 }

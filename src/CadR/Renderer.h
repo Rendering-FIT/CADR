@@ -28,7 +28,6 @@ protected:
 	vk::DeviceSize _standardBufferAlignment;  ///< Memory alignment of a standard buffer. It is used for optimization purposes like putting more small buffers into one large buffer.
 	vk::DeviceSize _nonCoherentAtom_addition;  ///< Serves for memory alignment purposes. It is equivalent to PhysicalDeviceLimits::nonCoherentAtomSize-1.
 	vk::DeviceSize _nonCoherentAtom_mask;  ///< Serves for memory alignment purposes. It is equivalent to bitwise negation of nonCoherentAtom_addition value.
-	std::array<size_t, 3> _bufferSizeList;  ///< First, we allocate small DataMemory objects. When they are full, we allocate bigger. This list contains the allocation steps. It is usually something like 64KiB, 2MiB and 32MiB. We try to not allocate too big buffers as it might cause performance spikes.
 
 	vk::Buffer        _drawableBuffer;
 	vk::DeviceMemory  _drawableBufferMemory;
@@ -122,7 +121,7 @@ public:
 	size_t alignStandardBuffer(size_t offset) const;
 
 	// frame related API
-	size_t frameNumber() const;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
+	size_t frameNumber() const noexcept;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
 	bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps = false);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::TimeDomainEXT timestampHostTimeDomain);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
@@ -158,7 +157,6 @@ public:
 	vk::DeviceMemory allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
 
-	const std::array<size_t,3>& bufferSizeList() const;
 	static constexpr uint32_t drawablePayloadRecordSize = 24;
 
 };
@@ -172,7 +170,7 @@ namespace CadR {
 
 inline Renderer& Renderer::get()  { return *_defaultRenderer; }
 inline void Renderer::set(Renderer& r)  { _defaultRenderer = &r; }
-inline const vk::PhysicalDeviceFeatures2& Renderer::requiredFeatures()  { return _requiredFeatures.get(); }
+inline const vk::PhysicalDeviceFeatures2& Renderer::requiredFeatures()  { return _requiredFeatures.get<vk::PhysicalDeviceFeatures2>(); }
 inline const Renderer::RequiredFeaturesStructChain& Renderer::requiredFeaturesStructChain()  { return _requiredFeatures; }
 inline VulkanDevice& Renderer::device() const  { assert(_device && "Renderer::device(): Renderer must be initialized with valid VulkanDevice to call this function."); return *_device; }
 inline uint32_t Renderer::graphicsQueueFamily() const  { return _graphicsQueueFamily; }
@@ -180,7 +178,7 @@ inline vk::Queue Renderer::graphicsQueue() const  { return _graphicsQueue; }
 inline const vk::PhysicalDeviceMemoryProperties& Renderer::memoryProperties() const  { return _memoryProperties; }
 inline size_t Renderer::standardBufferAlignment() const  { return _standardBufferAlignment; }
 inline size_t Renderer::alignStandardBuffer(size_t offset) const  { size_t a=_standardBufferAlignment-1; return (offset+a)&(~a); }
-inline size_t Renderer::frameNumber() const  { return _frameNumber; }
+inline size_t Renderer::frameNumber() const noexcept  { return _frameNumber; }
 inline bool Renderer::collectFrameInfo() const  { return _collectFrameInfo; }
 inline FrameInfo& Renderer::getCurrentFrameInfo()  { return _inProgressFrameInfoList.back(); }
 inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
@@ -199,7 +197,6 @@ inline vk::Pipeline Renderer::processDrawablesPipeline(size_t handleLevel) const
 inline vk::PipelineLayout Renderer::processDrawablesPipelineLayout() const  { return _processDrawablesPipelineLayout; }
 inline vk::CommandPool Renderer::transientCommandPool() const  { return _transientCommandPool; }
 inline vk::CommandPool Renderer::precompiledCommandPool() const  { return _precompiledCommandPool; }
-inline const std::array<size_t,3>& Renderer::bufferSizeList() const  { return _bufferSizeList; }
 
 // functions moved here from DataAllocation.h to avoid circular include dependency
 inline DataAllocation::DataAllocation(DataStorage& storage) : _record(storage.zeroSizeAllocationRecord()), _handle(storage.createHandle())  {}  // this might throw in DataStorage::createHandle(), but _record points to zero size record that does not need to be freed

@@ -3,6 +3,9 @@
 #include <CadR/DataAllocation.h>
 #include <CadR/DataMemory.h>
 #include <CadR/HandleTable.h>
+#include <CadR/StagingMemory.h>
+#include <CadR/TransferResources.h>
+#include <boost/intrusive/list.hpp>
 #include <list>
 #include <vector>
 
@@ -33,38 +36,49 @@ protected:
 	DataMemory* _secondAllocMemory = nullptr;
 	DataMemory _zeroSizeDataMemory = DataMemory(*this, nullptr);
 	DataAllocationRecord _zeroSizeAllocationRecord = DataAllocationRecord{ 0, 0, &_zeroSizeDataMemory, nullptr, nullptr, size_t(-2) };
-	struct {
-		std::list<StagingMemory> inUse64KiBList;
-		std::list<StagingMemory> available64KiBList;
-		std::list<StagingMemory> inUse2MiBList;
-		std::list<StagingMemory> available2MiBList;
-		std::list<StagingMemory> inUse32MiBList;
-		std::list<StagingMemory> available32MiBList;
-		std::list<StagingMemory> inUseSuperSizeList;
-		std::list<StagingMemory> availableSuperSizeList;
+	struct StagingMemoryRegister {
+		using StagingMemoryList =
+			boost::intrusive::list<
+				StagingMemory,
+				boost::intrusive::member_hook<
+					StagingMemory,
+					boost::intrusive::list_member_hook<
+						boost::intrusive::link_mode<boost::intrusive::auto_unlink>>,
+					&StagingMemory::_stagingMemoryListHook>,
+				boost::intrusive::constant_time_size<false>
+			>;
+		struct Disposer {
+			Disposer& operator()(StagingMemory* sm)  { delete sm; return *this; }
+		};
+		StagingMemoryList smallMemoryInUseList;
+		StagingMemoryList smallMemoryAvailableList;
+		StagingMemoryList middleMemoryInUseList;
+		StagingMemoryList middleMemoryAvailableList;
+		StagingMemoryList largeMemoryInUseList;
+		StagingMemoryList largeMemoryAvailableList;
+		StagingMemoryList superSizeMemoryInUseList;
+		StagingMemoryList superSizeMemoryAvailableList;
 	} _stagingMemoryRegister;
+	static constexpr const size_t _smallMemorySize = 64 << 10;  // 64KiB
+	static constexpr const size_t _middleMemorySize = 2 << 20;  // 2MiB
+	static constexpr const size_t _largeMemorySize = 32 << 20;  // 32MiB
 	size_t _stagingDataSizeHint = 0;
-	using TransferInProgressList = std::list<std::vector<std::tuple<StagingMemory*,uint64_t>>>;
-	using TransferId = TransferInProgressList::iterator;
-	struct TransferRecord {
-		TransferId transferId;
-		DataStorage* dataStorage;
-		TransferRecord(TransferId transferId_, DataStorage* dataStorage_) : transferId(transferId_), dataStorage(dataStorage_)  {}
-		void release()  { if(dataStorage==nullptr) return; dataStorage->uploadDone(transferId); dataStorage = nullptr; }
-		~TransferRecord()  { if(dataStorage==nullptr) return; dataStorage->uploadDone(transferId); }
-		TransferRecord(const TransferRecord&) = delete;
-		TransferRecord(TransferRecord&& other) : transferId(other.transferId), dataStorage(other.dataStorage)  { other.dataStorage=nullptr; }
-	};
-	TransferInProgressList _transferInProgressList;
+	using TransferList = std::list<TransferResources>;
+	TransferList _transferInProgressList;
 
 	CadR::HandleTable _handleTable;
 
 	DataAllocationRecord* allocInternal(size_t numBytes);
-	void* stagingAlloc(DataAllocationRecord* allocationRecord, uint64_t offsetInBuffer);
+	void uploadDone(TransferResourcesReleaser::Id id) noexcept;
+
+	std::tuple<StagingMemory&, bool> allocStagingMemory(DataMemory& m,
+		StagingMemory* lastStagingMemory, size_t minNumBytes, size_t bytesToMemoryEnd);
+	void freeOrRecycleStagingMemory(StagingMemory& sm);
 
 	friend DataAllocation;
 	friend DataMemory;
 	friend StagingData;
+	friend TransferResourcesReleaser;
 
 public:
 
@@ -85,15 +99,16 @@ public:
 	Renderer& renderer() const;
 	size_t stagingDataSizeHint() const;
 
-	// methods
+	// functions
 	DataAllocationRecord* alloc(size_t numBytes);
 	DataAllocationRecord* realloc(DataAllocationRecord* allocationRecord, size_t numBytes);
 	DataAllocationRecord* zeroSizeAllocationRecord() noexcept;
 	void free(DataAllocationRecord* a) noexcept;
 	void cancelAllAllocations();
-	std::tuple<TransferRecord,size_t> recordUpload(vk::CommandBuffer commandBuffer);
-	static void uploadDone(TransferRecord& tr);
-	void uploadDone(TransferId id) noexcept;
+
+	using TransferId = TransferList::iterator;
+	std::tuple<TransferResourcesReleaser,size_t> recordUploads(vk::CommandBuffer commandBuffer);
+	static void uploadDone(TransferResourcesReleaser& trr);
 	void setStagingDataSizeHint(size_t size);
 
 	// handle table
@@ -119,7 +134,7 @@ inline size_t DataStorage::stagingDataSizeHint() const  { return _stagingDataSiz
 
 inline DataAllocationRecord* DataStorage::zeroSizeAllocationRecord() noexcept  { return &_zeroSizeAllocationRecord; }
 inline void DataStorage::setStagingDataSizeHint(size_t size)  { _stagingDataSizeHint = size; }
-inline void DataStorage::uploadDone(TransferRecord& tr)  { if(tr.dataStorage==nullptr) return; tr.dataStorage->uploadDone(tr.transferId); tr.dataStorage=nullptr; }
+inline void DataStorage::uploadDone(TransferResourcesReleaser& trr)  { trr.release(); }
 inline uint64_t DataStorage::createHandle()  { return _handleTable.create(); }
 inline void DataStorage::destroyHandle(uint64_t handle) noexcept  { _handleTable.destroy(handle); }
 inline void DataStorage::setHandle(uint64_t handle, uint64_t addr)  { _handleTable.set(handle, addr); }
@@ -137,6 +152,11 @@ inline Renderer& DataAllocation::renderer() const  { return _record->dataMemory-
 inline void HandlelessAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
 inline void DataAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
 inline void DataAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
+
+// functions moved here from TransferResources.h
+inline void TransferResourcesReleaser::release()  { if(_dataStorage==nullptr) return; _dataStorage->uploadDone(_id); _dataStorage=nullptr; }
+inline TransferResourcesReleaser::~TransferResourcesReleaser()  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); }
+inline TransferResourcesReleaser& TransferResourcesReleaser::operator=(TransferResourcesReleaser&& other)  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); _id=other._id; _dataStorage=other._dataStorage; other._dataStorage=nullptr; return *this; }
 
 }
 

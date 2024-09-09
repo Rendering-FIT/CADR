@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.hpp>
+#include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
@@ -25,41 +26,33 @@ class Renderer;
  */
 class StagingMemory {
 protected:
-	DataMemory* _attachedDataMemory = 0;
-	uint64_t _offsetIntoDataMemory;
+	int64_t _dataMemoryAddrToStagingAddr;
+	uint64_t _referenceCounter = 0;
 	Renderer* _renderer;
 	vk::Buffer _buffer;
 	vk::DeviceMemory _memory;
 	size_t _bufferSize;
 	uint64_t _bufferStartAddress;
 	uint64_t _bufferEndAddress;
-	uint64_t _blockedRangeStartAddress;
-	uint64_t _blockedRangeEndAddress;
-	uint64_t _allocatedRangeStartAddress;
-	uint64_t _allocatedRangeEndAddress;
 	StagingMemory(Renderer& renderer);
+	friend DataMemory;
+public:
+	boost::intrusive::list_member_hook<
+		boost::intrusive::link_mode<boost::intrusive::auto_unlink>
+	> _stagingMemoryListHook;  ///< List hook of DataStorage::_stagingMemoryRegister::*List.
 public:
 
 	StagingMemory(Renderer& renderer, size_t size);
 	~StagingMemory();
 
-	void attach(DataMemory& m, uint64_t offset);
-	void detach() noexcept;
-	bool canDetach() const;
-
 	// getters
-	DataMemory* dataMemory() const;
-	uint64_t offsetIntoDataMemory() const;
 	size_t size() const;
 	vk::Buffer buffer() const;
 	vk::DeviceMemory memory() const;
-	size_t usedBytes() const;
 
 	// low-level allocation functions
-	uint64_t alloc(uint64_t offsetInBuffer, uint64_t size) noexcept;
-	void cancelAllAllocations();
-	std::tuple<uint64_t,size_t> recordUpload(vk::CommandBuffer);
-	void uploadDone(uint64_t id) noexcept;
+	bool addrRangeOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept;
+	bool addrRangeNotOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept;
 
 };
 
@@ -71,13 +64,10 @@ public:
 namespace CadR {
 
 inline StagingMemory::StagingMemory(Renderer& renderer) : _renderer(&renderer)  {}
-inline bool StagingMemory::canDetach() const  { return _allocatedRangeEndAddress == _blockedRangeStartAddress; }
-inline DataMemory* StagingMemory::dataMemory() const  { return _attachedDataMemory; }
-inline uint64_t StagingMemory::offsetIntoDataMemory() const  { return _offsetIntoDataMemory; }
 inline size_t StagingMemory::size() const  { return _bufferSize; }
 inline vk::Buffer StagingMemory::buffer() const  { return _buffer; }
 inline vk::DeviceMemory StagingMemory::memory() const  { return _memory; }
-inline size_t StagingMemory::usedBytes() const  { return (_allocatedRangeEndAddress > _blockedRangeStartAddress) ? _allocatedRangeEndAddress - _blockedRangeStartAddress : _blockedRangeEndAddress - _allocatedRangeStartAddress; }
-inline uint64_t StagingMemory::alloc(uint64_t offsetInBuffer, uint64_t size) noexcept  { uint64_t addr = _bufferStartAddress + offsetInBuffer - _offsetIntoDataMemory; uint64_t addrEnd = addr + size; if(addrEnd > _bufferEndAddress) return 0; _allocatedRangeEndAddress = addrEnd; return addr; }
+inline bool StagingMemory::addrRangeOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept  { uint64_t stagingAddr = dataMemoryAddr + _dataMemoryAddrToStagingAddr; return stagingAddr + size > _bufferEndAddress; }
+inline bool StagingMemory::addrRangeNotOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept  { uint64_t stagingAddr = dataMemoryAddr + _dataMemoryAddrToStagingAddr; return stagingAddr + size <= _bufferEndAddress; }
 
 }

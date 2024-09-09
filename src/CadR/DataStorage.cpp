@@ -14,22 +14,22 @@ void DataStorage::destroy() noexcept
 	// destroy all handles
 	_handleTable.destroyAll();
 
-	// destroy StagingMemory objects
-	_stagingMemoryRegister.inUse64KiBList.clear();
-	_stagingMemoryRegister.available64KiBList.clear();
-	_stagingMemoryRegister.inUse2MiBList.clear();
-	_stagingMemoryRegister.available2MiBList.clear();
-	_stagingMemoryRegister.inUse32MiBList.clear();
-	_stagingMemoryRegister.available32MiBList.clear();
-	_stagingMemoryRegister.inUseSuperSizeList.clear();
-	_stagingMemoryRegister.availableSuperSizeList.clear();
-
 	// destroy DataMemory objects
 	for(DataMemory* m : _dataMemoryList)
 		delete m;
 	_dataMemoryList.clear();
 	_firstAllocMemory = nullptr;
 	_secondAllocMemory = nullptr;
+
+	// destroy StagingMemory objects
+	_stagingMemoryRegister.smallMemoryInUseList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.smallMemoryAvailableList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.middleMemoryInUseList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.middleMemoryAvailableList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.largeMemoryInUseList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.largeMemoryAvailableList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.superSizeMemoryInUseList.clear_and_dispose(StagingMemoryRegister::Disposer());
+	_stagingMemoryRegister.superSizeMemoryAvailableList.clear_and_dispose(StagingMemoryRegister::Disposer());
 }
 
 
@@ -49,14 +49,14 @@ DataStorage::DataStorage(Renderer& renderer)
 DataAllocationRecord* DataStorage::allocInternal(size_t numBytes)
 {
 	// make sure we have _firstAllocMemory
-	// (it might be missing just before the first call to alloc())
+	// (it might be missing during the first call to alloc())
 	if(_firstAllocMemory == nullptr) {
 		size_t size =
-			(numBytes < _renderer->bufferSizeList()[0])
-				? _renderer->bufferSizeList()[0]
-				: (numBytes < _renderer->bufferSizeList()[1])
-					? _renderer->bufferSizeList()[1]
-					: max(numBytes, _renderer->bufferSizeList()[2]);
+			(numBytes < _smallMemorySize)
+				? _smallMemorySize
+				: (numBytes < _middleMemorySize)
+					? _middleMemorySize
+					: max(numBytes, _largeMemorySize);
 		_firstAllocMemory = DataMemory::tryCreate(*this, size);
 		if(_firstAllocMemory == nullptr)
 			throw OutOfResources("CadR::DataStorage::alloc() error: Cannot allocate DataMemory. "
@@ -72,9 +72,9 @@ DataAllocationRecord* DataStorage::allocInternal(size_t numBytes)
 		// (it might be missing until the first DataMemory is full)
 		if(_secondAllocMemory == nullptr) {
 			size_t size =
-				(numBytes < _renderer->bufferSizeList()[1])
-					? _renderer->bufferSizeList()[1]
-					: max(numBytes, _renderer->bufferSizeList()[2]);
+				(numBytes < _middleMemorySize)
+					? _middleMemorySize
+					: max(numBytes, _largeMemorySize);
 			_secondAllocMemory = DataMemory::tryCreate(*this, size);
 			if(_secondAllocMemory == nullptr)
 				throw OutOfResources("CadR::DataStorage::alloc() error: Cannot allocate DataMemory. "
@@ -91,7 +91,7 @@ DataAllocationRecord* DataStorage::allocInternal(size_t numBytes)
 			// (_firstAllocMemory is considered full now, _secondAllocMemory almost full,
 			// so we replace _firstAlloc memory by _secondAllocMemory and
 			// we put new DataMemory into _secondAllocMemory)
-			size_t size = max(_renderer->bufferSizeList()[2], numBytes);
+			size_t size = max(_largeMemorySize, numBytes);
 			DataMemory* m = DataMemory::tryCreate(*this, size);
 			if(m == nullptr)
 				throw OutOfResources("CadR::DataStorage::alloc() error: Cannot allocate DataMemory. "
@@ -142,19 +142,7 @@ DataAllocationRecord* DataStorage::alloc(size_t numBytes)
 	// alloc record
 	// (the function either succeeds or throws)
 	DataAllocationRecord* a = allocInternal(numBytes);
-
-	// alloc staging data
-	// (allocInternal already initialized deviceAddress, size and dataMemory members)
-	try {
-		uint64_t offsetInBuffer = a->deviceAddress - a->dataMemory->deviceAddress();
-		a->stagingData = stagingAlloc(a, offsetInBuffer);  // this might throw
-		a->stagingFrameNumber = _renderer->frameNumber();
-	} catch(...) {
-		DataMemory::free(a);
-		throw;
-	}
-
-	// return pointer to AllocationRecord
+	a->stagingFrameNumber = _renderer->frameNumber();
 	return a;
 }
 
@@ -184,17 +172,7 @@ DataAllocationRecord* DataStorage::realloc(DataAllocationRecord* allocationRecor
 	// alloc record
 	// (the function either succeeds or throws)
 	DataAllocationRecord* a = allocInternal(numBytes);
-
-	// alloc staging data
-	// (allocInternal already initialized deviceAddress, size and dataMemory members)
-	try {
-		uint64_t offsetInBuffer = a->deviceAddress - a->dataMemory->deviceAddress();
-		a->stagingData = stagingAlloc(a, offsetInBuffer);  // this might throw
-		a->stagingFrameNumber = _renderer->frameNumber();
-	} catch(...) {
-		DataMemory::free(a);
-		throw;
-	}
+	a->stagingFrameNumber = _renderer->frameNumber();
 
 	// free old allocationRecord
 	if(allocationRecord->size != 0)
@@ -212,173 +190,253 @@ void DataStorage::cancelAllAllocations()
 }
 
 
-/** Performs allocation and returns new StagingData object.
- *  The returned object is used for uploading data from CPU memory
- *  to GPU memory. Data are stored into StagingData object and
- *  uploaded to DataAllocation object.
- *
- *  DataStorage maintains the collection of StagingMemory objects.
- *  The real allocation is returned from one of these StagingMemory objects
- *  while DataStorage serves just as a manager of StagingMemory objects.
- *
- *  If staging memory was already created for particular DataAllocation object,
- *  new staging memory is not created. Instead, already existing memory is returned.
- *
- *  Internally, the function uses the following strategy:
- *  It returns previously allocated staging memory if one exists.
- *  Otherwise, it attempts to use first three StagingMemories.
- *  If no success, it tries remaining StagingMemories as well.
- *  As the last attempt, it tries to allocate new StagingMemory object
- *  of the size bigger or equal to the requested staging memory size.
- */
-void* DataStorage::stagingAlloc(DataAllocationRecord* allocationRecord, uint64_t offsetInBuffer)
+tuple<StagingMemory&, bool> DataStorage::allocStagingMemory(DataMemory& m,
+	StagingMemory* lastStagingMemory, size_t minNumBytes, size_t bytesToMemoryEnd)
 {
-	// Because we are not suballocating the memory here (this is intention),
-	// but allocating small buffers first (to stay on low memory requirements for small scenes),
-	// we need to aggressively increase buffer sizes when more staging memory is needed
-	// to not reach VkPhysicalDeviceLimits::maxMemoryAllocationCount limit
-	// that is guarantted to be at least 4096.
-	// At the same time, we do not want to create too big buffers because of
-	// the performance cost of their creation. Teens of milliseconds will already mean
-	// loosing one or more frames.
-	//
-	// Using 32MiB buffers means we can allocate 1024 of them on 32GiB systems,
-	// leaving still 3072 allocations as reserve.
-
-	size_t numBytes = allocationRecord->size;
-	assert(numBytes > 0 && "DataStorage::stagingAlloc() called on allocation of zero size.");
-	DataMemory& dataMemory = *allocationRecord->dataMemory;
-
-	// try alloc from dataMemory._stagingMemoryList.back()
-	if(!dataMemory._stagingMemoryList.empty()) {
-		StagingMemory* m = dataMemory._stagingMemoryList.back();
-		uint64_t addr = m->alloc(offsetInBuffer, numBytes);
-		if(addr)
-			return reinterpret_cast<void*>(addr);
-	}
-
-	// sum amount of already allocated staging memories
-	size_t alreadyAllocated = 0;
-	for(StagingMemory* sm : dataMemory._stagingMemoryList)
-		alreadyAllocated += sm->size();
-
-	// reuse or create StagingMemory
-	auto allocStagingMemory =
-		[](list<StagingMemory>& availableList, list<StagingMemory>& inUseList, Renderer& r, size_t numBytes, size_t capacityHint) -> StagingMemory* {
-			for(auto it=availableList.begin(); it!=availableList.end(); it++)
-				if(it->size() >= numBytes) {
-					inUseList.splice(inUseList.end(), availableList, it);
-					return &*it;
-				}
-			return &inUseList.emplace_back(r, capacityHint);  // this might throw, especially in StagingMemory constructor
+	// reuse or create StagingMemory func
+	auto reuseOrAllocStagingMemory =
+		[](StagingMemoryRegister::StagingMemoryList& availableList,
+		   StagingMemoryRegister::StagingMemoryList& inUseList,
+		   Renderer& r, size_t size) -> StagingMemory&
+		{
+			if(!availableList.empty()) {
+				auto it = availableList.begin();
+				inUseList.splice(inUseList.end(), availableList, it);
+				return *it;
+			}
+			StagingMemory* sm = new StagingMemory(r, size);  // might throw
+			inUseList.push_back(*sm);
+			return *sm;
 		};
 
-	// alloc StagingMemory of appropriate size
-	StagingMemory* m;
-	if(_stagingDataSizeHint <= 256*1024 && alreadyAllocated < 256*1024 && numBytes <= 64*1024)
-		m = allocStagingMemory(_stagingMemoryRegister.available64KiBList, _stagingMemoryRegister.inUse64KiBList, *_renderer, numBytes, 64*1024);  // this might throw
-	else if(_stagingDataSizeHint <= 8*1048576 && alreadyAllocated < 8*1048576 && numBytes <= 2*1048576)
-		m = allocStagingMemory(_stagingMemoryRegister.available2MiBList, _stagingMemoryRegister.inUse2MiBList, *_renderer, numBytes, 2*1048576);  // this might throw
-	else if(numBytes <= 32*1048576)
-		m = allocStagingMemory(_stagingMemoryRegister.available32MiBList, _stagingMemoryRegister.inUse32MiBList, *_renderer, numBytes, 32*1048576);  // this might throw
-	else {
-		// find the first suitable StagingMemory
-		// in super size list
-		auto it = _stagingMemoryRegister.availableSuperSizeList.begin();
-		auto e = _stagingMemoryRegister.availableSuperSizeList.end();
-		while(true) {
-			if(it == e) {
-				// alloc new super size StagingMemory
-				m = &_stagingMemoryRegister.inUseSuperSizeList.emplace_back(*_renderer, numBytes);  // this might throw
-				goto found;
-			}
-			// break on first suitable StagingMemory
-			if(it->size() >= numBytes)
-				break;
+	// reuse or create super-size StagingMemory func
+	auto reuseOrAllocSuperSizeStagingMemory =
+		[](StagingMemoryRegister::StagingMemoryList& availableList,
+		   StagingMemoryRegister::StagingMemoryList& inUseList,
+		   Renderer& r, size_t size) -> StagingMemory&
+		{
+			// find first suitable
+			for(auto bestIt=availableList.begin(); bestIt!=availableList.end(); bestIt++) {
+				if(bestIt->size() >= size) {
 
-			it++;
-		}
-		auto bestMemory = it;
-		size_t bestSize = it->size();
+					// find smallest of suitable StagingMemories
+					auto it = bestIt;
+					for(it++; it!=availableList.end(); it++)
+						if(it->size() >= size && it->size() < bestIt->size())
+							bestIt = it;
 
-		// find the best suitable StagingMemory
-		// in super size list
-		for(it++; it!=e; it++) {
-			size_t s = it->size();
-			if(s >= numBytes && s < bestSize) {
-				bestMemory = it;
-				bestSize = s;
+					// return best suitable StagingMemory
+					inUseList.splice(inUseList.end(), availableList, bestIt);
+					return *bestIt;
+				}
 			}
-		}
-		_stagingMemoryRegister.inUseSuperSizeList.splice(_stagingMemoryRegister.inUseSuperSizeList.end(), _stagingMemoryRegister.availableSuperSizeList, bestMemory);
-		m = &*bestMemory;
+
+			// create new StagingMemory
+			StagingMemory* sm = new StagingMemory(r, size);  // might throw
+			inUseList.push_back(*sm);
+			return *sm;
+		};
+
+	// we already have staging memory that is probably full =>
+	// we are going to allocate another staging memory, but bigger one
+	if(lastStagingMemory) {
+
+		// return middle-size memory
+		if(m.size() <= _middleMemorySize)
+			return {
+				reuseOrAllocStagingMemory(
+					_stagingMemoryRegister.middleMemoryAvailableList,
+					_stagingMemoryRegister.middleMemoryInUseList,
+					*_renderer, _middleMemorySize),
+				true
+			};
+		if(lastStagingMemory->size() < _middleMemorySize)
+			return {
+				reuseOrAllocStagingMemory(
+					_stagingMemoryRegister.middleMemoryAvailableList,
+					_stagingMemoryRegister.middleMemoryInUseList,
+					*_renderer, _middleMemorySize),
+				false
+			};
+
+		// return large memory
+		if(m.size() <= _largeMemorySize)
+			return {
+				reuseOrAllocStagingMemory(
+					_stagingMemoryRegister.largeMemoryAvailableList,
+					_stagingMemoryRegister.largeMemoryInUseList,
+					*_renderer, _largeMemorySize),
+				true
+			};
+		if(lastStagingMemory->size() < _largeMemorySize)
+			return {
+				reuseOrAllocStagingMemory(
+					_stagingMemoryRegister.largeMemoryAvailableList,
+					_stagingMemoryRegister.largeMemoryInUseList,
+					*_renderer, _largeMemorySize),
+				false
+			};
+
+		// return super-size memory
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.superSizeMemoryAvailableList,
+				_stagingMemoryRegister.superSizeMemoryInUseList,
+				*_renderer, m.size()),
+			true
+		};
 	}
 
-	// alloc piece of staging memory
-found:
-	m->attach(dataMemory, allocationRecord->deviceAddress - dataMemory.deviceAddress());  // this might theoretically throw
-	uint64_t addr = m->alloc(offsetInBuffer, numBytes);
-	if(addr)
-		return reinterpret_cast<void*>(addr);
-	else
-		throw OutOfResources("Cannot allocate staging memory.");
+	// create small StagingMemory
+	if(m.size() <= _smallMemorySize)
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.smallMemoryAvailableList,
+				_stagingMemoryRegister.smallMemoryInUseList,
+				*_renderer, _smallMemorySize),
+			true
+		};
+	if(bytesToMemoryEnd <= _smallMemorySize ||
+	   (minNumBytes <= _smallMemorySize && _stagingDataSizeHint*1.2f < _smallMemorySize))
+	{
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.smallMemoryAvailableList,
+				_stagingMemoryRegister.smallMemoryInUseList,
+				*_renderer, _smallMemorySize),
+			false
+		};
+	}
+
+	// create middle-sized StagingMemory
+	if(m.size() <= _middleMemorySize)
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.middleMemoryAvailableList,
+				_stagingMemoryRegister.middleMemoryInUseList,
+				*_renderer, _middleMemorySize),
+			true
+		};
+	if(bytesToMemoryEnd <= _middleMemorySize ||
+	   (minNumBytes <= _middleMemorySize && _stagingDataSizeHint*1.2f < _middleMemorySize))
+	{
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.middleMemoryAvailableList,
+				_stagingMemoryRegister.middleMemoryInUseList,
+				*_renderer, _middleMemorySize),
+			false
+		};
+	}
+
+	// large StagingMemory
+	if(m.size() <= _largeMemorySize)
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.largeMemoryAvailableList,
+				_stagingMemoryRegister.largeMemoryInUseList,
+				*_renderer, _largeMemorySize),
+			true
+		};
+	if(bytesToMemoryEnd <= _largeMemorySize ||
+	   (minNumBytes <= _largeMemorySize && _stagingDataSizeHint*1.2f < _largeMemorySize))
+	{
+		return {
+			reuseOrAllocStagingMemory(
+				_stagingMemoryRegister.largeMemoryAvailableList,
+				_stagingMemoryRegister.largeMemoryInUseList,
+				*_renderer, _largeMemorySize),
+			false
+		};
+	}
+
+	// handle super-size requests
+	return {
+		reuseOrAllocSuperSizeStagingMemory(
+			_stagingMemoryRegister.superSizeMemoryAvailableList,
+			_stagingMemoryRegister.superSizeMemoryInUseList,
+			*_renderer, minNumBytes),
+		true
+	};
 }
 
 
-tuple<DataStorage::TransferRecord,size_t>
-	DataStorage::recordUpload(vk::CommandBuffer commandBuffer)
+void DataStorage::freeOrRecycleStagingMemory(StagingMemory& sm)
 {
-	size_t bytesToTransfer = 0;
-	auto it = _transferInProgressList.emplace(_transferInProgressList.end());
-	TransferRecord tr(it, this);
-	for(DataMemory* dm : _dataMemoryList)
-		for(StagingMemory* sm : dm->_stagingMemoryList) {
-			auto [ id, numBytes ] = sm->recordUpload(commandBuffer);
-			it->emplace_back(sm, id);
-			bytesToTransfer += numBytes;
-		}
-	return { move(tr), bytesToTransfer };
+	StagingMemoryRegister::StagingMemoryList* srcList;
+	StagingMemoryRegister::StagingMemoryList* dstList;
+	if(sm.size() <= _smallMemorySize) {
+		srcList = &_stagingMemoryRegister.smallMemoryInUseList;
+		dstList = &_stagingMemoryRegister.smallMemoryAvailableList;
+	}
+	else if(sm.size() <= _middleMemorySize) {
+		srcList = &_stagingMemoryRegister.middleMemoryInUseList;
+		dstList = &_stagingMemoryRegister.middleMemoryAvailableList;
+	}
+	else if(sm.size() <= _largeMemorySize) {
+		srcList = &_stagingMemoryRegister.largeMemoryInUseList;
+		dstList = &_stagingMemoryRegister.largeMemoryAvailableList;
+	}
+	else {
+		srcList = &_stagingMemoryRegister.superSizeMemoryInUseList;
+		dstList = &_stagingMemoryRegister.superSizeMemoryAvailableList;
+	}
+	dstList->splice(dstList->begin(), *srcList, srcList->iterator_to(sm));
 }
 
 
-void DataStorage::uploadDone(TransferId id) noexcept
+tuple<TransferResourcesReleaser,size_t> DataStorage::recordUploads(vk::CommandBuffer commandBuffer)
+{
+	// find first valid upload
+	size_t dataMemoryIndex = 0;
+	size_t dataMemorySize = _dataMemoryList.size();
+	DataMemory* dm;
+	size_t numBytesToTransfer;
+	void* id1;
+	void* id2;
+	for(; dataMemoryIndex<dataMemorySize; dataMemoryIndex++) {
+		dm = _dataMemoryList[dataMemoryIndex];
+		tie(id1, id2, numBytesToTransfer) = dm->recordUploads(commandBuffer);
+		if(numBytesToTransfer != 0)
+			goto foundFirst;
+	}
+
+	// return zero bytes transferred 
+	return { TransferResourcesReleaser(), 0 };
+
+foundFirst:
+
+	// create Transfer and append first upload operation
+	auto it =
+		_transferInProgressList.emplace(
+			_transferInProgressList.end(),  // position
+			dataMemorySize-dataMemoryIndex  // capacity
+		);
+	TransferResources& tr = *it;
+	tr.append(dm, id1, id2);
+	dataMemoryIndex++;
+
+	// insert all remaining upload operations
+	for(; dataMemoryIndex<dataMemorySize; dataMemoryIndex++) {
+		dm = _dataMemoryList[dataMemoryIndex];
+		size_t numBytes;
+		tie(id1, id2, numBytes) = dm->recordUploads(commandBuffer);
+		if(numBytes != 0) {
+			// append next upload operation
+			tr.append(dm, id1, id2);
+			numBytesToTransfer += numBytes;
+		}
+	}
+	return { TransferResourcesReleaser(it, this), numBytesToTransfer };
+}
+
+
+void DataStorage::uploadDone(TransferResourcesReleaser::Id id) noexcept
 {
 	// verify valid usage
+	// (currently, there is no real restriction in our code so we might relax or remove following assert)
 	assert(id == _transferInProgressList.begin() && "DataStorage::uploadDone(TransferId) must be called on TransferIds "
 	                                                "in the same order as they are returned by DataStorage::recordUpload().");
-
-	// notify all StagingMemories
-	for(auto& r : *id) {
-		StagingMemory* sm = std::get<0>(r);
-		uint64_t id2 = std::get<1>(r);
-		sm->uploadDone(id2);
-		if(sm->canDetach()) {
-			sm->detach();
-			list<StagingMemory>* srcList;
-			list<StagingMemory>* dstList;
-			if(sm->size() <= 64*1024) {
-				srcList = &_stagingMemoryRegister.inUse64KiBList;
-				dstList = &_stagingMemoryRegister.available64KiBList;
-			}
-			else if(sm->size() <= 2*1048576) {
-				srcList = &_stagingMemoryRegister.inUse2MiBList;
-				dstList = &_stagingMemoryRegister.available2MiBList;
-			}
-			else if(sm->size() <= 32*1048576) {
-				srcList = &_stagingMemoryRegister.inUse32MiBList;
-				dstList = &_stagingMemoryRegister.available32MiBList;
-			}
-			else {
-				srcList = &_stagingMemoryRegister.inUseSuperSizeList;
-				dstList = &_stagingMemoryRegister.availableSuperSizeList;
-			}
-			for(auto it=srcList->begin(); it!=srcList->end(); it++)
-				if(&(*it) == sm) {
-					dstList->splice(dstList->begin(), *srcList, it);
-					break;
-				}
-		}
-	}
 
 	// remove transfer from the list
 	_transferInProgressList.erase(id);

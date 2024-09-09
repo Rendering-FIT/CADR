@@ -86,7 +86,20 @@ protected:
 		FirstAllocation* nextAllocation;
 	};
 
-	// basic allocation/deallocation functions
+	// high-level allocation/deallocation functions
+	// (propose-commit approach is used to have no memory leaks
+	// when exception is raised during the work before commit)
+	std::tuple<uint64_t,int> allocPropose(size_t numBytes);
+	AllocationRecord* alloc1Commit(uint64_t addr, size_t numBytes);  // might throw
+	AllocationRecord* alloc2Commit(uint64_t addr, size_t numBytes);  // might throw
+
+	// zero-sized allocations (for special purposes)
+	AllocationRecord* alloc1ZeroSize();
+	AllocationRecord* alloc2ZeroSize();
+	void freeInternal1ZeroSize(AllocationRecord* a) noexcept;
+	void freeInternal2ZeroSize(AllocationRecord* a) noexcept;
+
+	// low-level helper allocation functions
 	AllocationRecord* createAllocation1(uint64_t addr);
 	AllocationRecord* createAllocation2(uint64_t addr);
 	static void destroyAllocation(AllocationRecord* a, int blockNumber) noexcept;
@@ -94,17 +107,7 @@ protected:
 	void destroyAllocationBlock(AllocationBlock& b) noexcept;
 	static void resetDataMemoryPointers(uint64_t aThisAddress,
 		CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m, int blockNumber) noexcept;
-	template<typename... Args>
-		AllocationRecord* allocInternal(size_t numBytes, Args... args);
 	void freeInternal(AllocationRecord* a) noexcept;
-
-	// zero-sized allocations (for special purposes)
-	template<typename... Args>
-		AllocationRecord* allocInternal1ZeroSize(Args... args);
-	template<typename... Args>
-		AllocationRecord* allocInternal2ZeroSize(Args... args);
-	void freeInternal1ZeroSize(AllocationRecord* a) noexcept;
-	void freeInternal2ZeroSize(AllocationRecord* a) noexcept;
 
 public:
 
@@ -130,8 +133,8 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 	if(_allocationBlockList1.empty())
 	{
 		// no allocation blocks yet
-		AllocationBlock& bNew = createAllocationBlock();
-		_allocationBlockList1.push_back(bNew);
+		AllocationBlock& bNew = createAllocationBlock();  // this might throw bad_alloc
+		_allocationBlockList1.push_back(bNew);  // this does not throw (it uses boost::intrusive)
 		_block1EndAllocation = bNew.allocations.begin();
 		_block1EndAllocation++;
 		a = &(*_block1EndAllocation);
@@ -172,8 +175,8 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 			// no more space in the AllocationBlock =>
 			// allocate new one
 			AllocationBlock& bPrev = _allocationBlockList1.back();
-			AllocationBlock& bNew = createAllocationBlock();
-			_allocationBlockList1.push_back(bNew);
+			AllocationBlock& bNew = createAllocationBlock();  // this might throw bad_alloc
+			_allocationBlockList1.push_back(bNew);  // this does not throw (it uses boost::intrusive)
 			_block1EndAllocation = bNew.allocations.begin();
 			_block1EndAllocation++;
 			a = &(*_block1EndAllocation);
@@ -204,8 +207,8 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 	if(_allocationBlockList2.empty())
 	{
 		// no allocation blocks yet
-		AllocationBlock& bNew = createAllocationBlock();
-		_allocationBlockList2.push_back(bNew);
+		AllocationBlock& bNew = createAllocationBlock();  // this might throw bad_alloc
+		_allocationBlockList2.push_back(bNew);  // this does not throw (it uses boost::intrusive)
 		_block2EndAllocation = bNew.allocations.begin();
 		_block2EndAllocation++;
 		a = &(*_block2EndAllocation);
@@ -246,8 +249,8 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 			// no more space in the AllocationBlock =>
 			// allocate new one
 			AllocationBlock& bPrev = _allocationBlockList2.back();
-			AllocationBlock& bNew = createAllocationBlock();
-			_allocationBlockList2.push_back(bNew);
+			AllocationBlock& bNew = createAllocationBlock();  // this might throw bad_alloc
+			_allocationBlockList2.push_back(bNew);  // this does not throw (it uses boost::intrusive)
 			_block2EndAllocation = bNew.allocations.begin();
 			_block2EndAllocation++;
 			a = &(*_block2EndAllocation);
@@ -478,8 +481,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 
 
 template<typename AllocationRecord, size_t RecordsPerBlock>
-template<typename... Args>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocInternal(size_t numBytes, Args... args)
+std::tuple<uint64_t,int> CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocPropose(size_t numBytes)
 {
 	// zero size allocations are forbidden
 	// (if this should be changed, verify all related code before enabling them)
@@ -495,17 +497,7 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::a
 				: ((_block1EndAddress+0x0f) & ~0x0f);  // align to 16 bytes
 
 		if(addr + numBytes <= _bufferEndAddress)
-		{
-			// update variables
-			uint64_t newUsedBlock1EndAddress = addr + numBytes;
-			_usedBytes += newUsedBlock1EndAddress - _block1EndAddress;
-			_block1EndAddress = newUsedBlock1EndAddress;
-
-			// create DataAllocation
-			AllocationRecord* a = createAllocation1(addr);
-			a->init(addr, numBytes, args...);
-			return a;
-		}
+			return { addr, 1 };
 	}
 
 	// try to alloc at the end of Block2 that is placed initially on the beginning of the buffer
@@ -525,43 +517,59 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::a
 				: ((_block2EndAddress+0x0f) & ~0x0f);
 
 		if(addr + numBytes <= _block1StartAddress)
-		{
-			// update variables
-			uint64_t newUsedBlock2EndAddress = addr + numBytes;
-			_usedBytes += newUsedBlock2EndAddress - _block2EndAddress;
-			_block2EndAddress = newUsedBlock2EndAddress;
-
-			// create DataAllocation
-			AllocationRecord* a = createAllocation2(addr);
-			a->init(addr, numBytes, args...);
-			return a;
-		}
+			return { addr, 2 };
 	}
 
 	// not enough continuous space in this DataMemory
-	return nullptr;
+	return { 0, 0 };
 }
 
 
 template<typename AllocationRecord, size_t RecordsPerBlock>
-template<typename... Args>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocInternal1ZeroSize(Args... args)
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc1Commit(uint64_t addr, size_t numBytes)
 {
 	// create DataAllocation
-	AllocationRecord* a = createAllocation1(_block1EndAddress);
-	a->init(_block1EndAddress, 0, args...);
+	AllocationRecord* a = createAllocation1(addr);
+
+	// update variables
+	uint64_t newBlock1EndAddress = addr + numBytes;
+	_usedBytes += newBlock1EndAddress - _block1EndAddress;
+	_block1EndAddress = newBlock1EndAddress;
+
+	// return allocation
 	return a;
 }
 
 
 template<typename AllocationRecord, size_t RecordsPerBlock>
-template<typename... Args>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocInternal2ZeroSize(Args... args)
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc2Commit(uint64_t addr, size_t numBytes)
 {
 	// create DataAllocation
-	AllocationRecord* a = createAllocation2(_block2EndAddress);
-	a->init(_block2EndAddress, 0, args...);
+	AllocationRecord* a = createAllocation2(addr);
+
+	// update variables
+	uint64_t newBlock2EndAddress = addr + numBytes;
+	_usedBytes += newBlock2EndAddress - _block2EndAddress;
+	_block2EndAddress = newBlock2EndAddress;
+
+	// return allocation
 	return a;
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc1ZeroSize()
+{
+	// create DataAllocation
+	return createAllocation1(_block1EndAddress);
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc2ZeroSize()
+{
+	// create DataAllocation
+	return createAllocation2(_block2EndAddress);
 }
 
 

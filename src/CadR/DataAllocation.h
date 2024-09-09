@@ -22,7 +22,8 @@ struct CADR_EXPORT DataAllocationRecord
 	void* stagingData;
 	size_t stagingFrameNumber;
 
-	void init(vk::DeviceAddress addr, size_t size, DataMemory* m);
+	void init(vk::DeviceAddress addr, size_t size, DataMemory* m, DataAllocationRecord** recordPointer,
+	          void* stagingData, size_t stagingFrameNumber);
 	static DataAllocationRecord nullRecord;
 };
 
@@ -125,7 +126,7 @@ public:
 // inline methods
 namespace CadR {
 
-inline void DataAllocationRecord::init(vk::DeviceAddress addr, size_t size, DataMemory* m)  { deviceAddress = addr; this->size = size; dataMemory = m; }
+inline void DataAllocationRecord::init(vk::DeviceAddress addr, size_t size, DataMemory* m, DataAllocationRecord** recordPointer, void* stagingData, size_t stagingFrameNumber)  { deviceAddress = addr; this->size = size; dataMemory = m; this->recordPointer = recordPointer; this->stagingData = stagingData; this->stagingFrameNumber = stagingFrameNumber; }
 inline HandlelessAllocation::HandlelessAllocation(nullptr_t) noexcept : _record(&DataAllocationRecord::nullRecord)  {}
 inline HandlelessAllocation::~HandlelessAllocation() noexcept  { free(); }
 inline DataAllocation::DataAllocation(nullptr_t) noexcept : _record(&DataAllocationRecord::nullRecord), _handle(0)  {}

@@ -35,6 +35,7 @@ set(CADR_PUBLIC_HEADERS
 	StagingData.h
 	StagingMemory.h
 	StateSet.h
+	TransferResources.h
 	VulkanDevice.h
 	VulkanInstance.h
 	VulkanLibrary.h
@@ -65,7 +66,7 @@ set(CADR_SOURCES
 	)
 
 # grouping of source files
-source_group("Source Files" FILES ${CADR_PUBLIC_HEADERS} ${CADR_PRIVATE_HEADERS} ${CADR_SOURCES})
+source_group("Code" FILES ${CADR_PUBLIC_HEADERS} ${CADR_PRIVATE_HEADERS} ${CADR_SOURCES})
 
 # dependencies
 find_package(Vulkan REQUIRED)
