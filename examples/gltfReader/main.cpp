@@ -13,6 +13,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -118,6 +119,18 @@ public:
 };
 
 
+class ExitWithMessage {
+protected:
+	int _exitCode;
+	std::string _what;
+public:
+	ExitWithMessage(int exitCode, const std::string& msg) : _exitCode(exitCode), _what(msg) {}
+	ExitWithMessage(int exitCode, const char* msg) : _exitCode(exitCode), _what(msg) {}
+	const char* what() const noexcept  { return _what.c_str(); }
+	int exitCode() const noexcept  { return _exitCode; }
+};
+
+
 // create_array<T,N>() allows for initialization of an std::array when passing the same value to all the constructors is needed
 // (for passing references, use std::ref() and std::cref() to pass them into create_array())
 template<typename T, size_t N, size_t index = N, typename T2, typename... Ts>
@@ -140,10 +153,8 @@ App::App(int argc, char** argv)
 	, pipelineDB{ create_array_ref<CadR::Pipeline, 32>(renderer) }
 {
 	// process command-line arguments
-	if(argc < 2) {
-		cout << "Please, specify glTF file to load." << endl;
-		exit(99);
-	}
+	if(argc < 2)
+		throw ExitWithMessage(99, "Please, specify glTF file to load.");
 	filePath = argv[1];
 }
 
@@ -203,8 +214,10 @@ void App::init()
 	// open file
 	ifstream f(filePath);
 	if(!f.is_open()) {
-		cout << "Cannot open file " << filePath << "." << endl;
-		exit(1);
+		string msg("Cannot open file ");
+		msg.append(filePath.string());
+		msg.append(".");
+		throw ExitWithMessage(1, msg);
 	}
 	f.exceptions(ifstream::badbit | ifstream::failbit);
 
@@ -221,6 +234,8 @@ void App::init()
 				vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,  // queueOperations
 				window.surface(),  // presentationSurface
 				[](CadR::VulkanInstance& instance, vk::PhysicalDevice pd) -> bool {  // filterCallback
+					if(instance.getPhysicalDeviceProperties(pd).apiVersion < VK_API_VERSION_1_2)
+						return false;
 					auto features =
 						instance.getPhysicalDeviceFeatures2<
 							vk::PhysicalDeviceFeatures2,
@@ -232,6 +247,9 @@ void App::init()
 						features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
 						features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
 				});
+	physicalDevice = std::get<0>(deviceAndQueueFamilies);
+	if(!physicalDevice)
+		throw ExitWithMessage(2, "No compatible Vulkan device found.");
 	device.create(
 		vulkanInstance, deviceAndQueueFamilies,
 #if 1 // enable or disable validation extensions
@@ -246,7 +264,6 @@ void App::init()
 		}().get<vk::PhysicalDeviceFeatures2>()
 #endif
 	);
-	physicalDevice = std::get<0>(deviceAndQueueFamilies);
 	graphicsQueueFamily = std::get<1>(deviceAndQueueFamilies);
 	presentationQueueFamily = std::get<2>(deviceAndQueueFamilies);
 	window.setDevice(device, physicalDevice);
@@ -1767,7 +1784,7 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 }
 
 
-int main(int argc,char** argv)
+int main(int argc, char** argv)
 {
 	try {
 
@@ -1804,13 +1821,20 @@ int main(int argc,char** argv)
 
 	// catch exceptions
 	} catch(CadR::Error &e) {
-		cout<<"Failed because of CadR exception: "<<e.what()<<endl;
+		cout << "Failed because of CadR exception: " << e.what() << endl;
+		return 9;
 	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
+		return 9;
+	} catch(ExitWithMessage &e) {
+		cout << e.what() << endl;
+		return e.exitCode();
 	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
+		cout << "Failed because of exception: " << e.what() << endl;
+		return 9;
 	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
+		cout << "Failed because of unspecified exception." << endl;
+		return 9;
 	}
 
 	return 0;
