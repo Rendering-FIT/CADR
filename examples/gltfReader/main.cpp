@@ -217,7 +217,21 @@ void App::init()
 
 	// init device and renderer
 	tuple<vk::PhysicalDevice, uint32_t, uint32_t> deviceAndQueueFamilies =
-			vulkanInstance.chooseDevice(vk::QueueFlagBits::eGraphics, window.surface());
+			vulkanInstance.chooseDevice(
+				vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,  // queueOperations
+				window.surface(),  // presentationSurface
+				[](CadR::VulkanInstance& instance, vk::PhysicalDevice pd) -> bool {  // filterCallback
+					auto features =
+						instance.getPhysicalDeviceFeatures2<
+							vk::PhysicalDeviceFeatures2,
+							vk::PhysicalDeviceVulkan11Features,
+							vk::PhysicalDeviceVulkan12Features>(pd);
+					return
+						features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
+						features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 &&
+						features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+						features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
+				});
 	device.create(
 		vulkanInstance, deviceAndQueueFamilies,
 #if 1 // enable or disable validation extensions
@@ -1512,7 +1526,7 @@ void App::frame(VulkanWindow&)
 	sceneData->numLights = 0;
 
 	// begin the frame
-	size_t frameNumber = renderer.beginFrame();
+	renderer.beginFrame();
 
 	// submit all copy operations that were not submitted yet
 	renderer.executeCopyOperations();

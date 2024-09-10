@@ -4,6 +4,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <tuple>
 
 namespace CadR {
 
@@ -66,6 +67,7 @@ protected:
 	AllocationBlockList _allocationBlockRecycleList;
 
 	// SpecialAllocation used for non-allocated items
+	// (keep these structs as POD/standard layout because offsetof() is used on them)
 	struct SpecialAllocation {
 		uint64_t address;  ///< Address of allocated memory. Even if the allocation is freed, address still contains the address that used to be assigned to this allocation. 
 		uint64_t magicValue;  ///< If the allocation is invalid, it contains special value of UINT64_MAX.
@@ -578,7 +580,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal(A
 {
 	// get nextAddress
 	// (the address of the next allocation)
-	static_assert(&reinterpret_cast<SpecialAllocation*>(nullptr)->address == &reinterpret_cast<LastAllocation*>(nullptr)->address,
+	static_assert(offsetof(SpecialAllocation, address) == offsetof(LastAllocation, address),
 		"Offset of address member in SpecialAllocation and LastAllocation must be the same.");
 	uint64_t thisAddress = reinterpret_cast<SpecialAllocation*>(a)->address;
 	uint64_t nextAddress = reinterpret_cast<SpecialAllocation*>(a+1)->address;

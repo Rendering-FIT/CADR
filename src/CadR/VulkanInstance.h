@@ -15,9 +15,12 @@ protected:
 	uint32_t _version;
 public:
 
-	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlagBits queueOperations,
-		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "", int index = -1,
-		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {});
+	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlags queueOperations,
+		vk::SurfaceKHR presentationSurface, const std::string& nameFilter, int index);
+	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlags queueOperations,
+		vk::SurfaceKHR presentationSurface = {},
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {},
+		const std::string& nameFilter = "", int index = -1);
 	std::vector<std::string> getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
 		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "",
 		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {});
@@ -188,6 +191,7 @@ private:
 
 
 // inline and template methods
+inline std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(vk::QueueFlags queueOperations, vk::SurfaceKHR presentationSurface, const std::string& nameFilter, int index)  { return chooseDevice(queueOperations, presentationSurface, {}, nameFilter, index); }
 inline VulkanInstance::VulkanInstance() : _version(0)  { vkDestroyInstance=nullptr; vkCreateDevice=nullptr; vkGetDeviceProcAddr=nullptr; }
 inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, const vk::InstanceCreateInfo& createInfo)  { create(lib, createInfo); }
 inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, vk::Instance instance)  { init(lib, instance); }

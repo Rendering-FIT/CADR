@@ -5,7 +5,6 @@ set(PACKAGES
 	OpenGLInteroperability
 	HelloQtWindow
 	RenderingPerformance
-	VulkanAttributesAndUniforms
 	VulkanComputeShader
 	VulkanInfo
 	gltfReader
