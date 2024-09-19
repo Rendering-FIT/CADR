@@ -64,8 +64,9 @@ public:
 	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, VulkanWindow::ScanCode scanCode);
 
 	// Vulkan core objects
-	// (the order of members is not arbitrary but defines construction and destruction order)
-	// (it is probably good idea to destroy vulkanLib and vulkanInstance after the display connection)
+	// (The order of members is not arbitrary but defines construction and destruction order.)
+	// (If App object is on the stack, do not call std::exit() as the App destructor might not be called.)
+	// (It is probably good idea to destroy vulkanLib and vulkanInstance after the display connection.)
 	CadR::VulkanLibrary vulkanLib;
 	CadR::VulkanInstance vulkanInstance;
 
@@ -252,7 +253,7 @@ void App::init()
 		throw ExitWithMessage(2, "No compatible Vulkan device found.");
 	device.create(
 		vulkanInstance, deviceAndQueueFamilies,
-#if 1 // enable or disable validation extensions
+#if 0 // enable or disable validation extensions
 		"VK_KHR_swapchain",
 		CadR::Renderer::requiredFeatures()
 #else
@@ -1685,7 +1686,7 @@ void App::mouseButton(VulkanWindow& window, size_t button, VulkanWindow::ButtonS
 
 void App::mouseWheel(VulkanWindow& window, float wheelX, float wheelY, const VulkanWindow::MouseState& mouseState)
 {
-	cameraDistance -= wheelY;
+	cameraDistance -= wheelY / 120.f;  // 120 is a constant for one mouse wheel rotation step introduced by Microsoft
 	window.scheduleFrame();
 }
 

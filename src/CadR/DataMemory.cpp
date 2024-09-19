@@ -245,7 +245,8 @@ struct MarkerAllocationRecord
 DataAllocationRecord* DataMemory::alloc(size_t numBytes)
 {
 	// propose allocation
-	// (it will be confirmed when we call alloc[1|2]Commit())
+	// (it will be confirmed when we call alloc[1|2]Commit(),
+	// before commit no resources were really allocated)
 	auto [addr, blockNumber] = allocPropose(numBytes);
 
 	// avoid many if in this function by abstracting some variables and functions
@@ -281,6 +282,7 @@ DataAllocationRecord* DataMemory::alloc(size_t numBytes)
 	if(lastStagingMarker) {
 
 		// do we have enough space in the current StagingMemory?
+		// if no, handle it by reusing exclusive StagingMemory or allocating new StagingMemory
 		if(lastStagingMemory->addrRangeOverruns(addr, numBytes)) {
 
 			// get current MarkerAllocationRecord
@@ -293,7 +295,7 @@ DataAllocationRecord* DataMemory::alloc(size_t numBytes)
 			marker = reinterpret_cast<MarkerAllocationRecord*>(lastStagingMarker);
 			marker->init(addr);
 
-			if(otherLastStagingMemory->size() == size())
+			if(otherLastStagingMemory && otherLastStagingMemory->size() == size())
 			{
 				// reuse exclusive StagingMemory from otherLastStagingMemory
 				lastStagingMemory = otherLastStagingMemory;
@@ -305,9 +307,9 @@ DataAllocationRecord* DataMemory::alloc(size_t numBytes)
 			else
 			{
 				// alloc StagingMemory
-				bool exclusive;
-				tie(*lastStagingMemory, exclusive) =
+				auto[sm, exclusive] =
 					_dataStorage->allocStagingMemory(*this, lastStagingMemory, numBytes, _bufferEndAddress - addr);  // might throw
+				lastStagingMemory = &sm;
 				marker->stagingMemory = lastStagingMemory;
 				*lastStagingMemoryVariable = lastStagingMemory;
 				lastStagingMemory->_referenceCounter++;
