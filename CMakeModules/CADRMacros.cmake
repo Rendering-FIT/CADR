@@ -49,6 +49,7 @@ macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)
 		set(found_where "${TARGET_NAME}")
 	endif()
 
+	cmake_path(NORMAL_PATH found_where OUTPUT_VARIABLE found_where)
 	set(${path} ${found_where})
 
 endmacro()

@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.21.0) # arguments for discussion about minimal cmake version:
-                                       # CXX_STANDARD 20 is available since 3.12, Ubuntu 20.04 LTS uses 3.16.3,
+                                       # CXX_STANDARD 20 is available since 3.12,
+                                       # INTERFACE_LINK_OPTIONS needs at least 3.13,
+                                       # Ubuntu 20.04 LTS uses 3.16.3,
+                                       # cmake_path was introduced in version 3.20,
                                        # Vulkan::Headers and Vulkan::glslangValidator targets are available since 3.21,
                                        # Ubuntu 22.04 LTS uses 3.22.1
 cmake_policy(SET CMP0167 OLD) # for CMake 3.30 and newer, keep FindBoost.cmake working instead of new BoostConfig.cmake
