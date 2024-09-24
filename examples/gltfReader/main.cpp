@@ -1686,7 +1686,7 @@ void App::mouseButton(VulkanWindow& window, size_t button, VulkanWindow::ButtonS
 
 void App::mouseWheel(VulkanWindow& window, float wheelX, float wheelY, const VulkanWindow::MouseState& mouseState)
 {
-	cameraDistance -= wheelY / 120.f;  // 120 is a constant for one mouse wheel rotation step introduced by Microsoft
+	cameraDistance -= wheelY;
 	window.scheduleFrame();
 }
 

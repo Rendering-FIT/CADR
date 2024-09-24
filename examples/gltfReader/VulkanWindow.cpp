@@ -1786,7 +1786,7 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 		[](GLFWwindow* window, double xoffset, double yoffset) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			if(w->_mouseWheelCallback)
-				w->_mouseWheelCallback(*w, -float(xoffset)*120, float(yoffset)*120, w->_mouseState);
+				w->_mouseWheelCallback(*w, -float(xoffset), float(yoffset), w->_mouseState);
 		}
 	);
 	glfwSetKeyCallback(
@@ -2211,7 +2211,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
 			handleMouseMove(w, float(p.x), float(p.y));
 			if(w->_mouseWheelCallback)
-				w->_mouseWheelCallback(*w, 0, GET_WHEEL_DELTA_WPARAM(wParam), w->_mouseState);
+				w->_mouseWheelCallback(*w, 0, float(GET_WHEEL_DELTA_WPARAM(wParam)) / 120.f, w->_mouseState);
 			return 0;
 		}
 		case WM_MOUSEHWHEEL: {
@@ -2222,7 +2222,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
 			handleMouseMove(w, float(p.x), float(p.y));
 			if(w->_mouseWheelCallback)
-				w->_mouseWheelCallback(*w, GET_WHEEL_DELTA_WPARAM(wParam), 0, w->_mouseState);
+				w->_mouseWheelCallback(*w, float(GET_WHEEL_DELTA_WPARAM(wParam)) / 120.f, 0, w->_mouseState);
 			return 0;
 		}
 
@@ -2552,10 +2552,10 @@ void VulkanWindow::mainLoop()
 				float wheelX, wheelY;
 				if(e.xbutton.button <= Button5) {
 					wheelX = 0.f;
-					wheelY = (e.xbutton.button == Button5) ? -120.f : 120.f;
+					wheelY = (e.xbutton.button == Button5) ? -1.f : 1.f;
 				}
 				else {
-					wheelX = (e.xbutton.button == 6) ? -120.f : 120.f;
+					wheelX = (e.xbutton.button == 6) ? -1.f : 1.f;
 					wheelY = 0.f;
 				}
 				if(w->_mouseWheelCallback)
@@ -3084,7 +3084,7 @@ void VulkanWindowPrivate::pointerListenerAxis(void* data, wl_pointer* pointer, u
 	if(windowUnderPointer == nullptr)
 		return;
 
-	float v = float(wl_fixed_to_double(value)) * 8;
+	float v = float(wl_fixed_to_double(value)) * 8 / 120.f;
 	float wheelX, wheelY;
 	if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
 		wheelX = 0;
@@ -3378,9 +3378,7 @@ void VulkanWindow::mainLoop()
 
 				// handle wheel rotation
 				// (value is relative since last wheel event)
-				float wheelX = event.wheel.x*120;
-				float wheelY = event.wheel.y*120;
-				w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
+				w->_mouseWheelCallback(*w, event.wheel.x, event.wheel.y, w->_mouseState);
 			}
 			break;
 		}
@@ -3699,11 +3697,11 @@ void VulkanWindow::mainLoop()
 				// handle wheel rotation
 				// (value is relative since last wheel event)
 			#if SDL_MAJOR_VERSION == 2 && SDL_MINOR_VERSION >= 18
-				float wheelX = event.wheel.preciseX * 120;
-				float wheelY = event.wheel.preciseY * 120;
+				float wheelX = event.wheel.preciseX;
+				float wheelY = event.wheel.preciseY;
 			#else
-				float wheelX = float(event.wheel.x) * 120;
-				float wheelY = float(event.wheel.y) * 120;
+				float wheelX = float(event.wheel.x);
+				float wheelY = float(event.wheel.y);
 			#endif
 				w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
 			}
@@ -4145,7 +4143,7 @@ bool QtRenderingWindow::event(QEvent* event)
 			// handle wheel rotation
 			// (value is relative since last wheel event)
 			if(vulkanWindow->_mouseWheelCallback) {
-				p = e->angleDelta();
+				p = QPointF(e->angleDelta()) / 120.f;
 				vulkanWindow->_mouseWheelCallback(*vulkanWindow, -p.x(), p.y(), vulkanWindow->_mouseState);
 			}
 			return true;
