@@ -82,17 +82,15 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 
 		# configure for SDL3
 		find_package(SDL3 REQUIRED)
-		set(${libs} ${${libs}} ${SDL3_LIBRARIES})
+		set(${libs} ${${libs}} SDL3::SDL3)
 		set(${defines} ${${defines}} USE_PLATFORM_SDL3)
-		set(${includes} ${${includes}} ${SDL3_INCLUDE_DIRS})
 
 	elseif("${GUI_TYPE}" STREQUAL "SDL2")
 
 		# configure for SDL2
 		find_package(SDL2 REQUIRED)
-		set(${libs} ${${libs}} ${SDL2_LIBRARIES})
+		set(${libs} ${${libs}} SDL2::SDL2)
 		set(${defines} ${${defines}} USE_PLATFORM_SDL2)
-		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
 
 	elseif("${GUI_TYPE}" STREQUAL "GLFW")
 
