@@ -102,7 +102,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 	if(NOT EXISTS "${${CMAKE_FIND_PACKAGE_NAME}_DLL}" AND WIN32)
 		message(FATAL_ERROR "${CMAKE_FIND_PACKAGE_NAME}_DLL does not point to existing file.")
 	endif()
-	
+
 	# target
 	if(NOT TARGET SDL3::SDL3)
 		add_library(SDL3::SDL3 SHARED IMPORTED)
