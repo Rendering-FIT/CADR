@@ -3,7 +3,6 @@ set(examples_folder_name "Examples")
 
 set(PACKAGES
 	OpenGLInteroperability
-	HelloQtWindow
 	RenderingPerformance
 	VulkanComputeShader
 	VulkanInfo
