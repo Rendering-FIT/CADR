@@ -253,7 +253,7 @@ void App::init()
 		throw ExitWithMessage(2, "No compatible Vulkan device found.");
 	device.create(
 		vulkanInstance, deviceAndQueueFamilies,
-#if 0 // enable or disable validation extensions
+#if 1 // enable or disable validation extensions
 		"VK_KHR_swapchain",
 		CadR::Renderer::requiredFeatures()
 #else
@@ -673,10 +673,12 @@ void App::init()
 			Node& node = nodeList.at(rootNodeIndex);
 
 			// compute root matrix
-			// (we need to flip y axis)
+			// (we need to flip y and z axes to get from glTF coordinate system to Vulkan coordinate system)
 			glm::mat4 m = node.matrix;
-			for(unsigned i=0; i<4; i++)
+			for(unsigned i=0; i<4; i++) {
 				m[i][1] = -m[i][1];
+				m[i][2] = -m[i][2];
+			}
 
 			// assign one more instancing matrix to the mesh
 			if(node.meshIndex != ~size_t(0))
@@ -904,7 +906,7 @@ void App::init()
 					// position data and stride
 					tie(reinterpret_cast<void*&>(positionData), positionDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-												numVertices, sizeof(glm::vec3));
+						                        numVertices, sizeof(glm::vec3));
 
 				}
 				else if(it.key() == "NORMAL") {
@@ -934,7 +936,7 @@ void App::init()
 					// normal data and stride
 					tie(reinterpret_cast<void*&>(normalData), normalDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-												numVertices, sizeof(glm::vec3));
+						                        numVertices, sizeof(glm::vec3));
 
 				}
 				else if(it.key() == "COLOR_0") {
@@ -990,7 +992,7 @@ void App::init()
 					// color data and stride
 					tie(reinterpret_cast<void*&>(colorData), colorDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-												numVertices, elementSize);
+						                        numVertices, elementSize);
 
 				}
 				else if(it.key() == "TEXCOORD_0") {
@@ -1039,7 +1041,7 @@ void App::init()
 					// texCoord data and stride
 					tie(reinterpret_cast<void*&>(texCoordData), texCoordDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-												numVertices, elementSize);
+						                        numVertices, elementSize);
 
 				}
 				else
@@ -1090,7 +1092,7 @@ void App::init()
 				size_t tmp;
 				tie(reinterpret_cast<void*&>(indexData), tmp) =
 					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
-											numIndices, elementSize);
+					                        numIndices, elementSize);
 				indexDataSize = numIndices * sizeof(uint32_t);
 			}
 			else {
@@ -1251,14 +1253,14 @@ void App::init()
 			uint8_t* p = sd.data<uint8_t>();
 			for(size_t i=0; i<numVertices; i++) {
 				if(positionData) {
-					glm::vec4 pos(*positionData, 1.f);
-					*reinterpret_cast<glm::vec4*>(p)= pos;
+					glm::vec3 pos(*positionData);
+					*reinterpret_cast<glm::vec4*>(p)= glm::vec4(pos.x, pos.y, pos.z, 1.f);
 					p += 16;
 					positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
 				}
 				if(normalData) {
-					glm::vec4 normal = glm::vec4(*normalData, 0.f);
-					*reinterpret_cast<glm::vec4*>(p) = normal;
+					glm::vec3 normal = glm::vec3(*normalData);
+					*reinterpret_cast<glm::vec4*>(p) = glm::vec4(normal.x, normal.y, normal.z, 0.f);
 					p += 16;
 					normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
 				}
