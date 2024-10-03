@@ -50,7 +50,7 @@ target_compile_definitions(${APP_NAME} PRIVATE ${defines})
 target_link_libraries(${APP_NAME} ${libs} CadR)
 set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulkanWindowDefines})
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")
-set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
+set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 20)
 
 # copy DLLs (SDL3.dll, SDL2.dll, glfw3.dll, Qt stuff,...)
 if(WIN32)

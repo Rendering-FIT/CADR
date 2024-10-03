@@ -177,110 +177,158 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 	create(device);
 
 	// destroy previous pipelines
-	for(size_t i=0; i<_pipelines.size(); i++) {
-		device.destroy(_pipelines[i]);
-		_pipelines[i] = nullptr;
+	for(vk::Pipeline& p : _pipelines) {
+		_device->destroy(p);
+		p = nullptr;
 	}
 
-	// create new pipelines
-	for(size_t i=0; i<_pipelines.size(); i++)
+	array<vk::PipelineShaderStageCreateInfo, 2> shaderStages{
+		vk::PipelineShaderStageCreateInfo{
+			vk::PipelineShaderStageCreateFlags(),  // flags
+			vk::ShaderStageFlagBits::eVertex,	  // stage
+			nullptr,  // module - will be set later
+			"main",  // pName
+			&specializationInfo,  // pSpecializationInfo
+		},
+		vk::PipelineShaderStageCreateInfo{
+			vk::PipelineShaderStageCreateFlags(),  // flags
+			vk::ShaderStageFlagBits::eFragment,	// stage
+			nullptr,  // module - will be set later
+			"main",  // pName
+			&specializationInfo,  // pSpecializationInfo
+		}
+	};
+	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState{
+		vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+		vk::PrimitiveTopology::eTriangleList,  // topology - will be set later
+		VK_FALSE  // primitiveRestartEnable
+	};
+	vk::Viewport viewport(0.f, 0.f, float(surfaceExtent.width), float(surfaceExtent.height), 0.f, 1.f);
+	vk::Rect2D scissor(vk::Offset2D(0, 0), surfaceExtent);
+	vk::PipelineViewportStateCreateInfo viewportState{
+		vk::PipelineViewportStateCreateFlags(),  // flags
+		1,  // viewportCount
+		&viewport,  // pViewports
+		1,  // scissorCount
+		&scissor  // pScissors
+	};
+	vk::PipelineRasterizationStateCreateInfo rasterizationState{
+		vk::PipelineRasterizationStateCreateFlags(),  // flags
+		VK_FALSE,  // depthClampEnable
+		VK_FALSE,  // rasterizerDiscardEnable
+		vk::PolygonMode::eFill,  // polygonMode
+		vk::CullModeFlagBits::eNone,  // cullMode - will be filled later
+		vk::FrontFace::eCounterClockwise,  // frontFace - will be filled later
+		VK_FALSE,  // depthBiasEnable
+		0.f,  // depthBiasConstantFactor
+		0.f,  // depthBiasClamp
+		0.f,  // depthBiasSlopeFactor
+		1.f   // lineWidth
+	};
+	vk::PipelineMultisampleStateCreateInfo multisampleState{
+		vk::PipelineMultisampleStateCreateFlags(),  // flags
+		vk::SampleCountFlagBits::e1,  // rasterizationSamples
+		VK_FALSE,  // sampleShadingEnable
+		0.f,	   // minSampleShading
+		nullptr,   // pSampleMask
+		VK_FALSE,  // alphaToCoverageEnable
+		VK_FALSE   // alphaToOneEnable
+	};
+	vk::PipelineDepthStencilStateCreateInfo depthStencilState{
+		vk::PipelineDepthStencilStateCreateFlags(),  // flags
+		VK_TRUE,  // depthTestEnable
+		VK_TRUE,  // depthWriteEnable
+		vk::CompareOp::eLess,  // depthCompareOp
+		VK_FALSE,  // depthBoundsTestEnable
+		VK_FALSE,  // stencilTestEnable
+		vk::StencilOpState(),  // front
+		vk::StencilOpState(),  // back
+		0.f,  // minDepthBounds
+		0.f   // maxDepthBounds
+	};
+	array colorBlendAttachmentStates{
+		vk::PipelineColorBlendAttachmentState{
+			VK_FALSE,  // blendEnable
+			vk::BlendFactor::eZero,  // srcColorBlendFactor
+			vk::BlendFactor::eZero,  // dstColorBlendFactor
+			vk::BlendOp::eAdd,	     // colorBlendOp
+			vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+			vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+			vk::BlendOp::eAdd,	     // alphaBlendOp
+			vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+				vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA  // colorWriteMask
+		},
+	};
+	vk::PipelineColorBlendStateCreateInfo colorBlendState{
+		vk::PipelineColorBlendStateCreateFlags(),  // flags
+		VK_FALSE,  // logicOpEnable
+		vk::LogicOp::eClear,  // logicOp
+		colorBlendAttachmentStates.size(),  // attachmentCount
+		colorBlendAttachmentStates.data(),  // pAttachments
+		array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+	};
+	vk::GraphicsPipelineCreateInfo createInfo(
+		vk::PipelineCreateFlags(),  // flags
+		shaderStages.size(),  // stageCount
+		shaderStages.data(),  // pStages
+		&pipelineVertexInputStateCreateInfo,  // pVertexInputState
+		&inputAssemblyState,  // pInputAssemblyState
+		nullptr, // pTessellationState
+		&viewportState,  // pViewportState
+		&rasterizationState,  // pRasterizationState
+		&multisampleState,  // pMultisampleState
+		&depthStencilState,  // pDepthStencilState
+		&colorBlendState,  // pColorBlendState
+		nullptr,  // pDynamicState
+		_pipelineLayout,  // layout
+		renderPass,  // renderPass
+		0,  // subpass
+		nullptr,  // basePipelineHandle
+		-1 // basePipelineIndex
+	);
+
+	// create new triangle pipelines
+	inputAssemblyState.topology = vk::PrimitiveTopology::eTriangleList;
+	for(size_t i=0; i<_numTrianglePipelines; i++) {
+		shaderStages[0].module = _vertexShaders[i&0x7];
+		shaderStages[1].module = _fragmentShaders[i&0x7];
+		rasterizationState.cullMode =
+			(i&0x08)==0 ? vk::CullModeFlagBits::eNone :  // eNone - nothing is discarded,
+			              vk::CullModeFlagBits::eBack;  // eBack - back-facing triangles are discarded, eFront - front-facing triangles are discarded
+		rasterizationState.frontFace =
+			(i&0x10) ? vk::FrontFace::eClockwise : vk::FrontFace::eCounterClockwise;
 		_pipelines[i] =
 			_device->createGraphicsPipeline(
 				pipelineCache,  // pipelineCache
-				vk::GraphicsPipelineCreateInfo(
-					vk::PipelineCreateFlags(),  // flags
-					2,  // stageCount
-					array<const vk::PipelineShaderStageCreateInfo, 2>{  // pStages
-						vk::PipelineShaderStageCreateInfo{
-							vk::PipelineShaderStageCreateFlags(),  // flags
-							vk::ShaderStageFlagBits::eVertex,	  // stage
-							_vertexShaders[i&0x7],  // module
-							"main",  // pName
-							&specializationInfo,  // pSpecializationInfo
-						},
-						vk::PipelineShaderStageCreateInfo{
-							vk::PipelineShaderStageCreateFlags(),  // flags
-							vk::ShaderStageFlagBits::eFragment,	// stage
-							_fragmentShaders[i&0x7],  // module
-							"main",  // pName
-							&specializationInfo,  // pSpecializationInfo
-						}
-					}.data(),
-					&pipelineVertexInputStateCreateInfo,  // pVertexInputState
-					&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
-						vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-						vk::PrimitiveTopology::eTriangleList,  // topology
-						VK_FALSE  // primitiveRestartEnable
-					},
-					nullptr, // pTessellationState
-					&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
-						vk::PipelineViewportStateCreateFlags(),  // flags
-						1,  // viewportCount
-						&(const vk::Viewport&)vk::Viewport(0.f,0.f,float(surfaceExtent.width),float(surfaceExtent.height),0.f,1.f),  // pViewports
-						1,  // scissorCount
-						&(const vk::Rect2D&)vk::Rect2D(vk::Offset2D(0,0),surfaceExtent)  // pScissors
-					},
-					&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
-						vk::PipelineRasterizationStateCreateFlags(),  // flags
-						VK_FALSE,  // depthClampEnable
-						VK_FALSE,  // rasterizerDiscardEnable
-						vk::PolygonMode::eFill,  // polygonMode
-						(i&0x08)==0 ? vk::CullModeFlagBits::eNone :  // cullMode (eNone - nothing is discarded)
-							vk::CullModeFlagBits::eBack,  // (eBack - back-facing triangles are discarded, eFront - front-facing triangles are discarded)
-						(i&0x10) ? vk::FrontFace::eClockwise : vk::FrontFace::eCounterClockwise,  // frontFace
-						VK_FALSE,  // depthBiasEnable
-						0.f,  // depthBiasConstantFactor
-						0.f,  // depthBiasClamp
-						0.f,  // depthBiasSlopeFactor
-						1.f   // lineWidth
-					},
-					&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
-						vk::PipelineMultisampleStateCreateFlags(),  // flags
-						vk::SampleCountFlagBits::e1,  // rasterizationSamples
-						VK_FALSE,  // sampleShadingEnable
-						0.f,	   // minSampleShading
-						nullptr,   // pSampleMask
-						VK_FALSE,  // alphaToCoverageEnable
-						VK_FALSE   // alphaToOneEnable
-					},
-					&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
-						vk::PipelineDepthStencilStateCreateFlags(),  // flags
-						VK_TRUE,  // depthTestEnable
-						VK_TRUE,  // depthWriteEnable
-						vk::CompareOp::eLess,  // depthCompareOp
-						VK_FALSE,  // depthBoundsTestEnable
-						VK_FALSE,  // stencilTestEnable
-						vk::StencilOpState(),  // front
-						vk::StencilOpState(),  // back
-						0.f,  // minDepthBounds
-						0.f   // maxDepthBounds
-					},
-					&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
-						vk::PipelineColorBlendStateCreateFlags(),  // flags
-						VK_FALSE,  // logicOpEnable
-						vk::LogicOp::eClear,  // logicOp
-						1,  // attachmentCount
-						array{  // pAttachments
-							vk::PipelineColorBlendAttachmentState{
-								VK_FALSE,  // blendEnable
-								vk::BlendFactor::eZero,  // srcColorBlendFactor
-								vk::BlendFactor::eZero,  // dstColorBlendFactor
-								vk::BlendOp::eAdd,	   // colorBlendOp
-								vk::BlendFactor::eZero,  // srcAlphaBlendFactor
-								vk::BlendFactor::eZero,  // dstAlphaBlendFactor
-								vk::BlendOp::eAdd,	   // alphaBlendOp
-								vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
-									vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
-							},
-						}.data(),
-						array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-					},
-					nullptr,  // pDynamicState
-					_pipelineLayout,  // layout
-					renderPass,  // renderPass
-					0,  // subpass
-					nullptr,  // basePipelineHandle
-					-1 // basePipelineIndex
-				)
+				createInfo  // createInfo
 			);
+	}
+
+	// create new line pipelines
+	inputAssemblyState.topology = vk::PrimitiveTopology::eLineList;
+	rasterizationState.cullMode = vk::CullModeFlagBits::eNone;  // lines do not perform visibility culling
+	rasterizationState.frontFace = vk::FrontFace::eCounterClockwise;  // frontFace does not matter for lines
+	static_assert((_numTrianglePipelines&0x7) == 0, "Number of triangle pipelines must be multiple of 8.");
+	for(size_t i=_numTrianglePipelines,e=i+_numLinePipelines; i<e; i++) {
+		shaderStages[0].module = _vertexShaders[i&0x7];
+		shaderStages[1].module = _fragmentShaders[i&0x7];
+		_pipelines[i] =
+			_device->createGraphicsPipeline(
+				pipelineCache,  // pipelineCache
+				createInfo  // createInfo
+			);
+	}
+
+	// create new point pipelines
+	inputAssemblyState.topology = vk::PrimitiveTopology::ePointList;
+	static_assert((_numLinePipelines&0x7) == 0, "Number of line pipelines must be multiple of 8.");
+	for(size_t i=_numTrianglePipelines+_numLinePipelines,e=i+_numPointPipelines; i<e; i++) {
+		shaderStages[0].module = _vertexShaders[i&0x7];
+		shaderStages[1].module = _fragmentShaders[i&0x7];
+		_pipelines[i] =
+			_device->createGraphicsPipeline(
+				pipelineCache,  // pipelineCache
+				createInfo  // createInfo
+			);
+	}
 }

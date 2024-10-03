@@ -112,8 +112,9 @@ public:
 
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
-	array<CadR::StateSet,32> stateSetDB;
-	array<CadR::Pipeline,32> pipelineDB;
+	static constexpr size_t numPipelines = PipelineLibrary::numPipelines();
+	array<CadR::StateSet,numPipelines> stateSetDB;
+	array<CadR::Pipeline,numPipelines> pipelineDB;
 	vector<CadR::Geometry> geometryDB;
 	vector<CadR::Drawable> drawableDB;
 
@@ -150,8 +151,8 @@ App::App(int argc, char** argv)
 	// otherwise a special care must be given to avoid memory leaks in the case of exception
 	: sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
 	, stateSetRoot(renderer)
-	, stateSetDB{ create_array_ref<CadR::StateSet, 32>(renderer) }
-	, pipelineDB{ create_array_ref<CadR::Pipeline, 32>(renderer) }
+	, stateSetDB{ create_array_ref<CadR::StateSet, numPipelines>(renderer) }
+	, pipelineDB{ create_array_ref<CadR::Pipeline, numPipelines>(renderer) }
 {
 	// process command-line arguments
 	if(argc < 2)
@@ -1051,8 +1052,7 @@ void App::init()
 			// indices
 			// (they are optional)
 			size_t numIndices;
-			uint32_t* indexData;
-			size_t indexDataSize;
+			void* indexData;
 			unsigned indexComponentType;
 			if(auto indicesIt=primitive.find("indices"); indicesIt!=primitive.end()) {
 
@@ -1090,15 +1090,13 @@ void App::init()
 				case 5121: elementSize = sizeof(uint8_t); break;
 				}
 				size_t tmp;
-				tie(reinterpret_cast<void*&>(indexData), tmp) =
+				tie(indexData, tmp) =
 					getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
 					                        numIndices, elementSize);
-				indexDataSize = numIndices * sizeof(uint32_t);
 			}
 			else {
 				numIndices = numVertices;
 				indexData = nullptr;
-				indexDataSize = numIndices * sizeof(uint32_t);
 			}
 
 			// ignore empty primitives
@@ -1109,34 +1107,413 @@ void App::init()
 			cout << "Creating geometry" << endl;
 			CadR::Geometry& g = geometryDB.emplace_back(renderer);
 
+			// set vertex data
+			CadR::StagingData sd = g.createVertexStagingData(numVertices * vertexSize);
+			uint8_t* p = sd.data<uint8_t>();
+			for(size_t i=0; i<numVertices; i++) {
+				if(positionData) {
+					glm::vec3 pos(*positionData);
+					*reinterpret_cast<glm::vec4*>(p)= glm::vec4(pos.x, pos.y, pos.z, 1.f);
+					p += 16;
+					positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
+				}
+				if(normalData) {
+					glm::vec3 normal = glm::vec3(*normalData);
+					*reinterpret_cast<glm::vec4*>(p) = glm::vec4(normal.x, normal.y, normal.z, 0.f);
+					p += 16;
+					normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
+				}
+				if(colorData) {
+					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+					*v = getColorFunc(colorData);
+					p += 16;
+					colorData += colorDataStride;
+				}
+				if(texCoordData) {
+					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
+					*v = getTexCoordFunc(texCoordData);
+					p += 16;
+					texCoordData += texCoordDataStride;
+				}
+			}
+
+			// mesh.primitive.mode is optional with default value 4 (TRIANGLES)
+			unsigned mode = unsigned(primitive.value<json::number_unsigned_t>("mode", 4));
+
+			// set index data
+			if(mode == 4) {  // TRIANGLES
+				if(numIndices < 3)
+					throw GltfError("Invalid number of indices for TRIANGLES.");
+				goto copyIndices;
+			}
+			else if(mode == 1) {  // LINES
+				if(numIndices < 2)
+					throw GltfError("Invalid number of indices for LINES.");
+				goto copyIndices;
+			}
+			else if(mode == 0) {  // POINTS
+				if(numIndices < 1)
+					throw GltfError("Invalid number of indices for POINTS.");
+
+				// POINTS, LINES, TRIANGLES - copy indices directly,
+				// while converting uint8_t and uint16_t indices to uint32_t
+			copyIndices:
+				size_t indexDataSize = numIndices * sizeof(uint32_t);
+				sd = g.createIndexStagingData(indexDataSize);
+				uint32_t* pi = sd.data<uint32_t>();
+				if(indexData)
+					switch(indexComponentType) {
+					case 5125: memcpy(pi, indexData, indexDataSize); break;
+					case 5123: {
+						for(size_t i=0; i<numIndices; i++)
+							pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
+						break;
+					}
+					case 5121: {
+						for(size_t i=0; i<numIndices; i++)
+							pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
+						break;
+					}
+					}
+				else {
+					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+					for(uint32_t i=0; i<uint32_t(numIndices); i++)
+						pi[i] = i;
+				}
+			}
+			else if(mode == 5) {
+
+				// TRIANGLE_STRIP - convert strip indices to indices of separate triangles
+				// while considering even and odd triangle ordering
+				if(numIndices < 3)
+					throw GltfError("Invalid number of indices for TRIANGLE_STRIP.");
+				numIndices = (numIndices-2) * 3;
+				sd = g.createIndexStagingData(numIndices * sizeof(uint32_t));
+				uint32_t* stgIndices = sd.data<uint32_t>();
+				if(indexData) {
+
+					// create new indices
+					auto createTriangleStripIndices =
+						[]<typename T>(uint32_t* dst, void* srcPtr, size_t numIndices) {
+
+							T* src = reinterpret_cast<T*>(srcPtr);
+							uint32_t* dstEnd = dst + numIndices;
+							uint32_t v1 = *src;
+							src++;
+							uint32_t v2 = *src;
+							src++;
+							uint32_t v3 = *src;
+							src++;
+							while(true) {
+
+								// odd triangle
+								*dst = v1;
+								dst++;
+								*dst = v2;
+								dst++;
+								*dst = v3;
+								dst++;
+								if(dst == dstEnd)
+									break;
+								v1 = v2;
+								v2 = v3;
+								v3 = *src;
+								src++;
+
+								// even triangle
+								*dst = v2;
+								dst++;
+								*dst = v1;
+								dst++;
+								*dst = v3;
+								dst++;
+								if(dst == dstEnd)
+									break;
+								v1 = v2;
+								v2 = v3;
+								v3 = *src;
+								src++;
+							}
+						};
+					switch(indexComponentType) {
+					case 5125: createTriangleStripIndices.operator()<uint32_t>(stgIndices, indexData, numIndices); break;
+					case 5123: createTriangleStripIndices.operator()<uint16_t>(stgIndices, indexData, numIndices); break;
+					case 5121: createTriangleStripIndices.operator()<uint8_t >(stgIndices, indexData, numIndices); break;
+					}
+				}
+				else {
+
+					// generate indices
+					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+
+					size_t i = 0;
+					uint32_t v1 = i;
+					i++;
+					uint32_t v2 = i;
+					i++;
+					uint32_t v3 = i;
+					i++;
+					uint32_t* e = stgIndices + numIndices;
+					while(true) {
+
+						// odd triangle
+						*stgIndices = v1;
+						stgIndices++;
+						*stgIndices = v2;
+						stgIndices++;
+						*stgIndices = v3;
+						stgIndices++;
+						if(stgIndices == e)
+							break;
+						v1 = v2;
+						v2 = v3;
+						v3 = i;
+						i++;
+
+						// even triangle
+						*stgIndices = v2;
+						stgIndices++;
+						*stgIndices = v1;
+						stgIndices++;
+						*stgIndices = v3;
+						stgIndices++;
+						if(stgIndices == e)
+							break;
+						v1 = v2;
+						v2 = v3;
+						v3 = i;
+						i++;
+					}
+				}
+			}
+			else if(mode == 6) {
+
+				// TRIANGLE_FAN
+				if(numIndices < 3)
+					throw GltfError("Invalid number of indices for TRIANGLE_FAN.");
+				numIndices = (numIndices-2) * 3;
+				sd = g.createIndexStagingData(numIndices * sizeof(uint32_t));
+				uint32_t* stgIndices = sd.data<uint32_t>();
+				if(indexData) {
+
+					// create new indices
+					auto createTriangleStripIndices =
+						[]<typename T>(uint32_t* dst, void* srcPtr, size_t numIndices) {
+
+							T* src = reinterpret_cast<T*>(srcPtr);
+							uint32_t* dstEnd = dst + numIndices;
+							uint32_t v1 = *src;
+							src++;
+							uint32_t v2 = *src;
+							src++;
+							uint32_t v3 = *src;
+							src++;
+							while(true) {
+								*dst = v1;
+								dst++;
+								*dst = v2;
+								dst++;
+								*dst = v3;
+								dst++;
+								if(dst == dstEnd)
+									break;
+								v2 = v3;
+								v3 = *src;
+								src++;
+							}
+						};
+					switch(indexComponentType) {
+					case 5125: createTriangleStripIndices.operator()<uint32_t>(stgIndices, indexData, numIndices); break;
+					case 5123: createTriangleStripIndices.operator()<uint16_t>(stgIndices, indexData, numIndices); break;
+					case 5121: createTriangleStripIndices.operator()<uint8_t >(stgIndices, indexData, numIndices); break;
+					}
+				}
+				else {
+
+					// generate indices
+					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+
+					size_t i = 0;
+					uint32_t v1 = i;
+					i++;
+					uint32_t v2 = i;
+					i++;
+					uint32_t v3 = i;
+					i++;
+					uint32_t* e = stgIndices + numIndices;
+					while(true) {
+						*stgIndices = v1;
+						stgIndices++;
+						*stgIndices = v2;
+						stgIndices++;
+						*stgIndices = v3;
+						stgIndices++;
+						if(stgIndices == e)
+							break;
+						v2 = v3;
+						v3 = i;
+						i++;
+					}
+				}
+			}
+			else if(mode == 3) {
+
+				// LINE_STRIP
+				if(numIndices < 2)
+					throw GltfError("Invalid number of indices for LINE_STRIP.");
+				numIndices = (numIndices-1) * 2;
+				sd = g.createIndexStagingData(numIndices * sizeof(uint32_t));
+				uint32_t* stgIndices = sd.data<uint32_t>();
+				if(indexData) {
+
+					// create new indices
+					auto createLineStripIndices =
+						[]<typename T>(uint32_t* dst, void* srcPtr, size_t numIndices) {
+							T* src = reinterpret_cast<T*>(srcPtr);
+							*dst = *src;
+							uint32_t* dstEnd = dst + (numIndices-1);
+							dst++; src++;
+							while(dst < dstEnd) {
+								*dst = *src;
+								dst++;
+								*dst = *src;
+								dst++; src++;
+							}
+							*dst = *src;
+						};
+					switch(indexComponentType) {
+					case 5125: createLineStripIndices.operator()<uint32_t>(stgIndices, indexData, numIndices); break;
+					case 5123: createLineStripIndices.operator()<uint16_t>(stgIndices, indexData, numIndices); break;
+					case 5121: createLineStripIndices.operator()<uint8_t >(stgIndices, indexData, numIndices); break;
+					}
+				}
+				else {
+
+					// generate indices
+					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+					size_t i = 0;
+					*stgIndices = i;
+					uint32_t* e = stgIndices + (numIndices-1);
+					stgIndices++; i++;
+					while(stgIndices < e) {
+						*stgIndices = i;
+						stgIndices++;
+						*stgIndices = i;
+						stgIndices++; i++;
+					}
+					*stgIndices = i;
+				}
+			}
+			else if(mode == 2) {
+
+				// LINE_LOOP
+				if(numIndices < 2)
+					throw GltfError("Invalid number of indices for LINE_LOOP.");
+				numIndices = numIndices * 2;
+				sd = g.createIndexStagingData(numIndices * sizeof(uint32_t));
+				uint32_t* stgIndices = sd.data<uint32_t>();
+				if(indexData) {
+
+					// create new indices
+					auto createLineLoopIndices =
+						[]<typename T>(uint32_t* dst, void* srcPtr, size_t numIndices) {
+							T* src = reinterpret_cast<T*>(srcPtr);
+							uint32_t firstValue = *src;
+							*dst = *src;
+							uint32_t* dstEnd = dst + (numIndices-1);
+							dst++; src++;
+							while(dst < dstEnd) {
+								*dst = *src;
+								dst++;
+								*dst = *src;
+								dst++; src++;
+							}
+							*dst = firstValue;
+						};
+					switch(indexComponentType) {
+					case 5125: createLineLoopIndices.operator()<uint32_t>(stgIndices, indexData, numIndices); break;
+					case 5123: createLineLoopIndices.operator()<uint16_t>(stgIndices, indexData, numIndices); break;
+					case 5121: createLineLoopIndices.operator()<uint8_t >(stgIndices, indexData, numIndices); break;
+					}
+				}
+				else {
+
+					// generate indices
+					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
+						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
+					size_t i = 0;
+					*stgIndices = i;
+					uint32_t* e = stgIndices + (numIndices-1);
+					stgIndices++; i++;
+					while(stgIndices < e) {
+						*stgIndices = i;
+						stgIndices++;
+						*stgIndices = i;
+						stgIndices++; i++;
+					}
+					*stgIndices = 0;
+				}
+			}
+			else
+				throw GltfError("Invalid value for mesh.primitive.mode.");
+
 			// set primitiveSet data
 			struct PrimitiveSetGpuData {
 				uint32_t count;
 				uint32_t first;
 			};
-			CadR::StagingData sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+			sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
 			PrimitiveSetGpuData* ps = sd.data<PrimitiveSetGpuData>();
 			ps->count = uint32_t(numIndices);
 			ps->first = 0;
 
-			// mesh.primitive.mode is optional with default value 4 (TRIANGLES)
-			unsigned mode = unsigned(primitive.value<json::number_unsigned_t>("mode", 4));
-			if(mode != 4)
-				throw GltfError("Unsupported functionality: mode is not 4 (TRIANGLES).");
-
 			// no support for textures yet
 			texCoordData = nullptr;
 
-			// get stateSet and pipeline index
-			bool doubleSided = (material) ? material->value<json::boolean_t>("doubleSided", false) : false;
-			size_t pipelineIndex =
-				PipelineLibrary::getPipelineIndex(
-					normalData   != nullptr,  // phong
-					texCoordData != nullptr,  // texturing
-					colorData    != nullptr,  // perVertexColor
-					!doubleSided,             // backFaceCulling
-					vk::FrontFace::eCounterClockwise  // frontFace
-				);
+			// get pipeline index
+			size_t pipelineIndex;
+			switch(mode) {
+			case 0:  // POINTS
+				pipelineIndex =
+					PipelineLibrary::getPointPipelineIndex(
+						normalData   != nullptr,  // phong
+						texCoordData != nullptr,  // texturing
+						colorData    != nullptr   // perVertexColor
+					);
+				break;
+			case 1:  // LINES
+			case 2:  // LINE_LOOP
+			case 3:  // LINE_STRIP
+				pipelineIndex =
+					PipelineLibrary::getLinePipelineIndex(
+						normalData   != nullptr,  // phong
+						texCoordData != nullptr,  // texturing
+						colorData    != nullptr   // perVertexColor
+					);
+				break;
+			case 4:  // TRIANGLES
+			case 5:  // TRIANGLE_STRIP
+			case 6: {  // TRIANGLE_FAN
+				bool doubleSided = (material) ? material->value<json::boolean_t>("doubleSided", false) : false;
+				pipelineIndex =
+					PipelineLibrary::getTrianglePipelineIndex(
+						normalData   != nullptr,  // phong
+						texCoordData != nullptr,  // texturing
+						colorData    != nullptr,  // perVertexColor
+						!doubleSided,             // backFaceCulling
+						vk::FrontFace::eCounterClockwise  // frontFace
+					);
+				break;
+			}
+			default:
+				throw GltfError("Invalid value for mesh.primitive.mode.");
+			}
+
+			// get stateSet for pipeline index
 			CadR::StateSet& ss = stateSetDB[pipelineIndex];
 
 			// drawable
@@ -1247,60 +1624,6 @@ void App::init()
 			// (transformation matrices follow material data on offset 64)
 			glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
 			memcpy(modelMatrix, matrixList.data(), numInstances*64);
-
-			// set vertex data
-			sd = g.createVertexStagingData(numVertices * vertexSize);
-			uint8_t* p = sd.data<uint8_t>();
-			for(size_t i=0; i<numVertices; i++) {
-				if(positionData) {
-					glm::vec3 pos(*positionData);
-					*reinterpret_cast<glm::vec4*>(p)= glm::vec4(pos.x, pos.y, pos.z, 1.f);
-					p += 16;
-					positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
-				}
-				if(normalData) {
-					glm::vec3 normal = glm::vec3(*normalData);
-					*reinterpret_cast<glm::vec4*>(p) = glm::vec4(normal.x, normal.y, normal.z, 0.f);
-					p += 16;
-					normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
-				}
-				if(colorData) {
-					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-					*v = getColorFunc(colorData);
-					p += 16;
-					colorData += colorDataStride;
-				}
-				if(texCoordData) {
-					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
-					*v = getTexCoordFunc(texCoordData);
-					p += 16;
-					texCoordData += texCoordDataStride;
-				}
-			}
-
-			// set index data
-			sd = g.createIndexStagingData(indexDataSize);
-			uint32_t* pi = sd.data<uint32_t>();
-			if(indexData)
-				switch(indexComponentType) {
-				case 5125: memcpy(pi, indexData, indexDataSize); break;
-				case 5123: {
-					for(size_t i=0; i<numIndices; i++)
-						pi[i] = reinterpret_cast<uint16_t*>(indexData)[i];
-					break;
-				}
-				case 5121: {
-					for(size_t i=0; i<numIndices; i++)
-						pi[i] = reinterpret_cast<uint8_t*>(indexData)[i];
-					break;
-				}
-				}
-			else {
-				if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
-					throw GltfError("Too large primitive. Index out of 32-bit integer range.");
-				for(uint32_t i=0; i<uint32_t(numIndices); i++)
-					pi[i] = i;
-			}
 
 		}
 	}

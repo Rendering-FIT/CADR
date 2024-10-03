@@ -163,4 +163,13 @@ void main()
 	outId[1] = gl_InstanceIndex;
 #endif
 
+#if 0  // debug print; to enable it, you also need to (1) enable GL_EXT_debug_printf extension on the beginning of this shader,
+       // you need to (2) enable VK_KHR_shader_non_semantic_info device extension (look for VK_KHR_shader_non_semantic_info
+       // text in InitAndFinalize.cpp) and you need to (3) have Vulkan Configurator (vkconfig) running and you need to
+       // (4) enable "Debug Printf" in Vulkan Configurator in Shader-Based validation;
+       //  you might also need to increase "Printf buffer size"
+	debugPrintfEXT("Phong, DrawID: %u, Vertex: %u, Index: %u, Instance %u, dataPtr: %lx, VertexDataBase: 0x%lx, VertexDataPtr: 0x%lx, VertexDataSize: %u, position: %.2f,%.2f,%.2f.\n",
+	               gl_DrawID, gl_VertexIndex, index, gl_InstanceIndex, outDataPtr, pd.vertexDataPtr, uint64_t(vertex), VertexDataSize, vertex.position.x, vertex.position.y, vertex.position.z);
+#endif
+
 }
