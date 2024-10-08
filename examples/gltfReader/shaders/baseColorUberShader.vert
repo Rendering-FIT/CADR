@@ -82,6 +82,9 @@ layout(constant_id = 5) const float p44 = 0.;
 // output variables
 out gl_PerVertex {
 	vec4 gl_Position;
+#ifdef POINT_SHADER
+	float gl_PointSize;
+#endif
 };
 layout(location = 0) flat out uint64_t outDataPtr;
 layout(location = 1) smooth out vec3 outEyePosition3;
@@ -134,6 +137,10 @@ void main()
 	gl_Position.z = scene.p33*eyePosition.z + scene.p43*eyePosition.w;
 	gl_Position.w = p34*eyePosition.z + p44*eyePosition.w;
 
+	// write outputs
+#ifdef POINT_SHADER
+	gl_PointSize = 1;
+#endif
 #ifdef PER_VERTEX_COLOR
 	outColor = vertex.color;
 #endif

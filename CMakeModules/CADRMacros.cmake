@@ -150,18 +150,20 @@ endmacro()
 
 
 macro(_process_single_shader name outputName outputSuffix defines dependencyList)
+	string(STRIP "${defines}" defines2)
 	if(defines STREQUAL "")
 		set(commentText "Converting ${name} (defines: none) to spir-v...")
 	else()
-		set(commentText "Converting ${name} (defines: ${defines}) to spir-v...")
+		set(commentText "Converting ${name} (defines: ${defines2}) to spir-v...")
 	endif()
+	separate_arguments(defines2 UNIX_COMMAND "${defines2}")
 	add_custom_command(COMMENT "${commentText}"
 	                   MAIN_DEPENDENCY "${name}"
 	                   OUTPUT "${outputName}${outputSuffix}"
 	                   COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}"
 		                           --target-env vulkan1.2  # Vulkan 1.2 is required for VK_EXT_buffer_device_address
 		                           -x  # save binary output as text-based hexadecimal numbers
-		                           ${defines}  # define pre-processor macros
+		                           ${defines2}  # define pre-processor macros
 		                           ${CMAKE_CURRENT_SOURCE_DIR}/${name}  # source file
 		                           -o ${outputName}${outputSuffix})  # output file
 	source_group("Shaders" FILES "${name}")
@@ -194,10 +196,15 @@ macro(process_shaders shaderList dependencyList)
 		else()
 			list(GET stringList 1 outputName)
 			list(GET stringList 2 outputSuffix)
-			_process_single_shader("${name}" "${outputName}-overallMaterial" "${outputSuffix}" "" ${dependencyList})
-			_process_single_shader("${name}" "${outputName}-overallMaterial-texturing" "${outputSuffix}" "-DTEXTURING" ${dependencyList})
-			_process_single_shader("${name}" "${outputName}-perVertexColor" "${outputSuffix}" "-DPER_VERTEX_COLOR" ${dependencyList})
-			_process_single_shader("${name}" "${outputName}-perVertexColor-texturing" "${outputSuffix}" "-DPER_VERTEX_COLOR -DTEXTURING" ${dependencyList})
+			if(listLen EQUAL 3)
+				set(extraDefines "")
+			else()
+				list(GET stringList 3 extraDefines)
+			endif()
+			_process_single_shader("${name}" "${outputName}-overallMaterial" "${outputSuffix}" "${extraDefines}" ${dependencyList})
+			_process_single_shader("${name}" "${outputName}-overallMaterial-texturing" "${outputSuffix}" "-DTEXTURING ${extraDefines}" ${dependencyList})
+			_process_single_shader("${name}" "${outputName}-perVertexColor" "${outputSuffix}" "-DPER_VERTEX_COLOR ${extraDefines}" ${dependencyList})
+			_process_single_shader("${name}" "${outputName}-perVertexColor-texturing" "${outputSuffix}" "-DPER_VERTEX_COLOR -DTEXTURING ${extraDefines}" ${dependencyList})
 		endif()
 
 	endforeach()

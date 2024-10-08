@@ -20,10 +20,12 @@ set(APP_INCLUDES
 	)
 
 set(APP_SHADERS
-	"shaders/phongUberShader.vert        shaders/phong        .vert.spv"
-	"shaders/phongUberShader.frag        shaders/phong        .frag.spv"
-	"shaders/baseColorUberShader.vert    shaders/baseColor    .vert.spv"
-	"shaders/baseColorUberShader.frag    shaders/baseColor    .frag.spv"
+	"shaders/phongUberShader.vert      shaders/phong           .vert.spv"
+	"shaders/phongUberShader.frag      shaders/phong           .frag.spv"
+	"shaders/phongUberShader.vert      shaders/phongPoint      .vert.spv  -DPOINT_SHADER"
+	"shaders/baseColorUberShader.vert  shaders/baseColor       .vert.spv"
+	"shaders/baseColorUberShader.frag  shaders/baseColor       .frag.spv"
+	"shaders/baseColorUberShader.vert  shaders/baseColorPoint  .vert.spv  -DPOINT_SHADER"
 	)
 
 # dependencies

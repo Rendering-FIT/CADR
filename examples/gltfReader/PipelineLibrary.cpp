@@ -10,11 +10,17 @@ using namespace std;
 static const uint32_t baseColorOverallMaterialVertexShaderSpirv[]={
 #include "shaders/baseColor-overallMaterial.vert.spv"
 };
+static const uint32_t baseColorPointOverallMaterialVertexShaderSpirv[]={
+#include "shaders/baseColorPoint-overallMaterial.vert.spv"
+};
 static const uint32_t baseColorOverallMaterialFragmentShaderSpirv[]={
 #include "shaders/baseColor-overallMaterial.frag.spv"
 };
 static const uint32_t baseColorOverallMaterialTexturingVertexShaderSpirv[]={
 #include "shaders/baseColor-overallMaterial-texturing.vert.spv"
+};
+static const uint32_t baseColorPointOverallMaterialTexturingVertexShaderSpirv[]={
+#include "shaders/baseColorPoint-overallMaterial-texturing.vert.spv"
 };
 static const uint32_t baseColorOverallMaterialTexturingFragmentShaderSpirv[]={
 #include "shaders/baseColor-overallMaterial-texturing.frag.spv"
@@ -22,11 +28,17 @@ static const uint32_t baseColorOverallMaterialTexturingFragmentShaderSpirv[]={
 static const uint32_t baseColorPerVertexColorVertexShaderSpirv[]={
 #include "shaders/baseColor-perVertexColor.vert.spv"
 };
+static const uint32_t baseColorPointPerVertexColorVertexShaderSpirv[]={
+#include "shaders/baseColorPoint-perVertexColor.vert.spv"
+};
 static const uint32_t baseColorPerVertexColorFragmentShaderSpirv[]={
 #include "shaders/baseColor-perVertexColor.frag.spv"
 };
 static const uint32_t baseColorPerVertexColorTexturingVertexShaderSpirv[]={
 #include "shaders/baseColor-perVertexColor-texturing.vert.spv"
+};
+static const uint32_t baseColorPointPerVertexColorTexturingVertexShaderSpirv[]={
+#include "shaders/baseColorPoint-perVertexColor-texturing.vert.spv"
 };
 static const uint32_t baseColorPerVertexColorTexturingFragmentShaderSpirv[]={
 #include "shaders/baseColor-perVertexColor-texturing.frag.spv"
@@ -34,11 +46,17 @@ static const uint32_t baseColorPerVertexColorTexturingFragmentShaderSpirv[]={
 static const uint32_t phongOverallMaterialVertexShaderSpirv[]={
 #include "shaders/phong-overallMaterial.vert.spv"
 };
+static const uint32_t phongPointOverallMaterialVertexShaderSpirv[]={
+#include "shaders/phongPoint-overallMaterial.vert.spv"
+};
 static const uint32_t phongOverallMaterialFragmentShaderSpirv[]={
 #include "shaders/phong-overallMaterial.frag.spv"
 };
 static const uint32_t phongOverallMaterialTexturingVertexShaderSpirv[]={
 #include "shaders/phong-overallMaterial-texturing.vert.spv"
+};
+static const uint32_t phongPointOverallMaterialTexturingVertexShaderSpirv[]={
+#include "shaders/phongPoint-overallMaterial-texturing.vert.spv"
 };
 static const uint32_t phongOverallMaterialTexturingFragmentShaderSpirv[]={
 #include "shaders/phong-overallMaterial-texturing.frag.spv"
@@ -46,11 +64,17 @@ static const uint32_t phongOverallMaterialTexturingFragmentShaderSpirv[]={
 static const uint32_t phongPerVertexColorVertexShaderSpirv[]={
 #include "shaders/phong-perVertexColor.vert.spv"
 };
+static const uint32_t phongPointPerVertexColorVertexShaderSpirv[]={
+#include "shaders/phongPoint-perVertexColor.vert.spv"
+};
 static const uint32_t phongPerVertexColorFragmentShaderSpirv[]={
 #include "shaders/phong-perVertexColor.frag.spv"
 };
 static const uint32_t phongPerVertexColorTexturingVertexShaderSpirv[]={
 #include "shaders/phong-perVertexColor-texturing.vert.spv"
+};
+static const uint32_t phongPointPerVertexColorTexturingVertexShaderSpirv[]={
+#include "shaders/phongPoint-perVertexColor-texturing.vert.spv"
 };
 static const uint32_t phongPerVertexColorTexturingFragmentShaderSpirv[]={
 #include "shaders/phong-perVertexColor-texturing.frag.spv"
@@ -76,6 +100,16 @@ static constexpr array fragmentShaderSpirvList = {
 	tuple{ phongOverallMaterialTexturingFragmentShaderSpirv, sizeof(phongOverallMaterialTexturingFragmentShaderSpirv) },
 	tuple{ phongPerVertexColorTexturingFragmentShaderSpirv,  sizeof(phongPerVertexColorTexturingFragmentShaderSpirv) },
 };
+static constexpr array pointVertexShaderSpirvList = {
+	tuple{ baseColorPointOverallMaterialVertexShaderSpirv,          sizeof(baseColorPointOverallMaterialVertexShaderSpirv) },
+	tuple{ baseColorPointPerVertexColorVertexShaderSpirv,           sizeof(baseColorPointPerVertexColorVertexShaderSpirv) },
+	tuple{ baseColorPointOverallMaterialTexturingVertexShaderSpirv, sizeof(baseColorPointOverallMaterialTexturingVertexShaderSpirv) },
+	tuple{ baseColorPointPerVertexColorTexturingVertexShaderSpirv,  sizeof(baseColorPointPerVertexColorTexturingVertexShaderSpirv) },
+	tuple{ phongPointOverallMaterialVertexShaderSpirv,          sizeof(phongPointOverallMaterialVertexShaderSpirv) },
+	tuple{ phongPointPerVertexColorVertexShaderSpirv,           sizeof(phongPointPerVertexColorVertexShaderSpirv) },
+	tuple{ phongPointOverallMaterialTexturingVertexShaderSpirv, sizeof(phongPointOverallMaterialTexturingVertexShaderSpirv) },
+	tuple{ phongPointPerVertexColorTexturingVertexShaderSpirv,  sizeof(phongPointPerVertexColorTexturingVertexShaderSpirv) },
+};
 
 
 
@@ -95,6 +129,10 @@ void PipelineLibrary::destroy() noexcept
 		sm = nullptr;
 	}
 	for(vk::ShaderModule& sm : _fragmentShaders) {
+		_device->destroy(sm);
+		sm = nullptr;
+	}
+	for(vk::ShaderModule& sm : _pointVertexShaders) {
 		_device->destroy(sm);
 		sm = nullptr;
 	}
@@ -124,7 +162,7 @@ void PipelineLibrary::create(CadR::VulkanDevice& device)
 			_vertexShaders[i] =
 				_device->createShaderModule(
 					vk::ShaderModuleCreateInfo(
-						vk::ShaderModuleCreateFlags(),	 // flags
+						vk::ShaderModuleCreateFlags(),  // flags
 						get<1>(vertexShaderSpirvList[i]),  // codeSize
 						get<0>(vertexShaderSpirvList[i])   // pCode
 					)
@@ -133,9 +171,18 @@ void PipelineLibrary::create(CadR::VulkanDevice& device)
 			_fragmentShaders[i] =
 				_device->createShaderModule(
 					vk::ShaderModuleCreateInfo(
-						vk::ShaderModuleCreateFlags(),	   // flags
+						vk::ShaderModuleCreateFlags(),    // flags
 						get<1>(fragmentShaderSpirvList[i]),  // codeSize
 						get<0>(fragmentShaderSpirvList[i])   // pCode
+					)
+				);
+		for(size_t i=0; i<pointVertexShaderSpirvList.size(); i++)
+			_pointVertexShaders[i] =
+				_device->createShaderModule(
+					vk::ShaderModuleCreateInfo(
+						vk::ShaderModuleCreateFlags(),  // flags
+						get<1>(pointVertexShaderSpirvList[i]),  // codeSize
+						get<0>(pointVertexShaderSpirvList[i])   // pCode
 					)
 				);
 		_pipelineLayout =
@@ -323,7 +370,7 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 	inputAssemblyState.topology = vk::PrimitiveTopology::ePointList;
 	static_assert((_numLinePipelines&0x7) == 0, "Number of line pipelines must be multiple of 8.");
 	for(size_t i=_numTrianglePipelines+_numLinePipelines,e=i+_numPointPipelines; i<e; i++) {
-		shaderStages[0].module = _vertexShaders[i&0x7];
+		shaderStages[0].module = _pointVertexShaders[i&0x7];
 		shaderStages[1].module = _fragmentShaders[i&0x7];
 		_pipelines[i] =
 			_device->createGraphicsPipeline(

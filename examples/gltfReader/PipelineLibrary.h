@@ -16,6 +16,7 @@ protected:
 	static constexpr const size_t _numPipelines = _numTrianglePipelines + _numLinePipelines + _numPointPipelines;
 	std::array<vk::ShaderModule, 8> _vertexShaders;
 	std::array<vk::ShaderModule, 8> _fragmentShaders;
+	std::array<vk::ShaderModule, 8> _pointVertexShaders;
 	std::array<vk::Pipeline, _numPipelines> _pipelines;
 	CadR::VulkanDevice* _device = nullptr;
 	vk::PipelineLayout _pipelineLayout;
@@ -33,6 +34,7 @@ public:
 	static unsigned getShaderModuleIndex(bool phong, bool texturing, bool perVertexColor);
 	vk::ShaderModule vertexShader(size_t index) const;
 	vk::ShaderModule fragmentShader(size_t index) const;
+	vk::ShaderModule pointVertexShader(size_t index) const;
 
 	// all pipelines
 	static constexpr size_t numPipelines();
@@ -68,6 +70,7 @@ inline PipelineLibrary::~PipelineLibrary()  { destroy(); }
 inline unsigned PipelineLibrary::getShaderModuleIndex(bool phong, bool texturing, bool perVertexColor)  { return (phong?4:0)+(texturing?2:0)+(perVertexColor?1:0); }
 inline vk::ShaderModule PipelineLibrary::vertexShader(size_t index)   const  { return _vertexShaders[index]; }
 inline vk::ShaderModule PipelineLibrary::fragmentShader(size_t index) const  { return _fragmentShaders[index]; }
+inline vk::ShaderModule PipelineLibrary::pointVertexShader(size_t index)   const  { return _pointVertexShaders[index]; }
 inline constexpr size_t PipelineLibrary::numPipelines()          { return _numPipelines; }
 inline constexpr size_t PipelineLibrary::numTrianglePipelines()  { return _numTrianglePipelines; }
 inline constexpr size_t PipelineLibrary::numLinePipelines()      { return _numLinePipelines; }
