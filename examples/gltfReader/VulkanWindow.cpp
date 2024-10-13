@@ -20,7 +20,15 @@
 # include <climits>
 # include <map>
 #elif defined(USE_PLATFORM_SDL3)
-# include <SDL3/SDL.h>
+# include <SDL3/SDL_error.h>
+# include <SDL3/SDL_events.h>
+# include <SDL3/SDL_hints.h>
+# include <SDL3/SDL_init.h>
+# include <SDL3/SDL_keycode.h>
+# include <SDL3/SDL_properties.h>
+# include <SDL3/SDL_scancode.h>
+# include <SDL3/SDL_timer.h>
+# include <SDL3/SDL_video.h>
 # include <SDL3/SDL_vulkan.h>
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
@@ -437,8 +445,11 @@ static VulkanWindow::ScanCode translateScanCode(int nativeScanCode)
 
 
 #if defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
-
+#if defined(USE_PLATFORM_SDL3)
+static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_SCANCODE_COUNT] = {
+#else
 static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] = {
+#endif
 	/*0..3*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*4..10*/ VulkanWindow::ScanCode::A, VulkanWindow::ScanCode::B, VulkanWindow::ScanCode::C, VulkanWindow::ScanCode::D, VulkanWindow::ScanCode::E, VulkanWindow::ScanCode::F, VulkanWindow::ScanCode::G,
 	/*11..17*/ VulkanWindow::ScanCode::H, VulkanWindow::ScanCode::I, VulkanWindow::ScanCode::J, VulkanWindow::ScanCode::K, VulkanWindow::ScanCode::L, VulkanWindow::ScanCode::M, VulkanWindow::ScanCode::N,
@@ -566,7 +577,27 @@ void VulkanWindow::init()
 
 	init(nullptr);
 
-#elif defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
+#elif defined(USE_PLATFORM_SDL3)
+
+	// handle multiple init attempts
+	if(sdlInitialized)
+		return;
+
+	// set hints
+	SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");  // do not send SDL_EVENT_QUIT/SDL_QUIT event when the last window closes;
+	                                                       // we shall exit main loop after VulkanWindow::exitMainLoop() is called
+	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");  // allow screensaver
+
+	// initialize SDL
+	if(!SDL_InitSubSystem(SDL_INIT_VIDEO))
+		throw runtime_error(string("SDL_InitSubSystem(SDL_INIT_VIDEO) function failed. Error details: ") + SDL_GetError());
+	sdlInitialized = true;
+
+	// initialize Vulkan
+	if(!SDL_Vulkan_LoadLibrary(nullptr))
+		throw runtime_error(string("VulkanWindow: SDL_Vulkan_LoadLibrary(nullptr) function failed. Error details: ") + SDL_GetError());
+
+#elif defined(USE_PLATFORM_SDL2)
 
 	// handle multiple init attempts
 	if(sdlInitialized)
@@ -575,7 +606,7 @@ void VulkanWindow::init()
 	// set hints
 	SDL_SetHint("SDL_QUIT_ON_LAST_WINDOW_CLOSE", "0");   // do not send SDL_EVENT_QUIT/SDL_QUIT event when the last window closes; we shall exit main loop
 	                                                     // after VulkanWindow::exitMainLoop() is called; the hint is supported since SDL 2.0.22,
-	                                                     // therefore we pass it as string and not as define that does not exist on previous versions
+	                                                     // therefore we pass it as string and not as macro define because it does not exist on previous versions
 	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");  // allow screensaver
 
 	// initialize SDL
@@ -1225,8 +1256,8 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 		// update pointer to this object
 		SDL_PropertiesID props = SDL_GetWindowProperties(_window);
 		assert(props != 0 && "VulkanWindow: SDL_GetWindowProperties() function failed while updating VulkanWindow pointer.");
-		if(SDL_SetProperty(props, windowPointerName, this) != 0)
-			assert(0 && "VulkanWindow: SDL_SetProperty() function failed while updating VulkanWindow pointer.");
+		if(!SDL_SetPointerProperty(props, windowPointerName, this))
+			assert(0 && "VulkanWindow: SDL_SetPointerProperty() function failed while updating VulkanWindow pointer.");
 	}
 
 #elif defined(USE_PLATFORM_SDL2)
@@ -1373,8 +1404,8 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 		// set pointer to this
 		SDL_PropertiesID props = SDL_GetWindowProperties(_window);
 		assert(props != 0 && "VulkanWindow: SDL_GetWindowProperties() function failed while updating VulkanWindow pointer.");
-		if(SDL_SetProperty(props, windowPointerName, this) != 0)
-			assert(0 && "VulkanWindow: SDL_SetProperty() function failed while updating VulkanWindow pointer.");
+		if(!SDL_SetPointerProperty(props, windowPointerName, this))
+			assert(0 && "VulkanWindow: SDL_SetPointerProperty() function failed while updating VulkanWindow pointer.");
 	}
 
 #elif defined(USE_PLATFORM_SDL2)
@@ -1634,8 +1665,8 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 	SDL_PropertiesID props = SDL_GetWindowProperties(_window);
 	if(props == 0)
 		throw runtime_error(string("VulkanWindow: SDL_GetWindowProperties() function failed. Error details: ") + SDL_GetError());
-	if(SDL_SetProperty(props, windowPointerName, this) != 0)
-		throw runtime_error(string("VulkanWindow: SDL_SetProperty() function failed. Error details: ") + SDL_GetError());
+	if(!SDL_SetPointerProperty(props, windowPointerName, this))
+		throw runtime_error(string("VulkanWindow: SDL_SetPointerProperty() function failed. Error details: ") + SDL_GetError());
 
 	// create surface
 	if(!SDL_Vulkan_CreateSurface(_window, VkInstance(instance), nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)))
@@ -1916,7 +1947,7 @@ void VulkanWindow::renderFrame()
 		// because _surfaceExtent is set in _xdgToplevelListener's configure callback
 #elif defined(USE_PLATFORM_SDL3)
 		// get surface size using SDL
-		if(SDL_GetWindowSizeInPixels(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height)) != 0)
+		if(!SDL_GetWindowSizeInPixels(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height)))
 			throw runtime_error(string("VulkanWindow: SDL_GetWindowSizeInPixels() function failed. Error details: ") + SDL_GetError());
 		_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
 		_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
@@ -3175,7 +3206,7 @@ void VulkanWindow::show()
 		return;
 
 	// show window
-	if(SDL_ShowWindow(_window) == 0)
+	if(SDL_ShowWindow(_window))
 		_visible = true;
 	else
 		throw runtime_error(string("VulkanWindow: SDL_ShowWindow() function failed. Error details: ") + SDL_GetError());
@@ -3193,7 +3224,7 @@ void VulkanWindow::hide()
 
 	// hide window
 	// and set _visible flag immediately
-	if(SDL_HideWindow(_window) == 0)
+	if(SDL_HideWindow(_window))
 		_visible = false;
 	else
 		throw runtime_error(string("VulkanWindow: SDL_HideWindow() function failed. Error details: ") + SDL_GetError());
@@ -3253,7 +3284,7 @@ void VulkanWindow::mainLoop()
 
 		// get event
 		// (wait for one if no events are in the queue yet)
-		if(SDL_WaitEvent(&event) == SDL_FALSE)
+		if(!SDL_WaitEvent(&event))
 			throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
 
 		// convert SDL_WindowID to VulkanWindow*
@@ -3263,9 +3294,9 @@ void VulkanWindow::mainLoop()
 				SDL_PropertiesID props = SDL_GetWindowProperties(w);
 				if(props == 0)
 					throw runtime_error(string("VulkanWindow: SDL_GetWindowProperties() function failed. Error details: ") + SDL_GetError());
-				void* p = SDL_GetProperty(props, windowPointerName, nullptr);
+				void* p = SDL_GetPointerProperty(props, windowPointerName, nullptr);
 				if(p == nullptr)
-					throw runtime_error(string("VulkanWindow: The property holding this pointer not set for the SDL_Window."));
+					throw runtime_error(string("VulkanWindow: The property holding VulkanWindow pointer not set for the SDL_Window."));
 				return reinterpret_cast<VulkanWindow*>(p);
 			};
 
@@ -3377,7 +3408,7 @@ void VulkanWindow::mainLoop()
 				handleModifiers(w);
 
 				// handle wheel rotation
-				// (value is relative since last wheel event)
+				// (value is relative to last wheel event)
 				w->_mouseWheelCallback(*w, event.wheel.x, event.wheel.y, w->_mouseState);
 			}
 			break;
@@ -3387,7 +3418,7 @@ void VulkanWindow::mainLoop()
 			VulkanWindow* w = getWindow(event.key.windowID);
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
-				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
+				ScanCode scanCode = translateScanCode(event.key.scancode);
 				w->_keyCallback(*w, KeyState::Pressed, scanCode);
 			}
 			break;
@@ -3396,7 +3427,7 @@ void VulkanWindow::mainLoop()
 			VulkanWindow* w = getWindow(event.key.windowID);
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
-				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
+				ScanCode scanCode = translateScanCode(event.key.scancode);
 				w->_keyCallback(*w, KeyState::Released, scanCode);
 			}
 			break;
@@ -3442,7 +3473,7 @@ void VulkanWindow::scheduleFrame()
 	e.window.windowID = SDL_GetWindowID(_window);
 	e.window.data1 = 0;
 	e.window.data2 = 0;
-	SDL_PushEvent(&e);
+	SDL_PushEvent(&e);  // the call might fail, but we ignore the error value
 }
 
 
@@ -3695,7 +3726,7 @@ void VulkanWindow::mainLoop()
 				handleModifiers(w);
 
 				// handle wheel rotation
-				// (value is relative since last wheel event)
+				// (value is relative to last wheel event)
 			#if SDL_MAJOR_VERSION == 2 && SDL_MINOR_VERSION >= 18
 				float wheelX = event.wheel.preciseX;
 				float wheelY = event.wheel.preciseY;
@@ -3769,7 +3800,7 @@ void VulkanWindow::scheduleFrame()
 	e.window.event = SDL_WINDOWEVENT_EXPOSED;
 	e.window.data1 = 0;
 	e.window.data2 = 0;
-	SDL_PushEvent(&e);
+	SDL_PushEvent(&e);  // the call might fail, but we ignore the error value
 }
 
 
