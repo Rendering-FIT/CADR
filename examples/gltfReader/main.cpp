@@ -1,3 +1,5 @@
+#include <CadR/BoundingBox.h>
+#include <CadR/BoundingSphere.h>
 #include <CadR/Geometry.h>
 #include <CadR/Exceptions.h>
 #include <CadR/Pipeline.h>
@@ -13,6 +15,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -101,12 +104,13 @@ public:
 	vk::CommandBuffer commandBuffer;
 
 	// camera control
-	float fovy = 80.f / 180.f * glm::pi<float>();
-	float cameraHeading=0.f;
-	float cameraElevation=0.f;
-	float cameraDistance=5.f;
+	float fovy = 80.f / 180.f * glm::pi<float>();  // initial field-of-view in y-axis (in vertical direction) is 80 degrees
+	float cameraHeading = 0.f;
+	float cameraElevation = 0.f;
+	float cameraDistance;
 	float startMouseX, startMouseY;
 	float startCameraHeading, startCameraElevation;
+	CadR::BoundingSphere sceneBoundingSphere;
 
 	filesystem::path filePath;
 
@@ -636,12 +640,12 @@ void App::init()
 	size_t numScenes = scenes.size();
 	if(numScenes == 0)
 		return;
-	size_t sceneIndex = glTF.value<json::number_unsigned_t>("scene", ~size_t(0));
-	if(sceneIndex == ~size_t(0)) {
+	size_t defaultSceneIndex = glTF.value<json::number_unsigned_t>("scene", ~size_t(0));
+	if(defaultSceneIndex == ~size_t(0)) {
 		cout << "There is no default scene in the file. Using the first scene." << endl;
-		sceneIndex = 0;
+		defaultSceneIndex = 0;
 	}
-	json& scene = scenes.at(sceneIndex);
+	json& scene = scenes.at(defaultSceneIndex);
 
 	// iterate through root nodes
 	vector<vector<glm::mat4>> meshMatrixList(meshes.size());
@@ -681,7 +685,7 @@ void App::init()
 				m[i][2] = -m[i][2];
 			}
 
-			// assign one more instancing matrix to the mesh
+			// append instancing matrix to the mesh
 			if(node.meshIndex != ~size_t(0))
 				meshMatrixList.at(node.meshIndex).emplace_back(m);
 
@@ -694,18 +698,24 @@ void App::init()
 
 	// process meshes
 	cout << "Processing meshes..." << endl;
-	for(size_t i=0,c=meshes.size(); i<c; i++) {
+	size_t numMeshes = meshes.size();
+	vector<CadR::BoundingSphere> meshBoundingSphereList(numMeshes);
+	vector<CadR::BoundingSphere> primitiveSetBSList;
+	for(size_t meshIndex=0; meshIndex<numMeshes; meshIndex++) {
 
 		// ignore non-instanced meshes
-		if(meshMatrixList[i].empty())
+		if(meshMatrixList[meshIndex].empty())
 			continue;
 
 		// get mesh
-		auto& mesh = meshes[i];
+		auto& mesh = meshes[meshIndex];
+		CadR::BoundingBox meshBB = CadR::BoundingBox::empty();
 
 		// process primitives
 		// (mesh.primitives are mandatory)
 		auto& primitives = mesh.at("primitives");
+		primitiveSetBSList.clear();
+		primitiveSetBSList.reserve(primitives.size());
 		for(auto& primitive : primitives) {
 
 			// material
@@ -879,6 +889,7 @@ void App::init()
 			glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
 			unsigned colorDataStride;
 			unsigned texCoordDataStride;
+			CadR::BoundingBox primitiveSetBB;
 			for(auto it = attributes.begin(); it != attributes.end(); it++) {
 				if(it.key() == "POSITION") {
 
@@ -908,6 +919,28 @@ void App::init()
 					tie(reinterpret_cast<void*&>(positionData), positionDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
 						                        numVertices, sizeof(glm::vec3));
+
+					// get min and max
+					if(auto it=accessor.find("min"); it!=accessor.end()) {
+						json::array_t& a = it->get_ref<json::array_t&>();
+						if(a.size() != 3)
+							throw GltfError("Accessor.min is not vector of three components.");
+						primitiveSetBB.min.x = float(a[0].get<json::number_float_t>());
+						primitiveSetBB.min.y = float(a[1].get<json::number_float_t>());
+						primitiveSetBB.min.z = float(a[2].get<json::number_float_t>());
+					}
+					else
+						throw GltfError("Accessor.min be defined for POSITION accessor.");
+					if(auto it=accessor.find("max"); it!=accessor.end()) {
+						json::array_t& a = it->get_ref<json::array_t&>();
+						if(a.size() != 3)
+							throw GltfError("Accessor.max is not vector of three components.");
+						primitiveSetBB.max.x = float(a[0].get<json::number_float_t>());
+						primitiveSetBB.max.y = float(a[1].get<json::number_float_t>());
+						primitiveSetBB.max.z = float(a[2].get<json::number_float_t>());
+					}
+					else
+						throw GltfError("Accessor.max be defined for POSITION accessor.");
 
 				}
 				else if(it.key() == "NORMAL") {
@@ -1107,15 +1140,31 @@ void App::init()
 			cout << "Creating geometry" << endl;
 			CadR::Geometry& g = geometryDB.emplace_back(renderer);
 
+			// update mesh bounds
+			meshBB.extendBy(primitiveSetBB);
+
+			// prepare for computing primitiveSet bounding sphere
+			CadR::BoundingSphere primitiveSetBS{
+				.center = positionData ? primitiveSetBB.getCenter() : glm::vec3(0.f, 0.f, 0.f),
+				.radius = 0.f,  // actually, radius^2 is stored here in the following loop as an performance optimization
+			};
+
 			// set vertex data
 			CadR::StagingData sd = g.createVertexStagingData(numVertices * vertexSize);
 			uint8_t* p = sd.data<uint8_t>();
 			for(size_t i=0; i<numVertices; i++) {
 				if(positionData) {
+
+					// copy position
 					glm::vec3 pos(*positionData);
 					*reinterpret_cast<glm::vec4*>(p)= glm::vec4(pos.x, pos.y, pos.z, 1.f);
 					p += 16;
 					positionData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(positionData) + positionDataStride);
+
+					// update bounding sphere
+					// (square of radius is stored in primitiveBS.radius)
+					primitiveSetBS.extendRadiusByPointUsingRadius2(pos);
+
 				}
 				if(normalData) {
 					glm::vec3 normal = glm::vec3(*normalData);
@@ -1471,6 +1520,11 @@ void App::init()
 			ps->count = uint32_t(numIndices);
 			ps->first = 0;
 
+			// primitiveSet bounding sphere list
+			// (convert square of radius stored in primitiveBS.radius back to radius)
+			primitiveSetBS.radius = sqrt(primitiveSetBS.radius);
+			primitiveSetBSList.emplace_back(primitiveSetBS);
+
 			// no support for textures yet
 			texCoordData = nullptr;
 
@@ -1517,9 +1571,15 @@ void App::init()
 			CadR::StateSet& ss = stateSetDB[pipelineIndex];
 
 			// drawable
-			vector<glm::mat4>& matrixList = meshMatrixList[i];
+			vector<glm::mat4>& matrixList = meshMatrixList[meshIndex];
 			uint32_t numInstances = uint32_t(matrixList.size());
-			drawableDB.emplace_back(g, 0, sd, 64+(numInstances*64), numInstances, ss);
+			drawableDB.emplace_back(
+				g,  // geometry
+				0,  // primitiveSetOffset
+				sd,  // shaderStagingData
+				64+(numInstances*64),  // shaderDataSize
+				numInstances,  // numInstances
+				ss);  // stateSet
 
 			// material
 			struct MaterialData {
@@ -1625,8 +1685,148 @@ void App::init()
 			glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
 			memcpy(modelMatrix, matrixList.data(), numInstances*64);
 
+			// mesh bounding sphere
+			CadR::BoundingSphere meshBS{
+				.center = meshBB.getCenter(),
+				.radius = 0.f,
+			};
+			for(size_t i=0,c=primitiveSetBSList.size(); i<c; i++)
+				meshBS.extendRadiusBy(primitiveSetBSList[i]);
+
+			// bounding box of all instances of particular mesh
+			CadR::BoundingBox instancesBB =
+				CadR::BoundingBox::createByCenterAndHalfExtents(
+					glm::mat3(matrixList[0]) * meshBS.center + glm::vec3(matrixList[0][3]),  // center
+					glm::mat3(matrixList[0]) * glm::vec3(meshBS.radius)  // halfExtents
+				);
+			for(size_t instanceIndex=1, instanceCount=matrixList.size();
+			    instanceIndex<instanceCount; instanceIndex++)
+			{
+				glm::mat4& m = matrixList[instanceIndex];
+				instancesBB.extendBy(
+					CadR::BoundingBox::createByCenterAndHalfExtents(
+						glm::mat3(m) * meshBS.center + glm::vec3(m[3]),  // center
+						glm::mat3(m) * glm::vec3(meshBS.radius)  // radius
+					)
+				);
+			}
+
+			// bounding sphere of all instances of particular mesh
+			CadR::BoundingSphere instancesBS{
+				.center = instancesBB.getCenter(),
+				.radius = 0.f,
+			};
+			for(size_t instanceIndex=0, instanceCount=matrixList.size();
+			    instanceIndex<instanceCount; instanceIndex++)
+			{
+				instancesBS.extendRadiusBy(matrixList[instanceIndex] * meshBS);
+			}
+			meshBoundingSphereList[meshIndex] = instancesBS;
+
 		}
 	}
+
+	// scene bounding box
+	CadR::BoundingBox sceneBB = meshBoundingSphereList[0].getBoundingBox();
+	for(size_t i=1, c=meshBoundingSphereList.size(); i<c; i++)
+		sceneBB.extendBy(meshBoundingSphereList[i].getBoundingBox());
+
+	// scene bounding sphere
+	sceneBoundingSphere.center = sceneBB.getCenter();
+	sceneBoundingSphere.radius =
+		sqrt(glm::distance2(meshBoundingSphereList[0].center, sceneBoundingSphere.center)) +
+		meshBoundingSphereList[0].radius;
+	for(size_t i=1, c=meshBoundingSphereList.size(); i<c; i++)
+		sceneBoundingSphere.extendRadiusBy(meshBoundingSphereList[i]);
+	sceneBoundingSphere.radius *= 1.001f;  // increase radius to accommodate for all floating computations imprecisions
+
+	// initial camera distance
+	float fovy2Clamped = glm::clamp(fovy / 2.f, 1.f / 180.f * glm::pi<float>(), 90.f / 180.f * glm::pi<float>());
+	cameraDistance = sceneBoundingSphere.radius / sin(fovy2Clamped);
+
+#if 0  // show scene bounding sphere
+	auto createBoundingSphereVisualization =
+		[](const CadR::BoundingSphere bs, App& app) {
+
+			// vertex data
+			// (bounding sphere in the form of axis cross)
+			CadR::Geometry& g = app.geometryDB.emplace_back(app.renderer);
+			CadR::StagingData sd = g.createVertexStagingData(6 * sizeof(glm::vec4));
+			glm::vec4* pos = sd.data<glm::vec4>();
+			pos[0] = glm::vec4(bs.center.x-bs.radius, bs.center.y, bs.center.z, 1.f);
+			pos[1] = glm::vec4(bs.center.x+bs.radius, bs.center.y, bs.center.z, 1.f);
+			pos[2] = glm::vec4(bs.center.x, bs.center.y-bs.radius, bs.center.z, 1.f);
+			pos[3] = glm::vec4(bs.center.x, bs.center.y+bs.radius, bs.center.z, 1.f);
+			pos[4] = glm::vec4(bs.center.x, bs.center.y, bs.center.z-bs.radius, 1.f);
+			pos[5] = glm::vec4(bs.center.x, bs.center.y, bs.center.z+bs.radius, 1.f);
+
+			// index data
+			sd = g.createIndexStagingData(6 * sizeof(uint32_t));
+			uint32_t* indices = sd.data<uint32_t>();
+			for(uint32_t i=0; i<6; i++)
+				indices[i] = i;
+
+			// primitive set
+			struct PrimitiveSetGpuData {
+				uint32_t count;
+				uint32_t first;
+			};
+			sd = g.createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
+			PrimitiveSetGpuData* ps = sd.data<PrimitiveSetGpuData>();
+			ps->count = 6;
+			ps->first = 0;
+
+			// state set
+			unsigned pipelineIndex =
+				PipelineLibrary::getLinePipelineIndex(
+					false,  // phong
+					false,  // texturing
+					false   // perVertexColor
+				);
+			CadR::StateSet& ss = app.stateSetDB[pipelineIndex];
+
+			// drawable
+			app.drawableDB.emplace_back(
+				g,  // geometry
+				0,  // primitiveSetOffset
+				sd,  // shaderStagingData
+				64+64,  // shaderDataSize
+				1,  // numInstances
+				ss);  // stateSet
+
+			// material
+			struct MaterialData {
+				glm::vec3 ambient;  // offset 0
+				uint32_t type;  // offset 12
+				glm::vec4 diffuseAndAlpha;  // offset 16
+				glm::vec3 specular;  // offset 32
+				float shininess;  // offset 44
+				glm::vec3 emission;  // offset 48
+				float pointSize;  // offset 60
+			};
+			MaterialData* m = sd.data<MaterialData>();
+			m->ambient = glm::vec3(1.f, 1.f, 1.f);
+			m->type = 0;
+			m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
+			m->specular = glm::vec3(0.f, 0.f, 0.f);
+			m->shininess = 0.f;
+			m->emission = glm::vec3(0.f, 0.f, 0.f);
+			m->pointSize = 0.f;
+
+			// transformation matrices
+			glm::mat4* matrices = sd.data<glm::mat4>() + 1;
+			matrices[0] = glm::mat4(1.f);
+		};
+
+#if 0  // show scene bounding sphere
+	createBoundingSphereVisualization(sceneBoundingSphere, *this);
+#endif
+
+#if 0  // show bounding sphere of each mesh
+	for(size_t i=0, c=meshBoundingSphereList.size(); i<c; i++)
+		createBoundingSphereVisualization(meshBoundingSphereList[i], *this);
+#endif
+#endif
 
 	// upload all staging buffers
 	renderer.executeCopyOperations();
@@ -1850,12 +2050,12 @@ void App::frame(VulkanWindow&)
 	SceneGpuData* sceneData = sceneStagingData.data<SceneGpuData>();
 	sceneData->viewMatrix =
 		glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
-			glm::vec3(  // eye
+			sceneBoundingSphere.center + glm::vec3(  // eye
 				+cameraDistance*sin(-cameraHeading)*cos(cameraElevation),  // x
 				-cameraDistance*sin(cameraElevation),  // y
 				-cameraDistance*cos(cameraHeading)*cos(cameraElevation)  // z
 			),
-			glm::vec3(0.f,0.f,0.f),  // center
+			sceneBoundingSphere.center,  // center
 			glm::vec3(0.f,1.f,0.f)  // up
 		);
 	constexpr float zNear = 0.5f;

@@ -17,6 +17,8 @@ endif()
 
 # public headers
 set(CADR_PUBLIC_HEADERS
+	BoundingBox.h
+	BoundingSphere.h
 	CallbackList.h
 	CircularAllocationMemory.h
 	DataAllocation.h
