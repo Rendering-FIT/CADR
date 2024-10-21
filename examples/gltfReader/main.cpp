@@ -104,7 +104,9 @@ public:
 	vk::CommandBuffer commandBuffer;
 
 	// camera control
-	float fovy = 80.f / 180.f * glm::pi<float>();  // initial field-of-view in y-axis (in vertical direction) is 80 degrees
+	static constexpr const float maxZNearZFarRatio = 1000.f;  //< Maximum z-near distance and z-far distance ratio. High ratio might lead to low z-buffer precision.
+	static constexpr const float zoomStepRatio = 0.9f;  //< Camera zoom speed. Camera distance from the model center is multiplied by this value on each mouse wheel up event and divided by it on each wheel down event.
+	float fovy = 80.f / 180.f * glm::pi<float>();  //< Initial field-of-view in y-axis (in vertical direction) is 80 degrees.
 	float cameraHeading = 0.f;
 	float cameraElevation = 0.f;
 	float cameraDistance;
@@ -2058,8 +2060,11 @@ void App::frame(VulkanWindow&)
 			sceneBoundingSphere.center,  // center
 			glm::vec3(0.f,1.f,0.f)  // up
 		);
-	constexpr float zNear = 0.5f;
-	constexpr float zFar = 100.f;
+	float zFar = fabs(cameraDistance) + sceneBoundingSphere.radius;
+	float zNear = fabs(cameraDistance) - sceneBoundingSphere.radius;
+	float minZNear = zFar / maxZNearZFarRatio;
+	if(zNear < minZNear)
+		zNear = minZNear;
 	glm::mat4 projectionMatrix = glm::perspectiveLH_ZO(fovy, float(window.surfaceExtent().width)/window.surfaceExtent().height, zNear, zFar);
 	sceneData->p11 = projectionMatrix[0][0];
 	sceneData->p22 = projectionMatrix[1][1];
@@ -2211,7 +2216,7 @@ void App::mouseButton(VulkanWindow& window, size_t button, VulkanWindow::ButtonS
 
 void App::mouseWheel(VulkanWindow& window, float wheelX, float wheelY, const VulkanWindow::MouseState& mouseState)
 {
-	cameraDistance -= wheelY;
+	cameraDistance *= pow(zoomStepRatio, wheelY);
 	window.scheduleFrame();
 }
 
