@@ -12,7 +12,7 @@ public:
 
 	// general function prototypes
 	typedef void FrameCallback(VulkanWindow& window);
-	typedef void RecreateSwapchainCallback(VulkanWindow& window,
+	typedef void ResizeCallback(VulkanWindow& window,
 		const VkSurfaceCapabilitiesKHR& surfaceCapabilities, VkExtent2D newSurfaceExtent);
 	typedef void CloseCallback(VulkanWindow& window);
 
@@ -173,8 +173,8 @@ protected:
 	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR _vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR;
 
 	VkExtent2D _surfaceExtent = {0,0};
-	bool _swapchainResizePending = true;
-	std::function<RecreateSwapchainCallback> _recreateSwapchainCallback;
+	bool _resizePending = true;
+	std::function<ResizeCallback> _resizeCallback;
 	std::function<CloseCallback> _closeCallback;
 
 	MouseState _mouseState = {};
@@ -214,10 +214,10 @@ public:
 	static void exitMainLoop();
 
 	// callbacks
-	void setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb);
-	void setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb);
 	void setFrameCallback(std::function<FrameCallback>&& cb);
 	void setFrameCallback(const std::function<FrameCallback>& cb);
+	void setResizeCallback(std::function<ResizeCallback>&& cb);
+	void setResizeCallback(const std::function<ResizeCallback>& cb);
 	void setCloseCallback(std::function<CloseCallback>&& cb);
 	void setCloseCallback(const std::function<CloseCallback>& cb);
 	void setMouseMoveCallback(std::function<MouseMoveCallback>&& cb);
@@ -228,8 +228,8 @@ public:
 	void setMouseWheelCallback(const std::function<MouseWheelCallback>& cb);
 	void setKeyCallback(std::function<KeyCallback>&& cb);
 	void setKeyCallback(const std::function<KeyCallback>& cb);
-	const std::function<RecreateSwapchainCallback>& recreateSwapchainCallback() const;
 	const std::function<FrameCallback>& frameCallback() const;
+	const std::function<ResizeCallback>& resizeCallback() const;
 	const std::function<CloseCallback>& closeCallback() const;
 	const std::function<MouseMoveCallback>& mouseMoveCallback() const;
 	const std::function<MouseButtonCallback>& mouseButtonCallback() const;
@@ -243,7 +243,7 @@ public:
 
 	// schedule methods
 	void scheduleFrame();
-	void scheduleSwapchainResize();
+	void scheduleResize();
 
 	// exception handling
 	static inline std::exception_ptr thrownException;
@@ -261,10 +261,10 @@ public:
 
 // inline methods
 inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
-inline void VulkanWindow::setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb)  { _recreateSwapchainCallback = move(cb); }
-inline void VulkanWindow::setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb)  { _recreateSwapchainCallback = cb; }
 inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb)  { _frameCallback = std::move(cb); }
 inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb)  { _frameCallback = cb; }
+inline void VulkanWindow::setResizeCallback(std::function<ResizeCallback>&& cb)  { _resizeCallback = move(cb); }
+inline void VulkanWindow::setResizeCallback(const std::function<ResizeCallback>& cb)  { _resizeCallback = cb; }
 inline void VulkanWindow::setCloseCallback(std::function<CloseCallback>&& cb)  { _closeCallback = move(cb); }
 inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& cb)  { _closeCallback = cb; }
 inline void VulkanWindow::setMouseMoveCallback(std::function<MouseMoveCallback>&& cb)  { _mouseMoveCallback = move(cb); }
@@ -275,8 +275,8 @@ inline void VulkanWindow::setMouseWheelCallback(std::function<MouseWheelCallback
 inline void VulkanWindow::setMouseWheelCallback(const std::function<MouseWheelCallback>& cb)  { _mouseWheelCallback = cb; }
 inline void VulkanWindow::setKeyCallback(std::function<KeyCallback>&& cb)  { _keyCallback = move(cb); }
 inline void VulkanWindow::setKeyCallback(const std::function<KeyCallback>& cb)  { _keyCallback = cb; }
-inline const std::function<VulkanWindow::RecreateSwapchainCallback>& VulkanWindow::recreateSwapchainCallback() const  { return _recreateSwapchainCallback; }
 inline const std::function<VulkanWindow::FrameCallback>& VulkanWindow::frameCallback() const  { return _frameCallback; }
+inline const std::function<VulkanWindow::ResizeCallback>& VulkanWindow::resizeCallback() const  { return _resizeCallback; }
 inline const std::function<VulkanWindow::CloseCallback>& VulkanWindow::closeCallback() const  { return _closeCallback; }
 inline const std::function<VulkanWindow::MouseMoveCallback>& VulkanWindow::mouseMoveCallback() const  { return _mouseMoveCallback; }
 inline const std::function<VulkanWindow::MouseButtonCallback>& VulkanWindow::mouseButtonCallback() const  { return _mouseButtonCallback; }
@@ -289,7 +289,7 @@ inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
 inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr || _libdecorFrame != nullptr; }
 #endif
-inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
+inline void VulkanWindow::scheduleResize()  { _resizePending = true; scheduleFrame(); }
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
 inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); return v; }

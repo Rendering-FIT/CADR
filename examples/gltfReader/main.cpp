@@ -261,6 +261,7 @@ void App::init()
 	device.create(
 		vulkanInstance, deviceAndQueueFamilies,
 #if 1 // enable or disable validation extensions
+      // (0 enables validation extensions and features for debugging purposes)
 		"VK_KHR_swapchain",
 		CadR::Renderer::requiredFeatures()
 #else
@@ -2091,10 +2092,10 @@ void App::frame(VulkanWindow&)
 		);
 	if(r != vk::Result::eSuccess) {
 		if(r == vk::Result::eSuboptimalKHR) {
-			window.scheduleSwapchainResize();
+			window.scheduleResize();
 			return;
 		} else if(r == vk::Result::eErrorOutOfDateKHR) {
-			window.scheduleSwapchainResize();
+			window.scheduleResize();
 			return;
 		} else
 			throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
@@ -2174,10 +2175,10 @@ void App::frame(VulkanWindow&)
 		);
 	if(r != vk::Result::eSuccess) {
 		if(r == vk::Result::eSuboptimalKHR) {
-			window.scheduleSwapchainResize();
+			window.scheduleResize();
 			cout << "present result: Suboptimal" << endl;
 		} else if(r == vk::Result::eErrorOutOfDateKHR) {
-			window.scheduleSwapchainResize();
+			window.scheduleResize();
 			cout << "present error: OutOfDate" << endl;
 		} else
 			throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
@@ -2321,7 +2322,7 @@ int main(int argc, char** argv)
 
 		App app(argc, argv);
 		app.init();
-		app.window.setRecreateSwapchainCallback(
+		app.window.setResizeCallback(
 			bind(
 				&App::resize,
 				&app,

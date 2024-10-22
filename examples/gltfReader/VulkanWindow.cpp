@@ -1311,8 +1311,8 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_surface = other._surface;
 	other._surface = nullptr;
 	_surfaceExtent = other._surfaceExtent;
-	_swapchainResizePending = other._swapchainResizePending;
-	_recreateSwapchainCallback = move(other._recreateSwapchainCallback);
+	_resizePending = other._resizePending;
+	_resizeCallback = move(other._resizeCallback);
 	_closeCallback = move(other._closeCallback);
 }
 
@@ -1459,8 +1459,8 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_surface = other._surface;
 	other._surface = nullptr;
 	_surfaceExtent = other._surfaceExtent;
-	_swapchainResizePending = other._swapchainResizePending;
-	_recreateSwapchainCallback = move(other._recreateSwapchainCallback);
+	_resizePending = other._resizePending;
+	_resizeCallback = move(other._resizeCallback);
 	_closeCallback = move(other._closeCallback);
 
 	return *this;
@@ -1733,7 +1733,7 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 		_window,
 		[](GLFWwindow* window, int width, int height) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-			w->scheduleSwapchainResize();
+			w->scheduleResize();
 		}
 	);
 	glfwSetWindowIconifyCallback(
@@ -1909,7 +1909,7 @@ void VulkanWindow::renderFrame()
 	assert(_device && "VulkanWindow::_device is null, indicating invalid VulkanWindow object. Call VulkanWindow::setDevice() before the first frame is rendered.");
 
 	// recreate swapchain if requested
-	if(_swapchainResizePending) {
+	if(_resizePending) {
 
 		// make sure that we finished all the rendering
 		// (this is necessary for swapchain re-creation)
@@ -1992,8 +1992,8 @@ void VulkanWindow::renderFrame()
 			return;  // new frame will be scheduled on the next window resize
 
 		// recreate swapchain
-		_swapchainResizePending = false;
-		_recreateSwapchainCallback(*this, surfaceCapabilities, _surfaceExtent);
+		_resizePending = false;
+		_resizeCallback(*this, surfaceCapabilities, _surfaceExtent);
 	}
 
 	// render scene
@@ -2016,7 +2016,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// show window
@@ -2308,7 +2308,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
 			if(LOWORD(lParam) != 0 && HIWORD(lParam) != 0) {
 				VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
-				w->scheduleSwapchainResize();
+				w->scheduleResize();
 			}
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
@@ -2414,7 +2414,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	if(_visible)
@@ -2558,7 +2558,7 @@ void VulkanWindow::mainLoop()
 		if(e.type == ConfigureNotify) {
 			if(e.xconfigure.width != int(w->_surfaceExtent.width) || e.xconfigure.height != int(w->_surfaceExtent.height)) {
 				cout << "Configure event " << e.xconfigure.width << "x" << e.xconfigure.height << endl;
-				w->scheduleSwapchainResize();
+				w->scheduleResize();
 			}
 			continue;
 		}
@@ -2746,7 +2746,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// check for already shown window
@@ -2786,7 +2786,7 @@ void VulkanWindow::show()
 	}
 
 	_forcedFrame = true;
-	_swapchainResizePending = true;
+	_resizePending = true;
 }
 
 
@@ -2802,11 +2802,11 @@ void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel*
 		w->_surfaceExtent.width = width;
 		if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
 			w->_surfaceExtent.height = height;
-		w->scheduleSwapchainResize();
+		w->scheduleResize();
 	}
 	else if(uint32_t(height) != w->_surfaceExtent.height && height != 0) {
 		w->_surfaceExtent.height = height;
-		w->scheduleSwapchainResize();
+		w->scheduleResize();
 	}
 }
 
@@ -2841,11 +2841,11 @@ void VulkanWindowPrivate::libdecorFrameConfigure(libdecor_frame* frame, libdecor
 			w->_surfaceExtent.width = width;
 			if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
 				w->_surfaceExtent.height = height;
-			w->scheduleSwapchainResize();
+			w->scheduleResize();
 		}
 		else if(uint32_t(height) != w->_surfaceExtent.height && height != 0) {
 			w->_surfaceExtent.height = height;
-			w->scheduleSwapchainResize();
+			w->scheduleResize();
 		}
 	}
 
@@ -3198,7 +3198,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// do nothing on already shown window
@@ -3317,7 +3317,7 @@ void VulkanWindow::mainLoop()
 		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
 			cout << "Size changed event" << endl;
 			VulkanWindow* w = getWindow(event.window.windowID);
-			w->scheduleSwapchainResize();
+			w->scheduleResize();
 			break;
 		}
 
@@ -3525,7 +3525,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// show window
@@ -3624,7 +3624,7 @@ void VulkanWindow::mainLoop()
 				cout << "Size changed event" << endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
-				w->scheduleSwapchainResize();
+				w->scheduleResize();
 				break;
 			}
 
@@ -3845,7 +3845,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// show window
@@ -3981,7 +3981,7 @@ void VulkanWindow::show()
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::show().");
+	assert(_resizeCallback && "Resize callback must be set before VulkanWindow::show() call. Please, call VulkanWindow::setResizeCallback() before VulkanWindow::show().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::show().");
 
 	// show window
@@ -4121,11 +4121,11 @@ bool QtRenderingWindow::event(QEvent* event)
 			return true;
 
 		case QEvent::Type::Resize: {
-			// schedule swapchain resize
-			// (we do not call vulkanWindow->scheduleSwapchainResize() directly
-			// as Resize event might be delivered already inside VulkanWindow::create() function,
+			// schedule resize
+			// (we do not call vulkanWindow->scheduleResize() directly
+			// because Resize event might be delivered already inside VulkanWindow::create() function,
 			// resulting in assert error of invalid usage of scheduleFrame(); instead, we schedule frame manually)
-			vulkanWindow->_swapchainResizePending = true;
+			vulkanWindow->_resizePending = true;
 			scheduleFrameTimer();
 			return QWindow::event(event);
 		}
