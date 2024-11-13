@@ -47,8 +47,8 @@ StagingMemory::StagingMemory(Renderer& renderer, size_t size)
 		);
 
 	// allocate _memory
-	_memory = _renderer->allocateMemory(_buffer,
-		vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached);
+	tie(_memory, ignore) =
+		_renderer->allocateMemory(_buffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached);
 
 	// bind memory
 	device.bindBufferMemory(

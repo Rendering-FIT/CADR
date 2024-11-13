@@ -469,7 +469,8 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawableBufferMemory = allocatePointerAccessMemory(_drawableBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		tie(_drawableBufferMemory, ignore) =
+			allocatePointerAccessMemory(_drawableBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		_device->bindBufferMemory(
 			_drawableBuffer,  // buffer
 			_drawableBufferMemory,  // memory
@@ -494,7 +495,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawableStagingMemory =
+		tie(_drawableStagingMemory, ignore) =
 			allocateMemory(
 				_drawableStagingBuffer,  // buffer
 				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached  // requiredFlags
@@ -519,7 +520,8 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawIndirectMemory = allocatePointerAccessMemory(_drawIndirectBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		tie(_drawIndirectMemory, ignore) =
+			allocatePointerAccessMemory(_drawIndirectBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		_device->bindBufferMemory(
 			_drawIndirectBuffer,  // buffer
 			_drawIndirectMemory,  // memory
@@ -544,7 +546,8 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		_drawablePayloadMemory = allocatePointerAccessMemory(_drawablePayloadBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		tie(_drawablePayloadMemory, ignore) =
+			allocatePointerAccessMemory(_drawablePayloadBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		_device->bindBufferMemory(
 			_drawablePayloadBuffer,  // buffer
 			_drawablePayloadMemory,  // memory
@@ -556,7 +559,6 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					_drawablePayloadBuffer  // buffer
 				)
 			);
-
 	}
 
 	return numDrawables;
@@ -731,90 +733,90 @@ void Renderer::endFrame()
 }
 
 
-vk::DeviceMemory Renderer::allocateMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)
+tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags)
 {
-	vk::MemoryRequirements memoryRequirements=_device->getBufferMemoryRequirements(buffer);
-	for(uint32_t i=0; i<_memoryProperties.memoryTypeCount; i++)
-		if(memoryRequirements.memoryTypeBits&(1<<i))
-			if((_memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
-				return
-					_device->allocateMemory(
-						vk::MemoryAllocateInfo(
-							memoryRequirements.size,  // allocationSize
-							i                         // memoryTypeIndex
-						)
-					);
-	throw std::runtime_error("No suitable memory type found for the buffer.");
-}
-
-
-vk::DeviceMemory Renderer::allocatePointerAccessMemory(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags)
-{
-	vk::MemoryRequirements memoryRequirements=_device->getBufferMemoryRequirements(buffer);
-	for(uint32_t i=0; i<_memoryProperties.memoryTypeCount; i++)
-		if(memoryRequirements.memoryTypeBits&(1<<i))
-			if((_memoryProperties.memoryTypes[i].propertyFlags&requiredFlags)==requiredFlags)
-				return
-					_device->allocateMemory(
-						vk::StructureChain<
-							vk::MemoryAllocateInfo,
-							vk::MemoryAllocateFlagsInfo
-						>{
-							vk::MemoryAllocateInfo(
-								memoryRequirements.size,  // allocationSize
-								i                         // memoryTypeIndex
-							),
-							vk::MemoryAllocateFlagsInfo(
-								vk::MemoryAllocateFlagBits::eDeviceAddress,  // flags
-								0  // deviceMask
-							)
-						}.get<vk::MemoryAllocateInfo>()
-					);
-	throw std::runtime_error("No suitable memory type found for the buffer.");
-}
-
-
-vk::DeviceMemory Renderer::allocatePointerAccessMemoryNoThrow(vk::Buffer buffer,vk::MemoryPropertyFlags requiredFlags) noexcept
-{
-	vk::MemoryRequirements memoryRequirements = _device->getBufferMemoryRequirements(buffer);
-	for(uint32_t i=0; i<_memoryProperties.memoryTypeCount; i++)
-		if(memoryRequirements.memoryTypeBits&(1 << i))
+	vk::DeviceMemory m;
+	vk::MemoryAllocateInfo allocateInfo(
+		size,  // allocationSize
+		0      // memoryTypeIndex
+	);
+	for(uint32_t i=0, c=_memoryProperties.memoryTypeCount; i<c; i++)
+		if(memoryTypeBits & (1<<i))
 			if((_memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags) {
-
-				// MemoryAllocateInfo
-				vk::StructureChain<
-					vk::MemoryAllocateInfo,
-					vk::MemoryAllocateFlagsInfo
-				> allocateInfo {
-					vk::MemoryAllocateInfo(
-						memoryRequirements.size,  // allocationSize
-						i                         // memoryTypeIndex
-					),
-					vk::MemoryAllocateFlagsInfo(
-						vk::MemoryAllocateFlagBits::eDeviceAddress,  // flags
-						0  // deviceMask
-					)
-				};
-
-				// allocateMemory
-				vk::DeviceMemory m;
-				vk::Result r =
-					_device->get().allocateMemory(
-						&allocateInfo.get<vk::MemoryAllocateInfo>(),
-						nullptr,
-						&m,
-						*_device
+				allocateInfo.memoryTypeIndex = i;
+				VkResult r =
+					_device->vkAllocateMemory(
+						VkDevice(_device),  // device
+						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
+						nullptr,  // pAllocator
+						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
 					);
+				if(r == VK_SUCCESS)
+					return {m, i};
+			}
+	throw std::runtime_error("No suitable memory type found for the buffer.");
+}
 
-				// result
-				if(r == vk::Result::eSuccess)
-					return m;
-				else
-					return nullptr;
+
+tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags)
+{
+	vk::DeviceMemory m;
+	vk::MemoryAllocateFlagsInfo flagsInfo(
+		vk::MemoryAllocateFlagBits::eDeviceAddress,  // flags
+		0  // deviceMask
+	);
+	vk::MemoryAllocateInfo allocateInfo(
+		size,  // allocationSize
+		0      // memoryTypeIndex
+	);
+	allocateInfo.setPNext(&flagsInfo);
+	for(uint32_t i=0, c=_memoryProperties.memoryTypeCount; i<c; i++)
+		if(memoryTypeBits & (1<<i))
+			if((_memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags) {
+				allocateInfo.memoryTypeIndex = i;
+				VkResult r =
+					_device->vkAllocateMemory(
+						VkDevice(_device),  // device
+						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
+						nullptr,  // pAllocator
+						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
+					);
+				if(r == VK_SUCCESS)
+					return {m, i};
+			}
+	throw std::runtime_error("No suitable memory type found for the buffer.");
+}
+
+
+tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept
+{
+	vk::DeviceMemory m;
+	vk::MemoryAllocateFlagsInfo flagsInfo(
+		vk::MemoryAllocateFlagBits::eDeviceAddress,  // flags
+		0  // deviceMask
+	);
+	vk::MemoryAllocateInfo allocateInfo(
+		size,  // allocationSize
+		0      // memoryTypeIndex
+	);
+	allocateInfo.setPNext(&flagsInfo);
+	for(uint32_t i=0, c=_memoryProperties.memoryTypeCount; i<c; i++)
+		if(memoryTypeBits & (1<<i))
+			if((_memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags) {
+				allocateInfo.memoryTypeIndex = i;
+				VkResult r =
+					_device->vkAllocateMemory(
+						VkDevice(_device),  // device
+						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
+						nullptr,  // pAllocator
+						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
+					);
+				if(r == VK_SUCCESS)
+					return {m, i};
 			}
 
 	// no suitable memory type found
-	return nullptr;
+	return {nullptr, ~uint32_t(0)};
 }
 
 

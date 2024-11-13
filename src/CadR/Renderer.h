@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <list>
+#include <tuple>
 
 namespace CadR {
 
@@ -152,9 +153,12 @@ public:
 	vk::CommandPool precompiledCommandPool() const;
 
 	// memory
-	vk::DeviceMemory allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
-	vk::DeviceMemory allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
-	vk::DeviceMemory allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
+	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
+	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
+	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
+	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
+	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
+	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
 
 	static constexpr uint32_t drawablePayloadRecordSize = 24;
@@ -165,6 +169,7 @@ public:
 }
 
 // inline methods
+#include <CadR/VulkanDevice.h>
 #include <cassert>
 namespace CadR {
 
@@ -197,6 +202,9 @@ inline vk::Pipeline Renderer::processDrawablesPipeline(size_t handleLevel) const
 inline vk::PipelineLayout Renderer::processDrawablesPipelineLayout() const  { return _processDrawablesPipelineLayout; }
 inline vk::CommandPool Renderer::transientCommandPool() const  { return _transientCommandPool; }
 inline vk::CommandPool Renderer::precompiledCommandPool() const  { return _precompiledCommandPool; }
+inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocateMemory(r.size, r.memoryTypeBits, requiredFlags); }
+inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemory(r.size, r.memoryTypeBits, requiredFlags); }
+inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemoryNoThrow(r.size, r.memoryTypeBits, requiredFlags); }
 
 // functions moved here from DataAllocation.h to avoid circular include dependency
 inline DataAllocation::DataAllocation(DataStorage& storage) : _record(storage.zeroSizeAllocationRecord()), _handle(storage.createHandle())  {}  // this might throw in DataStorage::createHandle(), but _record points to zero size record that does not need to be freed

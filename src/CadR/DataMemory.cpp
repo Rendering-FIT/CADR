@@ -56,7 +56,8 @@ DataMemory::DataMemory(DataStorage& dataStorage, size_t size)
 		);
 
 	// allocate _memory
-	_memory = renderer.allocatePointerAccessMemory(_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	tie(_memory, ignore) =
+		renderer.allocatePointerAccessMemory(_buffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 	// bind memory
 	device.bindBufferMemory(
@@ -86,7 +87,7 @@ DataMemory::DataMemory(DataStorage& dataStorage, vk::Buffer buffer, vk::DeviceMe
 	: DataMemory(dataStorage)  // this ensures the destructor will be executed if this constructor throws
 {
 	assert(((buffer && memory && size) || (!buffer && !memory && size==0)) &&
-	       "DataMemory::DataMemory(): The buffer, memory and size parameters must all be either non-zero/non-null or zero/null.");
+	       "DataMemory::DataMemory(): The parameters buffer, memory and size must all be either non-zero/non-null or zero/null.");
 
 	// assign resources
 	// (do not throw in the code above before these are assigned to avoid leaked handles)
@@ -151,7 +152,9 @@ DataMemory* DataMemory::tryCreate(DataStorage& dataStorage, size_t size)
 		return nullptr;
 
 	// allocate _memory
-	vk::DeviceMemory m = renderer.allocatePointerAccessMemoryNoThrow(b, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vk::DeviceMemory m;
+	tie(m, ignore) =
+		renderer.allocatePointerAccessMemoryNoThrow(b, vk::MemoryPropertyFlagBits::eDeviceLocal);
 	if(!m) {
 		d.destroyBuffer(b, nullptr, device);
 		return nullptr;
