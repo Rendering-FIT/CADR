@@ -18,6 +18,7 @@
 # include <wayland-cursor.h>
 # include <libdecor-0/libdecor.h>
 # include <climits>
+# include <cstring>
 # include <map>
 #elif defined(USE_PLATFORM_SDL3)
 # include <SDL3/SDL_error.h>
