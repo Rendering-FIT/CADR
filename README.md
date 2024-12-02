@@ -14,6 +14,14 @@ Prerequisities:
 ** Vulkan development files (ubuntu package name libvulkan-dev, Vulkan-SDK on Windows)
 ** glm 0.9.7.0 or newer
 ** boost
-* to compile examples:
-** Linux (X11): libx11-dev package
-** Linux (Wayland): libwayland-dev, wayland-protocols, libdecor
+** glslang-tools
+* to compile examples on Linux (depends of choosen GUI_TYPE):
+** X11: libx11-dev package
+** Wayland:
+*** libwayland-dev
+*** wayland-protocols
+*** libdecor-0-0 (on systems where server-side decorations are not supported)
+** SDL3:
+*** libsdl3?
+** SDL2:
+*** libsdl2-2.0-0

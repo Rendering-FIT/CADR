@@ -16,9 +16,9 @@
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
 # include <wayland-cursor.h>
-# include <libdecor-0/libdecor.h>
 # include <climits>
 # include <cstring>
+# include <dlfcn.h>
 # include <map>
 #elif defined(USE_PLATFORM_SDL3)
 # include <SDL3/SDL_error.h>
@@ -53,6 +53,48 @@
 #include <stdexcept>
 #include <string>
 #include <iostream>  // for debugging
+
+// libdecor enums and structs
+// (we avoid dependency on include libdecor-0/libdecor.h to lessen VulkanWindow dependencies;
+// instead we replace the include by the following enums and structs)
+#if defined(USE_PLATFORM_WAYLAND)
+enum libdecor_error {
+	LIBDECOR_ERROR_COMPOSITOR_INCOMPATIBLE,
+	LIBDECOR_ERROR_INVALID_FRAME_CONFIGURATION,
+};
+struct libdecor_configuration;
+struct libdecor_interface {
+	void (*error)(struct libdecor* context, enum libdecor_error error, const char* message);
+	void (*reserved0)();
+	void (*reserved1)();
+	void (*reserved2)();
+	void (*reserved3)();
+	void (*reserved4)();
+	void (*reserved5)();
+	void (*reserved6)();
+	void (*reserved7)();
+	void (*reserved8)();
+	void (*reserved9)();
+};
+struct libdecor_frame_interface {
+	void (*configure)(struct libdecor_frame* frame,
+		struct libdecor_configuration* configuration, void* user_data);
+	void (*close)(struct libdecor_frame* frame, void* user_data);
+	void (*commit)(struct libdecor_frame* frame, void* user_data);
+	void (*dismiss_popup)(struct libdecor_frame* frame,
+		const char* seat_name, void* user_data);
+	void (*reserved0)();
+	void (*reserved1)();
+	void (*reserved2)();
+	void (*reserved3)();
+	void (*reserved4)();
+	void (*reserved5)();
+	void (*reserved6)();
+	void (*reserved7)();
+	void (*reserved8)();
+	void (*reserved9)();
+};
+#endif
 
 using namespace std;
 
@@ -242,6 +284,27 @@ void VulkanWindowPrivate::xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_
 {
 	xdg_wm_base_pong(xdg, serial);
 };
+
+// libdecor functions
+struct Funcs {
+	struct libdecor* (*libdecor_new)(struct wl_display* display, const struct libdecor_interface* iface);
+	void (*libdecor_unref)(struct libdecor *context);
+	void (*libdecor_frame_unref)(struct libdecor_frame *frame);
+	void (*libdecor_frame_set_user_data)(struct libdecor_frame *frame, void *user_data);
+	struct libdecor_frame* (*libdecor_decorate)(struct libdecor *context, struct wl_surface *surface,
+		const struct libdecor_frame_interface *iface, void *user_data);
+	void (*libdecor_frame_set_title)(struct libdecor_frame *frame, const char *title);
+	void (*libdecor_frame_map)(struct libdecor_frame *frame);
+	bool (*libdecor_configuration_get_content_size)(struct libdecor_configuration *configuration,
+		struct libdecor_frame *frame, int *width, int *height);
+	struct libdecor_state* (*libdecor_state_new)(int width, int height);
+	void (*libdecor_frame_commit)(struct libdecor_frame *frame,
+		struct libdecor_state *state, struct libdecor_configuration *configuration);
+	void (*libdecor_state_free)(struct libdecor_state *state);
+	int (*libdecor_dispatch)(struct libdecor *context, int timeout);
+};
+static Funcs funcs;
+static void* libdecorHandle = nullptr;
 
 #endif
 
@@ -745,7 +808,30 @@ void VulkanWindow::init(void* data)
 
 	// libdecor
 	if(!_zxdgDecorationManagerV1) {
-		_libdecorContext = libdecor_new(_display, &libdecorInterface);
+		libdecorHandle = dlopen("libdecor-0.so", RTLD_NOW);
+		if(libdecorHandle == nullptr)
+			throw runtime_error("Cannot activate window decorations. There is no support for server-side decorations "
+			                    "in Wayland server (zxdg_decoration_manager_v1 protocol required) and "
+			                    "cannot open libdecor-0.so library for client-side decorations.");
+		reinterpret_cast<void*&>(funcs.libdecor_new)                 = dlsym(libdecorHandle, "libdecor_new");
+		reinterpret_cast<void*&>(funcs.libdecor_unref)               = dlsym(libdecorHandle, "libdecor_unref");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_unref)         = dlsym(libdecorHandle, "libdecor_frame_unref");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_set_user_data) = dlsym(libdecorHandle, "libdecor_frame_set_user_data");
+		reinterpret_cast<void*&>(funcs.libdecor_decorate)            = dlsym(libdecorHandle, "libdecor_decorate");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_set_title)     = dlsym(libdecorHandle, "libdecor_frame_set_title");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_map)           = dlsym(libdecorHandle, "libdecor_frame_map");
+		reinterpret_cast<void*&>(funcs.libdecor_configuration_get_content_size) = dlsym(libdecorHandle, "libdecor_configuration_get_content_size");
+		reinterpret_cast<void*&>(funcs.libdecor_state_new)           = dlsym(libdecorHandle, "libdecor_state_new");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_commit)        = dlsym(libdecorHandle, "libdecor_frame_commit");
+		reinterpret_cast<void*&>(funcs.libdecor_state_free)          = dlsym(libdecorHandle, "libdecor_state_free");
+		reinterpret_cast<void*&>(funcs.libdecor_dispatch)            = dlsym(libdecorHandle, "libdecor_dispatch");
+		if(!funcs.libdecor_new || !funcs.libdecor_unref || !funcs.libdecor_frame_unref || !funcs.libdecor_decorate ||
+		   !funcs.libdecor_frame_set_title || !funcs.libdecor_frame_map || !funcs.libdecor_configuration_get_content_size ||
+		   !funcs.libdecor_state_new || !funcs.libdecor_frame_commit || !funcs.libdecor_state_free || !funcs.libdecor_dispatch)
+		{
+			throw runtime_error("Cannot retrieve all function pointers out of libdecor-0.so.");
+		}
+		_libdecorContext = funcs.libdecor_new(_display, &libdecorInterface);
 		if(!_libdecorContext)
 			throw runtime_error("libdecor_new() failed.");
 	}
@@ -895,7 +981,7 @@ void VulkanWindow::finalize() noexcept
 		_cursorTheme = nullptr;
 	}
 	if(_libdecorContext) {
-		libdecor_unref(_libdecorContext);
+		funcs.libdecor_unref(_libdecorContext);
 		_libdecorContext = nullptr;
 	}
 	if(_shm) {
@@ -914,6 +1000,10 @@ void VulkanWindow::finalize() noexcept
 		if(!externalDisplayHandle)
 			wl_display_disconnect(_display);
 		_display = nullptr;
+	}
+	if(libdecorHandle) {
+		dlclose(libdecorHandle);
+		libdecorHandle = nullptr;
 	}
 	_registry = nullptr;
 	_compositor = nullptr;
@@ -1036,7 +1126,7 @@ void VulkanWindow::destroy() noexcept
 		_scheduledFrameCallback = nullptr;
 	}
 	if(_libdecorFrame) {
-		libdecor_frame_unref(_libdecorFrame);
+		funcs.libdecor_frame_unref(_libdecorFrame);
 		_libdecorFrame = nullptr;
 	}
 	if(_decoration) {
@@ -1227,7 +1317,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_libdecorFrame = other._libdecorFrame;
 	other._libdecorFrame = nullptr;
 	if(_libdecorFrame)
-		libdecor_frame_set_user_data(_libdecorFrame, this);
+		funcs.libdecor_frame_set_user_data(_libdecorFrame, this);
 	_scheduledFrameCallback = other._scheduledFrameCallback;
 	other._scheduledFrameCallback = nullptr;
 	if(_scheduledFrameCallback)
@@ -1376,7 +1466,7 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_libdecorFrame = other._libdecorFrame;
 	other._libdecorFrame = nullptr;
 	if(_libdecorFrame)
-		libdecor_frame_set_user_data(_libdecorFrame, this);
+		funcs.libdecor_frame_set_user_data(_libdecorFrame, this);
 	_scheduledFrameCallback = other._scheduledFrameCallback;
 	other._scheduledFrameCallback = nullptr;
 	if(_scheduledFrameCallback)
@@ -2757,11 +2847,11 @@ void VulkanWindow::show()
 	if(_libdecorContext)
 	{
 		// create libdecor decorations
-		_libdecorFrame = libdecor_decorate(_libdecorContext, _wlSurface, &libdecorFrameInterface, this);
+		_libdecorFrame = funcs.libdecor_decorate(_libdecorContext, _wlSurface, &libdecorFrameInterface, this);
 		if(_libdecorFrame == nullptr)
 			throw runtime_error("VulkanWindow::show(): libdecor_decorate() failed.");
-		libdecor_frame_set_title(_libdecorFrame, _title.c_str());
-		libdecor_frame_map(_libdecorFrame);
+		funcs.libdecor_frame_set_title(_libdecorFrame, _title.c_str());
+		funcs.libdecor_frame_map(_libdecorFrame);
 	}
 	else
 	{
@@ -2836,7 +2926,7 @@ void VulkanWindowPrivate::libdecorFrameConfigure(libdecor_frame* frame, libdecor
 	// if width or height of the window changed,
 	// schedule swapchain resize and force new frame rendering
 	int width, height;
-	if(libdecor_configuration_get_content_size(config, frame, &width, &height))
+	if(funcs.libdecor_configuration_get_content_size(config, frame, &width, &height))
 	{
 		if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
 			w->_surfaceExtent.width = width;
@@ -2853,9 +2943,9 @@ void VulkanWindowPrivate::libdecorFrameConfigure(libdecor_frame* frame, libdecor
 	cout << "libdecor configure: " << w->_surfaceExtent.width <<"x" << w->_surfaceExtent.height << endl;
 
 	// set new window state
-	libdecor_state* state = libdecor_state_new(w->_surfaceExtent.width, w->_surfaceExtent.height);
-	libdecor_frame_commit(frame, state, config);
-	libdecor_state_free(state);
+	libdecor_state* state = funcs.libdecor_state_new(w->_surfaceExtent.width, w->_surfaceExtent.height);
+	funcs.libdecor_frame_commit(frame, state, config);
+	funcs.libdecor_state_free(state);
 
 	// we need to explicitly generate the first frame
 	// otherwise the window is not shown
@@ -2922,7 +3012,7 @@ void VulkanWindow::hide()
 		_scheduledFrameCallback = nullptr;
 	}
 	if(_libdecorFrame) {
-		libdecor_frame_unref(_libdecorFrame);
+		funcs.libdecor_frame_unref(_libdecorFrame);
 		_libdecorFrame = nullptr;
 		wl_surface_attach(_wlSurface, NULL, 0, 0);
 		wl_surface_commit(_wlSurface);
@@ -2957,7 +3047,7 @@ void VulkanWindow::mainLoop()
 
 		// dispatch libdecor events
 		if(_libdecorContext)
-			libdecor_dispatch(_libdecorContext, -1);
+			funcs.libdecor_dispatch(_libdecorContext, -1);
 
 		// dispatch Wayland events
 		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
