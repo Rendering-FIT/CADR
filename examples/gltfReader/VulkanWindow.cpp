@@ -94,6 +94,22 @@ struct libdecor_frame_interface {
 	void (*reserved8)();
 	void (*reserved9)();
 };
+struct libdecor_frame_private_workaround {  // taken from libdecor.c to workaround missing libdecor_frame_set_user_data()
+	// on libdecor 0.1.0 to 0.2.2; libdecor_frame_private stays the same for all mentioned versions for its first 5 members;
+	// libdecor_frame_set_user_data() is expected to come out in the first release after 0.2.2
+	int ref_count;
+	struct libdecor* context;
+	struct wl_surface* wl_surface;
+	const struct libdecor_frame_interface* iface;
+	void* user_data;
+	// all following members after user_data omitted
+};
+struct libdecor_frame_workaround {  // taken from libdecor-plugin.h to workaround missing libdecor_frame_set_user_data()
+	// on libdecor 0.1.0 to 0.2.2; libdecor_frame stays the same for all mentioned versions;
+	// libdecor_frame_set_user_data() is expected to come out in the first release after 0.2.2
+	struct libdecor_frame_private* priv;
+	struct wl_list link;
+};
 #endif
 
 using namespace std;
@@ -288,20 +304,20 @@ void VulkanWindowPrivate::xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_
 // libdecor functions
 struct Funcs {
 	struct libdecor* (*libdecor_new)(struct wl_display* display, const struct libdecor_interface* iface);
-	void (*libdecor_unref)(struct libdecor *context);
-	void (*libdecor_frame_unref)(struct libdecor_frame *frame);
-	void (*libdecor_frame_set_user_data)(struct libdecor_frame *frame, void *user_data);
-	struct libdecor_frame* (*libdecor_decorate)(struct libdecor *context, struct wl_surface *surface,
-		const struct libdecor_frame_interface *iface, void *user_data);
-	void (*libdecor_frame_set_title)(struct libdecor_frame *frame, const char *title);
-	void (*libdecor_frame_map)(struct libdecor_frame *frame);
-	bool (*libdecor_configuration_get_content_size)(struct libdecor_configuration *configuration,
-		struct libdecor_frame *frame, int *width, int *height);
+	void (*libdecor_unref)(struct libdecor* context);
+	void (*libdecor_frame_unref)(struct libdecor_frame* frame);
+	void (*libdecor_frame_set_user_data)(struct libdecor_frame* frame, void* user_data);
+	struct libdecor_frame* (*libdecor_decorate)(struct libdecor* context, struct wl_surface* surface,
+		const struct libdecor_frame_interface* iface, void* user_data);
+	void (*libdecor_frame_set_title)(struct libdecor_frame* frame, const char* title);
+	void (*libdecor_frame_map)(struct libdecor_frame* frame);
+	bool (*libdecor_configuration_get_content_size)(struct libdecor_configuration* configuration,
+		struct libdecor_frame* frame, int* width, int* height);
 	struct libdecor_state* (*libdecor_state_new)(int width, int height);
-	void (*libdecor_frame_commit)(struct libdecor_frame *frame,
-		struct libdecor_state *state, struct libdecor_configuration *configuration);
-	void (*libdecor_state_free)(struct libdecor_state *state);
-	int (*libdecor_dispatch)(struct libdecor *context, int timeout);
+	void (*libdecor_frame_commit)(struct libdecor_frame* frame,
+		struct libdecor_state* state, struct libdecor_configuration* configuration);
+	void (*libdecor_state_free)(struct libdecor_state* state);
+	int (*libdecor_dispatch)(struct libdecor* context, int timeout);
 };
 static Funcs funcs;
 static void* libdecorHandle = nullptr;
@@ -808,11 +824,15 @@ void VulkanWindow::init(void* data)
 
 	// libdecor
 	if(!_zxdgDecorationManagerV1) {
+
+		// load libdecor library
 		libdecorHandle = dlopen("libdecor-0.so", RTLD_NOW);
 		if(libdecorHandle == nullptr)
 			throw runtime_error("Cannot activate window decorations. There is no support for server-side decorations "
 			                    "in Wayland server (zxdg_decoration_manager_v1 protocol required) and "
 			                    "cannot open libdecor-0.so library for client-side decorations.");
+
+		// function pointers
 		reinterpret_cast<void*&>(funcs.libdecor_new)                 = dlsym(libdecorHandle, "libdecor_new");
 		reinterpret_cast<void*&>(funcs.libdecor_unref)               = dlsym(libdecorHandle, "libdecor_unref");
 		reinterpret_cast<void*&>(funcs.libdecor_frame_unref)         = dlsym(libdecorHandle, "libdecor_frame_unref");
@@ -831,9 +851,20 @@ void VulkanWindow::init(void* data)
 		{
 			throw runtime_error("Cannot retrieve all function pointers out of libdecor-0.so.");
 		}
+
+		// workaround for missing libdecor_frame_set_user_data() in versions 0.1.0 to 0.2.2
+		if(funcs.libdecor_frame_set_user_data == nullptr)
+			funcs.libdecor_frame_set_user_data =
+				[](struct libdecor_frame* frame, void* user_data) -> void {
+					auto* priv = reinterpret_cast<libdecor_frame_workaround*>(frame)->priv;
+					reinterpret_cast<libdecor_frame_private_workaround*>(priv)->user_data = user_data;
+				};
+
+		// create libdecor context
 		_libdecorContext = funcs.libdecor_new(_display, &libdecorInterface);
 		if(!_libdecorContext)
 			throw runtime_error("libdecor_new() failed.");
+
 	}
 
 	// cursor size
@@ -1401,10 +1432,18 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_device = move(other._device);
 	_surface = other._surface;
 	other._surface = nullptr;
+	_vulkanGetInstanceProcAddr = other._vulkanGetInstanceProcAddr;
+	_vulkanDeviceWaitIdle = other._vulkanDeviceWaitIdle;
+	_vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR = other._vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR;
 	_surfaceExtent = other._surfaceExtent;
 	_resizePending = other._resizePending;
 	_resizeCallback = move(other._resizeCallback);
 	_closeCallback = move(other._closeCallback);
+	_mouseState = other._mouseState;
+	_mouseMoveCallback = move(other._mouseMoveCallback);
+	_mouseButtonCallback = move(other._mouseButtonCallback);
+	_mouseWheelCallback = move(other._mouseWheelCallback);
+	_keyCallback = move(other._keyCallback);
 }
 
 
@@ -1549,10 +1588,18 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_device = move(other._device);
 	_surface = other._surface;
 	other._surface = nullptr;
+	_vulkanGetInstanceProcAddr = other._vulkanGetInstanceProcAddr;
+	_vulkanDeviceWaitIdle = other._vulkanDeviceWaitIdle;
+	_vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR = other._vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR;
 	_surfaceExtent = other._surfaceExtent;
 	_resizePending = other._resizePending;
 	_resizeCallback = move(other._resizeCallback);
 	_closeCallback = move(other._closeCallback);
+	_mouseState = other._mouseState;
+	_mouseMoveCallback = move(other._mouseMoveCallback);
+	_mouseButtonCallback = move(other._mouseButtonCallback);
+	_mouseWheelCallback = move(other._mouseWheelCallback);
+	_keyCallback = move(other._keyCallback);
 
 	return *this;
 }
