@@ -1,13 +1,24 @@
-#pragma once
+#ifndef CADR_DATA_STORAGE_HEADER
+# define CADR_DATA_STORAGE_HEADER
 
-#include <CadR/DataAllocation.h>
-#include <CadR/DataMemory.h>
-#include <CadR/HandleTable.h>
-#include <CadR/StagingMemory.h>
-#include <CadR/TransferResources.h>
-#include <boost/intrusive/list.hpp>
-#include <list>
-#include <vector>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/DataAllocation.h>
+#  include <CadR/DataMemory.h>
+#  include <CadR/HandleTable.h>
+#  include <CadR/StagingMemory.h>
+#  include <CadR/TransferResources.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/DataAllocation.h>
+#  include <CadR/DataMemory.h>
+#  include <CadR/HandleTable.h>
+#  include <CadR/StagingMemory.h>
+#  include <CadR/TransferResources.h>
+# endif
+# include <boost/intrusive/list.hpp>
+# include <list>
+# include <vector>
 
 namespace CadR {
 
@@ -123,9 +134,16 @@ public:
 
 }
 
+#endif
+
 
 // inline and template methods
+#if !defined(CADR_DATA_STORAGE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_DATA_STORAGE_INLINE_FUNCTIONS
 namespace CadR {
+
+inline DataStorage::~DataStorage() noexcept  { destroy(); }
+inline DataStorage::DataStorage(Renderer& renderer)  : _renderer(&renderer) , _handleTable(*this) {}
 
 inline std::vector<DataMemory*>& DataStorage::dataMemoryList()  { return _dataMemoryList; }
 inline const std::vector<DataMemory*>& DataStorage::dataMemoryList() const  { return _dataMemoryList; }
@@ -133,32 +151,14 @@ inline Renderer& DataStorage::renderer() const  { return *_renderer; }
 inline size_t DataStorage::stagingDataSizeHint() const  { return _stagingDataSizeHint; }
 
 inline DataAllocationRecord* DataStorage::zeroSizeAllocationRecord() noexcept  { return &_zeroSizeAllocationRecord; }
-inline void DataStorage::setStagingDataSizeHint(size_t size)  { _stagingDataSizeHint = size; }
+inline void DataStorage::free(DataAllocationRecord* a) noexcept  { if(a->size==0) return; DataMemory::free(a); }
 inline void DataStorage::uploadDone(TransferResourcesReleaser& trr)  { trr.release(); }
+inline void DataStorage::setStagingDataSizeHint(size_t size)  { _stagingDataSizeHint = size; }
 inline uint64_t DataStorage::createHandle()  { return _handleTable.create(); }
 inline void DataStorage::destroyHandle(uint64_t handle) noexcept  { _handleTable.destroy(handle); }
 inline void DataStorage::setHandle(uint64_t handle, uint64_t addr)  { _handleTable.set(handle, addr); }
 inline unsigned DataStorage::handleLevel() const  { return _handleTable.handleLevel(); }
 inline uint64_t DataStorage::handleTableDeviceAddress() const  { return _handleTable.rootTableDeviceAddress(); }
 
-// functions moved here from DataAllocation.h to avoid circular include dependency
-inline HandlelessAllocation::HandlelessAllocation(DataStorage& storage) noexcept  { _record = storage.zeroSizeAllocationRecord(); }
-inline HandlelessAllocation::HandlelessAllocation(HandlelessAllocation&& other) noexcept : _record(other._record)  { other._record->recordPointer=&this->_record; other._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); }
-inline DataAllocation::DataAllocation(DataStorage& storage, noHandle_t) noexcept : _record(storage.zeroSizeAllocationRecord()), _handle(0)  {}
-inline DataAllocation::DataAllocation(DataAllocation&& other) noexcept : _record(other._record), _handle(other._handle)  { _record->recordPointer=&this->_record; other._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); other._handle=0; }
-inline HandlelessAllocation& HandlelessAllocation::operator=(HandlelessAllocation&& rhs) noexcept  { free(); _record=rhs._record; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); return *this; }
-inline Renderer& HandlelessAllocation::renderer() const  { return _record->dataMemory->dataStorage().renderer(); }
-inline Renderer& DataAllocation::renderer() const  { return _record->dataMemory->dataStorage().renderer(); }
-inline void HandlelessAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
-inline void DataAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
-inline void DataAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
-
-// functions moved here from TransferResources.h
-inline void TransferResourcesReleaser::release()  { if(_dataStorage==nullptr) return; _dataStorage->uploadDone(_id); _dataStorage=nullptr; }
-inline TransferResourcesReleaser::~TransferResourcesReleaser()  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); }
-inline TransferResourcesReleaser& TransferResourcesReleaser::operator=(TransferResourcesReleaser&& other)  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); _id=other._id; _dataStorage=other._dataStorage; other._dataStorage=nullptr; return *this; }
-
 }
-
-// include inline DataStorage functions defined in Renderer.h (they are defined there because they depend on CadR::Renderer class)
-#include <CadR/Renderer.h>
+#endif

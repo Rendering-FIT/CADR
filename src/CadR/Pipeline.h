@@ -1,6 +1,7 @@
-#pragma once
+#ifndef CADR_PIPELINE_HEADER
+# define CADR_PIPELINE_HEADER
 
-#include <vulkan/vulkan.hpp>
+# include <vulkan/vulkan.hpp>
 
 namespace CadR {
 
@@ -38,10 +39,16 @@ public:
 
 }
 
+#endif
+
 
 // inline methods
-#include <CadR/Renderer.h>
-#include <CadR/VulkanDevice.h>
+#if !defined(CADR_PIPELINE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_PIPELINE_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/Renderer.h>
+# include <CadR/VulkanDevice.h>
+# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline Pipeline::Pipeline(Renderer& r) noexcept : _renderer(&r)  {}
@@ -62,3 +69,4 @@ inline std::vector<vk::DescriptorSetLayout>& Pipeline::descriptorSetLayouts() co
 inline vk::DescriptorSetLayout Pipeline::descriptorSetLayout(size_t index) const  { return (*_descriptorSetLayouts)[index]; }
 
 }
+#endif

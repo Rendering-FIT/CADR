@@ -1,6 +1,7 @@
-#pragma once
+#ifndef CADR_STAGING_DATA_HEADER
+# define CADR_STAGING_DATA_HEADER
 
-#include <cstddef>
+# include <cstddef>
 
 namespace CadR {
 
@@ -44,17 +45,21 @@ public:
 
 }
 
+#endif
+
 
 // inline methods
+#if !defined(CADR_STAGING_DATA_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_STAGING_DATA_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/DataAllocation.h>
+# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline StagingData::StagingData(DataAllocationRecord* record, bool needInit) : _record(record), _needInit(needInit)  {}
+template<typename T> inline T* StagingData::data()  { return reinterpret_cast<T*>(_record->stagingData); }
+inline size_t StagingData::sizeInBytes() const  { return _record->size; }
 inline bool StagingData::needInit() const  { return _needInit; }
 
 }
-
-
-// include inline StagingData functions defined in DataAllocation.h (they are defined there because they depend on DataAllocationRecord struct)
-#ifndef CADR_NO_DATAALLOCATION_INCLUDE
-# include <CadR/DataAllocation.h>
 #endif

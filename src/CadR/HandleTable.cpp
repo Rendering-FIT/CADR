@@ -1,6 +1,5 @@
 #include <CadR/HandleTable.h>
-#include <CadR/DataStorage.h>  // some DataAllocation and HandlelessAllocation functions are placed there as a part of circular include problem
-#include <CadR/Exceptions.h>
+#include <CadR/StagingData.h>
 
 using namespace std;
 using namespace CadR;

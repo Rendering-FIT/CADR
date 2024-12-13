@@ -1,9 +1,14 @@
-#pragma once
+#ifndef CADR_DATA_ALLOCATION_HEADER
+# define CADR_DATA_ALLOCATION_HEADER
 
-#define CADR_NO_DATAALLOCATION_INCLUDE
-#include <CadR/StagingData.h>
-#undef CADR_NO_DATAALLOCATION_INCLUDE
-#include <vulkan/vulkan.hpp>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/StagingData.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/StagingData.h>
+# endif
+# include <vulkan/vulkan.hpp>
 
 namespace CadR {
 
@@ -122,40 +127,57 @@ public:
 
 }
 
+#endif
+
 
 // inline methods
+#if !defined(CADR_DATA_ALLOCATION_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_DATA_ALLOCATION_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/DataStorage.h>
+# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline void DataAllocationRecord::init(vk::DeviceAddress addr, size_t size, DataMemory* m, DataAllocationRecord** recordPointer, void* stagingData, size_t stagingFrameNumber)  { deviceAddress = addr; this->size = size; dataMemory = m; this->recordPointer = recordPointer; this->stagingData = stagingData; this->stagingFrameNumber = stagingFrameNumber; }
-inline HandlelessAllocation::HandlelessAllocation(nullptr_t) noexcept : _record(&DataAllocationRecord::nullRecord)  {}
-inline HandlelessAllocation::~HandlelessAllocation() noexcept  { free(); }
 inline DataAllocation::DataAllocation(nullptr_t) noexcept : _record(&DataAllocationRecord::nullRecord), _handle(0)  {}
+inline DataAllocation::DataAllocation(DataStorage& storage) : _record(storage.zeroSizeAllocationRecord()), _handle(storage.createHandle())  {}  // this might throw in DataStorage::createHandle(), but _record points to zero size record that does not need to be freed
+inline DataAllocation::DataAllocation(DataStorage& storage, noHandle_t) noexcept : _record(storage.zeroSizeAllocationRecord()), _handle(0)  {}
+inline DataAllocation::DataAllocation(DataAllocation&& other) noexcept : _record(other._record), _handle(other._handle)  { _record->recordPointer=&this->_record; other._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); other._handle=0; }
+inline DataAllocation::~DataAllocation() noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); }
+inline HandlelessAllocation::HandlelessAllocation(nullptr_t) noexcept : _record(&DataAllocationRecord::nullRecord)  {}
+inline HandlelessAllocation::HandlelessAllocation(DataStorage& storage) noexcept  { _record = storage.zeroSizeAllocationRecord(); }
+inline HandlelessAllocation::HandlelessAllocation(HandlelessAllocation&& other) noexcept : _record(other._record)  { other._record->recordPointer=&this->_record; other._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); }
+inline HandlelessAllocation::~HandlelessAllocation() noexcept  { free(); }
 
+inline DataAllocation& DataAllocation::operator=(DataAllocation&& rhs) noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); _record=rhs._record; _handle = rhs._handle; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); rhs._handle=0; return *this; }
+inline HandlelessAllocation& HandlelessAllocation::operator=(HandlelessAllocation&& rhs) noexcept  { free(); _record=rhs._record; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); return *this; }
+
+inline void DataAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
+inline void HandlelessAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
+inline void DataAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
+inline void HandlelessAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
 inline StagingData DataAllocation::createStagingData()  { return alloc(); }
 inline StagingData DataAllocation::createStagingData(size_t size)  { return alloc(size); }
 inline StagingData HandlelessAllocation::createStagingData()  { return alloc(); }
 inline StagingData HandlelessAllocation::createStagingData(size_t size)  { return alloc(size); }
+inline uint64_t DataAllocation::createHandle(DataStorage& storage)  { if(_handle==0) _handle=storage.createHandle(); return _handle; }
+inline void DataAllocation::destroyHandle() noexcept  { if(_handle==0) return; dataStorage().destroyHandle(_handle); _handle=0; }
 
-inline vk::DeviceAddress HandlelessAllocation::deviceAddress() const  { return _record->deviceAddress; }
-inline size_t HandlelessAllocation::size() const  { return _record->size; }
-inline DataMemory& HandlelessAllocation::dataMemory() const  { return *_record->dataMemory; }
 inline uint64_t DataAllocation::handle() const  { return _handle; }
 inline vk::DeviceAddress DataAllocation::deviceAddress() const  { return _record->deviceAddress; }
+inline vk::DeviceAddress HandlelessAllocation::deviceAddress() const  { return _record->deviceAddress; }
 inline size_t DataAllocation::size() const  { return _record->size; }
+inline size_t HandlelessAllocation::size() const  { return _record->size; }
+inline vk::Buffer DataAllocation::buffer() const  { return _record->dataMemory->buffer(); }
+inline vk::Buffer HandlelessAllocation::buffer() const  { return _record->dataMemory->buffer(); }
+inline size_t DataAllocation::offset() const  { return _record->deviceAddress - _record->dataMemory->deviceAddress(); }
+inline size_t HandlelessAllocation::offset() const  { return _record->deviceAddress - _record->dataMemory->deviceAddress(); }
 inline DataMemory& DataAllocation::dataMemory() const  { return *_record->dataMemory; }
-
-// functions moved here to avoid circular include dependency
-template<typename T> inline T* StagingData::data()  { return reinterpret_cast<T*>(_record->stagingData); }
-inline size_t StagingData::sizeInBytes() const  { return _record->size; }
+inline DataMemory& HandlelessAllocation::dataMemory() const  { return *_record->dataMemory; }
+inline DataStorage& DataAllocation::dataStorage() const  { return _record->dataMemory->dataStorage(); }
+inline DataStorage& HandlelessAllocation::dataStorage() const  { return _record->dataMemory->dataStorage(); }
+inline Renderer& DataAllocation::renderer() const  { return _record->dataMemory->dataStorage().renderer(); }
+inline Renderer& HandlelessAllocation::renderer() const  { return _record->dataMemory->dataStorage().renderer(); }
 
 }
-
-
-// include inline DataAllocation functions defined in DataStorage.h (they are defined there because they depend on CadR::DataStorage class)
-#ifndef CADR_NO_DATASTORAGE_INCLUDE
-# include <CadR/DataStorage.h>
 #endif
-
-// we skipped StagingMemory by CADR_NO_STAGINGMEMORY_INCLUDE, so let's include it here
-// otherwise some inline methods of StagingData might be missing
-#include <CadR/StagingMemory.h>

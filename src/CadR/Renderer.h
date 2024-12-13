@@ -1,12 +1,19 @@
-#ifndef CADR_RENDERER_H
-#define CADR_RENDERER_H
+#ifndef CADR_RENDERER_HEADER
+# define CADR_RENDERER_HEADER
 
-#include <CadR/DataStorage.h>
-#include <CadR/FrameInfo.h>
-#include <vulkan/vulkan.hpp>
-#include <array>
-#include <list>
-#include <tuple>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/DataStorage.h>
+#  include <CadR/FrameInfo.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/DataStorage.h>
+#  include <CadR/FrameInfo.h>
+# endif
+# include <vulkan/vulkan.hpp>
+# include <array>
+# include <list>
+# include <tuple>
 
 namespace CadR {
 
@@ -168,9 +175,16 @@ public:
 
 }
 
+#endif
+
+
 // inline methods
-#include <CadR/VulkanDevice.h>
-#include <cassert>
+#if !defined(CADR_DATA_ALLOCATION_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_DATA_ALLOCATION_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/VulkanDevice.h>
+# undef CADR_NO_INLINE_FUNCTIONS
+# include <cassert>
 namespace CadR {
 
 inline Renderer& Renderer::get()  { return *_defaultRenderer; }
@@ -206,16 +220,5 @@ inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(vk::Buffe
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemory(r.size, r.memoryTypeBits, requiredFlags); }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemoryNoThrow(r.size, r.memoryTypeBits, requiredFlags); }
 
-// functions moved here from DataAllocation.h to avoid circular include dependency
-inline DataAllocation::DataAllocation(DataStorage& storage) : _record(storage.zeroSizeAllocationRecord()), _handle(storage.createHandle())  {}  // this might throw in DataStorage::createHandle(), but _record points to zero size record that does not need to be freed
-inline DataAllocation::~DataAllocation() noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); }
-inline DataAllocation& DataAllocation::operator=(DataAllocation&& rhs) noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); _record=rhs._record; _handle = rhs._handle; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); rhs._handle=0; return *this; }
-inline uint64_t DataAllocation::createHandle(DataStorage& storage)  { if(_handle==0) _handle=storage.createHandle(); return _handle; }
-inline void DataAllocation::destroyHandle() noexcept  { if(_handle==0) return; dataStorage().destroyHandle(_handle); _handle=0; }
-
-// functions moved here from DataStorage.h to avoid circular include dependency
-inline void DataStorage::free(DataAllocationRecord* a) noexcept  { if(a->size==0) return; DataMemory::free(a); }
-
 }
-
-#endif /* CADR_RENDERER_H */
+#endif

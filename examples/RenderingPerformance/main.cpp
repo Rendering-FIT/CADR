@@ -3,6 +3,7 @@
 #include <CadR/Geometry.h>
 #include <CadR/Pipeline.h>
 #include <CadR/PrimitiveSet.h>
+#include <CadR/StagingData.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>

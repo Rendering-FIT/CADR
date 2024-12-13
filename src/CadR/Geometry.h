@@ -1,7 +1,15 @@
-#pragma once
+#ifndef CADR_GEOMETRY_HEADER
+# define CADR_GEOMETRY_HEADER
 
-#include <CadR/DataAllocation.h>
-#include <CadR/Drawable.h>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/DataAllocation.h>
+#  include <CadR/Drawable.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/DataAllocation.h>
+#  include <CadR/Drawable.h>
+# endif
 
 namespace CadR {
 
@@ -75,11 +83,17 @@ public:
 
 }
 
+#endif
+
 
 // inline methods
-#include <CadR/DataAllocation.h>
-#include <CadR/DataStorage.h>
-#include <CadR/Renderer.h>
+#if !defined(CADR_GEOMETRY_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_GEOMETRY_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/DataAllocation.h>
+# include <CadR/DataStorage.h>
+# include <CadR/Renderer.h>
+# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline Geometry::Geometry(Renderer& r) : _vertices(r.dataStorage()), _indices(r.dataStorage()), _primitiveSets(r.dataStorage())  {}
@@ -111,3 +125,4 @@ inline void Geometry::freePrimitiveSetData()  { _primitiveSets.free(); }
 inline void Geometry::freeData()  { freeVertexData(); freeIndexData(); freePrimitiveSetData(); }
 
 }
+#endif

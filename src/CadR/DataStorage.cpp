@@ -2,7 +2,7 @@
 #include <CadR/Exceptions.h>
 #include <CadR/Renderer.h>
 #include <CadR/StagingMemory.h>
-#include <CadR/VulkanDevice.h>
+#include <CadR/TransferResources.h>
 
 using namespace std;
 using namespace CadR;
@@ -30,19 +30,6 @@ void DataStorage::destroy() noexcept
 	_stagingMemoryRegister.largeMemoryAvailableList.clear_and_dispose(StagingMemoryRegister::Disposer());
 	_stagingMemoryRegister.superSizeMemoryInUseList.clear_and_dispose(StagingMemoryRegister::Disposer());
 	_stagingMemoryRegister.superSizeMemoryAvailableList.clear_and_dispose(StagingMemoryRegister::Disposer());
-}
-
-
-DataStorage::~DataStorage() noexcept
-{
-	destroy();
-}
-
-
-DataStorage::DataStorage(Renderer& renderer)
-	: _renderer(&renderer)
-	, _handleTable(*this)
-{
 }
 
 

@@ -1,6 +1,6 @@
 #include <CadR/DataAllocation.h>
 #include <CadR/DataStorage.h>
-#include <CadR/Exceptions.h>
+#include <CadR/Renderer.h>
 
 using namespace std;
 using namespace CadR;
@@ -80,17 +80,17 @@ StagingData HandlelessAllocation::alloc()
 }
 
 
-void HandlelessAllocation::upload(const void* ptr, size_t numBytes)
-{
-	_record = dataStorage().realloc(_record, numBytes);
-	memcpy(_record->stagingData, ptr, numBytes);
-}
-
-
 void DataAllocation::upload(const void* ptr, size_t numBytes)
 {
 	DataStorage& storage = _record->dataMemory->dataStorage();
 	_record = storage.realloc(_record, numBytes);
 	storage.setHandle(_handle, _record->deviceAddress);
+	memcpy(_record->stagingData, ptr, numBytes);
+}
+
+
+void HandlelessAllocation::upload(const void* ptr, size_t numBytes)
+{
+	_record = dataStorage().realloc(_record, numBytes);
 	memcpy(_record->stagingData, ptr, numBytes);
 }

@@ -1,10 +1,16 @@
-#pragma once
+#ifndef CADR_DATA_MEMORY_HEADER
+# define CADR_DATA_MEMORY_HEADER
 
-#include <CadR/CircularAllocationMemory.h>
-#define CADR_NO_DATASTORAGE_INCLUDE // this is to break circular dependency; we will include DataStorage.h later in this header
-#include <CadR/DataAllocation.h>
-#undef CADR_NO_DATASTORAGE_INCLUDE
-#include <vulkan/vulkan.hpp>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/CircularAllocationMemory.h>
+#  include <CadR/DataAllocation.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/CircularAllocationMemory.h>
+#  include <CadR/DataAllocation.h>
+# endif
+# include <vulkan/vulkan.hpp>
 
 namespace CadR {
 
@@ -84,8 +90,12 @@ public:
 
 }
 
+#endif
+
 
 // inline methods
+#if !defined(CADR_DATA_MEMORY_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_DATA_MEMORY_INLINE_FUNCTIONS
 namespace CadR {
 
 inline DataMemory::DataMemory(DataStorage& dataStorage) : _dataStorage(&dataStorage)  {}
@@ -97,12 +107,5 @@ inline vk::DeviceAddress DataMemory::deviceAddress() const  { return _bufferStar
 inline size_t DataMemory::usedBytes() const  { return _usedBytes; }
 inline void DataMemory::free(DataAllocationRecord* a) noexcept  { a->dataMemory->freeInternal(a); }
 
-// functions moved here from DataAllocation.h to avoid circular include dependency
-inline vk::Buffer HandlelessAllocation::buffer() const  { return _record->dataMemory->buffer(); }
-inline size_t HandlelessAllocation::offset() const  { return _record->deviceAddress - _record->dataMemory->deviceAddress(); }
-inline DataStorage& HandlelessAllocation::dataStorage() const  { return _record->dataMemory->dataStorage(); }
-inline vk::Buffer DataAllocation::buffer() const  { return _record->dataMemory->buffer(); }
-inline size_t DataAllocation::offset() const  { return _record->deviceAddress - _record->dataMemory->deviceAddress(); }
-inline DataStorage& DataAllocation::dataStorage() const  { return _record->dataMemory->dataStorage(); }
-
 }
+#endif

@@ -1,7 +1,14 @@
-#pragma once
+#ifndef CADR_DRAWABLE_HEADER
+# define CADR_DRAWABLE_HEADER
 
-#include <CadR/DataAllocation.h>
-#include <boost/intrusive/list.hpp>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/DataAllocation.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/DataAllocation.h>
+# endif
+# include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
@@ -58,12 +65,14 @@ public:
 	Drawable& operator=(const Drawable&) = delete;  ///< No copy assignment operator.
 	Drawable& operator=(Drawable&& rhs) noexcept;  ///< Move assignment operator.
 
+	// create and destroy
 	StagingData create(Geometry& geometry, uint32_t primitiveSetOffset,
 	                   size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet);
 	void create(Geometry& geometry, uint32_t primitiveSetOffset, uint32_t numInstances, StateSet& stateSet);
 	void destroy() noexcept;
 	bool isValid() const;
 
+	// shader data and staging data
 	StagingData reallocShaderData(size_t size, uint32_t numInstances);
 	StagingData reallocShaderData(size_t size);
 	StagingData createStagingShaderData();
@@ -71,6 +80,7 @@ public:
 	void uploadShaderData(void* data, size_t size);
 	void freeShaderData();
 
+	// getters
 	Renderer& renderer() const;
 	StateSet& stateSet() const;
 	DataAllocation& shaderData();
@@ -94,9 +104,16 @@ typedef boost::intrusive::list<
 
 }
 
+#endif
+
 
 // inline methods
-#include <CadR/DataAllocation.h>
+#if !defined(CADR_DRAWABLE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_DRAWABLE_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/Renderer.h>
+# include <CadR/StateSet.h>
+# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline constexpr DrawableGpuData::DrawableGpuData(uint64_t vertexDataHandle_, uint64_t indexDataHandle_, uint64_t primitiveSetHandle_, uint64_t shaderDataHandle_, uint32_t primitiveSetOffset_, uint32_t numInstances_)
@@ -108,12 +125,11 @@ inline void Drawable::uploadShaderData(void* data, size_t size)  { _shaderData.u
 inline StagingData Drawable::createStagingShaderData()  { return _shaderData.createStagingData(); }
 inline StagingData Drawable::createStagingShaderData(size_t size)  { return _shaderData.createStagingData(size); }
 
+inline Renderer& Drawable::renderer() const  { return _stateSet->renderer(); }
 inline StateSet& Drawable::stateSet() const  { return *_stateSet; }
 inline DataAllocation& Drawable::shaderData()  { return _shaderData; }
 inline const DataAllocation& Drawable::shaderData() const  { return _shaderData; }
 inline size_t Drawable::shaderDataSize() const  { return _shaderData.size(); }
 
 }
-
-// include inline Drawable functions defined in StateSet.h (they are defined there because they depend on CadR::StateSet class)
-#include <CadR/StateSet.h>
+#endif

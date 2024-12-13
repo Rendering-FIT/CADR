@@ -1,8 +1,16 @@
-#pragma once
+#ifndef CADR_STATE_SET_HEADER
+# define CADR_STATE_SET_HEADER
 
-#include <CadR/Drawable.h>
-#include <CadR/ParentChildList.h>
-#include <functional>
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/Drawable.h>
+#  include <CadR/ParentChildList.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/Drawable.h>
+#  include <CadR/ParentChildList.h>
+# endif
+# include <functional>
 
 namespace CadR {
 
@@ -82,8 +90,12 @@ protected:
 
 }
 
+#endif
+
 
 // inline methods
+#if !defined(CADR_STATE_SET_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_STATE_SET_INLINE_FUNCTIONS
 namespace CadR {
 
 inline StateSet::StateSet(Renderer& renderer) noexcept : _renderer(&renderer)  {}
@@ -97,7 +109,5 @@ inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet == 
 inline Drawable& StateSet::getDrawable(size_t index) const  { return *_drawablePtrList[index]; }
 inline size_t StateSet::getNumDrawables() const  { return _drawablePtrList.size(); }
 
-// functions moved here from Drawable.h to avoid circular include dependency
-inline Renderer& Drawable::renderer() const  { return _stateSet->renderer(); }
-
 }
+#endif

@@ -1,8 +1,6 @@
 #include <CadR/Drawable.h>
 #include <CadR/DataAllocation.h>
-#include <CadR/DataStorage.h>
 #include <CadR/Geometry.h>
-#include <CadR/PrimitiveSet.h>
 
 using namespace std;
 using namespace CadR;

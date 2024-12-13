@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CADR_TRANSFER_RESOURCES_HEADER
+# define CADR_TRANSFER_RESOURCES_HEADER
 
 #include <list>
 #include <tuple>
@@ -29,7 +30,6 @@ public:
 
 class TransferResourcesReleaser {
 public:
-	//using InProgressList = std::list<std::vector<std::tuple<StagingMemory*,uint64_t>>>;
 	using Id = std::list<TransferResources>::iterator;
 protected:
 	Id _id;
@@ -48,8 +48,14 @@ public:
 
 }
 
+#endif
+
+
 // inline functions
+#if !defined(CADR_TRANSFER_RESOURCES_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_TRANSFER_RESOURCES_INLINE_FUNCTIONS
 namespace CadR {
+
 inline TransferResources::TransferResources(size_t capacity)  { _resourceList.reserve(capacity); }
 inline void TransferResources::release()  { for(auto t : _resourceList) std::get<0>(t)->uploadDone(std::get<1>(t), std::get<2>(t)); _resourceList.clear(); }
 inline TransferResources::~TransferResources()  { for(auto t : _resourceList) std::get<0>(t)->uploadDone(std::get<1>(t), std::get<2>(t)); }
@@ -59,8 +65,10 @@ inline TransferResources& TransferResources::operator=(TransferResources&& other
 
 inline TransferResourcesReleaser::TransferResourcesReleaser() : _dataStorage(nullptr)  {}
 inline TransferResourcesReleaser::TransferResourcesReleaser(Id id, DataStorage* dataStorage) : _id(id), _dataStorage(dataStorage)  {}
+inline void TransferResourcesReleaser::release()  { if(_dataStorage==nullptr) return; _dataStorage->uploadDone(_id); _dataStorage=nullptr; }
+inline TransferResourcesReleaser::~TransferResourcesReleaser()  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); }
 inline TransferResourcesReleaser::TransferResourcesReleaser(TransferResourcesReleaser&& other) : _id(other._id), _dataStorage(other._dataStorage)  { other._dataStorage=nullptr; }
-}
+inline TransferResourcesReleaser& TransferResourcesReleaser::operator=(TransferResourcesReleaser&& other)  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); _id=other._id; _dataStorage=other._dataStorage; other._dataStorage=nullptr; return *this; }
 
-// include inline Transfer functions defined in DataStorage.h (they are defined there because they depend on CadR::DataStorage class)
-#include <CadR/DataStorage.h>
+}
+#endif

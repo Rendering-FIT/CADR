@@ -1,4 +1,5 @@
 #include <CadR/ParentChildList.h>
+#include <CadR/Renderer.h>
 #include <CadR/StateSet.h>
 
 using namespace CadR;

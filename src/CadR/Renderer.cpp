@@ -1,9 +1,7 @@
 #include <CadR/Renderer.h>
-#include <CadR/PrimitiveSet.h>
 #include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
-#include <numeric>
 
 using namespace std;
 using namespace CadR;

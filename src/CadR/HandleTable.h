@@ -1,8 +1,13 @@
-#pragma once
+#ifndef CADR_HANDLE_TABLE_HEADER
+# define CADR_HANDLE_TABLE_HEADER
 
-#define CADR_NO_DATASTORAGE_INCLUDE
-#include <CadR/DataAllocation.h>
-#undef CADR_NO_DATASTORAGE_INCLUDE
+# ifndef CADR_NO_INLINE_FUNCTIONS
+#  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/DataAllocation.h>
+#  undef CADR_NO_INLINE_FUNCTIONS
+# else
+#  include <CadR/DataAllocation.h>
+# endif
 
 namespace CadR {
 
@@ -87,8 +92,14 @@ public:
 
 }
 
+#endif
+
+
 // inline methods
+#if !defined(CADR_HANDLE_TABLE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
+# define CADR_HANDLE_TABLE_INLINE_FUNCTIONS
 namespace CadR {
+
 inline uint64_t HandleTable::create()  { return (this->*_createHandle)(); }
 inline uint64_t HandleTable::create(vk::DeviceAddress deviceAddress)  { uint64_t r = create(); set(r, deviceAddress); return r; }
 inline void HandleTable::set(uint64_t handle, uint64_t addr)  { (this->*_setHandle)(handle, addr); }
@@ -101,4 +112,6 @@ inline uint64_t HandleTable::rootTableDeviceAddress() const  { return (this->*_r
 inline uint64_t HandleTable::rootTableDeviceAddress0() const  { return 0; }
 inline uint64_t HandleTable::rootTableDeviceAddress1() const  { return _level0->allocation.deviceAddress(); }
 inline uint64_t HandleTable::rootTableDeviceAddress2() const  { return _level1->allocation.deviceAddress(); }
+
 }
+#endif
