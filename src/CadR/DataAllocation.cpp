@@ -10,20 +10,20 @@ DataAllocationRecord DataAllocationRecord::nullRecord{ 0, 0, nullptr, nullptr, n
 
 
 
-StagingData DataAllocation::alloc(size_t size)
+StagingData DataAllocation::alloc(size_t numBytes)
 {
 	DataStorage& storage = _record->dataMemory->dataStorage();
 	Renderer& r = storage.renderer();
 
 	// reuse current allocation
 	// (it was allocated earlier in this frame)
-	if(_record->stagingFrameNumber == r.frameNumber() && size <= _record->size) {
-		_record->size = size;
+	if(_record->stagingFrameNumber == r.frameNumber() && numBytes <= _record->size) {
+		_record->size = numBytes;
 		return StagingData(_record, false);
 	}
 
 	// re-allocate DataAllocation and its staging data
-	_record = storage.realloc(_record, size);
+	_record = storage.realloc(_record, numBytes);
 	storage.setHandle(_handle, _record->deviceAddress);
 	return StagingData(_record, true);
 }

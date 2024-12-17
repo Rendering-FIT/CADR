@@ -5,10 +5,14 @@
 #  define CADR_NO_INLINE_FUNCTIONS
 #  include <CadR/DataStorage.h>
 #  include <CadR/FrameInfo.h>
+#  include <CadR/ImageStorage.h>
+#  include <CadR/StagingManager.h>
 #  undef CADR_NO_INLINE_FUNCTIONS
 # else
 #  include <CadR/DataStorage.h>
 #  include <CadR/FrameInfo.h>
+#  include <CadR/ImageStorage.h>
+#  include <CadR/StagingManager.h>
 # endif
 # include <vulkan/vulkan.hpp>
 # include <array>
@@ -51,9 +55,11 @@ protected:
 	vk::DeviceMemory  _drawablePayloadMemory;
 	vk::DeviceAddress _drawablePayloadDeviceAddress;
 
+	mutable StagingManager _stagingManager;
 	mutable DataStorage _dataStorage;
 	size_t _currentFrameUploadBytes = 0;
 	size_t _lastFrameUploadBytes = 0;
+	mutable ImageStorage _imageStorage;
 
 	vk::CommandPool _transientCommandPool;
 	vk::CommandBuffer _uploadingCommandBuffer;
@@ -86,6 +92,11 @@ protected:
 	friend struct RendererStaticInitializer;
 
 public:
+
+	// public static variables
+	static constexpr const size_t smallMemorySize = 64 << 10;  // 64KiB
+	static constexpr const size_t mediumMemorySize = 2 << 20;  // 2MiB
+	static constexpr const size_t largeMemorySize = 32 << 20;  // 32MiB
 
 	// general static functions
 	static Renderer& get();
@@ -160,6 +171,8 @@ public:
 	vk::CommandPool precompiledCommandPool() const;
 
 	// memory
+	vk::DeviceMemory allocateMemoryType(size_t size, uint32_t memoryTypeIndex);
+	vk::DeviceMemory allocateMemoryTypeNoThrow(size_t size, uint32_t memoryTypeIndex) noexcept;
 	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
 	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
@@ -216,6 +229,7 @@ inline vk::Pipeline Renderer::processDrawablesPipeline(size_t handleLevel) const
 inline vk::PipelineLayout Renderer::processDrawablesPipelineLayout() const  { return _processDrawablesPipelineLayout; }
 inline vk::CommandPool Renderer::transientCommandPool() const  { return _transientCommandPool; }
 inline vk::CommandPool Renderer::precompiledCommandPool() const  { return _precompiledCommandPool; }
+inline vk::DeviceMemory Renderer::allocateMemoryType(size_t size, uint32_t memoryTypeIndex)  { vk::DeviceMemory m = allocateMemoryTypeNoThrow(size, memoryTypeIndex); if(!m) throw std::runtime_error("Cannot allocate memory of specified memory type."); return m; }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocateMemory(r.size, r.memoryTypeBits, requiredFlags); }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemory(r.size, r.memoryTypeBits, requiredFlags); }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemoryNoThrow(r.size, r.memoryTypeBits, requiredFlags); }

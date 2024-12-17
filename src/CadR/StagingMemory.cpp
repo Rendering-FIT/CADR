@@ -12,7 +12,7 @@ using namespace CadR;
 StagingMemory::~StagingMemory()
 {
 	// destroy buffers
-	VulkanDevice& device = _renderer->device();
+	VulkanDevice& device = _stagingManager->renderer().device();
 	device.destroy(_buffer);
 
 	// free memory
@@ -21,19 +21,19 @@ StagingMemory::~StagingMemory()
 }
 
 
-StagingMemory::StagingMemory(Renderer& renderer, size_t size)
-	: StagingMemory(renderer)  // this ensures the destructor will be executed if this constructor throws
+StagingMemory::StagingMemory(StagingManager& stagingManager, size_t size)
+	: StagingMemory(stagingManager)  // this ensures the destructor will be executed if this constructor throws
 {
 	// handle zero-sized buffer
 	if(size == 0) {
 		_bufferStartAddress = 0;
 		_bufferEndAddress = 0;
-		_bufferSize = 0;
 		return;
 	}
 
 	// create _buffer
-	VulkanDevice& device = _renderer->device();
+	Renderer& renderer = stagingManager.renderer();
+	VulkanDevice& device = renderer.device();
 	_buffer =
 		device.createBuffer(
 			vk::BufferCreateInfo(
@@ -48,7 +48,7 @@ StagingMemory::StagingMemory(Renderer& renderer, size_t size)
 
 	// allocate _memory
 	tie(_memory, ignore) =
-		_renderer->allocateMemory(_buffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached);
+		renderer.allocateMemory(_buffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached);
 
 	// bind memory
 	device.bindBufferMemory(
@@ -68,5 +68,4 @@ StagingMemory::StagingMemory(Renderer& renderer, size_t size)
 			)
 		);
 	_bufferEndAddress = _bufferStartAddress + size;
-	_bufferSize = size;
 }

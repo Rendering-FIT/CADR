@@ -3,17 +3,13 @@
 
 # ifndef CADR_NO_INLINE_FUNCTIONS
 #  define CADR_NO_INLINE_FUNCTIONS
-#  include <CadR/DataAllocation.h>
 #  include <CadR/DataMemory.h>
 #  include <CadR/HandleTable.h>
-#  include <CadR/StagingMemory.h>
 #  include <CadR/TransferResources.h>
 #  undef CADR_NO_INLINE_FUNCTIONS
 # else
-#  include <CadR/DataAllocation.h>
 #  include <CadR/DataMemory.h>
 #  include <CadR/HandleTable.h>
-#  include <CadR/StagingMemory.h>
 #  include <CadR/TransferResources.h>
 # endif
 # include <boost/intrusive/list.hpp>
@@ -23,6 +19,7 @@
 namespace CadR {
 
 class Renderer;
+class StagingManager;
 class StagingMemory;
 
 
@@ -47,32 +44,7 @@ protected:
 	DataMemory* _secondAllocMemory = nullptr;
 	DataMemory _zeroSizeDataMemory = DataMemory(*this, nullptr);
 	DataAllocationRecord _zeroSizeAllocationRecord = DataAllocationRecord{ 0, 0, &_zeroSizeDataMemory, nullptr, nullptr, size_t(-2) };
-	struct StagingMemoryRegister {
-		using StagingMemoryList =
-			boost::intrusive::list<
-				StagingMemory,
-				boost::intrusive::member_hook<
-					StagingMemory,
-					boost::intrusive::list_member_hook<
-						boost::intrusive::link_mode<boost::intrusive::auto_unlink>>,
-					&StagingMemory::_stagingMemoryListHook>,
-				boost::intrusive::constant_time_size<false>
-			>;
-		struct Disposer {
-			Disposer& operator()(StagingMemory* sm)  { delete sm; return *this; }
-		};
-		StagingMemoryList smallMemoryInUseList;
-		StagingMemoryList smallMemoryAvailableList;
-		StagingMemoryList middleMemoryInUseList;
-		StagingMemoryList middleMemoryAvailableList;
-		StagingMemoryList largeMemoryInUseList;
-		StagingMemoryList largeMemoryAvailableList;
-		StagingMemoryList superSizeMemoryInUseList;
-		StagingMemoryList superSizeMemoryAvailableList;
-	} _stagingMemoryRegister;
-	static constexpr const size_t _smallMemorySize = 64 << 10;  // 64KiB
-	static constexpr const size_t _middleMemorySize = 2 << 20;  // 2MiB
-	static constexpr const size_t _largeMemorySize = 32 << 20;  // 32MiB
+	StagingManager* _stagingManager;
 	size_t _stagingDataSizeHint = 0;
 	using TransferList = std::list<TransferResources>;
 	TransferList _transferInProgressList;
@@ -94,9 +66,9 @@ protected:
 public:
 
 	// construction and destruction
-	DataStorage(Renderer& r);
+	DataStorage(Renderer& r, StagingManager& stagingManager);
 	~DataStorage() noexcept;
-	void destroy() noexcept;
+	void cleanUp() noexcept;
 
 	// deleted constructors and operators
 	DataStorage(const DataStorage&) = delete;
@@ -140,10 +112,14 @@ public:
 // inline and template methods
 #if !defined(CADR_DATA_STORAGE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_DATA_STORAGE_INLINE_FUNCTIONS
+# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/StagingManager.h>
+# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
-inline DataStorage::~DataStorage() noexcept  { destroy(); }
-inline DataStorage::DataStorage(Renderer& renderer)  : _renderer(&renderer) , _handleTable(*this) {}
+inline void DataStorage::freeOrRecycleStagingMemory(StagingMemory& sm)  { _stagingManager->freeOrRecycleStagingMemory(sm); }
+inline DataStorage::~DataStorage() noexcept  { cleanUp(); }
+inline DataStorage::DataStorage(Renderer& renderer, StagingManager& stagingManager)  : _renderer(&renderer), _stagingManager(&stagingManager), _handleTable(*this) {}
 
 inline std::vector<DataMemory*>& DataStorage::dataMemoryList()  { return _dataMemoryList; }
 inline const std::vector<DataMemory*>& DataStorage::dataMemoryList() const  { return _dataMemoryList; }

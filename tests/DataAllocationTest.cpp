@@ -46,7 +46,8 @@ int main(int,char**)
 	Renderer r(device, instance, physicalDevice, graphicsQueueFamily);
 
 	// free on nullptr, alloc and destroy single allocation of size 10
-	DataStorage ds(r);
+	StagingManager stagingManager(r);
+	DataStorage ds(r, stagingManager);
 	DataMemoryTest::verifyDataStorageEmpty(ds);
 	HandlelessAllocation a(ds);
 	a.alloc(10);

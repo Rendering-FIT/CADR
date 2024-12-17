@@ -9,6 +9,23 @@
 namespace CadR {
 
 
+// forward declaration
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+	class CircularAllocationMemory;
+
+
+// CircularAllocationDefaultBlock
+template<typename AllocationRecord, size_t RecordsPerBlock>
+struct CircularAllocationDefaultBlock : boost::intrusive::list_base_hook<
+	                                        boost::intrusive::link_mode<boost::intrusive::auto_unlink>>
+{
+	std::array<AllocationRecord, RecordsPerBlock+2> allocations;
+
+	inline CircularAllocationDefaultBlock(CircularAllocationMemory<AllocationRecord, RecordsPerBlock, CircularAllocationDefaultBlock>& circularAllocationMemory)  {}
+	inline void cleanUp(CircularAllocationMemory<AllocationRecord, RecordsPerBlock, CircularAllocationDefaultBlock>& circularAllocationMemory) noexcept  {}
+};
+
+
 /** CircularAllocationMemory provides common functionality for efficient suballocation.
  *  It is expected to be subclassed. The derived class shall provide concrete buffer and programmer interface.
  *
@@ -33,7 +50,8 @@ namespace CadR {
  *  would mean pointer to an object that takes one, two or three bytes just at the end of address space.
  *  It is almost non-sence to have an owner object of one, two or three bytes in size placed at the very end of address space.
  */
-template<typename AllocationRecord, size_t RecordsPerBlock = 200>
+template<typename AllocationRecord, size_t RecordsPerBlock = 200, typename AllocationBlock =
+	CircularAllocationDefaultBlock<AllocationRecord, RecordsPerBlock>>
 class CircularAllocationMemory {
 protected:
 
@@ -47,11 +65,6 @@ protected:
 	size_t _usedBytes = 0;  ///< Amount of allocated memory. It includes padding used for allocation alignment.
 
 	// AllocationBlock related types
-	struct AllocationBlock : boost::intrusive::list_base_hook<
-		                         boost::intrusive::link_mode<boost::intrusive::auto_unlink>>
-	{
-		std::array<AllocationRecord, RecordsPerBlock+2> allocations;
-	};
 	using AllocationBlockIterator = typename std::array<AllocationRecord, RecordsPerBlock+2>::iterator;
 	using AllocationBlockList =
 		boost::intrusive::list<
@@ -72,14 +85,14 @@ protected:
 		uint64_t address;  ///< Address of allocated memory. Even if the allocation is freed, address still contains the address that used to be assigned to this allocation. 
 		uint64_t magicValue;  ///< If the allocation is invalid, it contains special value of UINT64_MAX.
 		uint32_t index;  ///< Index of SpecialAllocation within AllocationBlock, starting from 0.
-		CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* circularAllocationMemory;
+		CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>* circularAllocationMemory;
 	};
 	struct LastAllocation;
 	struct FirstAllocation {
 		LastAllocation* prevAllocation;
 		uint64_t magicValue;  ///< It contains special value of UINT64_MAX-1.
 		uint32_t index;  ///< Index of SpecialAllocation within AllocationBlock, starting from 0.
-		CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* circularAllocationMemory;
+		CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>* circularAllocationMemory;
 	};
 	struct LastAllocation {
 		uint64_t address;  ///< Address of allocated memory of the following allocation in the next AllocationBlock, or null if the next AllocationBlock was not created yet. 
@@ -92,6 +105,7 @@ protected:
 	// (propose-commit approach is used to have no memory leaks
 	// when exception is raised during the work before commit)
 	std::tuple<uint64_t,int> allocPropose(size_t numBytes);
+	std::tuple<uint64_t,int> allocPropose(size_t numBytes, size_t alignment);
 	AllocationRecord* alloc1Commit(uint64_t addr, size_t numBytes);  // might throw
 	AllocationRecord* alloc2Commit(uint64_t addr, size_t numBytes);  // might throw
 
@@ -108,7 +122,7 @@ protected:
 	AllocationBlock& createAllocationBlock();
 	void destroyAllocationBlock(AllocationBlock& b) noexcept;
 	static void resetDataMemoryPointers(uint64_t aThisAddress,
-		CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m, int blockNumber) noexcept;
+		CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>* m, int blockNumber) noexcept;
 	void freeInternal(AllocationRecord* a) noexcept;
 
 public:
@@ -118,18 +132,18 @@ public:
 };
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::~CircularAllocationMemory()
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::~CircularAllocationMemory()
 {
 	// release AllocationBlock memory
-	_allocationBlockList1.clear_and_dispose([](AllocationBlock* b){ delete b; });
-	_allocationBlockList2.clear_and_dispose([](AllocationBlock* b){ delete b; });
-	_allocationBlockRecycleList.clear_and_dispose([](AllocationBlock* b){ delete b; });
+	_allocationBlockList1.clear_and_dispose([this](AllocationBlock* b){ b->cleanUp(*this); delete b; });
+	_allocationBlockList2.clear_and_dispose([this](AllocationBlock* b){ b->cleanUp(*this); delete b; });
+	_allocationBlockRecycleList.clear_and_dispose([this](AllocationBlock* b){ b->cleanUp(*this); delete b; });
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::createAllocation1(uint64_t addr)
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::createAllocation1(uint64_t addr)
 {
 	AllocationRecord* a;
 	if(_allocationBlockList1.empty())
@@ -202,8 +216,8 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::createAllocation2(uint64_t addr)
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::createAllocation2(uint64_t addr)
 {
 	AllocationRecord* a;
 	if(_allocationBlockList2.empty())
@@ -279,9 +293,9 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::c
 // The resetAllocationBlock() method resets AllocationBlock1 and AllocationBlock2 pointers to
 // empty AllocationBlock state. The function is expected to be called when empty state
 // in AllocationBlock1 or in AllocationBlock2 is detected.
-template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::resetDataMemoryPointers(uint64_t aThisAddress,
-	CircularAllocationMemory<AllocationRecord, RecordsPerBlock>* m, int blockNumber) noexcept
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::resetDataMemoryPointers(uint64_t aThisAddress,
+	CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>* m, int blockNumber) noexcept
 {
 	// does the last freed allocation belong to block1 or to block2?
 	if(blockNumber == 1) {
@@ -313,8 +327,8 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::resetDataMemor
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocation(AllocationRecord* a, int blockNumber) noexcept
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::destroyAllocation(AllocationRecord* a, int blockNumber) noexcept
 {
 	assert(a != nullptr && "AllocationRecord pointer must be not null.");
 	SpecialAllocation* aThis = reinterpret_cast<SpecialAllocation*>(a);
@@ -428,12 +442,12 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-typename CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::AllocationBlock&
-	CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::createAllocationBlock()
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+typename AllocationBlock&
+	CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::createAllocationBlock()
 {
 	if(_allocationBlockRecycleList.empty()) {
-		AllocationBlock& b = *new AllocationBlock;
+		AllocationBlock& b = *new AllocationBlock(*this);
 		FirstAllocation& f = reinterpret_cast<FirstAllocation&>(b.allocations.front());
 		f.prevAllocation = 0;
 		f.magicValue = UINT64_MAX-1;
@@ -459,8 +473,8 @@ typename CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::Allocation
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocationBlock(AllocationBlock& b) noexcept
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::destroyAllocationBlock(AllocationBlock& b) noexcept
 {
 	// delete this AllocationBlock from the list (linked through First and Last Allocation)
 	FirstAllocation& f = reinterpret_cast<FirstAllocation&>(b.allocations.front());
@@ -477,13 +491,15 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::destroyAllocat
 		b.unlink();
 		_allocationBlockRecycleList.push_back(b);
 	}
-	else
+	else {
+		b.cleanUp(*this);
 		delete &b;
+	}
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-std::tuple<uint64_t,int> CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::allocPropose(size_t numBytes)
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+std::tuple<uint64_t,int> CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::allocPropose(size_t numBytes, size_t alignment)
 {
 	// zero size allocations are forbidden
 	// (if this should be changed, verify all related code before enabling them)
@@ -492,12 +508,11 @@ std::tuple<uint64_t,int> CircularAllocationMemory<AllocationRecord, RecordsPerBl
 	// try to alloc at the end of Block1
 	if(_block1EndAddress + numBytes <= _bufferEndAddress)
 	{
-		// align the allocation to 64 or to 16 bytes
-		uint64_t addr =
-			(numBytes >= 64)
-				? ((_block1EndAddress+0x3f) & ~0x3f)   // align to 64 bytes
-				: ((_block1EndAddress+0x0f) & ~0x0f);  // align to 16 bytes
+		// align the allocation
+		uint64_t a = alignment - 1;
+		uint64_t addr = (_block1EndAddress + a) & (~a);
 
+		// return allocation
 		if(addr + numBytes <= _bufferEndAddress)
 			return { addr, 1 };
 	}
@@ -512,23 +527,29 @@ std::tuple<uint64_t,int> CircularAllocationMemory<AllocationRecord, RecordsPerBl
 	// and Block2 becomes empty block at the beginning of the buffer)
 	if(_block2EndAddress + numBytes <= _block1StartAddress)
 	{
-		// align the allocation to 64 or to 16 bytes
-		uint64_t addr =
-			(numBytes >= 64)
-				? ((_block2EndAddress+0x3f) & ~0x3f)
-				: ((_block2EndAddress+0x0f) & ~0x0f);
+		// align the allocation
+		uint64_t a = alignment - 1;
+		uint64_t addr = (_block2EndAddress + a) & (~a);
 
+		// return allocation
 		if(addr + numBytes <= _block1StartAddress)
 			return { addr, 2 };
 	}
 
-	// not enough continuous space in this DataMemory
+	// not enough continuous space in this object
 	return { 0, 0 };
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc1Commit(uint64_t addr, size_t numBytes)
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+std::tuple<uint64_t,int> CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::allocPropose(size_t numBytes)
+{
+	return allocPropose(numBytes, (numBytes>=64) ? 64 : 16);
+}
+
+
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::alloc1Commit(uint64_t addr, size_t numBytes)
 {
 	// create DataAllocation
 	AllocationRecord* a = createAllocation1(addr);
@@ -543,8 +564,8 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::a
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc2Commit(uint64_t addr, size_t numBytes)
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::alloc2Commit(uint64_t addr, size_t numBytes)
 {
 	// create DataAllocation
 	AllocationRecord* a = createAllocation2(addr);
@@ -559,24 +580,24 @@ AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::a
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc1ZeroSize()
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::alloc1ZeroSize()
 {
 	// create DataAllocation
 	return createAllocation1(_block1EndAddress);
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::alloc2ZeroSize()
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+AllocationRecord* CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::alloc2ZeroSize()
 {
 	// create DataAllocation
 	return createAllocation2(_block2EndAddress);
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal(AllocationRecord* a) noexcept
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::freeInternal(AllocationRecord* a) noexcept
 {
 	// get nextAddress
 	// (the address of the next allocation)
@@ -598,15 +619,15 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal(A
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal1ZeroSize(AllocationRecord* a) noexcept
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::freeInternal1ZeroSize(AllocationRecord* a) noexcept
 {
 	destroyAllocation(a, 1);
 }
 
 
-template<typename AllocationRecord, size_t RecordsPerBlock>
-void CircularAllocationMemory<AllocationRecord, RecordsPerBlock>::freeInternal2ZeroSize(AllocationRecord* a) noexcept
+template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
+void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::freeInternal2ZeroSize(AllocationRecord* a) noexcept
 {
 	destroyAllocation(a, 2);
 }

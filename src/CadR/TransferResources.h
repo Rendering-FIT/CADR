@@ -10,6 +10,11 @@ namespace CadR {
 class DataStorage;
 
 
+/** TransferResources class is used to release resources after particular transfer or stransfers
+ *  from StagingMemory to DataMemory are completed. It holds two iterators for each DataMemory
+ *  referenced by this TransferResources. These are fed to DataMemory::uploadDone() function\
+ *  that does the actual resource release.
+ */
 class TransferResources {
 protected:
 	std::vector<std::tuple<DataMemory*, void*, void*>> _resourceList;

@@ -75,6 +75,7 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkCmdEndRenderPass   =getProcAddr<PFN_vkCmdEndRenderPass   >("vkCmdEndRenderPass");
 	vkCmdExecuteCommands =getProcAddr<PFN_vkCmdExecuteCommands >("vkCmdExecuteCommands");
 	vkCmdCopyBuffer      =getProcAddr<PFN_vkCmdCopyBuffer      >("vkCmdCopyBuffer");
+	vkCmdCopyBufferToImage=getProcAddr<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");
 	vkCreateFence        =getProcAddr<PFN_vkCreateFence        >("vkCreateFence");
 	vkDestroyFence       =getProcAddr<PFN_vkDestroyFence       >("vkDestroyFence");
 	vkCmdBindPipeline    =getProcAddr<PFN_vkCmdBindPipeline    >("vkCmdBindPipeline");

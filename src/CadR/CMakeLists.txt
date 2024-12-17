@@ -29,12 +29,17 @@ set(CADR_PUBLIC_HEADERS
 	FrameInfo.h
 	Geometry.h
 	HandleTable.h
+	ImageAllocation.h
+	ImageMemory.h
+	ImageStorage.h
 	ParentChildList.h
 	Pipeline.h
 	PrimitiveSet.h
 	Renderer.h
 	RenderPass.h
+	StagingBuffer.h
 	StagingData.h
+	StagingManager.h
 	StagingMemory.h
 	StateSet.h
 	TransferResources.h
@@ -55,11 +60,16 @@ set(CADR_SOURCES
 	Drawable.cpp
 	Geometry.cpp
 	HandleTable.cpp
+	ImageAllocation.cpp
+	ImageMemory.cpp
+	ImageStorage.cpp
 	Pipeline.cpp
 	PrimitiveSet.cpp
 	Renderer.cpp
 	RenderPass.cpp
+	StagingBuffer.cpp
 	StagingData.cpp
+	StagingManager.cpp
 	StagingMemory.cpp
 	StateSet.cpp
 	VulkanDevice.cpp

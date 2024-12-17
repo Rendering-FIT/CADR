@@ -184,6 +184,7 @@ public:
 	inline void cmdEndRenderPass(vk::CommandBuffer commandBuffer) const  { commandBuffer.endRenderPass(*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,uint32_t secondaryCommandBufferCount,const vk::CommandBuffer* pSecondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBufferCount,pSecondaryCommandBuffers,*this); }
 	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,uint32_t regionCount,const vk::BufferCopy* pRegions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regionCount,pRegions,*this); }
+	inline void cmdCopyBufferToImage(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Image dstImage,vk::ImageLayout dstImageLayout,uint32_t regionCount,const vk::BufferImageCopy* pRegions) const  { commandBuffer.copyBufferToImage(srcBuffer,dstImage,dstImageLayout,regionCount,pRegions,*this); }
 	inline vk::Result createFence(const vk::FenceCreateInfo* pCreateInfo,const vk::AllocationCallbacks* pAllocator,vk::Fence* pFence) const  { return _device.createFence(pCreateInfo,pAllocator,pFence,*this); }
 	inline void destroyFence(vk::Fence fence,const vk::AllocationCallbacks* pAllocator) const  { _device.destroyFence(fence,pAllocator,*this); }
 	inline void destroy(vk::Fence fence,const vk::AllocationCallbacks* pAllocator) const  { _device.destroy(fence,pAllocator,*this); }
@@ -367,7 +368,8 @@ public:
 	template<typename T> inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,vk::ArrayProxy<const T> values) const  { commandBuffer.pushConstants<T,VulkanDevice>(layout,stageFlags,offset,values,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo& renderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(renderPassBegin,contents,*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,vk::ArrayProxy<const vk::CommandBuffer> secondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBuffers,*this); }
-	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,vk::ArrayProxy<const vk::BufferCopy> regions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regions,*this); }
+	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,const vk::ArrayProxy<const vk::BufferCopy> regions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regions,*this); }
+	inline void cmdCopyBufferToImage(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Image dstImage,vk::ImageLayout dstImageLayout,const vk::ArrayProxy<const vk::BufferImageCopy>& regions) const  { commandBuffer.copyBufferToImage(srcBuffer,dstImage,dstImageLayout,regions,*this); }
 	inline vk::ResultValueType<vk::Fence>::type createFence(const vk::FenceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createFence(createInfo,allocator,*this); }
 	inline void destroyFence(vk::Fence fence,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroyFence(fence,allocator,*this); }
 	inline void destroy(vk::Fence fence,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { _device.destroy(fence,allocator,*this); }
@@ -565,6 +567,7 @@ public:
 	PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
 	PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
 	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+	PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage;
 	PFN_vkCreateFence vkCreateFence;
 	PFN_vkDestroyFence vkDestroyFence;
 	PFN_vkCmdBindPipeline vkCmdBindPipeline;

@@ -43,7 +43,9 @@ static inline double getCpuTimestampPeriod();
 Renderer::Renderer(bool makeDefault)
 	: _device(nullptr)
 	, _graphicsQueueFamily(0xffffffff)
-	, _dataStorage(*this)
+	, _stagingManager(*this)
+	, _dataStorage(*this, _stagingManager)
+	, _imageStorage(*this, _stagingManager)
 {
 	// make Renderer default
 	if(makeDefault)
@@ -54,7 +56,9 @@ Renderer::Renderer(VulkanDevice& device, VulkanInstance& instance, vk::PhysicalD
                    uint32_t graphicsQueueFamily, bool makeDefault)
 	: _device(nullptr)
 	, _graphicsQueueFamily(graphicsQueueFamily)
-	, _dataStorage(*this)
+	, _stagingManager(*this)
+	, _dataStorage(*this, _stagingManager)
+	, _imageStorage(*this, _stagingManager)
 {
 	// init
 	init(device, instance, physicalDevice, graphicsQueueFamily, makeDefault);
@@ -99,7 +103,7 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 				)
 			).get())
 		.alignment;
-	if((_standardBufferAlignment&(_standardBufferAlignment-1)) != 0)  // is it power of two?
+	if((_standardBufferAlignment&(_standardBufferAlignment-1)) != 0)  // is it power of two? -> this is guaranteed to be true by Vulkan spec since somewhere between 1.0.20 and 1.0.36
 		throw std::runtime_error("Platform problem: standardBufferAlignment is not power of two.");
 
 	// nonCoherentAtomSize
@@ -304,7 +308,9 @@ void Renderer::finalize()
 	_fence = nullptr;
 
 	// destroy buffers
-	_dataStorage.destroy();
+	_dataStorage.cleanUp();
+	_imageStorage.cleanUp();
+	_stagingManager.cleanUp();
 	_device->destroy(_drawableBuffer);
 	_device->freeMemory(_drawableBufferMemory);
 	_drawableBufferSize=0;
@@ -329,8 +335,10 @@ void Renderer::finalize()
 
 void Renderer::leakResources()
 {
-	// destroy DataStorage before we assign nullptr to _device
-	_dataStorage.destroy();
+	// release storage and staging resources before we assign nullptr to _device
+	_dataStorage.cleanUp();
+	_imageStorage.cleanUp();
+	_stagingManager.cleanUp();
 
 	_device = nullptr;
 }
@@ -719,6 +727,9 @@ void Renderer::endRecording(vk::CommandBuffer commandBuffer)
 
 void Renderer::endFrame()
 {
+	// signal end of frame to _imageStorage
+	_imageStorage.endFrame();
+
 	if(collectFrameInfo()) {
 
 		// write cpu timestamp
@@ -728,6 +739,27 @@ void Renderer::endFrame()
 		frameInfo.cpuEndFrame = getCpuTimestamp();
 
 	}
+}
+
+
+vk::DeviceMemory Renderer::allocateMemoryTypeNoThrow(size_t size, uint32_t memoryTypeIndex) noexcept
+{
+	vk::DeviceMemory m;
+	vk::MemoryAllocateInfo allocateInfo(
+		size,  // allocationSize
+		memoryTypeIndex  // memoryTypeIndex
+	);
+	VkResult r =
+		_device->vkAllocateMemory(
+			VkDevice(*_device),  // device
+			reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
+			nullptr,  // pAllocator
+			reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
+		);
+	if(r == VK_SUCCESS)
+		return m;
+	else
+		return nullptr;
 }
 
 
@@ -744,7 +776,7 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(size_t size, uint32_t
 				allocateInfo.memoryTypeIndex = i;
 				VkResult r =
 					_device->vkAllocateMemory(
-						VkDevice(_device),  // device
+						VkDevice(*_device),  // device
 						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 						nullptr,  // pAllocator
 						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
@@ -774,7 +806,7 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(size_t s
 				allocateInfo.memoryTypeIndex = i;
 				VkResult r =
 					_device->vkAllocateMemory(
-						VkDevice(_device),  // device
+						VkDevice(*_device),  // device
 						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 						nullptr,  // pAllocator
 						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
@@ -804,7 +836,7 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(s
 				allocateInfo.memoryTypeIndex = i;
 				VkResult r =
 					_device->vkAllocateMemory(
-						VkDevice(_device),  // device
+						VkDevice(*_device),  // device
 						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 						nullptr,  // pAllocator
 						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory

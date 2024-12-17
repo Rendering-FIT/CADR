@@ -1,5 +1,6 @@
 #include <CadR/DataMemory.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingMemory.h>
 #include <CadR/VulkanDevice.h>
 
 using namespace std;
@@ -249,10 +250,10 @@ DataAllocationRecord* DataMemory::alloc(size_t numBytes)
 {
 	// propose allocation
 	// (it will be confirmed when we call alloc[1|2]Commit(),
-	// before commit no resources were really allocated)
+	// before commit no resources are really allocated)
 	auto [addr, blockNumber] = allocPropose(numBytes);
 
-	// avoid many if in this function by abstracting some variables and functions
+	// avoid many "if" in this function by abstracting some variables and functions
 	DataAllocationRecord* (DataMemory::*allocZeroSize)();
 	DataAllocationRecord* lastStagingMarker;
 	DataAllocationRecord** lastStagingMarkerVariable;
