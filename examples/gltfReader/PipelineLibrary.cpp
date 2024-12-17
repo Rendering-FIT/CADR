@@ -310,13 +310,13 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 		vk::PipelineColorBlendStateCreateFlags(),  // flags
 		VK_FALSE,  // logicOpEnable
 		vk::LogicOp::eClear,  // logicOp
-		colorBlendAttachmentStates.size(),  // attachmentCount
+		uint32_t(colorBlendAttachmentStates.size()),  // attachmentCount
 		colorBlendAttachmentStates.data(),  // pAttachments
 		array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
 	};
 	vk::GraphicsPipelineCreateInfo createInfo(
 		vk::PipelineCreateFlags(),  // flags
-		shaderStages.size(),  // stageCount
+		uint32_t(shaderStages.size()),  // stageCount
 		shaderStages.data(),  // pStages
 		&pipelineVertexInputStateCreateInfo,  // pVertexInputState
 		&inputAssemblyState,  // pInputAssemblyState

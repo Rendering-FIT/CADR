@@ -1300,7 +1300,7 @@ void App::init()
 					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
 						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
 
-					size_t i = 0;
+					uint32_t i = 0;
 					uint32_t v1 = i;
 					i++;
 					uint32_t v2 = i;
@@ -1388,7 +1388,7 @@ void App::init()
 					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
 						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
 
-					size_t i = 0;
+					uint32_t i = 0;
 					uint32_t v1 = i;
 					i++;
 					uint32_t v2 = i;
@@ -1447,15 +1447,17 @@ void App::init()
 					// generate indices
 					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
 						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
-					size_t i = 0;
+					uint32_t i = 0;
 					*stgIndices = i;
 					uint32_t* e = stgIndices + (numIndices-1);
-					stgIndices++; i++;
+					stgIndices++;
+					i++;
 					while(stgIndices < e) {
 						*stgIndices = i;
 						stgIndices++;
 						*stgIndices = i;
-						stgIndices++; i++;
+						stgIndices++;
+						i++;
 					}
 					*stgIndices = i;
 				}
@@ -1497,15 +1499,17 @@ void App::init()
 					// generate indices
 					if(numIndices >= size_t((~uint32_t(0))-1)) // value 0xffffffff is forbidden, thus (~0)-1
 						throw GltfError("Too large primitive. Index out of 32-bit integer range.");
-					size_t i = 0;
+					uint32_t i = 0;
 					*stgIndices = i;
 					uint32_t* e = stgIndices + (numIndices-1);
-					stgIndices++; i++;
+					stgIndices++;
+					i++;
 					while(stgIndices < e) {
 						*stgIndices = i;
 						stgIndices++;
 						*stgIndices = i;
-						stgIndices++; i++;
+						stgIndices++;
+						i++;
 					}
 					*stgIndices = 0;
 				}
