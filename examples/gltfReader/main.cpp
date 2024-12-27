@@ -2,7 +2,9 @@
 #include <CadR/BoundingSphere.h>
 #include <CadR/Geometry.h>
 #include <CadR/Exceptions.h>
+#include <CadR/ImageAllocation.h>
 #include <CadR/Pipeline.h>
+#include <CadR/StagingBuffer.h>
 #include <CadR/StagingData.h>
 #include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
@@ -15,6 +17,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
+#include "../../3rdParty/stb/stb_image.h"
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
@@ -119,10 +122,20 @@ public:
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
 	static constexpr size_t numPipelines = PipelineLibrary::numPipelines();
-	array<CadR::StateSet,numPipelines> stateSetDB;
-	array<CadR::Pipeline,numPipelines> pipelineDB;
+	struct TextureStateSet {
+		CadR::StateSet stateSet;
+		CadR::ImageAllocation imageAllocation;
+	};
+	struct PipelineStateSet {
+		CadR::Pipeline pipeline;
+		CadR::StateSet stateSet;
+		std::list<TextureStateSet> textureStateSetList;
+		PipelineStateSet(CadR::Renderer& r) : pipeline(r), stateSet(r) {}
+	};
+	array<PipelineStateSet,numPipelines> pipelineStateSetList;
 	vector<CadR::Geometry> geometryDB;
 	vector<CadR::Drawable> drawableDB;
+	vector<CadR::ImageAllocation> imageDB;
 
 };
 
@@ -142,12 +155,12 @@ public:
 // create_array<T,N>() allows for initialization of an std::array when passing the same value to all the constructors is needed
 // (for passing references, use std::ref() and std::cref() to pass them into create_array())
 template<typename T, size_t N, size_t index = N, typename T2, typename... Ts>
-constexpr array<T, N> create_array_ref(T2& t, Ts&... ts)
+constexpr array<T, N> createPipelineStateSetList(T2& t, Ts&... ts)
 {
 	if constexpr (index <= 1)
 		return array<T, N>{ t, ts... };
 	else
-		return create_array_ref<T, N, index-1>(t, t, ts...);
+		return createPipelineStateSetList<T, N, index-1>(t, t, ts...);
 }
 
 
@@ -157,8 +170,7 @@ App::App(int argc, char** argv)
 	// otherwise a special care must be given to avoid memory leaks in the case of exception
 	: sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
 	, stateSetRoot(renderer)
-	, stateSetDB{ create_array_ref<CadR::StateSet, numPipelines>(renderer) }
-	, pipelineDB{ create_array_ref<CadR::Pipeline, numPipelines>(renderer) }
+	, pipelineStateSetList{ createPipelineStateSetList<PipelineStateSet, numPipelines>(renderer) }
 {
 	// process command-line arguments
 	if(argc < 2)
@@ -181,6 +193,7 @@ App::~App()
 
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
+		imageDB.clear();
 		drawableDB.clear();
 		geometryDB.clear();
 		sceneDataAllocation.free();
@@ -449,13 +462,14 @@ void App::init()
 			)
 		)[0];
 
-	// stateSets and pipelines
+	// pipelineStateSetList
 	pipelineLibrary.create(device);
 	vk::PipelineLayout pipelineLayout = pipelineLibrary.pipelineLayout();
-	for(size_t i=0; i<stateSetDB.size(); i++) {
-		CadR::Pipeline& p = pipelineDB[i];
+	for(size_t i=0; i<pipelineStateSetList.size(); i++) {
+		PipelineStateSet& pss = pipelineStateSetList[i];
+		CadR::Pipeline& p = pss.pipeline;
 		p.init(nullptr, pipelineLayout, nullptr);
-		CadR::StateSet& s = stateSetDB[i];
+		CadR::StateSet& s = pss.stateSet;
 		s.pipeline = &p;
 		s.pipelineLayout = pipelineLayout;
 		stateSetRoot.childList.append(s);
@@ -488,6 +502,8 @@ void App::init()
 	auto& buffers = getRootItem(glTF, newGltfItems, "buffers");
 	auto& bufferViews = getRootItem(glTF, newGltfItems, "bufferViews");
 	auto& materials = getRootItem(glTF, newGltfItems, "materials");
+	auto& textures = getRootItem(glTF, newGltfItems, "textures");
+	auto& images = getRootItem(glTF, newGltfItems, "images");
 
 	// print glTF info
 	// (version item is mandatory, the rest is optional)
@@ -509,9 +525,10 @@ void App::init()
 
 	// print stats
 	cout << "Stats:" << endl;
-	cout << "   Scenes:  " << scenes.size() << endl;
-	cout << "   Nodes:   " << nodes.size() << endl;
-	cout << "   Meshes:  " << meshes.size() << endl;
+	cout << "   Scenes:    " << scenes.size() << endl;
+	cout << "   Nodes:     " << nodes.size() << endl;
+	cout << "   Meshes:    " << meshes.size() << endl;
+	cout << "   Textures:  " << textures.size() << endl;
 	cout << endl;
 
 	// read buffers
@@ -523,7 +540,7 @@ void App::init()
 		auto uriIt = b.find("uri");
 		if(uriIt == b.end())
 			throw GltfError("Unsupported functionality: Undefined buffer.uri.");
-		string s = uriIt->get_ref<json::string_t&>();
+		const string& s = uriIt->get_ref<json::string_t&>();
 		filesystem::path p = s;
 		if(p.is_relative())
 			p = filePath.parent_path() / p;
@@ -699,6 +716,120 @@ void App::init()
 		}
 	}
 
+	// process images
+	if(!images.empty()) {
+
+		// is R8G8B8Srgb format supported?
+		vk::FormatProperties fp = vulkanInstance.getPhysicalDeviceFormatProperties(
+			physicalDevice, vk::Format::eR8G8B8Srgb);
+		bool rgb8srgbSupported =
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
+
+		// load images
+		size_t c = images.size();
+		cout << "Processing images (" << c << " in total)..." << endl;
+		imageDB.reserve(c);
+		for(size_t i=0; i<c; i++) {
+			auto& image = images[i];
+			auto uriIt = image.find("uri");
+			if(uriIt != image.end()) {
+
+				// image file name
+				const string& imageFileName = uriIt->get_ref<json::string_t&>();
+				cout << "   " << imageFileName;
+				filesystem::path p = imageFileName;
+				if(p.is_relative())
+					p = filePath.parent_path() / p;
+
+				// open stream
+				basic_ifstream<unsigned char> fs(p, ios_base::in | ios_base::binary);
+				if(!fs)
+					goto failed;
+				else {
+
+					// file size
+					fs.seekg(0, ios_base::end);
+					size_t fileSize = fs.tellg();
+					fs.seekg(0, ios_base::beg);
+
+					// read file content
+					unique_ptr<unsigned char[]> imgBuffer = make_unique<unsigned char[]>(fileSize);
+					fs.read(imgBuffer.get(), fileSize);
+					if(!fs)
+						goto failed;
+					fs.close();
+
+					// image info
+					int width, height, numComponents;
+					if(!stbi_info_from_memory(imgBuffer.get(), int(fileSize), &width, &height, &numComponents))
+						goto failed;
+					vk::Format format;
+					switch(numComponents) {
+					case 4: format = vk::Format::eR8G8B8A8Srgb; break;
+					case 3: if(rgb8srgbSupported) format = vk::Format::eR8G8B8Srgb;
+					        else { format = vk::Format::eR8G8B8A8Srgb; numComponents = 4; }
+						break;
+					default: goto failed;
+					}
+
+					// load image
+					unique_ptr<stbi_uc[], void(*)(stbi_uc*)> data(
+						stbi_load_from_memory(imgBuffer.get(), int(fileSize),
+							&width, &height, &numComponents, numComponents),
+						[](stbi_uc* ptr) { stbi_image_free(ptr); }
+					);
+					if(data == nullptr)
+						goto failed;
+
+					// copy data to staging buffer
+					size_t bufferSize = size_t(width) * height * numComponents;
+					CadR::StagingBuffer sb(renderer.imageStorage(), bufferSize, 1);
+					memcpy(sb.data(), data.get(), bufferSize);
+					data.reset();
+
+					// create ImageAllocation
+					CadR::ImageAllocation& a = imageDB.emplace_back(renderer.imageStorage());
+					a.alloc(
+						vk::MemoryPropertyFlagBits::eDeviceLocal,  // requiredFlags
+						vk::ImageCreateInfo(  // imageCreateInfo
+							vk::ImageCreateFlags{},  // flags
+							vk::ImageType::e2D,  // imageType
+							format,  // format
+							vk::Extent3D(width, height, 1),  // extent
+							1,  // mipLevels
+							1,  // arrayLayers
+							vk::SampleCountFlagBits::e1,  // samples
+							vk::ImageTiling::eOptimal,  // tiling
+							vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,  // usage
+							vk::SharingMode::eExclusive,  // sharingMode
+							0,  // queueFamilyIndexCount
+							nullptr,  // pQueueFamilyIndices
+							vk::ImageLayout::eUndefined  // initialLayout
+						),
+						device  // vulkanDevice
+					);
+					sb.submit(
+						a,  // ImageAllocation
+						vk::ImageLayout::eUndefined,  // currentLayout,
+						vk::ImageLayout::eTransferDstOptimal,  // copyLayout,
+						vk::ImageLayout::eShaderReadOnlyOptimal,  // newLayout,
+						vk::PipelineStageFlagBits::eFragmentShader,  // newLayoutBarrierDstStages,
+						vk::AccessFlagBits::eShaderRead,  // newLayoutBarrierDstAccessFlags,
+						vk::Extent2D(width, height)  // imageExtent
+					);
+
+				}
+				goto succeed;
+			failed:
+				cout << " - failed";
+				imageDB.emplace_back(renderer.imageStorage());
+			succeed:
+				cout << endl;
+			}
+		}
+	}
+
 	// process meshes
 	cout << "Processing meshes..." << endl;
 	size_t numMeshes = meshes.size();
@@ -724,13 +855,95 @@ void App::init()
 			// material
 			// (mesh.primitive.material is optional)
 			json* material;
+			bool doubleSided;
+			glm::vec4 baseColorFactor;
+			size_t baseColorTextureIndex;
+			unsigned baseColorTextureCoord;
+			float metallicFactor;
+			float roughnessFactor;
+			glm::vec3 emissiveFactor;
 			auto it = primitive.find("material");
-			if(it != primitive.end()) {
+			if(it == primitive.end()) {
+				material = nullptr;
+				doubleSided = false;
+				baseColorTextureIndex = ~size_t(0);
+				baseColorTextureCoord = ~0;
+			}
+			else {
 				size_t materialIndex = it->get_ref<json::number_unsigned_t&>();
 				material = &materials.at(materialIndex);
+
+				// material.doubleSided is optional with the default value of false
+				doubleSided = material->value<json::boolean_t>("doubleSided", false);
+
+				// read pbr material properties
+				if(auto pbrIt = material->find("pbrMetallicRoughness"); pbrIt != material->end()) {
+
+					// read baseColorFactor
+					if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
+						json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
+						if(a.size() != 4)
+							throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
+						baseColorFactor[0] = float(a[0].get_ref<json::number_float_t&>());
+						baseColorFactor[1] = float(a[1].get_ref<json::number_float_t&>());
+						baseColorFactor[2] = float(a[2].get_ref<json::number_float_t&>());
+						baseColorFactor[3] = float(a[3].get_ref<json::number_float_t&>());
+					}
+					else
+						baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+
+					// read properties
+					metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
+					roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
+
+					// not supported properties
+					if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
+						baseColorTextureIndex = baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>();
+						baseColorTextureCoord = baseColorTextureIt->value("texCoord", 0);
+						//throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
+					}
+					else {
+						baseColorTextureIndex = ~size_t(0);
+						baseColorTextureCoord = ~0;
+					}
+					if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
+						throw GltfError("Unsupported functionality: metallic-roughness material model.");
+
+				}
+				else
+				{
+					// default values when pbrMetallicRoughness is not present
+					baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+					baseColorTextureIndex = ~size_t(0);
+					baseColorTextureCoord = 0;
+					metallicFactor = 1.f;
+					roughnessFactor = 1.f;
+				}
+
+				// read emissiveFactor
+				if(auto emissiveFactorIt = material->find("emissiveFactor"); emissiveFactorIt != material->end()) {
+					json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
+					if(a.size() != 3)
+						throw GltfError("Material.emissiveFactor is not vector of three components.");
+					emissiveFactor[0] = float(a[0].get_ref<json::number_float_t&>());
+					emissiveFactor[1] = float(a[1].get_ref<json::number_float_t&>());
+					emissiveFactor[2] = float(a[2].get_ref<json::number_float_t&>());
+				}
+				else
+					emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
+
+				// not supported material properties
+				if(material->find("normalTexture") != material->end())
+					throw GltfError("Unsupported functionality: normal texture.");
+				if(material->find("occlusionTexture") != material->end())
+					throw GltfError("Unsupported functionality: occlusion texture.");
+				if(material->find("emissiveTexture") != material->end())
+					throw GltfError("Unsupported functionality: emissive texture.");
+				if(material->find("alphaMode") != material->end())
+					throw GltfError("Unsupported functionality: alpha mode.");
+				if(material->find("alphaCutoff") != material->end())
+					throw GltfError("Unsupported functionality: alpha cutoff.");
 			}
-			else
-				material = nullptr;
 
 			// mesh.primitive helper functions
 			auto getColorFromVec4f =
@@ -1032,7 +1245,7 @@ void App::init()
 						                        numVertices, elementSize);
 
 				}
-				else if(it.key() == "TEXCOORD_0") {
+				else if(it.key() == "TEXCOORD_0" && baseColorTextureIndex != ~size_t(0)) {
 
 					// vertex size
 					vertexSize += 16;
@@ -1532,9 +1745,6 @@ void App::init()
 			primitiveSetBS.radius = sqrt(primitiveSetBS.radius);
 			primitiveSetBSList.emplace_back(primitiveSetBS);
 
-			// no support for textures yet
-			texCoordData = nullptr;
-
 			// get pipeline index
 			size_t pipelineIndex;
 			switch(mode) {
@@ -1559,7 +1769,6 @@ void App::init()
 			case 4:  // TRIANGLES
 			case 5:  // TRIANGLE_STRIP
 			case 6: {  // TRIANGLE_FAN
-				bool doubleSided = (material) ? material->value<json::boolean_t>("doubleSided", false) : false;
 				pipelineIndex =
 					PipelineLibrary::getTrianglePipelineIndex(
 						normalData   != nullptr,  // phong
@@ -1575,7 +1784,7 @@ void App::init()
 			}
 
 			// get stateSet for pipeline index
-			CadR::StateSet& ss = stateSetDB[pipelineIndex];
+			PipelineStateSet& pipelineStateSet = pipelineStateSetList[pipelineIndex];
 
 			// drawable
 			vector<glm::mat4>& matrixList = meshMatrixList[meshIndex];
@@ -1586,7 +1795,7 @@ void App::init()
 				sd,  // shaderStagingData
 				64+(numInstances*64),  // shaderDataSize
 				numInstances,  // numInstances
-				ss);  // stateSet
+				pipelineStateSet.stateSet);  // stateSet
 
 			// material
 			struct MaterialData {
@@ -1600,69 +1809,6 @@ void App::init()
 			};
 			MaterialData* m = sd.data<MaterialData>();
 			if(material) {
-
-				// pbr material variables
-				glm::vec4 baseColorFactor;
-				float metallicFactor;
-				float roughnessFactor;
-
-				// read pbr material properties
-				if(auto pbrIt = material->find("pbrMetallicRoughness"); pbrIt != material->end()) {
-
-					// read baseColorFactor
-					if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
-						json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
-						if(a.size() != 4)
-							throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
-						baseColorFactor[0] = float(a[0].get_ref<json::number_float_t&>());
-						baseColorFactor[1] = float(a[1].get_ref<json::number_float_t&>());
-						baseColorFactor[2] = float(a[2].get_ref<json::number_float_t&>());
-						baseColorFactor[3] = float(a[3].get_ref<json::number_float_t&>());
-					}
-
-					// read properties
-					metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
-					roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
-
-					// not supported properties
-					if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end())
-						throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
-					if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-						throw GltfError("Unsupported functionality: metallic-roughness material model.");
-
-				}
-				else
-				{
-					// default values when pbrMetallicRoughness is not present
-					baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-					metallicFactor = 1.f;
-					roughnessFactor = 1.f;
-				}
-
-				// read emissiveFactor
-				glm::vec3 emissiveFactor;
-				if(auto emissiveFactorIt = material->find("emissiveFactor"); emissiveFactorIt != material->end()) {
-					json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
-					if(a.size() != 3)
-						throw GltfError("Material.emissiveFactor is not vector of three components.");
-					emissiveFactor[0] = float(a[0].get_ref<json::number_float_t&>());
-					emissiveFactor[1] = float(a[1].get_ref<json::number_float_t&>());
-					emissiveFactor[2] = float(a[2].get_ref<json::number_float_t&>());
-				}
-				else
-					emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
-
-				// not supported material properties
-				if(material->find("normalTexture") != material->end())
-					throw GltfError("Unsupported functionality: normal texture.");
-				if(material->find("occlusionTexture") != material->end())
-					throw GltfError("Unsupported functionality: occlusion texture.");
-				if(material->find("emissiveTexture") != material->end())
-					throw GltfError("Unsupported functionality: emissive texture.");
-				if(material->find("alphaMode") != material->end())
-					throw GltfError("Unsupported functionality: alpha mode.");
-				if(material->find("alphaCutoff") != material->end())
-					throw GltfError("Unsupported functionality: alpha cutoff.");
 
 				// set material data
 				m->ambient = glm::vec3(baseColorFactor);
@@ -1886,7 +2032,7 @@ void App::resize(VulkanWindow& window,
 	// recreate pipelines
 	pipelineLibrary.create(device, newSurfaceExtent, specializationInfo, renderPass, renderer.pipelineCache());
 	for(size_t i=0; i<pipelineLibrary.numPipelines(); i++)
-		stateSetDB[i].pipeline->set(pipelineLibrary.pipeline(i));
+		pipelineStateSetList[i].pipeline.set(pipelineLibrary.pipeline(i));
 
 	// print info
 	cout << "Recreating swapchain (extent: " << newSurfaceExtent.width << "x" << newSurfaceExtent.height

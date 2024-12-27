@@ -20,17 +20,6 @@ class VulkanDevice;
 inline constexpr const size_t ImageRecordsPerBlock = 32;
 
 
-struct ImageAllocationBlock : boost::intrusive::list_base_hook<
-	                              boost::intrusive::link_mode<boost::intrusive::auto_unlink>>
-{
-	std::array<ImageAllocationRecord, ImageRecordsPerBlock+2> allocations;
-	vk::DescriptorPool descriptorPool;
-
-	ImageAllocationBlock(CircularAllocationMemory<ImageAllocationRecord, ImageRecordsPerBlock, ImageAllocationBlock>& circularAllocationMemory);
-	void cleanUp(CircularAllocationMemory<ImageAllocationRecord, ImageRecordsPerBlock, ImageAllocationBlock>& circularAllocationMemory) noexcept;
-};
-
-
 /** \brief
  *  DataMemory class provides GPU memory functionality
  *  for allocating and storing user data.
@@ -46,7 +35,7 @@ struct ImageAllocationBlock : boost::intrusive::list_base_hook<
  *
  *  \sa DataStorage, DataAllocation
  */
-class CADR_EXPORT ImageMemory : public CircularAllocationMemory<ImageAllocationRecord, ImageRecordsPerBlock, ImageAllocationBlock> {
+class CADR_EXPORT ImageMemory : public CircularAllocationMemory<ImageAllocationRecord, ImageRecordsPerBlock> {
 protected:
 
 	ImageStorage* _imageStorage;  ///< ImageStorage that owns this ImageMemory.
@@ -61,8 +50,8 @@ protected:
 		vk::ImageLayout oldLayout;
 		vk::ImageLayout copyLayout;
 		vk::ImageLayout newLayout;
-		vk::PipelineStageFlags newLayoutBarrierStages;
-		vk::AccessFlags newLayoutBarrierAccessFlags;
+		vk::PipelineStageFlags newLayoutBarrierDstStages;
+		vk::AccessFlags newLayoutBarrierDstAccessFlags;
 		uint32_t regionCount = 1;
 		vk::BufferImageCopy region;
 		vk::BufferImageCopy* regionList = nullptr;
@@ -71,11 +60,11 @@ protected:
 		void allocRegionList(size_t n)  { delete[] regionList; regionList = new vk::BufferImageCopy[n]; }
 		BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 			vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-			vk::PipelineStageFlags newLayoutBarrierStages, vk::AccessFlags newLayoutBarrierAccessFlags,
+			vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 			vk::BufferImageCopy region);
 		BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 			vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-			vk::PipelineStageFlags newLayoutBarrierStages, vk::AccessFlags newLayoutBarrierAccessFlags,
+			vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 			uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList);
 		~BufferToImageUpload()  { delete[] regionList; }
 	};
@@ -110,7 +99,7 @@ public:
 	// low-level allocation functions
 	// (mostly for internal use)
 	bool alloc(ImageAllocation& a, size_t numBytes, size_t alignment,
-		void (*createHandlesFunc)(ImageAllocationRecord* record, void* userData), void* createHandlesUserData);
+		vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
 		//< Allocates memory for the image and Vulkan handles.
 		//< If ImageAllocation already contains valid alocation, it is freed before the new allocation is attempted.
 		//< It returns true in the case of success. False is returned if there is not enough free space.
@@ -149,26 +138,25 @@ public:
 # undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
-inline void ImageAllocationBlock::cleanUp(CircularAllocationMemory<ImageAllocationRecord, ImageRecordsPerBlock, ImageAllocationBlock>& circularAllocationMemory) noexcept  { VulkanDevice& d=static_cast<ImageMemory&>(circularAllocationMemory).imageStorage().renderer().device(); d.destroy(descriptorPool); }
 inline ImageMemory::BufferToImageUpload::BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-	vk::PipelineStageFlags newLayoutBarrierStages, vk::AccessFlags newLayoutBarrierAccessFlags, vk::BufferImageCopy region)
+	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::BufferImageCopy region)
 	: copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage), oldLayout(oldLayout),
-	copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierStages(newLayoutBarrierStages),
-	newLayoutBarrierAccessFlags(newLayoutBarrierAccessFlags), regionCount(1), region(region), regionList(nullptr)  {}
+	copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
+	newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(1), region(region), regionList(nullptr)  {}
 inline ImageMemory::BufferToImageUpload::BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-	vk::PipelineStageFlags newLayoutBarrierStages, vk::AccessFlags newLayoutBarrierAccessFlags, uint32_t regionCount,
+	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags, uint32_t regionCount,
 	std::unique_ptr<vk::BufferImageCopy[]>&& regionList) : copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage),
-	oldLayout(oldLayout), copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierStages(newLayoutBarrierStages),
-	newLayoutBarrierAccessFlags(newLayoutBarrierAccessFlags), regionCount(regionCount),
+	oldLayout(oldLayout), copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
+	newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(regionCount),
 	regionList(regionList.release())  {}
 inline ImageMemory::ImageMemory(ImageStorage& imageStorage) : _imageStorage(&imageStorage)  {}
 inline ImageStorage& ImageMemory::imageStorage() const  { return *_imageStorage; }
 inline size_t ImageMemory::size() const  { return _bufferEndAddress; }
 inline vk::DeviceMemory ImageMemory::memory() const  { return _memory; }
 inline size_t ImageMemory::usedBytes() const  { return _usedBytes; }
-inline bool ImageMemory::alloc(ImageAllocation& a, size_t numBytes, size_t alignment, void (*createHandlesFunc)(ImageAllocationRecord* record, void* userData), void* createHandlesUserData)  { if(a._record->size != 0) free(a._record); if(!allocInternal(a._record, numBytes, alignment)) return false; a._record->createHandlesFunc=createHandlesFunc; a._record->createHandlesUserData=createHandlesUserData; createHandlesFunc(a._record, createHandlesUserData); return true; }
+inline bool ImageMemory::alloc(ImageAllocation& a, size_t numBytes, size_t alignment, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)  { if(a._record->size != 0) free(a._record); if(!allocInternal(a._record, numBytes, alignment)) return false; a._record->image=image; a._record->imageCreateInfo=imageCreateInfo; return true; }
 inline void ImageMemory::freeInternal(ImageAllocationRecord*& recPtr) noexcept  { CircularAllocationMemory::freeInternal(recPtr); }
 //inline void ImageMemory::free(ImageAllocation& a) noexcept  { a._record->imageMemory->freeInternal(a); }
 

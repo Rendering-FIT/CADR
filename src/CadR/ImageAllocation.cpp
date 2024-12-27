@@ -4,7 +4,7 @@ using namespace std;
 using namespace CadR;
 
 
-ImageAllocationRecord ImageAllocationRecord::nullRecord{ 0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+ImageAllocationRecord ImageAllocationRecord::nullRecord{ 0, 0, nullptr, nullptr, nullptr, nullptr };
 
 
 

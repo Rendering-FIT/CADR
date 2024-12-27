@@ -31,7 +31,7 @@ protected:
 	StagingMemory* _lastStagingMemory = nullptr;
 	ImageMemory _zeroSizeImageMemory = ImageMemory(*this, nullptr);
 	ImageAllocationRecord _zeroSizeAllocationRecord =
-		ImageAllocationRecord{ 0, 0, &_zeroSizeImageMemory, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+		ImageAllocationRecord{ 0, 0, &_zeroSizeImageMemory, nullptr, nullptr, nullptr };
 	size_t _lastFrameStagingBytesTransferred = 0;
 	size_t _currentFrameStagingBytesTransferred = 0;
 	size_t _currentFrameSmallMemoryCount = 0;
@@ -40,7 +40,7 @@ protected:
 	size_t _currentFrameSuperSizeMemoryCount = 0;
 
 	bool allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex,
-		void (*createHandlesFunc)(ImageAllocationRecord* record, void* userData), void* createHandlesUserData);
+		vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
 		//< Allocates memory for the image and Vulkan handles.
 		//< If ImageAllocation already contains valid alocation, it is freed before the new allocation is attempted.
 		//< It returns true in the case of success. False is returned if there is not enough free space and more space cannot be allocated.
@@ -56,8 +56,9 @@ protected:
 public:
 
 	// construction and destruction
-	ImageStorage(Renderer& r, StagingManager& stagingManager);
+	ImageStorage(Renderer& r);
 	~ImageStorage() noexcept;
+	void init(StagingManager& stagingManager, uint32_t memoryTypeCount);
 	void cleanUp() noexcept;
 
 	// getters
@@ -65,7 +66,7 @@ public:
 
 	// functions
 	void alloc(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags,
-		void (*createHandlesFunc)(ImageAllocationRecord* record, void* userData), void* createHandlesUserData);
+		vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
 		//< Allocates memory for the image and Vulkan handles.
 		//< Memory is allocated from a memory type that is determined by requiredFlags and memoryTypeBits (as returned by vkGetPhysicalDeviceMemoryProperties()).
 		//< If ImageAllocation already contains valid alocation, it is freed before the new allocation is attempted.
@@ -95,11 +96,12 @@ public:
 # define CADR_IMAGE_STORAGE_INLINE_FUNCTIONS
 namespace CadR {
 
-inline bool ImageStorage::allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex, void (*createHandlesFunc)(ImageAllocationRecord* record, void* userData), void* createHandlesUserData)  { if(a._record->size != 0) free(a); if(!allocInternalFromMemoryType(a._record, numBytes, alignment, memoryTypeIndex)) return false; a._record->createHandlesFunc=createHandlesFunc; a._record->createHandlesUserData=createHandlesUserData; createHandlesFunc(a._record, createHandlesUserData); return true; }
+inline bool ImageStorage::allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)  { if(a._record->size != 0) free(a); if(!allocInternalFromMemoryType(a._record, numBytes, alignment, memoryTypeIndex)) return false; a._record->image=image; a._record->imageCreateInfo=imageCreateInfo; return true; }
+inline ImageStorage::ImageStorage(Renderer& r) : _renderer(&r), _stagingManager(nullptr)  {}
 inline ImageStorage::~ImageStorage() noexcept  { cleanUp(); }
-inline ImageStorage::ImageStorage(Renderer& r, StagingManager& stagingManager) : _renderer(&r), _stagingManager(&stagingManager)  {}
+inline void ImageStorage::init(StagingManager& stagingManager, uint32_t memoryTypeCount)  { _stagingManager = &stagingManager; _memoryTypeManagementList.resize(memoryTypeCount); }
 inline Renderer& ImageStorage::renderer() const  { return *_renderer; }
-inline void ImageStorage::alloc(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags, void (*createHandlesFunc)(ImageAllocationRecord* record, void* userData), void* createHandlesUserData)  { if(a._record->size != 0) free(a); allocInternal(a._record, numBytes, alignment, memoryTypeBits, requiredFlags); a._record->createHandlesFunc=createHandlesFunc; a._record->createHandlesUserData=createHandlesUserData; createHandlesFunc(a._record, createHandlesUserData); }
+inline void ImageStorage::alloc(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)  { if(a._record->size != 0) free(a); allocInternal(a._record, numBytes, alignment, memoryTypeBits, requiredFlags); a._record->image=image; a._record->imageCreateInfo=imageCreateInfo; }
 inline void ImageStorage::free(ImageAllocation& a) noexcept  { a.free(); }
 inline ImageAllocationRecord* ImageStorage::zeroSizeAllocationRecord() noexcept  { return &_zeroSizeAllocationRecord; }
 

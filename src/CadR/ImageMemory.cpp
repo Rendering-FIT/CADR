@@ -166,11 +166,11 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 		device.cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, copyLayout, regionCount, &region);
 
 		// change image layout (copyLayout -> newLayout)
-		if(newLayoutBarrierStages != vk::PipelineStageFlags() || copyLayout != newLayout)
+		if(newLayoutBarrierDstStages != vk::PipelineStageFlags() || copyLayout != newLayout)
 			device.cmdPipelineBarrier(
 				commandBuffer,  // commandBuffer
 				vk::PipelineStageFlagBits::eTransfer,  // srcStage
-				newLayoutBarrierStages,  // dstStage
+				newLayoutBarrierDstStages,  // dstStage
 				vk::DependencyFlags(),  // dependencyFlags
 				0,  // memoryBarrierCount
 				nullptr,  // pMemoryBarriers
@@ -179,7 +179,7 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 				1,  // imageMemoryBarrierCount
 				&(const vk::ImageMemoryBarrier&)vk::ImageMemoryBarrier(  // pImageMemoryBarriers
 					vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
-					newLayoutBarrierAccessFlags,  // dstAccessMask
+					newLayoutBarrierDstAccessFlags,  // dstAccessMask
 					copyLayout,  // oldLayout
 					newLayout,  // newLayout
 					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
@@ -225,8 +225,8 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 			// change image layout (oldLayout -> copyLayout)
 			device.cmdPipelineBarrier(
 				commandBuffer,  // commandBuffer
-				vk::PipelineStageFlagBits::eTopOfPipe,  // srcStage
-				vk::PipelineStageFlagBits::eTransfer,  // dstStage
+				vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+				vk::PipelineStageFlagBits::eTransfer,  // dstStageMask
 				vk::DependencyFlags(),  // dependencyFlags
 				0,  // memoryBarrierCount
 				nullptr,  // pMemoryBarriers
@@ -242,7 +242,7 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 		device.cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, copyLayout, regionCount, regionList);
 
 		// change image layout (copyLayout -> newLayout)
-		if(newLayoutBarrierStages != vk::PipelineStageFlags() || copyLayout != newLayout)
+		if(newLayoutBarrierDstStages != vk::PipelineStageFlags() || copyLayout != newLayout)
 
 			if(!imageMemoryBarrierList) {
 
@@ -250,7 +250,7 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 				for(size_t i=0; i<regionCount; i++) {
 					imageMemoryBarrierList[i] = {
 						vk::AccessFlagBits::eTransferWrite,  // srcAccessMask
-						newLayoutBarrierAccessFlags,  // dstAccessMask
+						newLayoutBarrierDstAccessFlags,  // dstAccessMask
 						copyLayout,  // oldLayout
 						newLayout,  // newLayout
 						VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
@@ -272,7 +272,7 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 				for(size_t i=0; i<regionCount; i++) {
 					vk::ImageMemoryBarrier& imb = imageMemoryBarrierList[i];
 					imb.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-					imb.dstAccessMask = newLayoutBarrierAccessFlags;
+					imb.dstAccessMask = newLayoutBarrierDstAccessFlags;
 					imb.oldLayout = copyLayout;
 					imb.newLayout = newLayout;
 				}
@@ -281,8 +281,8 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 
 			device.cmdPipelineBarrier(
 				commandBuffer,  // commandBuffer
-				vk::PipelineStageFlagBits::eTransfer,  // srcStage
-				newLayoutBarrierStages,  // dstStage
+				vk::PipelineStageFlagBits::eTransfer,  // srcStageMask
+				newLayoutBarrierDstStages,  // dstStageMask
 				vk::DependencyFlags(),  // dependencyFlags
 				0,  // memoryBarrierCount
 				nullptr,  // pMemoryBarriers
@@ -294,26 +294,4 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 
 	}
 
-}
-
-
-ImageAllocationBlock::ImageAllocationBlock(CircularAllocationMemory<ImageAllocationRecord, ImageRecordsPerBlock,
-	ImageAllocationBlock>& circularAllocationMemory)
-{
-	VulkanDevice& d = static_cast<ImageMemory&>(circularAllocationMemory).imageStorage().renderer().device();
-	descriptorPool =
-		d.createDescriptorPool(
-			vk::DescriptorPoolCreateInfo(
-				vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-				1,
-				1,
-				&vk::DescriptorPoolSize{
-					vk::DescriptorType::eCombinedImageSampler,
-					ImageRecordsPerBlock,
-				}
-			)
-		);
-
-	for(size_t i=1,c=ImageRecordsPerBlock; i<=c; i++)
-		allocations[i].descriptorPool = descriptorPool;
 }

@@ -47,7 +47,8 @@ int main(int,char**)
 
 	// free on nullptr, alloc and destroy single allocation of size 10
 	StagingManager stagingManager(r);
-	DataStorage ds(r, stagingManager);
+	DataStorage ds(r);
+	ds.init(stagingManager);
 	DataMemoryTest::verifyDataStorageEmpty(ds);
 	HandlelessAllocation a(ds);
 	a.alloc(10);

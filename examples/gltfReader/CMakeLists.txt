@@ -11,6 +11,7 @@ project(${APP_NAME})
 set(APP_SOURCES
 	main.cpp
 	PipelineLibrary.cpp
+	StbImageImplementation.cpp
 	VulkanWindow.cpp
 	)
 

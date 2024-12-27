@@ -6,6 +6,7 @@
 using namespace CadR;
 
 
+
 StagingBuffer::~StagingBuffer() noexcept
 {
 	if(_stagingMemory)
@@ -29,7 +30,7 @@ void StagingBuffer::submit(DataAllocation& a)
 
 void StagingBuffer::submit(ImageAllocation& a,
                            vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-                           vk::PipelineStageFlags newLayoutBarrierStageFlags, vk::AccessFlags newLayoutBarrierAccessFlags,
+                           vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
                            const vk::BufferImageCopy& region)
 {
 	// skip invalid and already freed allocations
@@ -42,6 +43,7 @@ void StagingBuffer::submit(ImageAllocation& a,
 		r->copyRecord = new CopyRecord;
 		r->copyRecord->imageAllocation = &a;
 		r->copyRecord->referenceCounter = 0;
+		r->copyRecord->copyOpCounter = 0;
 	}
 
 	// append record to bufferToImageUploadList
@@ -54,8 +56,8 @@ void StagingBuffer::submit(ImageAllocation& a,
 			oldLayout,
 			copyLayout,
 			newLayout,
-			newLayoutBarrierStageFlags,
-			newLayoutBarrierAccessFlags,
+			newLayoutBarrierDstStages,
+			newLayoutBarrierDstAccessFlags,
 			region);
 	}
 	catch(...) {
@@ -72,11 +74,11 @@ void StagingBuffer::submit(ImageAllocation& a,
 
 void StagingBuffer::submit(ImageAllocation& a,
                            vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-                           vk::PipelineStageFlags newLayoutBarrierStageFlags, vk::AccessFlags newLayoutBarrierAccessFlags,
+                           vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
                            vk::Extent2D imageExtent)
 {
 	submit(a, oldLayout, copyLayout, newLayout,
-	       newLayoutBarrierStageFlags, newLayoutBarrierAccessFlags,
+	       newLayoutBarrierDstStages, newLayoutBarrierDstAccessFlags,
 	       vk::BufferImageCopy{
 		       bufferOffset(),  // bufferOffset
 		       imageExtent.width,  // bufferRowLength

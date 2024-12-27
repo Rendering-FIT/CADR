@@ -66,8 +66,9 @@ protected:
 public:
 
 	// construction and destruction
-	DataStorage(Renderer& r, StagingManager& stagingManager);
+	DataStorage(Renderer& r);
 	~DataStorage() noexcept;
+	void init(StagingManager& stagingManager);
 	void cleanUp() noexcept;
 
 	// deleted constructors and operators
@@ -118,8 +119,9 @@ public:
 namespace CadR {
 
 inline void DataStorage::freeOrRecycleStagingMemory(StagingMemory& sm)  { _stagingManager->freeOrRecycleStagingMemory(sm); }
+inline DataStorage::DataStorage(Renderer& renderer)  : _renderer(&renderer), _stagingManager(nullptr), _handleTable(*this) {}
 inline DataStorage::~DataStorage() noexcept  { cleanUp(); }
-inline DataStorage::DataStorage(Renderer& renderer, StagingManager& stagingManager)  : _renderer(&renderer), _stagingManager(&stagingManager), _handleTable(*this) {}
+inline void DataStorage::init(StagingManager& stagingManager)  { _stagingManager = &stagingManager; }
 
 inline std::vector<DataMemory*>& DataStorage::dataMemoryList()  { return _dataMemoryList; }
 inline const std::vector<DataMemory*>& DataStorage::dataMemoryList() const  { return _dataMemoryList; }

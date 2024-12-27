@@ -44,8 +44,8 @@ Renderer::Renderer(bool makeDefault)
 	: _device(nullptr)
 	, _graphicsQueueFamily(0xffffffff)
 	, _stagingManager(*this)
-	, _dataStorage(*this, _stagingManager)
-	, _imageStorage(*this, _stagingManager)
+	, _dataStorage(*this)
+	, _imageStorage(*this)
 {
 	// make Renderer default
 	if(makeDefault)
@@ -57,8 +57,8 @@ Renderer::Renderer(VulkanDevice& device, VulkanInstance& instance, vk::PhysicalD
 	: _device(nullptr)
 	, _graphicsQueueFamily(graphicsQueueFamily)
 	, _stagingManager(*this)
-	, _dataStorage(*this, _stagingManager)
-	, _imageStorage(*this, _stagingManager)
+	, _dataStorage(*this)
+	, _imageStorage(*this)
 {
 	// init
 	init(device, instance, physicalDevice, graphicsQueueFamily, makeDefault);
@@ -86,6 +86,10 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 	_graphicsQueueFamily = graphicsQueueFamily;
 	_graphicsQueue = _device->getQueue(_graphicsQueueFamily, 0);
 	_memoryProperties = instance.getPhysicalDeviceMemoryProperties(physicalDevice);
+
+	// init storages
+	_dataStorage.init(_stagingManager);
+	_imageStorage.init(_stagingManager, _memoryProperties.memoryTypeCount);
 
 	// _standardBufferAlignment
 	_standardBufferAlignment =

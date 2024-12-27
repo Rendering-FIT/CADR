@@ -35,14 +35,14 @@ public:
 	void submit(DataAllocation& a);
 	void submit(HandlelessAllocation& a);
 	void submit(ImageAllocation& a, vk::ImageLayout currentLayout, vk::ImageLayout copyLayout,
-	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
-	            vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region);
+	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierDstStages,
+	            vk::AccessFlags newLayoutBarrierDstAccessFlags, const vk::BufferImageCopy& region);
 	void submit(ImageAllocation& a, vk::ImageLayout currentLayout, vk::ImageLayout copyLayout,
-	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
-	            vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent);
+	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierDstStages,
+	            vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::Extent2D imageExtent);
 
-	template<typename T> T* data();
-	template<typename T> T* data(size_t offset);
+	template<typename T = void> T* data();
+	template<typename T = void> T* data(size_t offset);
 	size_t sizeInBytes() const;
 	StagingMemory* stagingMemory() const;
 	vk::Buffer buffer() const;

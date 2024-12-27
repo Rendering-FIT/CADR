@@ -152,8 +152,12 @@ public:
 	uint64_t getCpuTimestamp() const;  ///< Returns the cpu timestamp.
 	uint64_t getGpuTimestamp() const;  ///< Returns the gpu timestamp.
 
-	// data and buffers
+	// storage
 	DataStorage& dataStorage() const;
+	ImageStorage& imageStorage() const;
+	StagingManager& stagingManager() const;
+
+	// data and buffers
 	vk::Buffer drawableBuffer() const;
 	size_t drawableBufferSize() const;
 	vk::Buffer drawableStagingBuffer() const;
@@ -216,6 +220,8 @@ inline FrameInfo& Renderer::getCurrentFrameInfo()  { return _inProgressFrameInfo
 inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
 inline float Renderer::gpuTimestampPeriod() const  { return _gpuTimestampPeriod; }
 inline DataStorage& Renderer::dataStorage() const  { return _dataStorage; }
+inline ImageStorage& Renderer::imageStorage() const  { return _imageStorage; }
+inline StagingManager& Renderer::stagingManager() const  { return _stagingManager; }
 inline vk::Buffer Renderer::drawableBuffer() const  { return _drawableBuffer; }
 inline size_t Renderer::drawableBufferSize() const  { return _drawableBufferSize; }
 inline vk::Buffer Renderer::drawableStagingBuffer() const  { return _drawableStagingBuffer; }
