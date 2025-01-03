@@ -225,6 +225,7 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 
 		if(oldLayout != copyLayout) {
 
+			// initialize imageMemoryBarrierList
 			imageMemoryBarrierList = make_unique<vk::ImageMemoryBarrier[]>(regionCount);
 			for(size_t i=0; i<regionCount; i++) {
 				imageMemoryBarrierList[i] = {
@@ -265,10 +266,11 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 		device.cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, copyLayout, regionCount, regionList);
 
 		// change image layout (copyLayout -> newLayout)
-		if(newLayoutBarrierDstStages != vk::PipelineStageFlags() || copyLayout != newLayout)
+		if(newLayoutBarrierDstStages != vk::PipelineStageFlags() || copyLayout != newLayout) {
 
 			if(!imageMemoryBarrierList) {
 
+				// initialize imageMemoryBarrierList
 				imageMemoryBarrierList = make_unique<vk::ImageMemoryBarrier[]>(regionCount);
 				for(size_t i=0; i<regionCount; i++) {
 					imageMemoryBarrierList[i] = {
@@ -292,6 +294,7 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 			}
 			else {
 
+				// update imageMemoryBarrierList
 				for(size_t i=0; i<regionCount; i++) {
 					vk::ImageMemoryBarrier& imb = imageMemoryBarrierList[i];
 					imb.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
@@ -315,6 +318,7 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 				imageMemoryBarrierList.get()  // pImageMemoryBarriers
 			);
 
+		}
 	}
 
 	// return size of data passed to the constructor

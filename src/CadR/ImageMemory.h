@@ -12,6 +12,7 @@
 # endif
 # include <vulkan/vulkan.hpp>
 # include <boost/intrusive/list.hpp>
+# include <list>
 
 namespace CadR {
 

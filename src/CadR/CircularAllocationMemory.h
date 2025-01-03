@@ -443,7 +443,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock
 
 
 template<typename AllocationRecord, size_t RecordsPerBlock, typename AllocationBlock>
-typename AllocationBlock&
+AllocationBlock&
 	CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock>::createAllocationBlock()
 {
 	if(_allocationBlockRecycleList.empty()) {
