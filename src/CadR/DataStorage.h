@@ -12,8 +12,6 @@
 #  include <CadR/HandleTable.h>
 #  include <CadR/TransferResources.h>
 # endif
-# include <boost/intrusive/list.hpp>
-# include <list>
 # include <vector>
 
 namespace CadR {
@@ -46,13 +44,10 @@ protected:
 	DataAllocationRecord _zeroSizeAllocationRecord = DataAllocationRecord{ 0, 0, &_zeroSizeDataMemory, nullptr, nullptr, size_t(-2) };
 	StagingManager* _stagingManager;
 	size_t _stagingDataSizeHint = 0;
-	using TransferList = std::list<TransferResources>;
-	TransferList _transferInProgressList;
 
 	CadR::HandleTable _handleTable;
 
 	DataAllocationRecord* allocInternal(size_t numBytes);
-	void uploadDone(TransferResourcesReleaser::Id id) noexcept;
 
 	std::tuple<StagingMemory&, bool> allocStagingMemory(DataMemory& m,
 		StagingMemory* lastStagingMemory, size_t minNumBytes, size_t bytesToMemoryEnd);
@@ -61,7 +56,6 @@ protected:
 	friend DataAllocation;
 	friend DataMemory;
 	friend StagingData;
-	friend TransferResourcesReleaser;
 
 public:
 
@@ -90,9 +84,8 @@ public:
 	void free(DataAllocationRecord* a) noexcept;
 	void cancelAllAllocations();
 
-	using TransferId = TransferList::iterator;
-	std::tuple<TransferResourcesReleaser,size_t> recordUploads(vk::CommandBuffer commandBuffer);
-	static void uploadDone(TransferResourcesReleaser& trr);
+	// data upload
+	std::tuple<TransferResources,size_t> recordUploads(vk::CommandBuffer commandBuffer);
 	void setStagingDataSizeHint(size_t size);
 
 	// handle table
@@ -130,7 +123,6 @@ inline size_t DataStorage::stagingDataSizeHint() const  { return _stagingDataSiz
 
 inline DataAllocationRecord* DataStorage::zeroSizeAllocationRecord() noexcept  { return &_zeroSizeAllocationRecord; }
 inline void DataStorage::free(DataAllocationRecord* a) noexcept  { if(a->size==0) return; DataMemory::free(a); }
-inline void DataStorage::uploadDone(TransferResourcesReleaser& trr)  { trr.release(); }
 inline void DataStorage::setStagingDataSizeHint(size_t size)  { _stagingDataSizeHint = size; }
 inline uint64_t DataStorage::createHandle()  { return _handleTable.create(); }
 inline void DataStorage::destroyHandle(uint64_t handle) noexcept  { _handleTable.destroy(handle); }

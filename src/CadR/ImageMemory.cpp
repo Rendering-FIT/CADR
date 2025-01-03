@@ -6,22 +6,47 @@ using namespace CadR;
 
 
 
+// delete CopyRecord function
+static void deleteCopyRecord(CopyRecord* c, VulkanDevice& device)
+{
+	if(c->imageToDestroy)
+		device.destroy(c->imageToDestroy);
+	if(c->imageAllocationRecord)
+		c->imageAllocationRecord->copyRecord = nullptr;
+	delete c;
+};
+
+
 ImageMemory::~ImageMemory()
 {
-#if 0
-	// release blocked memory markers
-	// (they are used to block memory after it is scheduled for transfer and until the transfer is completed)
-	if(_firstNotTransferredMarker1)
-		releaseMemoryMarker1Chain(_firstNotTransferredMarker1);
-	if(_firstNotTransferredMarker2)
-		releaseMemoryMarker2Chain(_firstNotTransferredMarker2);
-#endif
+	// do nothing on zero-sized ImageMemory
+	if(size() == 0)
+		return;
+
+	// clear BufferToImageUploadList
+	VulkanDevice& device = _imageStorage->renderer().device();
+	for(BufferToImageUpload& u : _bufferToImageUploadList) {
+		// decrement referenceCounter
+		// (do not delete CopyRecord if it reaches zero because CopyRecord::copyOpCounter is non-zero)
+		CopyRecord* c = u.copyRecord;
+		c->referenceCounter--;
+		if(c->referenceCounter == 0 && c->copyOpCounter == 0)
+			deleteCopyRecord(c, device);
+	}
+	_bufferToImageUploadList.clear();
+
+	// clear UploadInProgressList
+	for(UploadInProgress& p : _uploadInProgressList)
+		for(CopyRecord* c : p.copyRecordList) {
+			c->copyOpCounter--;
+			if(c->referenceCounter == 0 && c->copyOpCounter == 0)
+				deleteCopyRecord(c, device);
+		}
+	_uploadInProgressList.clear();
 
 	// release DeviceMemory
-	if(_memory) {
-		VulkanDevice& device = _imageStorage->renderer().device();
+	if(_memory)
 		device.freeMemory(_memory);
-	}
 }
 
 
@@ -126,10 +151,8 @@ bool ImageMemory::allocInternal(ImageAllocationRecord*& recPtr, size_t numBytes,
 }
 
 
-void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandBuffer commandBuffer)
+size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandBuffer commandBuffer)
 {
-	if(!srcBuffer) return;
-
 	if(regionCount <= 1) {
 
 		// change image layout (oldLayout -> copyLayout)
@@ -294,4 +317,72 @@ void ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::CommandB
 
 	}
 
+	// return size of data passed to the constructor
+	// (this is expected to be roughly the amount of data transferred;
+	// it is used for statistics and possibly for load balancing and mantaining constant FPS)
+	return dataSize;
+}
+
+
+[[nodiscard]] std::tuple<void*,size_t> ImageMemory::recordUploads(vk::CommandBuffer commandBuffer)
+{
+	if(_bufferToImageUploadList.empty())
+		return {nullptr, 0};
+
+	// UploadInProgress
+	UploadInProgress* p = new UploadInProgress;
+	_uploadInProgressList.push_back(*p);
+	p->copyRecordList.reserve(_bufferToImageUploadList.size());
+
+	VulkanDevice& device = _imageStorage->renderer().device();
+	size_t numBytesToUpload = 0;
+	do {
+		auto it = _bufferToImageUploadList.begin();
+
+		// decrement referenceCounter
+		// (do not delete CopyRecord if it reaches zero because CopyRecord::copyOpCounter is non-zero)
+		BufferToImageUpload& u = *it;
+		CopyRecord* c = u.copyRecord;
+		c->referenceCounter--;
+
+		// test for already destroyed ImageAllocation
+		// (we still might have StagingBuffers and/or BufferToImageUploads around;
+		// copy only if ImageAllocation still exists)
+		if(c->imageToDestroy == vk::Image(nullptr)) {
+
+			// record into command buffer
+			numBytesToUpload += u.record(device, commandBuffer);
+			c->copyOpCounter++;
+			p->copyRecordList.push_back(c);
+
+		}
+
+		// delete CopyRecord
+		if(c->referenceCounter == 0 && c->copyOpCounter == 0) {
+			if(c->imageToDestroy)
+				device.destroy(c->imageToDestroy);
+			if(c->imageAllocationRecord)
+				c->imageAllocationRecord->copyRecord = nullptr;
+			delete c;
+		}
+
+		// delete BufferToImageUploads
+		_bufferToImageUploadList.erase(it);
+	}
+	while(!_bufferToImageUploadList.empty());
+
+	return {reinterpret_cast<void*>(p), numBytesToUpload};
+}
+
+
+void ImageMemory::uploadDone(void* pointer) noexcept
+{
+	UploadInProgress* p = reinterpret_cast<UploadInProgress*>(pointer);
+	VulkanDevice& device = _imageStorage->renderer().device();
+	for(CopyRecord* c : p->copyRecordList) {
+		c->copyOpCounter--;
+		if(c->referenceCounter == 0 && c->copyOpCounter == 0)
+			deleteCopyRecord(c, device);
+	}
+	delete p;  // this auto-unlinks p from _uploadInProgressList
 }

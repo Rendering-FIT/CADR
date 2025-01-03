@@ -31,7 +31,7 @@ void StagingBuffer::submit(DataAllocation& a)
 void StagingBuffer::submit(ImageAllocation& a,
                            vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
                            vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
-                           const vk::BufferImageCopy& region)
+                           const vk::BufferImageCopy& region, size_t dataSize)
 {
 	// skip invalid and already freed allocations
 	ImageAllocationRecord* r = a._record;
@@ -41,7 +41,7 @@ void StagingBuffer::submit(ImageAllocation& a,
 	// CopyRecord
 	if(r->copyRecord == nullptr) {
 		r->copyRecord = new CopyRecord;
-		r->copyRecord->imageAllocation = &a;
+		r->copyRecord->imageAllocationRecord = r;
 		r->copyRecord->referenceCounter = 0;
 		r->copyRecord->copyOpCounter = 0;
 	}
@@ -58,7 +58,8 @@ void StagingBuffer::submit(ImageAllocation& a,
 			newLayout,
 			newLayoutBarrierDstStages,
 			newLayoutBarrierDstAccessFlags,
-			region);
+			region,
+			dataSize);
 	}
 	catch(...) {
 		// delete CopyRecord if we just created it
@@ -75,7 +76,7 @@ void StagingBuffer::submit(ImageAllocation& a,
 void StagingBuffer::submit(ImageAllocation& a,
                            vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
                            vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
-                           vk::Extent2D imageExtent)
+                           vk::Extent2D imageExtent, size_t dataSize)
 {
 	submit(a, oldLayout, copyLayout, newLayout,
 	       newLayoutBarrierDstStages, newLayoutBarrierDstAccessFlags,
@@ -91,5 +92,6 @@ void StagingBuffer::submit(ImageAllocation& a,
 		       },
 		       {0, 0, 0},  // imageOffset
 		       {imageExtent.width, imageExtent.height, 1}  // imageExtent
-	       });
+	       },
+	       dataSize);
 }

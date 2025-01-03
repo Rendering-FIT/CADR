@@ -4,9 +4,11 @@
 # ifndef CADR_NO_INLINE_FUNCTIONS
 #  define CADR_NO_INLINE_FUNCTIONS
 #  include <CadR/ImageMemory.h>
+#  include <CadR/TransferResources.h>
 #  undef CADR_NO_INLINE_FUNCTIONS
 # else
 #  include <CadR/ImageMemory.h>
+#  include <CadR/TransferResources.h>
 # endif
 #include <vector>
 
@@ -61,10 +63,17 @@ public:
 	void init(StagingManager& stagingManager, uint32_t memoryTypeCount);
 	void cleanUp() noexcept;
 
+	// deleted constructors and operators
+	ImageStorage(const ImageStorage&) = delete;
+	ImageStorage(ImageStorage&&) = delete;
+	ImageStorage& operator=(const ImageStorage&) = delete;
+	ImageStorage& operator=(ImageStorage&&) = delete;
+
 	// getters
 	Renderer& renderer() const;
+	ImageAllocationRecord* zeroSizeAllocationRecord() noexcept;
 
-	// functions
+	// alloc-related functions
 	void alloc(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags,
 		vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
 		//< Allocates memory for the image and Vulkan handles.
@@ -79,8 +88,9 @@ public:
 		//< If there is not enough memory or an error occured, an exception is thrown and variable pointed by recPtr stays intact.
 	void free(ImageAllocation& a) noexcept;
 	StagingBuffer createStagingBuffer(size_t numBytes, size_t alignment);
-	ImageAllocationRecord* zeroSizeAllocationRecord() noexcept;
 
+	// upload functions
+	std::tuple<TransferResources,size_t> recordUploads(vk::CommandBuffer commandBuffer);
 	void endFrame();
 
 };
@@ -101,9 +111,8 @@ inline ImageStorage::ImageStorage(Renderer& r) : _renderer(&r), _stagingManager(
 inline ImageStorage::~ImageStorage() noexcept  { cleanUp(); }
 inline void ImageStorage::init(StagingManager& stagingManager, uint32_t memoryTypeCount)  { _stagingManager = &stagingManager; _memoryTypeManagementList.resize(memoryTypeCount); }
 inline Renderer& ImageStorage::renderer() const  { return *_renderer; }
-inline void ImageStorage::alloc(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)  { if(a._record->size != 0) free(a); allocInternal(a._record, numBytes, alignment, memoryTypeBits, requiredFlags); a._record->image=image; a._record->imageCreateInfo=imageCreateInfo; }
-inline void ImageStorage::free(ImageAllocation& a) noexcept  { a.free(); }
 inline ImageAllocationRecord* ImageStorage::zeroSizeAllocationRecord() noexcept  { return &_zeroSizeAllocationRecord; }
+inline void ImageStorage::free(ImageAllocation& a) noexcept  { a.free(); }
 
 }
 #endif

@@ -11,8 +11,6 @@ using namespace CadR;
 
 void DataStorage::cleanUp() noexcept
 {
-	assert(_transferInProgressList.empty() && "DataStorage::cleanUp(): All transfers must be finished before calling cleanUp() function.");
-
 	// destroy all handles
 	_handleTable.destroyAll();
 
@@ -224,7 +222,7 @@ tuple<StagingMemory&, bool> DataStorage::allocStagingMemory(DataMemory& m,
 }
 
 
-tuple<TransferResourcesReleaser,size_t> DataStorage::recordUploads(vk::CommandBuffer commandBuffer)
+tuple<TransferResources,size_t> DataStorage::recordUploads(vk::CommandBuffer commandBuffer)
 {
 	// find first valid upload
 	size_t dataMemoryIndex = 0;
@@ -241,18 +239,13 @@ tuple<TransferResourcesReleaser,size_t> DataStorage::recordUploads(vk::CommandBu
 	}
 
 	// return zero bytes transferred 
-	return { TransferResourcesReleaser(), 0 };
+	return {TransferResources(), 0};
 
 foundFirst:
 
-	// create Transfer and append first upload operation
-	auto it =
-		_transferInProgressList.emplace(
-			_transferInProgressList.end(),  // position
-			dataMemorySize-dataMemoryIndex  // capacity
-		);
-	TransferResources& tr = *it;
-	tr.append(dm, id1, id2);
+	// create transferResourceList and append first upload operation
+	vector<tuple<DataMemory*,void*,void*>> transferResourceList;
+	transferResourceList.emplace_back(dm, id1, id2);
 	dataMemoryIndex++;
 
 	// insert all remaining upload operations
@@ -262,21 +255,22 @@ foundFirst:
 		tie(id1, id2, numBytes) = dm->recordUploads(commandBuffer);
 		if(numBytes != 0) {
 			// append next upload operation
-			tr.append(dm, id1, id2);
+			transferResourceList.emplace_back(dm, id1, id2);
 			numBytesToTransfer += numBytes;
 		}
 	}
-	return { TransferResourcesReleaser(it, this), numBytesToTransfer };
-}
 
-
-void DataStorage::uploadDone(TransferResourcesReleaser::Id id) noexcept
-{
-	// verify valid usage
-	// (currently, there is no real restriction in our code so we might relax or remove following assert)
-	assert(id == _transferInProgressList.begin() && "DataStorage::uploadDone(TransferId) must be called on TransferIds "
-	                                                "in the same order as they are returned by DataStorage::recordUpload().");
-
-	// remove transfer from the list
-	_transferInProgressList.erase(id);
+	// return TransferResources and numBytes going to be transferred
+	// (TransferResources object releases resources on its destruction;
+	// which must happen after the transfer is completed)
+	return {
+		TransferResources(
+			[](vector<tuple<DataMemory*,void*,void*>>& transferResourceList) {
+				for(auto& item : transferResourceList)
+					get<0>(item)->uploadDone(get<1>(item), get<2>(item));
+			},
+			move(transferResourceList)
+		),
+		numBytesToTransfer
+	};
 }

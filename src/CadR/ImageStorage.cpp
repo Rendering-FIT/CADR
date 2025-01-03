@@ -2,6 +2,7 @@
 #include <CadR/Exceptions.h>
 #include <CadR/Renderer.h>
 #include <CadR/StagingMemory.h>
+#include <CadR/TransferResources.h>
 
 using namespace std;
 using namespace CadR;
@@ -99,6 +100,20 @@ void ImageStorage::allocInternal(ImageAllocationRecord*& recPtr, size_t numBytes
 }
 
 
+void ImageStorage::alloc(ImageAllocation& a, size_t numBytes, size_t alignment,
+	uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags,
+	vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)
+{
+	if(a._record->size != 0)
+		free(a);
+
+	allocInternal(a._record, numBytes, alignment, memoryTypeBits, requiredFlags);
+	a._record->image = image;
+	a._record->imageCreateInfo = imageCreateInfo;
+	_renderer->device().bindImageMemory(image, a._record->imageMemory->memory(), a._record->memoryOffset);
+}
+
+
 StagingBuffer ImageStorage::createStagingBuffer(size_t numBytes, size_t alignment)
 {
 	// try to reuse recently allocated StagingMemory
@@ -161,4 +176,37 @@ void ImageStorage::endFrame()
 	_currentFrameMediumMemoryCount = 0;
 	_currentFrameLargeMemoryCount = 0;
 	_currentFrameSuperSizeMemoryCount = 0;
+}
+
+
+tuple<TransferResources,size_t> ImageStorage::recordUploads(vk::CommandBuffer commandBuffer)
+{
+	vector<tuple<ImageMemory*,void*>> transferResourceList;
+	size_t totalDataSize = 0;
+	void* transferResource;
+	size_t dataSize;
+	for(MemoryTypeManagement& mtm : _memoryTypeManagementList)
+		for(ImageMemory* im : mtm._imageMemoryList) {
+			tie(transferResource, dataSize) =
+				im->recordUploads(commandBuffer);
+			if(transferResource != nullptr) {
+				transferResourceList.emplace_back(im, transferResource);
+				totalDataSize += dataSize;
+			}
+		}
+
+	// return
+	if(transferResourceList.empty())
+		return {TransferResources(), totalDataSize};
+	else
+		return {
+			TransferResources(
+				[](vector<tuple<ImageMemory*,void*>>& transferResourceList) {
+					for(auto& item : transferResourceList)
+						get<0>(item)->uploadDone(get<1>(item));
+				},
+				move(transferResourceList)
+			),
+			totalDataSize
+		};
 }

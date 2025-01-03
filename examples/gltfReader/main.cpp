@@ -816,7 +816,8 @@ void App::init()
 						vk::ImageLayout::eShaderReadOnlyOptimal,  // newLayout,
 						vk::PipelineStageFlagBits::eFragmentShader,  // newLayoutBarrierDstStages,
 						vk::AccessFlagBits::eShaderRead,  // newLayoutBarrierDstAccessFlags,
-						vk::Extent2D(width, height)  // imageExtent
+						vk::Extent2D(width, height),  // imageExtent
+						bufferSize  // dataSize
 					);
 
 				}

@@ -11,6 +11,7 @@
 #  include <CadR/ImageAllocation.h>
 # endif
 # include <vulkan/vulkan.hpp>
+# include <boost/intrusive/list.hpp>
 
 namespace CadR {
 
@@ -55,20 +56,39 @@ protected:
 		uint32_t regionCount = 1;
 		vk::BufferImageCopy region;
 		vk::BufferImageCopy* regionList = nullptr;
+		size_t dataSize;
 
-		void record(VulkanDevice& device, vk::CommandBuffer commandBuffer);
+		size_t record(VulkanDevice& device, vk::CommandBuffer commandBuffer);
 		void allocRegionList(size_t n)  { delete[] regionList; regionList = new vk::BufferImageCopy[n]; }
 		BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 			vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 			vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
-			vk::BufferImageCopy region);
+			vk::BufferImageCopy region, size_t dataSize);
 		BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 			vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 			vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
-			uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList);
+			uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList, size_t dataSize);
 		~BufferToImageUpload()  { delete[] regionList; }
 	};
 	std::list<BufferToImageUpload> _bufferToImageUploadList;
+
+	struct UploadInProgress {
+		boost::intrusive::list_member_hook<
+			boost::intrusive::link_mode<boost::intrusive::auto_unlink>
+		> _uploadInProgressListHook;  ///< List hook of StagingManager::*List.
+		std::vector<CopyRecord*> copyRecordList;
+	};
+	using UploadInProgressList =
+		boost::intrusive::list<
+			UploadInProgress,
+			boost::intrusive::member_hook<
+				UploadInProgress,
+				boost::intrusive::list_member_hook<
+					boost::intrusive::link_mode<boost::intrusive::auto_unlink>>,
+				&UploadInProgress::_uploadInProgressListHook>,
+			boost::intrusive::constant_time_size<false>
+		>;
+	UploadInProgressList _uploadInProgressList;
 
 	friend StagingBuffer;
 
@@ -114,10 +134,13 @@ public:
 		//< Frees the memory allocation of the image. Vulkan handles are not in the scope of this function and must be dealt with elsewhere.
 		//< The recPtr must be reference to a valid ImageAllocation::_record pointer and it must not be ImageStorage::zeroSizeAllocationRecord() or similar value.
 		//< After the completion, ImageAllocation::_record pointer is invalid and must not be dereferenced. Its value is not replaced by ImageStorage::zeroSizeAllocationRecord() record.
+
+	// data upload
+	[[nodiscard]] std::tuple<void*,size_t> recordUploads(vk::CommandBuffer);
+	void uploadDone(void*) noexcept;
+
 #if 0
 	void cancelAllAllocations();
-	[[nodiscard]] std::tuple<void*,void*,size_t> recordUploads(vk::CommandBuffer);
-	void uploadDone(void*, void*) noexcept;
 #endif
 
 };
@@ -139,18 +162,20 @@ public:
 namespace CadR {
 
 inline ImageMemory::BufferToImageUpload::BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
-	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::BufferImageCopy region)
-	: copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage), oldLayout(oldLayout),
-	copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
-	newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(1), region(region), regionList(nullptr)  {}
+	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierDstStages,
+	vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::BufferImageCopy region, size_t dataSize) :
+		copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage), oldLayout(oldLayout),
+		copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
+		newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags),
+		regionCount(1), region(region), regionList(nullptr), dataSize(dataSize)  {}
 inline ImageMemory::BufferToImageUpload::BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
-	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags, uint32_t regionCount,
-	std::unique_ptr<vk::BufferImageCopy[]>&& regionList) : copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage),
-	oldLayout(oldLayout), copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
-	newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(regionCount),
-	regionList(regionList.release())  {}
+	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
+	uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList, size_t dataSize) :
+		copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage), oldLayout(oldLayout),
+		copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
+		newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(regionCount),
+		regionList(regionList.release()), dataSize(dataSize)  {}
 inline ImageMemory::ImageMemory(ImageStorage& imageStorage) : _imageStorage(&imageStorage)  {}
 inline ImageStorage& ImageMemory::imageStorage() const  { return *_imageStorage; }
 inline size_t ImageMemory::size() const  { return _bufferEndAddress; }

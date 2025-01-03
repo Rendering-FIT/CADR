@@ -1,13 +1,9 @@
 #ifndef CADR_TRANSFER_RESOURCES_HEADER
 # define CADR_TRANSFER_RESOURCES_HEADER
 
-#include <list>
-#include <tuple>
-#include <vector>
+#include <functional>
 
 namespace CadR {
-
-class DataStorage;
 
 
 /** TransferResources class is used to release resources after particular transfer or stransfers
@@ -15,41 +11,22 @@ class DataStorage;
  *  referenced by this TransferResources. These are fed to DataMemory::uploadDone() function\
  *  that does the actual resource release.
  */
-class TransferResources {
+class CADR_EXPORT TransferResources {
 protected:
-	std::vector<std::tuple<DataMemory*, void*, void*>> _resourceList;
+	std::function<void(void)> _releaseFunction;
 public:
-	TransferResources() = default;
-	TransferResources(size_t capacity);
+	TransferResources();
+	template<typename F, typename... Args>
+	TransferResources(F&& f, Args&&... args);
 	void release();
 	~TransferResources();
 
-	void append(DataMemory* m, void*, void*);
-
-	TransferResources(TransferResources&& other);
 	TransferResources(const TransferResources&) = delete;
-	TransferResources& operator=(TransferResources&& other);
+	TransferResources(TransferResources&& other);
 	TransferResources& operator=(const TransferResources&) = delete;
+	TransferResources& operator=(TransferResources&& other);
 };
 
-
-class TransferResourcesReleaser {
-public:
-	using Id = std::list<TransferResources>::iterator;
-protected:
-	Id _id;
-	DataStorage* _dataStorage;
-public:
-	TransferResourcesReleaser();
-	TransferResourcesReleaser(Id id, DataStorage* dataStorage);
-	void release();
-	~TransferResourcesReleaser();
-
-	TransferResourcesReleaser(const TransferResourcesReleaser&) = delete;
-	TransferResourcesReleaser(TransferResourcesReleaser&& other);
-	TransferResourcesReleaser& operator=(const TransferResourcesReleaser&) = delete;
-	TransferResourcesReleaser& operator=(TransferResourcesReleaser&& other);
-};
 
 }
 
@@ -59,21 +36,17 @@ public:
 // inline functions
 #if !defined(CADR_TRANSFER_RESOURCES_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_TRANSFER_RESOURCES_INLINE_FUNCTIONS
+# include <utility>
 namespace CadR {
 
-inline TransferResources::TransferResources(size_t capacity)  { _resourceList.reserve(capacity); }
-inline void TransferResources::release()  { for(auto t : _resourceList) std::get<0>(t)->uploadDone(std::get<1>(t), std::get<2>(t)); _resourceList.clear(); }
-inline TransferResources::~TransferResources()  { for(auto t : _resourceList) std::get<0>(t)->uploadDone(std::get<1>(t), std::get<2>(t)); }
-inline void TransferResources::append(DataMemory* m, void* id1, void* id2)  { _resourceList.emplace_back(m, id1, id2); }
-inline TransferResources::TransferResources(TransferResources&& other) : _resourceList(std::move(other._resourceList))  {}
-inline TransferResources& TransferResources::operator=(TransferResources&& other)  { _resourceList = std::move(other._resourceList); return *this; }
+inline TransferResources::TransferResources()  : _releaseFunction(nullptr) {}
+template<typename F, typename... Args>
+inline TransferResources::TransferResources(F&& f, Args&&... args)  : _releaseFunction(std::bind(f, args...)) {}
+inline void TransferResources::release()  { if(!_releaseFunction) return; _releaseFunction(); _releaseFunction = nullptr; }
+inline TransferResources::~TransferResources()  { release(); }
 
-inline TransferResourcesReleaser::TransferResourcesReleaser() : _dataStorage(nullptr)  {}
-inline TransferResourcesReleaser::TransferResourcesReleaser(Id id, DataStorage* dataStorage) : _id(id), _dataStorage(dataStorage)  {}
-inline void TransferResourcesReleaser::release()  { if(_dataStorage==nullptr) return; _dataStorage->uploadDone(_id); _dataStorage=nullptr; }
-inline TransferResourcesReleaser::~TransferResourcesReleaser()  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); }
-inline TransferResourcesReleaser::TransferResourcesReleaser(TransferResourcesReleaser&& other) : _id(other._id), _dataStorage(other._dataStorage)  { other._dataStorage=nullptr; }
-inline TransferResourcesReleaser& TransferResourcesReleaser::operator=(TransferResourcesReleaser&& other)  { if(_dataStorage!=nullptr) _dataStorage->uploadDone(_id); _id=other._id; _dataStorage=other._dataStorage; other._dataStorage=nullptr; return *this; }
+inline TransferResources::TransferResources(TransferResources&& other)  : _releaseFunction(std::move(other._releaseFunction)) { other._releaseFunction = nullptr; }
+inline TransferResources& TransferResources::operator=(TransferResources&& rhs)  { _releaseFunction = std::move(rhs._releaseFunction); rhs._releaseFunction = nullptr; return *this; }
 
 }
 #endif

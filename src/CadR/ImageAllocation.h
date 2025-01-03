@@ -16,19 +16,20 @@ class ImageMemory;
 class ImageStorage;
 class Renderer;
 class VulkanDevice;
+struct DataAllocationRecord;
+struct ImageAllocationRecord;
 
 
 
 struct CADR_EXPORT CopyRecord
 {
 	union {
-		DataAllocation* dataAllocation;
-		HandlelessAllocation* handlelessAllocation;
-		ImageAllocation* imageAllocation;
+		DataAllocationRecord* dataAllocationRecord;
+		ImageAllocationRecord* imageAllocationRecord;
 	};
 	vk::Image imageToDestroy;
-	uint32_t referenceCounter;
-	uint32_t copyOpCounter;
+	uint32_t referenceCounter;  //< Number of ImageMemory::BufferToImageUploads that points to this CopyRecord.
+	uint32_t copyOpCounter;  //< Counter of in-progress copy operations. The number is incremented when ImageMemory::BufferToImageUpload is recorded to a CommandBufer and decremented after execution of command buffer is finished or when command buffer is deemed to not be executed.
 };
 
 
@@ -100,10 +101,10 @@ public:
 	StagingBuffer createStagingBuffer(size_t numBytes, size_t alignment);
 	void submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout,
 	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
-	            vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region);
+	            vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region, size_t dataSize);
 	void submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout,
 	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
-	            vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent);
+	            vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent, size_t dataSize);
 	void upload(const void* ptr, size_t numBytes);
 
 };
@@ -125,7 +126,6 @@ public:
 namespace CadR {
 
 inline void ImageAllocationRecord::init(uint64_t memoryOffset, size_t size, ImageMemory* m, ImageAllocationRecord** recordPointer, CopyRecord* copyRecord) noexcept  { this->memoryOffset = memoryOffset; this->size = size; imageMemory = m; this->recordPointer = recordPointer; this->copyRecord = copyRecord; }
-inline void ImageAllocationRecord::releaseHandles(VulkanDevice& device) noexcept  { if(copyRecord && copyRecord->copyOpCounter>=1) copyRecord->imageToDestroy=image; else device.destroy(image); image=nullptr; }
 
 inline ImageAllocation::ImageAllocation(nullptr_t) noexcept : _record(&ImageAllocationRecord::nullRecord)  {}
 inline ImageAllocation::ImageAllocation(ImageStorage& storage) noexcept  { _record = storage.zeroSizeAllocationRecord(); }
@@ -147,8 +147,8 @@ inline vk::Image ImageAllocation::image() const  { return _record->image; }
 inline const vk::ImageCreateInfo& ImageAllocation::imageCreateInfo() const  { return _record->imageCreateInfo; }
 
 inline StagingBuffer ImageAllocation::createStagingBuffer(size_t numBytes, size_t alignment)  { return StagingBuffer(_record->imageMemory->imageStorage(), numBytes, alignment); }
-inline void ImageAllocation::submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags, vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region)  { stagingBuffer.submit(*this, oldLayout, copyLayout, newLayout, newLayoutBarrierStageFlags, newLayoutBarrierAccessFlags, region); }
-inline void ImageAllocation::submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags, vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent)  { stagingBuffer.submit(*this, oldLayout, copyLayout, newLayout, newLayoutBarrierStageFlags, newLayoutBarrierAccessFlags, imageExtent); }
+inline void ImageAllocation::submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags, vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region, size_t dataSize)  { stagingBuffer.submit(*this, oldLayout, copyLayout, newLayout, newLayoutBarrierStageFlags, newLayoutBarrierAccessFlags, region, dataSize); }
+inline void ImageAllocation::submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags, vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent, size_t dataSize)  { stagingBuffer.submit(*this, oldLayout, copyLayout, newLayout, newLayoutBarrierStageFlags, newLayoutBarrierAccessFlags, imageExtent, dataSize); }
 
 }
 #endif

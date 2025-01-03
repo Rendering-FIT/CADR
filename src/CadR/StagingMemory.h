@@ -48,7 +48,7 @@ protected:
 public:
 	boost::intrusive::list_member_hook<
 		boost::intrusive::link_mode<boost::intrusive::auto_unlink>
-	> _stagingMemoryListHook;  ///< List hook of DataStorage::_stagingMemoryRegister::*List.
+	> _stagingMemoryListHook;  ///< List hook of StagingManager::*List.
 public:
 
 	StagingMemory(StagingManager& stagingManager, size_t size);

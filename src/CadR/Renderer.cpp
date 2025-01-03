@@ -866,14 +866,16 @@ void Renderer::executeCopyOperations()
 	);
 
 	// record command buffer
-	auto [transferResourceReleaser, numBytes] = _dataStorage.recordUploads(_uploadingCommandBuffer);
-	_currentFrameUploadBytes += numBytes;
+	auto [transferResources1, numBytes1] = _dataStorage.recordUploads(_uploadingCommandBuffer);
+	_currentFrameUploadBytes += numBytes1;
+	auto [transferResources2, numBytes2] = _imageStorage.recordUploads(_uploadingCommandBuffer);
+	_currentFrameUploadBytes += numBytes2;
 
 	// end recording
 	_device->endCommandBuffer(_uploadingCommandBuffer);
 
 	// if empty, ignore the transfer
-	if(numBytes == 0)
+	if(numBytes1+numBytes2 == 0)
 		return;
 
 	// submit command buffer
@@ -900,9 +902,10 @@ void Renderer::executeCopyOperations()
 		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
 		}
 
-	// dispose UploadSet
-	// (it was already uploaded and it is not needed any more)
-	DataStorage::uploadDone(transferResourceReleaser);
+	// dispose transfer resources
+	// (it must be done only after the transfer is completed)
+	transferResources1.release();
+	transferResources2.release();
 }
 
 
