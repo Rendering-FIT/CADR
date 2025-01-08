@@ -1,4 +1,5 @@
 #include <CadR/HandleTable.h>
+#include <CadR/DataAllocation.h>
 #include <CadR/StagingData.h>
 
 using namespace std;
@@ -218,4 +219,53 @@ uint64_t HandleTable::createHandle2()
 
 	_highestHandle++;
 	return _highestHandle;
+}
+
+
+// function is not inline because it is called using function pointer
+void HandleTable::setHandle0(uint64_t, uint64_t)
+{
+}
+
+
+// function is not inline because it is called using function pointer
+void HandleTable::setHandle1(uint64_t handle, uint64_t addr)
+{
+	_level0->setValue(unsigned(handle), addr);
+}
+
+
+// function is not inline because it is called using function pointer
+void HandleTable::setHandle2(uint64_t handle, uint64_t addr)
+{
+	_level1->childTableList[handle >> handleBitsLevelShift].lastLevelTable->setValue(unsigned(handle & handleBitsLevelMask), addr);
+}
+
+
+// function is not inline because it is called using function pointer
+void HandleTable::setHandle3(uint64_t handle, uint64_t addr)
+{
+	RoutingTable* l1 = _level2->childTableList[handle >> (2*handleBitsLevelShift)].routingTable;
+	l1->childTableList[(handle >> handleBitsLevelShift) & handleBitsLevelMask].lastLevelTable->setValue(unsigned(handle & handleBitsLevelMask), addr);
+}
+
+
+// function is not inline because it is called using function pointer
+uint64_t HandleTable::rootTableDeviceAddress0() const
+{
+	return 0;
+}
+
+
+// function is not inline because it is called using function pointer
+uint64_t HandleTable::rootTableDeviceAddress1() const
+{
+	return _level0->allocation.deviceAddress();
+}
+
+
+// function is not inline because it is called using function pointer
+uint64_t HandleTable::rootTableDeviceAddress2() const
+{
+	return _level1->allocation.deviceAddress();
 }

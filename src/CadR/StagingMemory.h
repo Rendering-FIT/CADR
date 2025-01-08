@@ -39,9 +39,9 @@ protected:
 	vk::DeviceMemory _memory;
 	uint64_t _bufferStartAddress;  //< Host address of the start of the buffer as seen from the CPU. 
 	uint64_t _bufferEndAddress;  //< Host address past the last byte of the buffer as seen from the CPU.
-	StagingMemory(StagingManager& stagingManager);
-	void ref() noexcept;
-	void unref() noexcept;
+	inline StagingMemory(StagingManager& stagingManager);
+	inline void ref() noexcept;
+	inline void unref() noexcept;
 	friend DataMemory;
 	friend ImageStorage;
 	friend StagingBuffer;
@@ -55,15 +55,15 @@ public:
 	~StagingMemory();
 
 	// getters
-	template<typename T = void> T* data();
-	template<typename T = void> T* data(size_t offset);
-	size_t size() const;
-	vk::Buffer buffer() const;
-	vk::DeviceMemory memory() const;
+	template<typename T = void> inline T* data();
+	template<typename T = void> inline T* data(size_t offset);
+	inline size_t size() const;
+	inline vk::Buffer buffer() const;
+	inline vk::DeviceMemory memory() const;
 
 	// low-level allocation functions
-	bool addrRangeOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept;
-	bool addrRangeNotOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept;
+	inline bool addrRangeOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept;
+	inline bool addrRangeNotOverruns(uint64_t dataMemoryAddr, size_t size) const noexcept;
 
 };
 

@@ -16,23 +16,22 @@ protected:
 	std::vector<vk::DescriptorSetLayout>* _descriptorSetLayouts = nullptr;
 public:
 
-	Pipeline(Renderer& r) noexcept;
-	Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
-	Pipeline(Renderer& r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
+	inline Pipeline(Renderer& r) noexcept;
+	inline Pipeline(Renderer& r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
 
-	void destroyPipeline();
-	void destroyPipelineLayout();
-	void destroyDescriptorSetLayouts();
+	inline void destroyPipeline();
+	inline void destroyPipelineLayout();
+	inline void destroyDescriptorSetLayouts();
 
-	void init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
-	void init(Renderer* r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
-	void set(vk::Pipeline pipeline);
+	inline void init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
+	inline void init(Renderer* r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
+	inline void set(vk::Pipeline pipeline);
 
-	Renderer& renderer() const;
-	vk::Pipeline get() const;
-	vk::PipelineLayout layout() const;
-	std::vector<vk::DescriptorSetLayout>& descriptorSetLayouts() const;
-	vk::DescriptorSetLayout descriptorSetLayout(size_t index) const;
+	inline Renderer& renderer() const;
+	inline vk::Pipeline get() const;
+	inline vk::PipelineLayout layout() const;
+	inline std::vector<vk::DescriptorSetLayout>& descriptorSetLayouts() const;
+	inline vk::DescriptorSetLayout descriptorSetLayout(size_t index) const;
 
 };
 
@@ -52,7 +51,6 @@ public:
 namespace CadR {
 
 inline Pipeline::Pipeline(Renderer& r) noexcept : _renderer(&r)  {}
-inline Pipeline::Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts) : Pipeline(Renderer::get(), pipeline, pipelineLayout, descriptorSetLayouts)  {}
 inline Pipeline::Pipeline(Renderer& r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts) : _renderer(&r), _pipeline(pipeline), _pipelineLayout(pipelineLayout), _descriptorSetLayouts(descriptorSetLayouts)  {}
 inline void Pipeline::destroyPipeline()  { _renderer->device().destroy(_pipeline); }
 inline void Pipeline::destroyPipelineLayout()  { _renderer->device().destroy(_pipelineLayout); }

@@ -1,4 +1,5 @@
 #include <CadR/ImageMemory.h>
+#include <CadR/ImageStorage.h>
 #include <CadR/Renderer.h>
 
 using namespace std;

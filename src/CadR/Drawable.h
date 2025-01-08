@@ -32,7 +32,7 @@ struct DrawableGpuData {
 	uint32_t numInstances;
 
 	DrawableGpuData()  {}
-	constexpr DrawableGpuData(uint64_t vertexDataHandle, uint64_t indexDataHandle, uint64_t primitiveSetHandle, uint64_t shaderDataHandle, uint32_t primitiveSetOffset, uint32_t numInstances);
+	inline constexpr DrawableGpuData(uint64_t vertexDataHandle, uint64_t indexDataHandle, uint64_t primitiveSetHandle, uint64_t shaderDataHandle, uint32_t primitiveSetOffset, uint32_t numInstances);
 };
 
 
@@ -44,7 +44,7 @@ struct DrawableGpuData {
 class CADR_EXPORT Drawable {
 protected:
 	StateSet* _stateSet;  ///< StateSet that draws this Drawable. The drawable is drawn if _indexIntoStateSet is valid (any value except ~0). If _indexIntoStateSet is not valid, _stateSet variable keeps the last value that was written there allowing easy re-association with the StateSet when valid value of _indexIntoStateSet is set again.
-	DataAllocation _shaderData = DataAllocation(nullptr);
+	DataAllocation _shaderData;
 	uint32_t _indexIntoStateSet = ~0;  ///< Index into StateSet data where this Drawable is stored or ~0 if no StateSet is attached. The index might be changing as other Drawables are removed and appended to the StateSet.
 public:
 	boost::intrusive::list_member_hook<
@@ -53,7 +53,7 @@ public:
 public:
 
 	// construction and destruction
-	Drawable(Renderer& r) noexcept;  ///< Constructs empty object.
+	inline Drawable(Renderer& r) noexcept;  ///< Constructs empty object.
 	Drawable(Geometry& geometry, uint32_t primitiveSetOffset, uint32_t numInstances, StateSet& stateSet);
 	Drawable(Geometry& geometry, uint32_t primitiveSetOffset, StagingData& shaderStagingData,
 	         size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet);
@@ -70,22 +70,22 @@ public:
 	                   size_t shaderDataSize, uint32_t numInstances, StateSet& stateSet);
 	void create(Geometry& geometry, uint32_t primitiveSetOffset, uint32_t numInstances, StateSet& stateSet);
 	void destroy() noexcept;
-	bool isValid() const;
+	inline bool isValid() const;
 
 	// shader data and staging data
 	StagingData reallocShaderData(size_t size, uint32_t numInstances);
 	StagingData reallocShaderData(size_t size);
-	StagingData createStagingShaderData();
-	StagingData createStagingShaderData(size_t size);
-	void uploadShaderData(void* data, size_t size);
+	inline StagingData createStagingShaderData();
+	inline StagingData createStagingShaderData(size_t size);
+	inline void uploadShaderData(void* data, size_t size);
 	void freeShaderData();
 
 	// getters
-	Renderer& renderer() const;
-	StateSet& stateSet() const;
-	DataAllocation& shaderData();
-	const DataAllocation& shaderData() const;
-	size_t shaderDataSize() const;
+	inline Renderer& renderer() const;
+	inline StateSet& stateSet() const;
+	inline DataAllocation& shaderData();
+	inline const DataAllocation& shaderData() const;
+	inline size_t shaderDataSize() const;
 
 	friend StateSet;
 };
@@ -110,10 +110,8 @@ typedef boost::intrusive::list<
 // inline methods
 #if !defined(CADR_DRAWABLE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_DRAWABLE_INLINE_FUNCTIONS
-# define CADR_NO_INLINE_FUNCTIONS
 # include <CadR/Renderer.h>
 # include <CadR/StateSet.h>
-# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline constexpr DrawableGpuData::DrawableGpuData(uint64_t vertexDataHandle_, uint64_t indexDataHandle_, uint64_t primitiveSetHandle_, uint64_t shaderDataHandle_, uint32_t primitiveSetOffset_, uint32_t numInstances_)
@@ -121,9 +119,9 @@ inline constexpr DrawableGpuData::DrawableGpuData(uint64_t vertexDataHandle_, ui
 
 inline Drawable::Drawable(Renderer& r) noexcept : _shaderData(r.dataStorage(), DataAllocation::noHandle)  {}
 inline bool Drawable::isValid() const  { return _indexIntoStateSet!=~0u; }
-inline void Drawable::uploadShaderData(void* data, size_t size)  { _shaderData.upload(data, size); }
 inline StagingData Drawable::createStagingShaderData()  { return _shaderData.createStagingData(); }
 inline StagingData Drawable::createStagingShaderData(size_t size)  { return _shaderData.createStagingData(size); }
+inline void Drawable::uploadShaderData(void* data, size_t size)  { _shaderData.upload(data, size); }
 
 inline Renderer& Drawable::renderer() const  { return _stateSet->renderer(); }
 inline StateSet& Drawable::stateSet() const  { return *_stateSet; }

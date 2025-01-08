@@ -1,5 +1,5 @@
 #include <CadR/StagingManager.h>
-#include <CadR/Renderer.h>
+#include <CadR/StagingMemory.h>
 
 using namespace std;
 using namespace CadR;

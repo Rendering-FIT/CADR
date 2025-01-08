@@ -26,8 +26,8 @@ struct CADR_EXPORT DataAllocationRecord
 	void* stagingData;
 	size_t stagingFrameNumber;
 
-	void init(vk::DeviceAddress addr, size_t size, DataMemory* m, DataAllocationRecord** recordPointer,
-	          void* stagingData, size_t stagingFrameNumber) noexcept;
+	inline void init(vk::DeviceAddress addr, size_t size, DataMemory* m,
+			DataAllocationRecord** recordPointer, void* stagingData, size_t stagingFrameNumber) noexcept;
 	static DataAllocationRecord nullRecord;
 };
 
@@ -47,36 +47,36 @@ public:
 	// construction and destruction
 	enum class noHandle_t : int;
 	static constexpr const noHandle_t noHandle = noHandle_t(0);
-	DataAllocation(nullptr_t) noexcept;
-	DataAllocation(DataStorage& storage);
-	DataAllocation(DataStorage& storage, noHandle_t) noexcept;
-	DataAllocation(DataAllocation&&) noexcept;  ///< Move constructor.
+	inline DataAllocation(nullptr_t) noexcept;
+	inline DataAllocation(DataStorage& storage);
+	inline DataAllocation(DataStorage& storage, noHandle_t) noexcept;
+	inline DataAllocation(DataAllocation&&) noexcept;  ///< Move constructor.
 	DataAllocation(const DataAllocation&) = delete;  ///< No copy constructor.
-	~DataAllocation() noexcept;  ///< Destructor.
+	inline ~DataAllocation() noexcept;  ///< Destructor.
 
 	// operators
-	DataAllocation& operator=(DataAllocation&&) noexcept;  ///< Move assignment operator.
+	inline DataAllocation& operator=(DataAllocation&&) noexcept;  ///< Move assignment operator.
 	DataAllocation& operator=(const DataAllocation&) = delete;  ///< No copy assignment.
 
 	// alloc and free
-	void init(DataStorage& storage);
+	inline void init(DataStorage& storage);
 	StagingData alloc(size_t numBytes);
 	StagingData alloc();
-	void free() noexcept;
-	StagingData createStagingData();
-	StagingData createStagingData(size_t size);
-	uint64_t createHandle(DataStorage& storage);
-	void destroyHandle() noexcept;
+	inline void free() noexcept;
+	inline StagingData createStagingData();
+	inline StagingData createStagingData(size_t size);
+	inline uint64_t createHandle(DataStorage& storage);
+	inline void destroyHandle() noexcept;
 
 	// getters
-	uint64_t handle() const;
-	vk::DeviceAddress deviceAddress() const;
-	size_t size() const;
-	vk::Buffer buffer() const;
-	size_t offset() const;
-	DataMemory& dataMemory() const;
-	DataStorage& dataStorage() const;
-	Renderer& renderer() const;
+	inline uint64_t handle() const;
+	inline vk::DeviceAddress deviceAddress() const;
+	inline size_t size() const;
+	inline vk::Buffer buffer() const;
+	inline size_t offset() const;
+	inline DataMemory& dataMemory() const;
+	inline DataStorage& dataStorage() const;
+	inline Renderer& renderer() const;
 
 	// setters and data update
 	void upload(const void* ptr, size_t numBytes);
@@ -90,32 +90,32 @@ protected:
 public:
 
 	// construction and destruction
-	HandlelessAllocation(nullptr_t) noexcept;
-	HandlelessAllocation(DataStorage& storage) noexcept;
-	HandlelessAllocation(HandlelessAllocation&&) noexcept;  ///< Move constructor.
+	inline HandlelessAllocation(nullptr_t) noexcept;
+	inline HandlelessAllocation(DataStorage& storage) noexcept;
+	inline HandlelessAllocation(HandlelessAllocation&&) noexcept;  ///< Move constructor.
 	HandlelessAllocation(const HandlelessAllocation&) = delete;  ///< No copy constructor.
-	~HandlelessAllocation() noexcept;  ///< Destructor.
+	inline ~HandlelessAllocation() noexcept;  ///< Destructor.
 
 	// operators
-	HandlelessAllocation& operator=(HandlelessAllocation&&) noexcept;  ///< Move assignment operator.
+	inline HandlelessAllocation& operator=(HandlelessAllocation&&) noexcept;  ///< Move assignment operator.
 	HandlelessAllocation& operator=(const HandlelessAllocation&) = delete;  ///< No copy assignment.
 
 	// alloc and free
-	void init(DataStorage& storage);
+	inline void init(DataStorage& storage);
 	StagingData alloc(size_t size);
 	StagingData alloc();
-	void free() noexcept;
-	StagingData createStagingData();
-	StagingData createStagingData(size_t size);
+	inline void free() noexcept;
+	inline StagingData createStagingData();
+	inline StagingData createStagingData(size_t size);
 
 	// getters
-	vk::DeviceAddress deviceAddress() const;
-	size_t size() const;
-	vk::Buffer buffer() const;
-	size_t offset() const;
-	DataMemory& dataMemory() const;
-	DataStorage& dataStorage() const;
-	Renderer& renderer() const;
+	inline vk::DeviceAddress deviceAddress() const;
+	inline size_t size() const;
+	inline vk::Buffer buffer() const;
+	inline size_t offset() const;
+	inline DataMemory& dataMemory() const;
+	inline DataStorage& dataStorage() const;
+	inline Renderer& renderer() const;
 
 	// setters and data update
 	void upload(const void* ptr, size_t numBytes);
@@ -131,9 +131,8 @@ public:
 // inline methods
 #if !defined(CADR_DATA_ALLOCATION_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_DATA_ALLOCATION_INLINE_FUNCTIONS
-# define CADR_NO_INLINE_FUNCTIONS
+# include <CadR/DataMemory.h>
 # include <CadR/DataStorage.h>
-# undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
 inline void DataAllocationRecord::init(vk::DeviceAddress addr, size_t size, DataMemory* m, DataAllocationRecord** recordPointer, void* stagingData, size_t stagingFrameNumber) noexcept  { deviceAddress = addr; this->size = size; dataMemory = m; this->recordPointer = recordPointer; this->stagingData = stagingData; this->stagingFrameNumber = stagingFrameNumber; }

@@ -54,8 +54,8 @@ public:
 public:
 
 	// construction and destruction
-	StateSet(Renderer& renderer) noexcept;
-	~StateSet() noexcept;
+	inline StateSet(Renderer& renderer) noexcept;
+	inline ~StateSet() noexcept;
 
 	// deleted constructors and operators
 	StateSet(const StateSet&) = delete;
@@ -64,22 +64,22 @@ public:
 	StateSet& operator=(StateSet&&) = delete;
 
 	// getters
-	Renderer& renderer() const;
-	bool forceRecording() const;
+	inline Renderer& renderer() const;
+	inline bool forceRecording() const;
 
 	// rendering methods
 	size_t prepareRecording();
-	void setForceRecording(bool value);  ///< Sets whether recording of this StateSet will always happen. It means that recordCallLists will be called, allowing the user to record its own draw commands. 
-	                                     ///< If set to false, the recording will happen only if there are any Drawables in this StateSet or in any child StateSet. The recording can also be forced by requestRecording() on per-frame basis.
-	void requestRecording();  ///< Requests the recording of this StateSet for the current frame even if it does not contain any Drawables. This function shall be called from prepareCallList callbacks only. Otherwise, it has no effect.
+	inline void setForceRecording(bool value);  ///< Sets whether recording of this StateSet will always happen. It means that recordCallLists will be called, allowing the user to record its own draw commands.
+		///< If set to false, the recording will happen only if there are any Drawables in this StateSet or in any child StateSet. The recording can also be forced by requestRecording() on per-frame basis.
+	inline void requestRecording();  ///< Requests the recording of this StateSet for the current frame even if it does not contain any Drawables. This function shall be called from prepareCallList callbacks only. Otherwise, it has no effect.
 	void recordToCommandBuffer(vk::CommandBuffer cb, vk::PipelineLayout currentPipelineLayout, size_t& drawableCounter);
 
 	// drawable methods
-	void appendDrawable(Drawable& d, DrawableGpuData gpuData);
-	static void removeDrawable(Drawable& d);
+	inline void appendDrawable(Drawable& d, DrawableGpuData gpuData);
+	static inline void removeDrawable(Drawable& d);
 	void removeAllDrawables() noexcept;
-	Drawable& getDrawable(size_t index) const;
-	size_t getNumDrawables() const;
+	inline Drawable& getDrawable(size_t index) const;
+	inline size_t getNumDrawables() const;
 
 protected:
 	void appendDrawableInternal(Drawable& d, DrawableGpuData gpuData);

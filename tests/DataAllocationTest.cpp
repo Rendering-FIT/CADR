@@ -1,6 +1,9 @@
+#include <CadR/DataAllocation.h>
+#include <CadR/DataMemory.h>
 #include <CadR/DataStorage.h>
 #include <CadR/HandleTable.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingManager.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>

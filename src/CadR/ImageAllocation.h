@@ -43,8 +43,8 @@ struct CADR_EXPORT ImageAllocationRecord
 	vk::Image image;
 	vk::ImageCreateInfo imageCreateInfo;
 
-	void init(uint64_t memoryOffset, size_t size, ImageMemory* m, ImageAllocationRecord** recordPointer,
-	          CopyRecord* copyRecord) noexcept;
+	inline void init(uint64_t memoryOffset, size_t size, ImageMemory* m,
+			ImageAllocationRecord** recordPointer, CopyRecord* copyRecord) noexcept;
 	void releaseHandles(VulkanDevice& device) noexcept;
 	static ImageAllocationRecord nullRecord;
 };
@@ -65,46 +65,47 @@ protected:
 public:
 
 	// construction and destruction
-	ImageAllocation(nullptr_t) noexcept;
-	ImageAllocation(ImageStorage& storage) noexcept;
-	ImageAllocation(ImageAllocation&&) noexcept;  ///< Move constructor.
+	inline ImageAllocation(nullptr_t) noexcept;
+	inline ImageAllocation(ImageStorage& storage) noexcept;
+	inline ImageAllocation(ImageAllocation&&) noexcept;  ///< Move constructor.
 	ImageAllocation(const ImageAllocation&) = delete;  ///< No copy constructor.
-	~ImageAllocation() noexcept;  ///< Destructor.
+	inline ~ImageAllocation() noexcept;  ///< Destructor.
 
 	// operators
-	ImageAllocation& operator=(ImageAllocation&&) noexcept;  ///< Move assignment operator.
+	inline ImageAllocation& operator=(ImageAllocation&&) noexcept;  ///< Move assignment operator.
 	ImageAllocation& operator=(const ImageAllocation&) = delete;  ///< No copy assignment.
 
 	// alloc and free
-	void init(ImageStorage& storage);
-	void alloc(size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags,
-	           vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
+	inline void init(ImageStorage& storage);
+	inline void alloc(size_t numBytes, size_t alignment, uint32_t memoryTypeBits,
+			vk::MemoryPropertyFlags requiredFlags, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
 		//< Allocates memory for the image.
 		//< If ImageAllocation already contains valid alocation, it is freed before the new allocation is attempted.
 		//< If there is not enough memory or an error occured, an exception is thrown.
-	void alloc(vk::MemoryPropertyFlags requiredFlags, const vk::ImageCreateInfo& imageCreateInfo, VulkanDevice& device);
+	inline void alloc(vk::MemoryPropertyFlags requiredFlags,
+			const vk::ImageCreateInfo& imageCreateInfo, VulkanDevice& device);
 		//< Allocates memory for the image and creates the image.
 		//< If ImageAllocation already contains valid alocation, it is freed before the new allocation is attempted.
 		//< If there is not enough memory or an error occured, an exception is thrown.
-	void free() noexcept;
+	inline void free() noexcept;
 
 	// getters
-	uint64_t memoryOffset() const;
-	size_t size() const;
-	ImageMemory& imageMemory() const;
-	ImageStorage& imageStorage() const;
-	Renderer& renderer() const;
-	vk::Image image() const;
-	const vk::ImageCreateInfo& imageCreateInfo() const;
+	inline uint64_t memoryOffset() const;
+	inline size_t size() const;
+	inline ImageMemory& imageMemory() const;
+	inline ImageStorage& imageStorage() const;
+	inline Renderer& renderer() const;
+	inline vk::Image image() const;
+	inline const vk::ImageCreateInfo& imageCreateInfo() const;
 
 	// data update
-	StagingBuffer createStagingBuffer(size_t numBytes, size_t alignment);
-	void submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout,
-	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
-	            vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region, size_t dataSize);
-	void submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout,
-	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
-	            vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent, size_t dataSize);
+	inline StagingBuffer createStagingBuffer(size_t numBytes, size_t alignment);
+	inline void submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout,
+			vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
+			vk::AccessFlags newLayoutBarrierAccessFlags, const vk::BufferImageCopy& region, size_t dataSize);
+	inline void submit(StagingBuffer& stagingBuffer, vk::ImageLayout oldLayout, vk::ImageLayout copyLayout,
+			vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierStageFlags,
+			vk::AccessFlags newLayoutBarrierAccessFlags, vk::Extent2D imageExtent, size_t dataSize);
 	void upload(const void* ptr, size_t numBytes);
 
 };
@@ -119,10 +120,12 @@ public:
 #if !defined(CADR_IMAGE_ALLOCATION_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_IMAGE_ALLOCATION_INLINE_FUNCTIONS
 # define CADR_NO_INLINE_FUNCTIONS
-# include <CadR/ImageStorage.h>
-# include <CadR/Renderer.h>
 # include <CadR/VulkanDevice.h>
 # undef CADR_NO_INLINE_FUNCTIONS
+# include <CadR/ImageMemory.h>
+# include <CadR/ImageStorage.h>
+# include <CadR/Renderer.h>
+# include <CadR/StagingBuffer.h>
 namespace CadR {
 
 inline void ImageAllocationRecord::init(uint64_t memoryOffset, size_t size, ImageMemory* m, ImageAllocationRecord** recordPointer, CopyRecord* copyRecord) noexcept  { this->memoryOffset = memoryOffset; this->size = size; imageMemory = m; this->recordPointer = recordPointer; this->copyRecord = copyRecord; }

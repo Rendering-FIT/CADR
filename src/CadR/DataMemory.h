@@ -47,7 +47,7 @@ protected:
 	DataAllocationRecord* _firstNotTransferredMarker1 = nullptr;
 	DataAllocationRecord* _firstNotTransferredMarker2 = nullptr;
 
-	DataMemory(DataStorage& dataStorage);
+	inline DataMemory(DataStorage& dataStorage);
 	void releaseMemoryMarker1Chain(DataAllocationRecord* a);
 	void releaseMemoryMarker2Chain(DataAllocationRecord* a);
 	friend DataStorage;
@@ -70,17 +70,17 @@ public:
 	DataMemory& operator=(DataMemory&&) = delete;
 
 	// getters
-	DataStorage& dataStorage() const;
-	size_t size() const;
-	vk::Buffer buffer() const;
-	vk::DeviceMemory memory() const;
-	vk::DeviceAddress deviceAddress() const;
-	size_t usedBytes() const;
+	inline DataStorage& dataStorage() const;
+	inline size_t size() const;
+	inline vk::Buffer buffer() const;
+	inline vk::DeviceMemory memory() const;
+	inline vk::DeviceAddress deviceAddress() const;
+	inline size_t usedBytes() const;
 
 	// low-level allocation functions
 	// (mostly for internal use)
 	DataAllocationRecord* alloc(size_t numBytes);
-	static void free(DataAllocationRecord* a) noexcept;
+	static inline void free(DataAllocationRecord* a) noexcept;
 	void cancelAllAllocations();
 	[[nodiscard]] std::tuple<void*,void*,size_t> recordUploads(vk::CommandBuffer);
 	void uploadDone(void*, void*) noexcept;

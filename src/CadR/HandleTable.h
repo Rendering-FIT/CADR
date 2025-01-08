@@ -80,13 +80,13 @@ protected:
 public:
 	HandleTable(DataStorage& storage);
 	~HandleTable() noexcept;
-	uint64_t create();
-	uint64_t create(vk::DeviceAddress deviceAddress);
+	inline uint64_t create();
+	inline uint64_t create(vk::DeviceAddress deviceAddress);
 	void destroy(uint64_t handle) noexcept  { if(handle==0) return; }
 	void destroyAll() noexcept;
-	void set(uint64_t handle, uint64_t addr);
-	unsigned handleLevel() const;
-	uint64_t rootTableDeviceAddress() const;
+	inline void set(uint64_t handle, uint64_t addr);
+	inline unsigned handleLevel() const;
+	inline uint64_t rootTableDeviceAddress() const;
 };
 
 
@@ -103,15 +103,8 @@ namespace CadR {
 inline uint64_t HandleTable::create()  { return (this->*_createHandle)(); }
 inline uint64_t HandleTable::create(vk::DeviceAddress deviceAddress)  { uint64_t r = create(); set(r, deviceAddress); return r; }
 inline void HandleTable::set(uint64_t handle, uint64_t addr)  { (this->*_setHandle)(handle, addr); }
-inline void HandleTable::setHandle0(uint64_t, uint64_t)  {}
-inline void HandleTable::setHandle1(uint64_t handle, uint64_t addr)  { _level0->setValue(unsigned(handle), addr); }
-inline void HandleTable::setHandle2(uint64_t handle, uint64_t addr)  { _level1->childTableList[handle >> handleBitsLevelShift].lastLevelTable->setValue(unsigned(handle & handleBitsLevelMask), addr); }
-inline void HandleTable::setHandle3(uint64_t handle, uint64_t addr)  { RoutingTable* l1 = _level2->childTableList[handle >> (2*handleBitsLevelShift)].routingTable; l1->childTableList[(handle >> handleBitsLevelShift) & handleBitsLevelMask].lastLevelTable->setValue(unsigned(handle & handleBitsLevelMask), addr); }
 inline unsigned HandleTable::handleLevel() const  { return _handleLevel; }
 inline uint64_t HandleTable::rootTableDeviceAddress() const  { return (this->*_rootTableDeviceAddress)(); }
-inline uint64_t HandleTable::rootTableDeviceAddress0() const  { return 0; }
-inline uint64_t HandleTable::rootTableDeviceAddress1() const  { return _level0->allocation.deviceAddress(); }
-inline uint64_t HandleTable::rootTableDeviceAddress2() const  { return _level1->allocation.deviceAddress(); }
 
 }
 #endif

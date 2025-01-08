@@ -22,14 +22,14 @@ public:
 
 	// constructors and destructors
 	//StagingBuffer(DataStorage& dataStorage, size_t numBytes, size_t alignment);
-	StagingBuffer(ImageStorage& imageStorage, size_t numBytes, size_t alignment);
+	inline StagingBuffer(ImageStorage& imageStorage, size_t numBytes, size_t alignment);
 	StagingBuffer(StagingMemory& stagingMemory, void* startAddress, size_t numBytes) noexcept;
 	~StagingBuffer() noexcept;
 
 	// copy and move constructors and operators
-	StagingBuffer(StagingBuffer&& other) noexcept;
+	inline StagingBuffer(StagingBuffer&& other) noexcept;
 	StagingBuffer(const StagingBuffer&) = delete;
-	StagingBuffer& operator=(StagingBuffer&& rhs) noexcept;
+	inline StagingBuffer& operator=(StagingBuffer&& rhs) noexcept;
 	StagingBuffer& operator=(const StagingBuffer&) = delete;
 
 	void submit(DataAllocation& a);
@@ -41,12 +41,12 @@ public:
 	            vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierDstStages,
 	            vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::Extent2D imageExtent, size_t dataSize);
 
-	template<typename T = void> T* data();
-	template<typename T = void> T* data(size_t offset);
-	size_t sizeInBytes() const;
-	StagingMemory* stagingMemory() const;
-	vk::Buffer buffer() const;
-	uint64_t bufferOffset() const;
+	template<typename T = void> inline T* data();
+	template<typename T = void> inline T* data(size_t offset);
+	inline size_t sizeInBytes() const;
+	inline StagingMemory* stagingMemory() const;
+	inline vk::Buffer buffer() const;
+	inline uint64_t bufferOffset() const;
 
 };
 
@@ -61,8 +61,8 @@ public:
 # define CADR_STAGING_BUFFER_INLINE_FUNCTIONS
 # define CADR_NO_INLINE_FUNCTIONS
 # include <CadR/ImageStorage.h>
-# include <CadR/StagingMemory.h>
 # undef CADR_NO_INLINE_FUNCTIONS
+# include <CadR/StagingMemory.h>
 namespace CadR {
 
 //inline StagingBuffer::StagingBuffer(DataStorage& dataStorage, size_t numBytes, size_t alignment)  : StagingBuffer(std::move(dataStorage.createStagingBuffer(numBytes, alignment)))  {}

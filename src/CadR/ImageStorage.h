@@ -3,10 +3,12 @@
 
 # ifndef CADR_NO_INLINE_FUNCTIONS
 #  define CADR_NO_INLINE_FUNCTIONS
+#  include <CadR/ImageAllocation.h>
 #  include <CadR/ImageMemory.h>
 #  include <CadR/TransferResources.h>
 #  undef CADR_NO_INLINE_FUNCTIONS
 # else
+#  include <CadR/ImageAllocation.h>
 #  include <CadR/ImageMemory.h>
 #  include <CadR/TransferResources.h>
 # endif
@@ -41,7 +43,7 @@ protected:
 	size_t _currentFrameLargeMemoryCount = 0;
 	size_t _currentFrameSuperSizeMemoryCount = 0;
 
-	bool allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex,
+	inline bool allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex,
 		vk::Image image, const vk::ImageCreateInfo& imageCreateInfo);
 		//< Allocates memory for the image and Vulkan handles.
 		//< If ImageAllocation already contains valid alocation, it is freed before the new allocation is attempted.
@@ -58,9 +60,9 @@ protected:
 public:
 
 	// construction and destruction
-	ImageStorage(Renderer& r);
-	~ImageStorage() noexcept;
-	void init(StagingManager& stagingManager, uint32_t memoryTypeCount);
+	inline ImageStorage(Renderer& r);
+	inline ~ImageStorage() noexcept;
+	inline void init(StagingManager& stagingManager, uint32_t memoryTypeCount);
 	void cleanUp() noexcept;
 
 	// deleted constructors and operators
@@ -70,8 +72,8 @@ public:
 	ImageStorage& operator=(ImageStorage&&) = delete;
 
 	// getters
-	Renderer& renderer() const;
-	ImageAllocationRecord* zeroSizeAllocationRecord() noexcept;
+	inline Renderer& renderer() const;
+	inline ImageAllocationRecord* zeroSizeAllocationRecord() noexcept;
 
 	// alloc-related functions
 	void alloc(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags,
@@ -86,7 +88,7 @@ public:
 		//< The recPtr must point to ImageAllocation::_record variable that will be overwritten - e.g. it might be null or unitialized memory, etc.
 		//< It should not contain valid ImageAllocationRecord pointer because the pointer will not be freed.
 		//< If there is not enough memory or an error occured, an exception is thrown and variable pointed by recPtr stays intact.
-	void free(ImageAllocation& a) noexcept;
+	inline void free(ImageAllocation& a) noexcept;
 	StagingBuffer createStagingBuffer(size_t numBytes, size_t alignment);
 
 	// upload functions
@@ -104,6 +106,7 @@ public:
 // inline functions
 #if !defined(CADR_IMAGE_STORAGE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_IMAGE_STORAGE_INLINE_FUNCTIONS
+# include <CadR/ImageAllocation.h>
 namespace CadR {
 
 inline bool ImageStorage::allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)  { if(a._record->size != 0) free(a); if(!allocInternalFromMemoryType(a._record, numBytes, alignment, memoryTypeIndex)) return false; a._record->image=image; a._record->imageCreateInfo=imageCreateInfo; return true; }

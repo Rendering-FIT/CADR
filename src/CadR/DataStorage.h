@@ -51,7 +51,7 @@ protected:
 
 	std::tuple<StagingMemory&, bool> allocStagingMemory(DataMemory& m,
 		StagingMemory* lastStagingMemory, size_t minNumBytes, size_t bytesToMemoryEnd);
-	void freeOrRecycleStagingMemory(StagingMemory& sm);
+	inline void freeOrRecycleStagingMemory(StagingMemory& sm);
 
 	friend DataAllocation;
 	friend DataMemory;
@@ -60,9 +60,9 @@ protected:
 public:
 
 	// construction and destruction
-	DataStorage(Renderer& r);
-	~DataStorage() noexcept;
-	void init(StagingManager& stagingManager);
+	inline DataStorage(Renderer& r);
+	inline ~DataStorage() noexcept;
+	inline void init(StagingManager& stagingManager);
 	void cleanUp() noexcept;
 
 	// deleted constructors and operators
@@ -72,28 +72,28 @@ public:
 	DataStorage& operator=(DataStorage&&) = delete;
 
 	// getters
-	std::vector<DataMemory*>& dataMemoryList();  ///< Returns DataMemory list. It is generally better to use standard Geometry's alloc/realloc/free methods than trying to modify the list directly.
-	const std::vector<DataMemory*>& dataMemoryList() const;  ///< Returns DataMemory list.
-	Renderer& renderer() const;
-	size_t stagingDataSizeHint() const;
+	inline std::vector<DataMemory*>& dataMemoryList();  ///< Returns DataMemory list. It is generally better to use standard Geometry's alloc/realloc/free methods than trying to modify the list directly.
+	inline const std::vector<DataMemory*>& dataMemoryList() const;  ///< Returns DataMemory list.
+	inline Renderer& renderer() const;
+	inline size_t stagingDataSizeHint() const;
 
 	// functions
 	DataAllocationRecord* alloc(size_t numBytes);
 	DataAllocationRecord* realloc(DataAllocationRecord* allocationRecord, size_t numBytes);
-	DataAllocationRecord* zeroSizeAllocationRecord() noexcept;
-	void free(DataAllocationRecord* a) noexcept;
+	inline DataAllocationRecord* zeroSizeAllocationRecord() noexcept;
+	inline void free(DataAllocationRecord* a) noexcept;
 	void cancelAllAllocations();
 
 	// data upload
 	std::tuple<TransferResources,size_t> recordUploads(vk::CommandBuffer commandBuffer);
-	void setStagingDataSizeHint(size_t size);
+	inline void setStagingDataSizeHint(size_t size);
 
 	// handle table
-	uint64_t createHandle();
-	void destroyHandle(uint64_t handle) noexcept;
-	void setHandle(uint64_t handle, uint64_t addr);
-	unsigned handleLevel() const;
-	uint64_t handleTableDeviceAddress() const;
+	inline uint64_t createHandle();
+	inline void destroyHandle(uint64_t handle) noexcept;
+	inline void setHandle(uint64_t handle, uint64_t addr);
+	inline unsigned handleLevel() const;
+	inline uint64_t handleTableDeviceAddress() const;
 
 };
 
@@ -109,6 +109,8 @@ public:
 # define CADR_NO_INLINE_FUNCTIONS
 # include <CadR/StagingManager.h>
 # undef CADR_NO_INLINE_FUNCTIONS
+# include <CadR/DataMemory.h>
+# include <CadR/HandleTable.h>
 namespace CadR {
 
 inline void DataStorage::freeOrRecycleStagingMemory(StagingMemory& sm)  { _stagingManager->freeOrRecycleStagingMemory(sm); }

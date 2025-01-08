@@ -42,18 +42,18 @@ protected:
 	StagingMemory& reuseOrAllocStagingMemory(StagingMemoryList& availableList, StagingMemoryList& inUseList, size_t size);
 public:
 
-	StagingManager(Renderer& r);
-	~StagingManager() noexcept;
+	inline StagingManager(Renderer& r);
+	inline ~StagingManager() noexcept;
 	void cleanUp() noexcept;
 
-	StagingMemory& reuseOrAllocSmallStagingMemory();
-	StagingMemory& reuseOrAllocMediumStagingMemory();
-	StagingMemory& reuseOrAllocLargeStagingMemory();
+	inline StagingMemory& reuseOrAllocSmallStagingMemory();
+	inline StagingMemory& reuseOrAllocMediumStagingMemory();
+	inline StagingMemory& reuseOrAllocLargeStagingMemory();
 	StagingMemory& reuseOrAllocSuperSizeStagingMemory(size_t size);
 	void freeOrRecycleStagingMemory(StagingMemory& sm) noexcept;
 
-	Renderer& renderer() const;
-	bool isEmpty() const;
+	inline Renderer& renderer() const;
+	inline bool isEmpty() const;
 
 };
 

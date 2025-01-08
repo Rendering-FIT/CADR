@@ -2,6 +2,7 @@
 #include <CadR/DataStorage.h>
 #include <CadR/Exceptions.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingManager.h>
 #include <CadR/VulkanDevice.h>
 
 using namespace std;

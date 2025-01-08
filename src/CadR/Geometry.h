@@ -40,43 +40,43 @@ protected:
 public:
 
 	// construction and destruction
-	Geometry(Renderer& r);  ///< Constructs the object without allocating or reserving any memory.
+	inline Geometry(Renderer& r);  ///< Constructs the object without allocating or reserving any memory.
 	Geometry(const Geometry&) = delete;  ///< No copy constructor.
 	Geometry(Geometry&& other) = default;  ///< Move constructor.
-	~Geometry();  ///< Destructor.
+	inline ~Geometry();  ///< Destructor.
 
 	// operators
 	Geometry& operator=(const Geometry&) = delete;  ///< No copy assignment.
 	Geometry& operator=(Geometry&& rhs) = default;  ///< Move assignment operator.
 
 	// getters
-	Renderer& renderer() const;
-	DataStorage& dataStorage() const;
-	size_t vertexDataSize() const;
-	size_t indexDataSize() const;
-	size_t primitiveSetDataSize() const;
+	inline Renderer& renderer() const;
+	inline DataStorage& dataStorage() const;
+	inline size_t vertexDataSize() const;
+	inline size_t indexDataSize() const;
+	inline size_t primitiveSetDataSize() const;
 
 	// allocation structures
-	DataAllocation& vertexDataAllocation();  ///< Returns the vertex data allocation. Modify the returned data only with caution.
-	const DataAllocation& vertexDataAllocation() const; ///< Returns the vertex data allocation.
-	DataAllocation& indexDataAllocation();   ///< Returns the index data allocation. Modify the returned data only with caution.
-	const DataAllocation& indexDataAllocation() const;  ///< Returns the index data allocation.
-	DataAllocation& primitiveSetDataAllocation();  ///< Returns the primitiveSet data allocation. Modify the returned data only with caution.
-	const DataAllocation& primitiveSetDataAllocation() const;  ///< Returns the primitiveSet data allocation.
+	inline DataAllocation& vertexDataAllocation();  ///< Returns the vertex data allocation. Modify the returned data only with caution.
+	inline const DataAllocation& vertexDataAllocation() const; ///< Returns the vertex data allocation.
+	inline DataAllocation& indexDataAllocation();   ///< Returns the index data allocation. Modify the returned data only with caution.
+	inline const DataAllocation& indexDataAllocation() const;  ///< Returns the index data allocation.
+	inline DataAllocation& primitiveSetDataAllocation();  ///< Returns the primitiveSet data allocation. Modify the returned data only with caution.
+	inline const DataAllocation& primitiveSetDataAllocation() const;  ///< Returns the primitiveSet data allocation.
 
 	// data upload
-	void uploadVertexData(const void* ptr, size_t numBytes);
-	void uploadIndexData (const void* ptr, size_t numBytes);
-	void uploadPrimitiveSetData(const void* ptr, size_t numBytes);
-	StagingData createVertexStagingData(size_t numBytes);
-	StagingData createIndexStagingData(size_t numBytes);
-	StagingData createPrimitiveSetStagingData(size_t numBytes);
+	inline void uploadVertexData(const void* ptr, size_t numBytes);
+	inline void uploadIndexData (const void* ptr, size_t numBytes);
+	inline void uploadPrimitiveSetData(const void* ptr, size_t numBytes);
+	inline StagingData createVertexStagingData(size_t numBytes);
+	inline StagingData createIndexStagingData(size_t numBytes);
+	inline StagingData createPrimitiveSetStagingData(size_t numBytes);
 
 	// release memory
-	void freeVertexData();
-	void freeIndexData();
-	void freePrimitiveSetData();
-	void freeData();
+	inline void freeVertexData();
+	inline void freeIndexData();
+	inline void freePrimitiveSetData();
+	inline void freeData();
 
 };
 
@@ -89,11 +89,10 @@ public:
 // inline methods
 #if !defined(CADR_GEOMETRY_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_GEOMETRY_INLINE_FUNCTIONS
-# define CADR_NO_INLINE_FUNCTIONS
 # include <CadR/DataAllocation.h>
 # include <CadR/DataStorage.h>
 # include <CadR/Renderer.h>
-# undef CADR_NO_INLINE_FUNCTIONS
+# include <CadR/StagingData.h>
 namespace CadR {
 
 inline Geometry::Geometry(Renderer& r) : _vertices(r.dataStorage()), _indices(r.dataStorage()), _primitiveSets(r.dataStorage())  {}

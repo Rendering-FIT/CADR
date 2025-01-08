@@ -99,10 +99,10 @@ public:
 	static constexpr const size_t largeMemorySize = 32 << 20;  // 32MiB
 
 	// general static functions
-	static Renderer& get();
-	static void set(Renderer& r);
-	static const vk::PhysicalDeviceFeatures2& requiredFeatures();
-	static const RequiredFeaturesStructChain& requiredFeaturesStructChain();
+	static inline Renderer& get();
+	static inline void set(Renderer& r);
+	static inline const vk::PhysicalDeviceFeatures2& requiredFeatures();
+	static inline const RequiredFeaturesStructChain& requiredFeaturesStructChain();
 
 	// deleted constructors and operators
 	Renderer(const Renderer&) = delete;
@@ -111,12 +111,12 @@ public:
 	Renderer& operator=(Renderer&&) = delete;
 
 	// construction, initialization and destruction
-	Renderer(bool makeDefault=true);
-	Renderer(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-	         uint32_t graphicsQueueFamily,bool makeDefault=true);
+	Renderer(bool makeDefault = true);
+	Renderer(VulkanDevice& device, VulkanInstance& instance, vk::PhysicalDevice physicalDevice,
+	         uint32_t graphicsQueueFamily, bool makeDefault = true);
 	~Renderer();
-	void init(VulkanDevice& device,VulkanInstance& instance,vk::PhysicalDevice physicalDevice,
-	          uint32_t graphicsQueueFamily,bool makeDefault=true);
+	void init(VulkanDevice& device, VulkanInstance& instance, vk::PhysicalDevice physicalDevice,
+	          uint32_t graphicsQueueFamily, bool makeDefault = true);
 	void finalize();
 	void leakResources();
 
@@ -124,64 +124,64 @@ public:
 	size_t beginFrame();  ///< Call this method to mark the beginning of the frame rendering. It returns the frame number assigned to this frame. It is the same number as frameNumber() will return from now on until the next call to beginFrame().
 	void beginRecording(vk::CommandBuffer commandBuffer);  ///< Start recording of the command buffer.
 	size_t prepareSceneRendering(StateSet& stateSetRoot);
-	void recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t numDrawables);
-	void recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& stateSetRoot,vk::RenderPass renderPass,
-	                          vk::Framebuffer framebuffer,const vk::Rect2D& renderArea,
+	void recordDrawableProcessing(vk::CommandBuffer commandBuffer, size_t numDrawables);
+	void recordSceneRendering(vk::CommandBuffer commandBuffer, StateSet& stateSetRoot, vk::RenderPass renderPass,
+	                          vk::Framebuffer framebuffer, const vk::Rect2D& renderArea,
 	                          uint32_t clearValueCount, const vk::ClearValue* clearValues);
 	void endRecording(vk::CommandBuffer commandBuffer);  ///< Finish recording of the command buffer.
 	void endFrame();  ///< Mark the end of frame recording. This is usually called after the command buffer is submitted to gpu for execution.
 
 	// getters
-	VulkanDevice& device() const;
-	uint32_t graphicsQueueFamily() const;
-	vk::Queue graphicsQueue() const;
-	const vk::PhysicalDeviceMemoryProperties& memoryProperties() const;
-	size_t standardBufferAlignment() const;
-	size_t alignStandardBuffer(size_t offset) const;
+	inline VulkanDevice& device() const;
+	inline uint32_t graphicsQueueFamily() const;
+	inline vk::Queue graphicsQueue() const;
+	inline const vk::PhysicalDeviceMemoryProperties& memoryProperties() const;
+	inline size_t standardBufferAlignment() const;
+	inline size_t alignStandardBuffer(size_t offset) const;
 
 	// frame related API
-	size_t frameNumber() const noexcept;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
-	bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
+	inline size_t frameNumber() const noexcept;  ///< Returns the frame number of the Renderer. The first frame number is zero and increments for each rendered frame. The initial value is -1 until the first frame rendering starts. The frame number is incremented in beginFrame() and the same value is returned until the next call to beginFrame().
+	inline bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps = false);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::TimeDomainEXT timestampHostTimeDomain);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
 	std::list<FrameInfo> getFrameInfos();  ///< Returns list of FrameInfo for the frames whose collecting of information already completed. Some info is collected as gpu progresses on the frame rendering. The method returns info only about those frames whose collecting of information already finished. To avoid unnecessary memory consumption, unretrieved FrameInfos are deleted after some time. To avoid lost FrameInfos, it is enough to call getFrameInfos() once between each endFrame() and beginFrame() of two consecutive frames.
-	FrameInfo& getCurrentFrameInfo();  ///< Returns current FrameInfo being collected just now. It is must be called between beginFrame() and endFrame() and collecting of frame info must be switched on (see setCollectFrameInfo()).
-	double cpuTimestampPeriod() const;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
-	float gpuTimestampPeriod() const;  ///< The time period of gpu timestamp being incremented by 1. The period is given in seconds.
+	inline FrameInfo& getCurrentFrameInfo();  ///< Returns current FrameInfo being collected just now. It is must be called between beginFrame() and endFrame() and collecting of frame info must be switched on (see setCollectFrameInfo()).
+	inline double cpuTimestampPeriod() const;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
+	inline float gpuTimestampPeriod() const;  ///< The time period of gpu timestamp being incremented by 1. The period is given in seconds.
 	std::tuple<uint64_t, uint64_t> getCpuAndGpuTimestamps() const;
 	uint64_t getCpuTimestamp() const;  ///< Returns the cpu timestamp.
 	uint64_t getGpuTimestamp() const;  ///< Returns the gpu timestamp.
 
 	// storage
-	DataStorage& dataStorage() const;
-	ImageStorage& imageStorage() const;
-	StagingManager& stagingManager() const;
+	inline DataStorage& dataStorage() const;
+	inline ImageStorage& imageStorage() const;
+	inline StagingManager& stagingManager() const;
 
 	// data and buffers
-	vk::Buffer drawableBuffer() const;
-	size_t drawableBufferSize() const;
-	vk::Buffer drawableStagingBuffer() const;
-	DrawableGpuData* drawableStagingData() const;
-	vk::Buffer drawIndirectBuffer() const;
-	vk::DeviceAddress drawIndirectBufferAddress() const;
-	vk::Buffer drawablePayloadBuffer() const;
-	vk::DeviceAddress drawablePayloadDeviceAddress() const;
+	inline vk::Buffer drawableBuffer() const;
+	inline size_t drawableBufferSize() const;
+	inline vk::Buffer drawableStagingBuffer() const;
+	inline DrawableGpuData* drawableStagingData() const;
+	inline vk::Buffer drawIndirectBuffer() const;
+	inline vk::DeviceAddress drawIndirectBufferAddress() const;
+	inline vk::Buffer drawablePayloadBuffer() const;
+	inline vk::DeviceAddress drawablePayloadDeviceAddress() const;
 
 	// pipelines and commandPools
-	vk::PipelineCache pipelineCache() const;
-	vk::Pipeline processDrawablesPipeline(size_t handleLevel) const;
-	vk::PipelineLayout processDrawablesPipelineLayout() const;
-	vk::CommandPool transientCommandPool() const;
-	vk::CommandPool precompiledCommandPool() const;
+	inline vk::PipelineCache pipelineCache() const;
+	inline vk::Pipeline processDrawablesPipeline(size_t handleLevel) const;
+	inline vk::PipelineLayout processDrawablesPipelineLayout() const;
+	inline vk::CommandPool transientCommandPool() const;
+	inline vk::CommandPool precompiledCommandPool() const;
 
 	// memory
-	vk::DeviceMemory allocateMemoryType(size_t size, uint32_t memoryTypeIndex);
+	inline vk::DeviceMemory allocateMemoryType(size_t size, uint32_t memoryTypeIndex);
 	vk::DeviceMemory allocateMemoryTypeNoThrow(size_t size, uint32_t memoryTypeIndex) noexcept;
-	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
+	inline std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
-	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
+	inline std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
-	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
+	inline std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
 

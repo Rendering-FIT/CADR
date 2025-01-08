@@ -1,6 +1,7 @@
 #include <CadR/DataAllocation.h>
 #include <CadR/DataStorage.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingData.h>
 
 using namespace std;
 using namespace CadR;

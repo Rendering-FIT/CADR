@@ -33,12 +33,12 @@ public:
 
 	// construction, initialization and destruction
 	StagingData() = default;
-	StagingData(DataAllocationRecord* record, bool needInit);
+	inline StagingData(DataAllocationRecord* record, bool needInit);
 
 	// getters
-	template<typename T = void> T* data();
-	size_t sizeInBytes() const;
-	bool needInit() const;
+	template<typename T = void> inline T* data();
+	inline size_t sizeInBytes() const;
+	inline bool needInit() const;
 
 };
 

@@ -1,6 +1,7 @@
 #include <CadR/ImageStorage.h>
 #include <CadR/Exceptions.h>
 #include <CadR/Renderer.h>
+#include <CadR/StagingManager.h>
 #include <CadR/StagingMemory.h>
 #include <CadR/TransferResources.h>
 
