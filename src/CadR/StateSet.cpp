@@ -52,6 +52,125 @@ void StateSet::removeAllDrawables() noexcept
 }
 
 
+void StateSet::allocDescriptorSet(vk::DescriptorType type, vk::DescriptorSetLayout layout)
+{
+	freeDescriptorSets();
+
+	VulkanDevice& d = _renderer->device();
+	_descriptorPool =
+		d.createDescriptorPool(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				1,  // poolSizeCount
+				array<vk::DescriptorPoolSize,1>{  // pPoolSizes
+					vk::DescriptorPoolSize{
+						type,  // type
+						1,  // descriptorCount
+					},
+				}.data()
+			)
+		);
+
+	_descriptorSets = move(
+		d.allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				_descriptorPool,  // descriptorPool
+				1,  // descriptorSetCount
+				&layout  // descriptorSetLayout
+			)
+		));
+}
+
+
+void StateSet::allocDescriptorSet(uint32_t poolSizeCount, vk::DescriptorPoolSize* poolSizeList, vk::DescriptorSetLayout layout)
+{
+	freeDescriptorSets();
+
+	VulkanDevice& d = _renderer->device();
+	_descriptorPool =
+		d.createDescriptorPool(
+			vk::DescriptorPoolCreateInfo(
+				vk::DescriptorPoolCreateFlags(),  // flags
+				1,  // maxSets
+				poolSizeCount,  // poolSizeCount
+				poolSizeList  // pPoolSizes
+			)
+		);
+
+	_descriptorSets = move(
+		d.allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				_descriptorPool,  // descriptorPool
+				1,  // descriptorSetCount
+				&layout  // descriptorSetLayout
+			)
+		));
+}
+
+
+void StateSet::allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descriptorPoolCreateInfo,
+	uint32_t layoutCount, const vk::DescriptorSetLayout& layoutList)
+{
+	freeDescriptorSets();
+
+	VulkanDevice& d = _renderer->device();
+	_descriptorPool = d.createDescriptorPool(descriptorPoolCreateInfo);
+
+	_descriptorSets = move(
+		d.allocateDescriptorSets(
+			vk::DescriptorSetAllocateInfo(
+				_descriptorPool,  // descriptorPool
+				layoutCount,  // descriptorSetCount
+				&layoutList  // descriptorSetLayout
+			)
+		));
+}
+
+
+void StateSet::freeDescriptorSets() noexcept
+{
+	if(_descriptorPool) {
+		_renderer->device().destroy(_descriptorPool);
+		_descriptorPool = nullptr;
+		_descriptorSets.clear();
+	}
+}
+
+
+void StateSet::updateDescriptorSet(const vk::WriteDescriptorSet& w)
+{
+	_renderer->device().updateDescriptorSets(
+		1,  // descriptorWriteCount
+		&w,  // pDescriptorWrites
+		0,  // descriptorCopyCount
+		nullptr  // pDescriptorCopies
+	);
+}
+
+
+void StateSet::updateDescriptorSet(uint32_t writeCount, vk::WriteDescriptorSet* writes)
+{
+	_renderer->device().updateDescriptorSets(
+		writeCount,  // descriptorWriteCount
+		writes,  // pDescriptorWrites
+		0,  // descriptorCopyCount
+		nullptr  // pDescriptorCopies
+	);
+}
+
+
+void StateSet::updateDescriptorSet(uint32_t writeCount, vk::WriteDescriptorSet* writes, uint32_t copyCount, vk::CopyDescriptorSet* copies)
+{
+	_renderer->device().updateDescriptorSets(
+		writeCount,  // descriptorWriteCount
+		writes,  // pDescriptorWrites
+		copyCount,  // descriptorCopyCount
+		copies  // pDescriptorCopies
+	);
+}
+
+
 size_t StateSet::prepareRecording()
 {
 	// call user-registered functions
@@ -89,14 +208,14 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 		currentPipelineLayout = pipelineLayout;
 
 	// bind descriptor sets
-	if(!descriptorSets.empty()) {
+	if(!_descriptorSets.empty()) {
 		device.cmdBindDescriptorSets(
 			commandBuffer,  // commandBuffer
 			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
 			currentPipelineLayout,  // layout
-			descriptorSetNumber,  // firstSet
-			descriptorSets,  // descriptorSets
-			dynamicOffsets  // dynamicOffsets
+			_descriptorSetNumber,  // firstSet
+			_descriptorSets,  // descriptorSets
+			_dynamicOffsets  // dynamicOffsets
 		);
 	}
 

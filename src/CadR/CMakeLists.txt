@@ -37,11 +37,13 @@ set(CADR_PUBLIC_HEADERS
 	PrimitiveSet.h
 	Renderer.h
 	RenderPass.h
+	Sampler.h
 	StagingBuffer.h
 	StagingData.h
 	StagingManager.h
 	StagingMemory.h
 	StateSet.h
+	Texture.h
 	TransferResources.h
 	VulkanDevice.h
 	VulkanInstance.h
@@ -67,11 +69,13 @@ set(CADR_SOURCES
 	PrimitiveSet.cpp
 	Renderer.cpp
 	RenderPass.cpp
+	Sampler.cpp
 	StagingBuffer.cpp
 	StagingData.cpp
 	StagingManager.cpp
 	StagingMemory.cpp
 	StateSet.cpp
+	Texture.cpp
 	VulkanDevice.cpp
 	VulkanInstance.cpp
 	VulkanLibrary.cpp

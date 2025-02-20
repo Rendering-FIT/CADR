@@ -5,7 +5,7 @@
 
 // per-drawable shader data
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer ShaderDataRef {
-	layout(offset= 0) vec4 ambientAndMaterialType;
+	layout(offset= 0) vec4 ambientAndSettings;
 	layout(offset=16) vec4 diffuseAndAlpha;
 	layout(offset=32) vec3 specular;
 	layout(offset=44) float shininess;
@@ -40,8 +40,7 @@ layout(push_constant) uniform pushConstants {
 
 
 #ifdef TEXTURING
-//layout(set=0, binding=0) uniform sampler2D texUnit0;
-//layout(set=0, binding=1) uniform sampler2D texUnit1;
+layout(set=0, binding=0) uniform sampler2D baseTexture;
 #endif
 
 
@@ -117,78 +116,131 @@ void main(void)
 	ShaderDataRef data = ShaderDataRef(inDataPtr);
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
 
-	// texture 0
-/*	vec4 textureColor;
-	if( texture0Mode != 0 )
-		textureColor = texture2D(texUnit0, vec2(gl_TexCoord[0]));
+	// settings
+	//
+	// the meaning of bits:
+	// 0..3 - mode (see bellow)
+	// 4..5 - color settings
+	//          when no bit is set, ambient and diffuse are taken from inColor
+	//          0x10 - ambientMaterial; ambient is taken from material instead of inColor
+	//          0x20 - diffuseMaterial; diffuse is taken from material instead of inColor
+	//          if PER_VERTEX_COLOR is not defined, ambient and diffuse is always taken from material
+	// 6..8 - alpha settings
+	//          when no bit is set, alpha is taken from the material
+	//          0x40 - noMaterialAlpha
+	//          0x80 - inColorAlpha
+	//          0x100 - textureAlpha
+	//             this produces eight combinations:
+	//                0x000 - materialAlpha, 0x040 - alpha set to 1.0,
+	//                0x080 - materialAlpha*inColorAlpha, 0x0c0 - inColorAlpha
+	//                0x100 - materialAlpha*textureAlpha, 0x140 - textureAlpha
+	//                0x180 - materialAlpha*inColorAlpha*textureAlpha, 0x1c0 - inColorAlpha*textureAlpha
+	//          if TEXTURING is not defined, texture alpha is not applied
+	//
+	uint settings = floatBitsToInt(data.ambientAndSettings.w);
 
+	// mode
+	//
+	// the meaning of bits:
+	// BaseColor = 0x02;
+	// BaseTexture = 0x03;
+	// Phong = 0x04;
+	// TexturedPhong = 0x05;
+	//
+	uint mode = settings & 0x0f;
 
-	// surface color
-	if( texture0Mode == 0x1e01 ) // if GL_REPLACE
+#ifdef TEXTURING
 
-		// apply GL_REPLACE texture
-		gl_FragColor = vec4(textureColor.rgb, textureColor.a*gl_Color.a);
+	// base texture
+	vec4 textureColor;
+	if((mode & 0x01) != 0)
+		textureColor = texture(baseTexture, vec2(inTexCoord));
 
-	else*/
+#endif
+
+	// compute alpha
+	outColor.a = ((settings & 0x40) != 0) ? 1.0 : data.diffuseAndAlpha.a;
+#ifdef PER_VERTEX_COLOR
+	if((settings & 0x80) != 0)
+		outColor.a *= inColor.a;
+#endif
+
+	if(mode <= 0x03) {
+
+#ifdef TEXTURING
+
+		// surface color given by baseTexture
+		if(mode == 0x03 ) {
+
+			// return BaseColor texture
+			// with properly computed alpha
+			if((settings & 0x100) != 0)
+				outColor *= textureColor;
+			else
+				outColor.rgb *= textureColor.rgb;
+			return;
+
+		}
+
+#endif
+
+		// return baseColor
+#ifdef PER_VERTEX_COLOR
+		if((settings & 0x30) == 0)
+			outColor.rgb = data.diffuseAndAlpha.rgb;
+		else
+			outColor.rgb = inColor.rgb;
+#else
+		outColor.rgb = data.diffuseAndAlpha.rgb;
+#endif
+		return;
+
+	}
+	else
 	{
-		// Phong
 
+		// vectors for Phong
 		vec3 eyePositionDir = normalize(inEyePosition3);
 		vec3 normal = normalize(inEyeNormal);
 		if(!gl_FrontFacing)
 			normal = -normal;
 
+		// Phong color products
 		vec3 ambientProduct  = vec3(0);
 		vec3 diffuseProduct  = vec3(0);
 		vec3 specularProduct = vec3(0);
-
 		for(int i=0; i<scene.numLights; i++)
 			directionalLight(scene, i, eyePositionDir, normal, data.shininess,
 			                 ambientProduct, diffuseProduct, specularProduct);
 
 	#ifdef PER_VERTEX_COLOR
-		uint materialType = floatBitsToInt(data.ambientAndMaterialType.w);
-		vec3 ambient = ((materialType & 0x20) == 0) ? inColor.rgb : data.ambientAndMaterialType.rgb;
-		vec3 diffuse = inColor.rgb;
-		float alpha  = ((materialType & 0x40) == 0) ? data.diffuseAndAlpha.a : inColor.a;
+		vec3 ambient = ((settings & 0x10) != 0) ? data.ambientAndSettings.rgb : inColor.rgb;
+		vec3 diffuse = ((settings & 0x20) != 0) ? data.diffuseAndAlpha.rgb : inColor.rgb;
 	#else
-		vec3 ambient = data.ambientAndMaterialType.rgb;
+		vec3 ambient = data.ambientAndSettings.rgb;
 		vec3 diffuse = data.diffuseAndAlpha.rgb;
-		float alpha  = data.diffuseAndAlpha.a;
 	#endif
 
-		outColor = vec4(data.emission + (scene.ambientLight * ambient) +
-		                (ambientProduct * ambient) +
-		                (diffuseProduct * diffuse) +
-		                (specularProduct * data.specular),
-		                alpha);
+		outColor.rgb = data.emission + (scene.ambientLight * ambient) +
+		               (ambientProduct * ambient) +
+		               (diffuseProduct * diffuse) +
+		               (specularProduct * data.specular);
 
+#ifdef TEXTURING
 
-		// apply texture 0
-		/*if( texture0Mode != 0 )
+		// combine with baseTexture
+		if((mode & 0x01) != 0)
 		{
-			if( texture0Mode == 0x2100 ) // GL_MODULATE
-				gl_FragColor = gl_FragColor * textureColor;
-			else if( texture0Mode == 0x2101 ) // GL_DECAL
-				gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.a) + textureColor.rgb*textureColor.a, gl_FragColor.a);
-			else if( texture0Mode == 0x0BE2 ) // GL_BLEND
-				gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.rgb) + texture0BlendColor.rgb*textureColor.rgb, gl_FragColor.a*textureColor.a);
-		}*/
+			if((settings & 0x100) != 0)
+				outColor *= textureColor;
+			else
+				outColor.rgb *= textureColor.rgb;
+		}
+
+#endif
 
 	}
 
-
-	// apply texture 1
-	/*if( texture1Mode != 0 )
-	{
-		textureColor = texture2D(texUnit1, vec2(gl_TexCoord[0]));
-		if( texture1Mode == 0x2100 ) // GL_MODULATE
-			gl_FragColor = gl_FragColor * textureColor;
-		else if( texture1Mode == 0x2101 ) // GL_DECAL
-			gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.a) + textureColor.rgb*textureColor.a, gl_FragColor.a);
-		else if( texture1Mode == 0x0BE2 ) // GL_BLEND
-			gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.rgb) + texture1BlendColor.rgb*textureColor.rgb, gl_FragColor.a*textureColor.a);
-	}*/
 
 #ifdef ID_BUFFER
 	outId[0] = stateSetID;

@@ -41,7 +41,7 @@ layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buf
 
 // per-drawable shader data
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer ShaderDataRef {
-	layout(offset= 0) vec4 ambientAndMaterialType;
+	layout(offset= 0) vec4 ambientAndSettings;
 	layout(offset=16) vec4 diffuseAndAlpha;
 	layout(offset=32) vec3 specular;
 	layout(offset=44) float shininess;

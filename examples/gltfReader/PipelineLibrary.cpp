@@ -124,6 +124,10 @@ void PipelineLibrary::destroy() noexcept
 	}
 	_device->destroy(_pipelineLayout);
 	_pipelineLayout = nullptr;
+	_device->destroy(_texturePipelineLayout);
+	_texturePipelineLayout = nullptr;
+	_device->destroy(_textureDescriptorSetLayout);
+	_textureDescriptorSetLayout = nullptr;
 	for(vk::ShaderModule& sm : _vertexShaders) {
 		_device->destroy(sm);
 		sm = nullptr;
@@ -185,17 +189,49 @@ void PipelineLibrary::create(CadR::VulkanDevice& device)
 						get<0>(pointVertexShaderSpirvList[i])   // pCode
 					)
 				);
+		_textureDescriptorSetLayout =
+			_device->createDescriptorSetLayout(
+				vk::DescriptorSetLayoutCreateInfo(
+					vk::DescriptorSetLayoutCreateFlags(),  // flags
+					1,  // bindingCount
+					array<vk::DescriptorSetLayoutBinding,1>{
+						vk::DescriptorSetLayoutBinding{
+							0,  // binding
+							vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+							1, // descriptorCount
+							vk::ShaderStageFlagBits::eFragment,  // stageFlags
+							nullptr  // pImmutableSamplers
+						}
+					}.data()
+				)
+			);
 		_pipelineLayout =
 			_device->createPipelineLayout(
 				vk::PipelineLayoutCreateInfo(
 					vk::PipelineLayoutCreateFlags(),  // flags
-				#if 0 // this will probably come in with texture support
-					uint32_t(descriptorSetLayouts.size()),  // setLayoutCount
-					descriptorSetLayouts.data(),  // pSetLayouts
-				#else
 					0,  // setLayoutCount
 					nullptr,  // pSetLayouts
-				#endif
+					2,  // pushConstantRangeCount
+					array{
+						vk::PushConstantRange{  // pPushConstantRanges
+							vk::ShaderStageFlagBits::eVertex,  // stageFlags
+							0,  // offset
+							2*sizeof(uint64_t)  // size
+						},
+						vk::PushConstantRange{  // pPushConstantRanges
+							vk::ShaderStageFlagBits::eFragment,  // stageFlags
+							8,  // offset
+							sizeof(uint64_t) + sizeof(uint32_t)  // size
+						},
+					}.data()
+				)
+			);
+		_texturePipelineLayout =
+			_device->createPipelineLayout(
+				vk::PipelineLayoutCreateInfo(
+					vk::PipelineLayoutCreateFlags(),  // flags
+					1,  // setLayoutCount
+					&_textureDescriptorSetLayout,  // pSetLayouts
 					2,  // pushConstantRangeCount
 					array{
 						vk::PushConstantRange{  // pPushConstantRanges
@@ -264,8 +300,8 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 		VK_FALSE,  // depthClampEnable
 		VK_FALSE,  // rasterizerDiscardEnable
 		vk::PolygonMode::eFill,  // polygonMode
-		vk::CullModeFlagBits::eNone,  // cullMode - will be filled later
-		vk::FrontFace::eCounterClockwise,  // frontFace - will be filled later
+		vk::CullModeFlagBits::eNone,  // cullMode - will be set later
+		vk::FrontFace::eCounterClockwise,  // frontFace - will be set later
 		VK_FALSE,  // depthBiasEnable
 		0.f,  // depthBiasConstantFactor
 		0.f,  // depthBiasClamp
@@ -327,7 +363,7 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 		&depthStencilState,  // pDepthStencilState
 		&colorBlendState,  // pColorBlendState
 		nullptr,  // pDynamicState
-		_pipelineLayout,  // layout
+		nullptr,  // layout - will be set later
 		renderPass,  // renderPass
 		0,  // subpass
 		nullptr,  // basePipelineHandle
@@ -344,6 +380,8 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 			              vk::CullModeFlagBits::eBack;  // eBack - back-facing triangles are discarded, eFront - front-facing triangles are discarded
 		rasterizationState.frontFace =
 			(i&0x10) ? vk::FrontFace::eClockwise : vk::FrontFace::eCounterClockwise;
+		createInfo.layout =
+			(i&0x02) ? _texturePipelineLayout : _pipelineLayout;
 		_pipelines[i] =
 			_device->createGraphicsPipeline(
 				pipelineCache,  // pipelineCache

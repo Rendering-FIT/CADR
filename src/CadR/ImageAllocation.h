@@ -9,6 +9,8 @@
 #  include <CadR/StagingBuffer.h>
 # endif
 # include <vulkan/vulkan.hpp>
+# include <boost/intrusive/list.hpp>
+# include <functional>
 
 namespace CadR {
 
@@ -33,6 +35,16 @@ struct CADR_EXPORT CopyRecord
 };
 
 
+struct CADR_EXPORT ImageChangedCallback
+{
+	std::function<void(vk::Image newImage)> imageChanged;
+
+	boost::intrusive::list_member_hook<
+		boost::intrusive::link_mode<boost::intrusive::auto_unlink>
+	> _callbackHook;  ///< List hook of ImageAllocationRecord::imageChangedCallbackList.
+};
+
+
 struct CADR_EXPORT ImageAllocationRecord
 {
 	uint64_t memoryOffset;
@@ -43,9 +55,20 @@ struct CADR_EXPORT ImageAllocationRecord
 	vk::Image image;
 	vk::ImageCreateInfo imageCreateInfo;
 
+	boost::intrusive::list<
+		ImageChangedCallback,
+		boost::intrusive::member_hook<
+			ImageChangedCallback,
+			boost::intrusive::list_member_hook<
+				boost::intrusive::link_mode<boost::intrusive::auto_unlink>>,
+			&ImageChangedCallback::_callbackHook>,
+		boost::intrusive::constant_time_size<false>
+	> imageChangedCallbackList;
+
 	inline void init(uint64_t memoryOffset, size_t size, ImageMemory* m,
 			ImageAllocationRecord** recordPointer, CopyRecord* copyRecord) noexcept;
 	void releaseHandles(VulkanDevice& device) noexcept;
+	void callImageChangedCallbacks();
 	static ImageAllocationRecord nullRecord;
 };
 
@@ -129,6 +152,7 @@ public:
 namespace CadR {
 
 inline void ImageAllocationRecord::init(uint64_t memoryOffset, size_t size, ImageMemory* m, ImageAllocationRecord** recordPointer, CopyRecord* copyRecord) noexcept  { this->memoryOffset = memoryOffset; this->size = size; imageMemory = m; this->recordPointer = recordPointer; this->copyRecord = copyRecord; }
+inline void ImageAllocationRecord::callImageChangedCallbacks()  { for(auto& li : imageChangedCallbackList) li.imageChanged(image); }
 
 inline ImageAllocation::ImageAllocation(nullptr_t) noexcept : _record(&ImageAllocationRecord::nullRecord)  {}
 inline ImageAllocation::ImageAllocation(ImageStorage& storage) noexcept  { _record = storage.zeroSizeAllocationRecord(); }

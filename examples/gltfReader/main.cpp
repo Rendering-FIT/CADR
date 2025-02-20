@@ -4,9 +4,11 @@
 #include <CadR/Exceptions.h>
 #include <CadR/ImageAllocation.h>
 #include <CadR/Pipeline.h>
+#include <CadR/Sampler.h>
 #include <CadR/StagingBuffer.h>
 #include <CadR/StagingData.h>
 #include <CadR/StateSet.h>
+#include <CadR/Texture.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
@@ -90,6 +92,7 @@ public:
 	vk::Queue presentationQueue;
 	vk::SurfaceFormatKHR surfaceFormat;
 	vk::Format depthFormat;
+	float maxSamplerAnisotropy;
 	vk::RenderPass renderPass;
 	vk::SwapchainKHR swapchain;
 	vector<vk::ImageView> swapchainImageViews;
@@ -124,18 +127,23 @@ public:
 	static constexpr size_t numPipelines = PipelineLibrary::numPipelines();
 	struct TextureStateSet {
 		CadR::StateSet stateSet;
-		CadR::ImageAllocation imageAllocation;
+		CadR::Texture* texture;
 	};
 	struct PipelineStateSet {
 		CadR::Pipeline pipeline;
 		CadR::StateSet stateSet;
-		std::list<TextureStateSet> textureStateSetList;
+		list<TextureStateSet> textureStateSetList;
+		vector<TextureStateSet*> textureIndexToStateSet;
 		PipelineStateSet(CadR::Renderer& r) : pipeline(r), stateSet(r) {}
+		void destroy() noexcept  { textureStateSetList.clear(); stateSet.destroy(); }
 	};
 	array<PipelineStateSet,numPipelines> pipelineStateSetList;
 	vector<CadR::Geometry> geometryDB;
 	vector<CadR::Drawable> drawableDB;
 	vector<CadR::ImageAllocation> imageDB;
+	vector<CadR::Sampler> samplerDB;
+	vector<CadR::Texture> textureDB;
+	CadR::Sampler defaultSampler;
 
 };
 
@@ -171,6 +179,7 @@ App::App(int argc, char** argv)
 	: sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
 	, stateSetRoot(renderer)
 	, pipelineStateSetList{ createPipelineStateSetList<PipelineStateSet, numPipelines>(renderer) }
+	, defaultSampler(renderer)
 {
 	// process command-line arguments
 	if(argc < 2)
@@ -193,7 +202,12 @@ App::~App()
 
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
+		for(PipelineStateSet& pss : pipelineStateSetList)
+			pss.destroy();
+		textureDB.clear();
 		imageDB.clear();
+		samplerDB.clear();
+		defaultSampler.destroy();
 		drawableDB.clear();
 		geometryDB.clear();
 		sceneDataAllocation.free();
@@ -276,11 +290,16 @@ void App::init()
 #if 1 // enable or disable validation extensions
       // (0 enables validation extensions and features for debugging purposes)
 		"VK_KHR_swapchain",
-		CadR::Renderer::requiredFeatures()
+		[]() {
+			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
+			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;
+			return f;
+		}().get<vk::PhysicalDeviceFeatures2>()
 #else
 		{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"},
 		[]() {
 			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
+			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;
 			f.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess = true;
 			return f;
 		}().get<vk::PhysicalDeviceFeatures2>()
@@ -339,6 +358,9 @@ void App::init()
 			}
 			throw std::runtime_error("No suitable depth buffer format.");
 		}(physicalDevice, vulkanInstance);
+
+	// maxSamplerAnisotropy
+	maxSamplerAnisotropy = vulkanInstance.getPhysicalDeviceProperties(physicalDevice).limits.maxSamplerAnisotropy;
 
 	// render pass
 	renderPass =
@@ -464,10 +486,11 @@ void App::init()
 
 	// pipelineStateSetList
 	pipelineLibrary.create(device);
-	vk::PipelineLayout pipelineLayout = pipelineLibrary.pipelineLayout();
 	for(size_t i=0; i<pipelineStateSetList.size(); i++) {
 		PipelineStateSet& pss = pipelineStateSetList[i];
 		CadR::Pipeline& p = pss.pipeline;
+		vk::PipelineLayout pipelineLayout =
+			(i & 0x02) ? pipelineLibrary.texturePipelineLayout() : pipelineLibrary.pipelineLayout();
 		p.init(nullptr, pipelineLayout, nullptr);
 		CadR::StateSet& s = pss.stateSet;
 		s.pipeline = &p;
@@ -504,6 +527,7 @@ void App::init()
 	auto& materials = getRootItem(glTF, newGltfItems, "materials");
 	auto& textures = getRootItem(glTF, newGltfItems, "textures");
 	auto& images = getRootItem(glTF, newGltfItems, "images");
+	auto& samplers = getRootItem(glTF, newGltfItems, "samplers");
 
 	// print glTF info
 	// (version item is mandatory, the rest is optional)
@@ -717,6 +741,7 @@ void App::init()
 	}
 
 	// process images
+	vector<vk::Format> imageFormats;
 	if(!images.empty()) {
 
 		// is R8G8B8Srgb format supported?
@@ -730,6 +755,7 @@ void App::init()
 		size_t c = images.size();
 		cout << "Processing images (" << c << " in total)..." << endl;
 		imageDB.reserve(c);
+		imageFormats.resize(c, vk::Format::eUndefined);
 		for(size_t i=0; i<c; i++) {
 			auto& image = images[i];
 			auto uriIt = image.find("uri");
@@ -776,7 +802,7 @@ void App::init()
 					// load image
 					unique_ptr<stbi_uc[], void(*)(stbi_uc*)> data(
 						stbi_load_from_memory(imgBuffer.get(), int(fileSize),
-							&width, &height, &numComponents, numComponents),
+							&width, &height, nullptr, numComponents),
 						[](stbi_uc* ptr) { stbi_image_free(ptr); }
 					);
 					if(data == nullptr)
@@ -790,6 +816,7 @@ void App::init()
 
 					// create ImageAllocation
 					CadR::ImageAllocation& a = imageDB.emplace_back(renderer.imageStorage());
+					imageFormats[imageDB.size()-1] = format;
 					a.alloc(
 						vk::MemoryPropertyFlagBits::eDeviceLocal,  // requiredFlags
 						vk::ImageCreateInfo(  // imageCreateInfo
@@ -828,6 +855,208 @@ void App::init()
 			succeed:
 				cout << endl;
 			}
+		}
+	}
+
+	// process image samplers
+	if(!samplers.empty()) {
+
+		// default settings for samplers
+		vk::SamplerCreateInfo samplerCreateInfo(
+			vk::SamplerCreateFlags(),  // flags
+			vk::Filter::eNearest,  // magFilter - will be set later
+			vk::Filter::eNearest,  // minFilter - will be set later
+			vk::SamplerMipmapMode::eNearest,  // mipmapMode - will be set later
+			vk::SamplerAddressMode::eRepeat,  // addressModeU - will be set later
+			vk::SamplerAddressMode::eRepeat,  // addressModeV - will be set later
+			vk::SamplerAddressMode::eRepeat,  // addressModeW
+			0.f,  // mipLodBias
+			VK_TRUE,  // anisotropyEnable
+			maxSamplerAnisotropy,  // maxAnisotropy
+			VK_FALSE,  // compareEnable
+			vk::CompareOp::eNever,  // compareOp
+			0.f,  // minLod
+			0.f,  // maxLod
+			vk::BorderColor::eFloatTransparentBlack,  // borderColor
+			VK_FALSE  // unnormalizedCoordinates
+		);
+
+		// read image samplers
+		size_t c = samplers.size();
+		samplerDB.reserve(c);
+		for(size_t i=0; i<c; i++) {
+			auto& sampler = samplers[i];
+
+			// magFilter
+			auto magFilterIt = sampler.find("magFilter");
+			if(magFilterIt != sampler.end()) {
+				switch(magFilterIt->get_ref<json::number_unsigned_t&>()) {
+				case 9728:  // GL_NEAREST
+					samplerCreateInfo.magFilter = vk::Filter::eNearest;
+					break;
+				case 9729:  // GL_LINEAR
+					samplerCreateInfo.magFilter = vk::Filter::eLinear;
+					break;
+				default:
+					throw GltfError("Sampler.magFilter contains invalid value.");
+				}
+			}
+			else {
+				// no defaults specified in glTF 2.0 spec
+				samplerCreateInfo.magFilter = vk::Filter::eNearest;
+			}
+
+			// minFilter
+			auto minFilterIt = sampler.find("minFilter");
+			if(minFilterIt != sampler.end()) {
+				switch(minFilterIt->get_ref<json::number_unsigned_t&>()) {
+				case 9728:  // GL_NEAREST
+					samplerCreateInfo.minFilter = vk::Filter::eNearest;
+					samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eNearest;  // probably highest texture detail should be chosen here
+					break;
+				case 9729:  // GL_LINEAR
+					samplerCreateInfo.minFilter = vk::Filter::eLinear;
+					samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eNearest;  // probably highest texture detail should be chosen here
+					break;
+				case 9984:  // GL_NEAREST_MIPMAP_NEAREST
+					samplerCreateInfo.minFilter = vk::Filter::eNearest;
+					samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eNearest;
+					break;
+				case 9985:  // GL_LINEAR_MIPMAP_NEAREST
+					samplerCreateInfo.minFilter = vk::Filter::eLinear;
+					samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eNearest;
+					break;
+				case 9986:  // GL_NEAREST_MIPMAP_LINEAR
+					samplerCreateInfo.minFilter = vk::Filter::eNearest;
+					samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+					break;
+				case 9987: // GL_LINEAR_MIPMAP_LINEAR
+					samplerCreateInfo.minFilter = vk::Filter::eLinear;
+					samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+					break;
+				default:
+					throw GltfError("Sampler.minFilter contains invalid value.");
+				}
+			}
+			else {
+				// no defaults specified in glTF 2.0 spec
+				samplerCreateInfo.minFilter = vk::Filter::eNearest;
+				samplerCreateInfo.mipmapMode = vk::SamplerMipmapMode::eNearest;
+			}
+
+			// wrapS
+			auto wrapSIt = sampler.find("wrapS");
+			if(wrapSIt != sampler.end()) {
+				switch(wrapSIt->get_ref<json::number_unsigned_t&>()) {
+				case 33071:  // GL_CLAMP_TO_EDGE
+					samplerCreateInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+					break;
+				case 33648:  // GL_MIRRORED_REPEAT
+					samplerCreateInfo.addressModeU = vk::SamplerAddressMode::eMirroredRepeat;
+					break;
+				case 10497:  // GL_REPEAT
+					samplerCreateInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
+					break;
+				default:
+					throw GltfError("Sampler.wrapS contains invalid value.");
+				}
+			}
+			else  // default is GL_REPEAT
+				samplerCreateInfo.addressModeU = vk::SamplerAddressMode::eRepeat;
+
+			// wrapT
+			auto wrapTIt = sampler.find("wrapT");
+			if(wrapTIt != sampler.end()) {
+				switch(wrapTIt->get_ref<json::number_unsigned_t&>()) {
+				case 33071:  // GL_CLAMP_TO_EDGE
+					samplerCreateInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+					break;
+				case 33648:  // GL_MIRRORED_REPEAT
+					samplerCreateInfo.addressModeV = vk::SamplerAddressMode::eMirroredRepeat;
+					break;
+				case 10497:  // GL_REPEAT
+					samplerCreateInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
+					break;
+				default:
+					throw GltfError("Sampler.wrapV contains invalid value.");
+				}
+			}
+			else  // default is GL_REPEAT
+				samplerCreateInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
+
+			// create sampler
+			samplerDB.emplace_back(renderer, samplerCreateInfo);
+
+		}
+	}
+
+	// process textures
+	if(!textures.empty()) {
+		size_t c = textures.size();
+		textureDB.reserve(c);
+		for(size_t i=0; i<c; i++) {
+			auto& texture = textures[i];
+			auto sourceIt = texture.find("source");
+			if(sourceIt == texture.end())
+				throw GltfError("Unsupported functionality: Texture.source is not defined for the texture.");
+			size_t imageIndex = sourceIt->get_ref<json::number_unsigned_t&>();
+			auto samplerIt = texture.find("sampler");
+			vk::Sampler vkSampler;
+			if(samplerIt != texture.end()) {
+				size_t samplerIndex = samplerIt->get_ref<json::number_unsigned_t&>();
+				vkSampler = samplerDB.at(samplerIndex).handle();
+			}
+			else {
+				if(!defaultSampler.handle()) {
+					defaultSampler.create(
+						vk::SamplerCreateInfo(
+							vk::SamplerCreateFlags(),  // flags
+							vk::Filter::eNearest,  // magFilter - glTF specifies to use "auto filtering", but what is that?
+							vk::Filter::eNearest,  // minFilter - glTF specifies to use "auto filtering", but what is that?
+							vk::SamplerMipmapMode::eNearest,  // mipmapMode
+							vk::SamplerAddressMode::eRepeat,  // addressModeU
+							vk::SamplerAddressMode::eRepeat,  // addressModeV
+							vk::SamplerAddressMode::eRepeat,  // addressModeW
+							0.f,  // mipLodBias
+							VK_TRUE,  // anisotropyEnable
+							maxSamplerAnisotropy,  // maxAnisotropy
+							VK_FALSE,  // compareEnable
+							vk::CompareOp::eNever,  // compareOp
+							0.f,  // minLod
+							0.f,  // maxLod
+							vk::BorderColor::eFloatTransparentBlack,  // borderColor
+							VK_FALSE  // unnormalizedCoordinates
+						)
+					);
+				}
+				vkSampler = defaultSampler.handle();
+			}
+
+			// create texture
+			textureDB.emplace_back(
+				imageDB.at(imageIndex), // imageAllocation
+				vk::ImageViewCreateInfo(  // imageViewCreateInfo
+					vk::ImageViewCreateFlags(),  // flags
+					nullptr,  // image - will be filled in later
+					vk::ImageViewType::e2D,  // viewType
+					imageFormats.at(imageIndex),  // format
+					vk::ComponentMapping{  // components
+						vk::ComponentSwizzle::eR,
+						vk::ComponentSwizzle::eG,
+						vk::ComponentSwizzle::eB,
+						vk::ComponentSwizzle::eA,
+					},
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				),
+				vkSampler,  // sampler
+				device  // device
+			);
 		}
 	}
 
@@ -900,8 +1129,10 @@ void App::init()
 					// not supported properties
 					if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
 						baseColorTextureIndex = baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>();
+						if(baseColorTextureIndex >= textureDB.size())
+							throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
 						baseColorTextureCoord = baseColorTextureIt->value("texCoord", 0);
-						//throw GltfError("Unsupported functionality: material.pbrMetallicRoughness.baseColorTexture.");
+
 					}
 					else {
 						baseColorTextureIndex = ~size_t(0);
@@ -1784,8 +2015,65 @@ void App::init()
 				throw GltfError("Invalid value for mesh.primitive.mode.");
 			}
 
-			// get stateSet for pipeline index
+			// get StateSet
 			PipelineStateSet& pipelineStateSet = pipelineStateSetList[pipelineIndex];
+			CadR::StateSet* ss;
+			if(baseColorTextureIndex == ~size_t(0))
+
+				// if no texture, use StateSet of the pipeline
+				ss = &pipelineStateSet.stateSet;
+
+			else {
+
+				// if texturing, each texture have its StateSet as child of the pipeline StateSet
+
+				// initialize textureIndexToStateSet
+				if(pipelineStateSet.textureIndexToStateSet.empty())
+					pipelineStateSet.textureIndexToStateSet.resize(textureDB.size(), nullptr);
+
+				// get or create TextureStateSet
+				TextureStateSet* textureStateSet = pipelineStateSet.textureIndexToStateSet[baseColorTextureIndex];
+				if(!textureStateSet) {
+
+					// create TextureStateSet
+					CadR::Texture& t = textureDB[baseColorTextureIndex];
+					textureStateSet = &pipelineStateSet.textureStateSetList.emplace_back(renderer, &t);
+					pipelineStateSet.textureIndexToStateSet[baseColorTextureIndex] = textureStateSet;
+
+					// alloc descriptor set
+					ss = &textureStateSet->stateSet;
+					pipelineStateSet.stateSet.childList.append(*ss);
+					ss->allocDescriptorSet(vk::DescriptorType::eCombinedImageSampler, pipelineLibrary.textureDescriptorSetLayout());
+
+					// attach StateSet for updating its descriptor
+					t.attachStateSet(
+						*ss,
+						ss->descriptorSets()[0],
+						[](CadR::StateSet& ss, vk::DescriptorSet descriptorSet, CadR::Texture& t) {
+							// update descriptor
+							ss.updateDescriptorSet(
+								vk::WriteDescriptorSet(
+									descriptorSet,  // dstSet
+									0,  // dstBinding
+									0,  // dstArrayElement
+									1,  // descriptorCount
+									vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+									&(vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
+										t.sampler(),  // sampler
+										t.imageView(),  // imageView
+										vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
+									},
+									nullptr,  // pBufferInfo
+									nullptr  // pTexelBufferView
+								)
+							);
+						}
+					);
+				}
+
+				// get StateSet of texture
+				ss = &textureStateSet->stateSet;
+			}
 
 			// drawable
 			vector<glm::mat4>& matrixList = meshMatrixList[meshIndex];
@@ -1796,12 +2084,13 @@ void App::init()
 				sd,  // shaderStagingData
 				64+(numInstances*64),  // shaderDataSize
 				numInstances,  // numInstances
-				pipelineStateSet.stateSet);  // stateSet
+				*ss  // stateSet
+			);
 
 			// material
 			struct MaterialData {
 				glm::vec3 ambient;  // offset 0
-				uint32_t type;  // offset 12
+				uint32_t settings;  // offset 12
 				glm::vec4 diffuseAndAlpha;  // offset 16
 				glm::vec3 specular;  // offset 32
 				float shininess;  // offset 44
@@ -1809,11 +2098,13 @@ void App::init()
 				float pointSize;  // offset 60
 			};
 			MaterialData* m = sd.data<MaterialData>();
+			m->settings = (texCoordData) ? 0x05 : 0x04;  // choose between TexturedPhong and Phong
+			if(colorData == nullptr)
+				m->settings |= 0x30;  // choose between color taken from attribute or from material
 			if(material) {
 
 				// set material data
 				m->ambient = glm::vec3(baseColorFactor);
-				m->type = 0;
 				m->diffuseAndAlpha = baseColorFactor;
 				m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
 				m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
@@ -1825,7 +2116,6 @@ void App::init()
 
 				// set default material data
 				m->ambient = glm::vec3(1.f, 1.f, 1.f);
-				m->type = 0;
 				m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
 				m->specular = glm::vec3(0.f, 0.f, 0.f);
 				m->shininess = 0.f;

@@ -20,6 +20,8 @@ protected:
 	std::array<vk::Pipeline, _numPipelines> _pipelines;
 	CadR::VulkanDevice* _device = nullptr;
 	vk::PipelineLayout _pipelineLayout;
+	vk::PipelineLayout _texturePipelineLayout;
+	vk::DescriptorSetLayout _textureDescriptorSetLayout;
 public:
 
 	PipelineLibrary() = default;
@@ -61,6 +63,8 @@ public:
 	vk::Pipeline pointPipeline(bool phong, bool texturing, bool perVertexColor) const;
 
 	vk::PipelineLayout pipelineLayout() const;
+	vk::PipelineLayout texturePipelineLayout() const;
+	vk::DescriptorSetLayout textureDescriptorSetLayout() const;
 
 };
 
@@ -86,3 +90,5 @@ inline vk::Pipeline PipelineLibrary::trianglePipeline(bool phong, bool texturing
 inline vk::Pipeline PipelineLibrary::linePipeline(bool phong, bool texturing, bool perVertexColor) const  { return _pipelines[getLinePipelineIndex(phong, texturing, perVertexColor)]; }
 inline vk::Pipeline PipelineLibrary::pointPipeline(bool phong, bool texturing, bool perVertexColor) const  { return _pipelines[getPointPipelineIndex(phong, texturing, perVertexColor)]; }
 inline vk::PipelineLayout PipelineLibrary::pipelineLayout() const  { return _pipelineLayout; }
+inline vk::PipelineLayout PipelineLibrary::texturePipelineLayout() const  { return _texturePipelineLayout; }
+inline vk::DescriptorSetLayout PipelineLibrary::textureDescriptorSetLayout() const  { return _textureDescriptorSetLayout; }

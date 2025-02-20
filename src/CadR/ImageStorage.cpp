@@ -109,9 +109,10 @@ void ImageStorage::alloc(ImageAllocation& a, size_t numBytes, size_t alignment,
 		free(a);
 
 	allocInternal(a._record, numBytes, alignment, memoryTypeBits, requiredFlags);
+	_renderer->device().bindImageMemory(image, a._record->imageMemory->memory(), a._record->memoryOffset);
 	a._record->image = image;
 	a._record->imageCreateInfo = imageCreateInfo;
-	_renderer->device().bindImageMemory(image, a._record->imageMemory->memory(), a._record->memoryOffset);
+	a._record->callImageChangedCallbacks();
 }
 
 
