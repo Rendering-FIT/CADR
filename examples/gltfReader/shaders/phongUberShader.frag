@@ -126,26 +126,33 @@ void main(void)
 	//          0x20 - diffuseMaterial; diffuse is taken from material instead of inColor
 	//          if PER_VERTEX_COLOR is not defined, ambient and diffuse is always taken from material
 	// 6..8 - alpha settings
-	//          when no bit is set, alpha is taken from the material
+	//          when no bit is set, alpha is computed by multiplication of all possible elements,
+	//             e.g. materialAlpha * inColorAlpha * textureAlpha, replacing all inactive elements by 1.0,
+	//             if, for instance, no texture is active, or no color attribute is specified
 	//          0x40 - noMaterialAlpha
-	//          0x80 - inColorAlpha
-	//          0x100 - textureAlpha
+	//          0x80 - noColorAlpha
+	//          0x100 - noTextureAlpha
 	//             this produces eight combinations:
-	//                0x000 - materialAlpha, 0x040 - alpha set to 1.0,
-	//                0x080 - materialAlpha*inColorAlpha, 0x0c0 - inColorAlpha
-	//                0x100 - materialAlpha*textureAlpha, 0x140 - textureAlpha
-	//                0x180 - materialAlpha*inColorAlpha*textureAlpha, 0x1c0 - inColorAlpha*textureAlpha
-	//          if TEXTURING is not defined, texture alpha is not applied
+	//                0x000 - materialAlpha*inColorAlpha*textureAlpha
+	//                0x040 - inColorAlpha*textureAlpha
+	//                0x080 - materialAlpha*textureAlpha
+	//                0x0c0 - textureAlpha
+	//                0x100 - materialAlpha*inColorAlpha
+	//                0x140 - inColorAlpha
+	//                0x180 - materialAlpha
+	//                0x1c0 - alpha set to 1.0
+	//          if TEXTURING is not defined, textureAlpha is replaced by 1.0
 	//
 	uint settings = floatBitsToInt(data.ambientAndSettings.w);
 
 	// mode
 	//
 	// the meaning of bits:
-	// BaseColor = 0x02;
-	// BaseTexture = 0x03;
-	// Phong = 0x04;
-	// TexturedPhong = 0x05;
+	// Texture = 0x01
+	// Color = 0x02
+	// ColoredTexture = 0x03
+	// Phong = 0x04
+	// TexturedPhong = 0x05
 	//
 	uint mode = settings & 0x0f;
 
@@ -159,41 +166,54 @@ void main(void)
 #endif
 
 	// compute alpha
-	outColor.a = ((settings & 0x40) != 0) ? 1.0 : data.diffuseAndAlpha.a;
+	outColor.a = ((settings & 0x40) == 0) ? data.diffuseAndAlpha.a : 1.0;  // noMaterialAlpha
 #ifdef PER_VERTEX_COLOR
-	if((settings & 0x80) != 0)
+	if((settings & 0x80) == 0)  // noColorAlpha
 		outColor.a *= inColor.a;
 #endif
 
+	// unlit material
 	if(mode <= 0x03) {
 
 #ifdef TEXTURING
 
-		// surface color given by baseTexture
-		if(mode == 0x03 ) {
+		// unlit texture
+		if(mode == 0x01) {
 
-			// return BaseColor texture
+			// unlit texture
 			// with properly computed alpha
-			if((settings & 0x100) != 0)
-				outColor *= textureColor;
-			else
-				outColor.rgb *= textureColor.rgb;
-			return;
+			if((settings & 0x100) == 0)  // noTextureAlpha
+				outColor.a *= textureColor.a;
+			outColor.rgb = textureColor.rgb;
 
+		}
+		else
+		{
+
+#endif
+
+			// unlit color
+#ifdef PER_VERTEX_COLOR
+			if((settings & 0x30) == 0)
+				outColor.rgb = inColor.rgb;
+			else
+				outColor.rgb = data.diffuseAndAlpha.rgb;
+#else
+			outColor.rgb = data.diffuseAndAlpha.rgb;
+#endif
+
+#ifdef TEXTURING
+
+			// coloredTexture
+			if(mode == 0x03) {
+				if((settings & 0x100) == 0)  // noTextureAlpha
+					outColor *= textureColor;
+				else
+					outColor.rgb *= textureColor.rgb;
+			}
 		}
 
 #endif
-
-		// return baseColor
-#ifdef PER_VERTEX_COLOR
-		if((settings & 0x30) == 0)
-			outColor.rgb = data.diffuseAndAlpha.rgb;
-		else
-			outColor.rgb = inColor.rgb;
-#else
-		outColor.rgb = data.diffuseAndAlpha.rgb;
-#endif
-		return;
 
 	}
 	else
@@ -213,14 +233,16 @@ void main(void)
 			directionalLight(scene, i, eyePositionDir, normal, data.shininess,
 			                 ambientProduct, diffuseProduct, specularProduct);
 
+		// ambient and diffuse
 	#ifdef PER_VERTEX_COLOR
-		vec3 ambient = ((settings & 0x10) != 0) ? data.ambientAndSettings.rgb : inColor.rgb;
-		vec3 diffuse = ((settings & 0x20) != 0) ? data.diffuseAndAlpha.rgb : inColor.rgb;
+		vec3 ambient = ((settings & 0x10) == 0) ? inColor.rgb : data.ambientAndSettings.rgb;
+		vec3 diffuse = ((settings & 0x20) == 0) ? inColor.rgb : data.diffuseAndAlpha.rgb;
 	#else
 		vec3 ambient = data.ambientAndSettings.rgb;
 		vec3 diffuse = data.diffuseAndAlpha.rgb;
 	#endif
 
+		// Phong equation
 		outColor.rgb = data.emission + (scene.ambientLight * ambient) +
 		               (ambientProduct * ambient) +
 		               (diffuseProduct * diffuse) +
@@ -231,7 +253,7 @@ void main(void)
 		// combine with baseTexture
 		if((mode & 0x01) != 0)
 		{
-			if((settings & 0x100) != 0)
+			if((settings & 0x100) == 0)  // noTextureAlpha
 				outColor *= textureColor;
 			else
 				outColor.rgb *= textureColor.rgb;

@@ -978,7 +978,7 @@ void App::init()
 					samplerCreateInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
 					break;
 				default:
-					throw GltfError("Sampler.wrapV contains invalid value.");
+					throw GltfError("Sampler.wrapT contains invalid value.");
 				}
 			}
 			else  // default is GL_REPEAT
@@ -2098,9 +2098,10 @@ void App::init()
 				float pointSize;  // offset 60
 			};
 			MaterialData* m = sd.data<MaterialData>();
-			m->settings = (texCoordData) ? 0x05 : 0x04;  // choose between TexturedPhong and Phong
+			m->settings = (normalData) ? 0x04 : 0x02;  // choose between Phong and Unlit color
+			m->settings |= (texCoordData) ? 0x01 : 0x00;  // choose between textured and not textured
 			if(colorData == nullptr)
-				m->settings |= 0x30;  // choose between color taken from attribute or from material
+				m->settings |= 0x30;  // ambient and diffuse color will be taken from material instead of attribute
 			if(material) {
 
 				// set material data

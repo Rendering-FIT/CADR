@@ -5,7 +5,7 @@
 
 // per-drawable shader data
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer ShaderDataRef {
-	layout(offset= 0) vec4 ambientAndMaterialType;
+	layout(offset= 0) vec4 ambientAndSettings;
 	layout(offset=16) vec4 diffuseAndAlpha;
 	layout(offset=32) vec3 specular;
 	layout(offset=44) float shininess;
@@ -28,8 +28,7 @@ layout(push_constant) uniform pushConstants {
 
 
 #ifdef TEXTURING
-//layout(set=0, binding=0) uniform sampler2D texUnit0;
-//layout(set=0, binding=1) uniform sampler2D texUnit1;
+layout(set=0, binding=0) uniform sampler2D baseTexture;
 #endif
 
 
@@ -71,54 +70,102 @@ void main(void)
 {
 	ShaderDataRef data = ShaderDataRef(inDataPtr);
 
-	// texture 0
-/*	vec4 textureColor;
-	if( texture0Mode != 0 )
-		textureColor = texture2D(texUnit0, gl_TexCoord[0]);
+	// settings
+	//
+	// the meaning of bits:
+	// 0..3 - mode (see bellow)
+	// 4..5 - color settings
+	//          when no bit is set, ambient and diffuse are taken from inColor
+	//          0x10 - ambientMaterial; ambient is taken from material instead of inColor
+	//          0x20 - diffuseMaterial; diffuse is taken from material instead of inColor
+	//          if PER_VERTEX_COLOR is not defined, ambient and diffuse is always taken from material
+	// 6..8 - alpha settings
+	//          when no bit is set, alpha is computed by multiplication of all possible elements,
+	//             e.g. materialAlpha * inColorAlpha * textureAlpha, replacing all inactive elements by 1.0,
+	//             if, for instance, no texture is active, or no color attribute is specified
+	//          0x40 - noMaterialAlpha
+	//          0x80 - noColorAlpha
+	//          0x100 - noTextureAlpha
+	//             this produces eight combinations:
+	//                0x000 - materialAlpha*inColorAlpha*textureAlpha
+	//                0x040 - inColorAlpha*textureAlpha
+	//                0x080 - materialAlpha*textureAlpha
+	//                0x0c0 - textureAlpha
+	//                0x100 - materialAlpha*inColorAlpha
+	//                0x140 - inColorAlpha
+	//                0x180 - materialAlpha
+	//                0x1c0 - alpha set to 1.0
+	//          if TEXTURING is not defined, textureAlpha is replaced by 1.0
+	//
+	uint settings = floatBitsToInt(data.ambientAndSettings.w);
 
+	// mode
+	//
+	// the meaning of bits:
+	// Texture = 0x01
+	// Color = 0x02
+	// ColoredTexture = 0x03
+	// Phong = 0x04 - not supported by this shader
+	// TexturedPhong = 0x05 - not supported by this shader
+	//
+	uint mode = settings & 0x0f;
 
-	// surface color
-	if( texture0Mode == 0x1e01 ) // if GL_REPLACE
+#ifdef TEXTURING
 
-		// apply GL_REPLACE texture
-		gl_FragColor = vec4(textureColor.rgb, textureColor.a*gl_Color.a);
+	// base texture
+	vec4 textureColor;
+	if((mode & 0x01) != 0)
+		textureColor = texture(baseTexture, vec2(inTexCoord));
 
-	else*/
-	{
-	#ifdef PER_VERTEX_COLOR
-		outColor.rgb = inColor.rgb;
-		uint materialType = floatBitsToInt(data.ambientAndMaterialType.w);
-		outColor.a = ((materialType & 0x40) != 0) ? inColor.a : data.diffuseAndAlpha.a;
-	#else
-		outColor.rgba = data.diffuseAndAlpha.rgba;
-	#endif
+#endif
 
+	// compute alpha
+	outColor.a = ((settings & 0x40) == 0) ? data.diffuseAndAlpha.a : 1.0;  // noMaterialAlpha
+#ifdef PER_VERTEX_COLOR
+	if((settings & 0x80) == 0)  // noColorAlpha
+		outColor.a *= inColor.a;
+#endif
 
-		// apply texture 0
-		/*if( texture0Mode != 0 )
-		{
-			if( texture0Mode == 0x2100 ) // GL_MODULATE
-				gl_FragColor = gl_FragColor * textureColor;
-			else if( texture0Mode == 0x2101 ) // GL_DECAL
-				gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.a) + textureColor.rgb*textureColor.a, gl_FragColor.a);
-			else if( texture0Mode == 0x0BE2 ) // GL_BLEND
-				gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.rgb) + texture0BlendColor.rgb*textureColor.rgb, gl_FragColor.a*textureColor.a);
-		}*/
+#ifdef TEXTURING
+
+	// unlit texture
+	if(mode == 0x01) {
+
+		// unlit texture
+		// with properly computed alpha
+		if((settings & 0x100) == 0)  // noTextureAlpha
+			outColor.a *= textureColor.a;
+		outColor.rgb = textureColor.rgb;
 
 	}
-
-
-	// apply texture 1
-	/*if( texture1Mode != 0 )
+	else
 	{
-		textureColor = texture2D(texUnit1, vec2(gl_TexCoord[0]));
-		if( texture1Mode == 0x2100 ) // GL_MODULATE
-			gl_FragColor = gl_FragColor * textureColor;
-		else if( texture1Mode == 0x2101 ) // GL_DECAL
-			gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.a) + textureColor.rgb*textureColor.a, gl_FragColor.a);
-		else if( texture1Mode == 0x0BE2 ) // GL_BLEND
-			gl_FragColor = vec4(gl_FragColor.rgb*(1-textureColor.rgb) + texture1BlendColor.rgb*textureColor.rgb, gl_FragColor.a*textureColor.a);
-	}*/
+
+#endif
+
+		// unlit color
+#ifdef PER_VERTEX_COLOR
+		if((settings & 0x30) == 0)
+			outColor.rgb = inColor.rgb;
+		else
+			outColor.rgb = data.diffuseAndAlpha.rgb;
+#else
+		outColor.rgb = data.diffuseAndAlpha.rgb;
+#endif
+
+#ifdef TEXTURING
+
+		// coloredTexture
+		if(mode == 0x03) {
+			if((settings & 0x100) == 0)  // noTextureAlpha
+				outColor *= textureColor;
+			else
+				outColor.rgb *= textureColor.rgb;
+		}
+	}
+
+#endif
+
 
 #ifdef ID_BUFFER
 	outId[0] = stateSetID;
