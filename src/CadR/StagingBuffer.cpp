@@ -50,8 +50,8 @@ void StagingBuffer::submit(ImageAllocation& a,
 	ImageMemory* m = r->imageMemory;
 	try {
 		m->_bufferToImageUploadList.emplace_back(  // might theoretically throw
+			_stagingMemory,
 			r->copyRecord,
-			_stagingMemory->buffer(),
 			r->image,
 			oldLayout,
 			copyLayout,

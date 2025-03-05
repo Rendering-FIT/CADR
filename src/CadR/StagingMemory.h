@@ -7,6 +7,7 @@
 namespace CadR {
 
 class DataMemory;
+class ImageMemory;
 class ImageStorage;
 class StagingBuffer;
 class StagingManager;
@@ -43,6 +44,7 @@ protected:
 	inline void ref() noexcept;
 	inline void unref() noexcept;
 	friend DataMemory;
+	friend ImageMemory;
 	friend ImageStorage;
 	friend StagingBuffer;
 public:

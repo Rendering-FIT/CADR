@@ -5,10 +5,12 @@
 #  define CADR_NO_INLINE_FUNCTIONS
 #  include <CadR/CircularAllocationMemory.h>
 #  include <CadR/ImageAllocation.h>
+#  include <CadR/StagingMemory.h>
 #  undef CADR_NO_INLINE_FUNCTIONS
 # else
 #  include <CadR/CircularAllocationMemory.h>
 #  include <CadR/ImageAllocation.h>
+#  include <CadR/StagingMemory.h>
 # endif
 # include <vulkan/vulkan.hpp>
 # include <boost/intrusive/list.hpp>
@@ -46,8 +48,8 @@ protected:
 
 	struct BufferToImageUpload {
 		CopyRecord* copyRecord;
+		StagingMemory* stagingMemory;
 
-		vk::Buffer srcBuffer;
 		vk::Image dstImage;
 		vk::ImageLayout oldLayout;
 		vk::ImageLayout copyLayout;
@@ -61,15 +63,15 @@ protected:
 
 		size_t record(VulkanDevice& device, vk::CommandBuffer commandBuffer);
 		void allocRegionList(size_t n)  { delete[] regionList; regionList = new vk::BufferImageCopy[n]; }
-		inline BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
+		inline BufferToImageUpload(StagingMemory* stagingMemory, CopyRecord* copyRecord, vk::Image dstImage,
 				vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 				vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 				vk::BufferImageCopy region, size_t dataSize);
-		inline BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
+		inline BufferToImageUpload(StagingMemory* stagingMemory, CopyRecord* copyRecord, vk::Image dstImage,
 				vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 				vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 				uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList, size_t dataSize);
-		~BufferToImageUpload()  { delete[] regionList; }
+		~BufferToImageUpload()  { delete[] regionList; stagingMemory->unref(); }
 	};
 	std::list<BufferToImageUpload> _bufferToImageUploadList;
 
@@ -77,7 +79,7 @@ protected:
 		boost::intrusive::list_member_hook<
 			boost::intrusive::link_mode<boost::intrusive::auto_unlink>
 		> _uploadInProgressListHook;  ///< List hook of StagingManager::*List.
-		std::vector<CopyRecord*> copyRecordList;
+		std::vector<std::tuple<CopyRecord*, StagingMemory*>> copyRecordList;
 	};
 	using UploadInProgressList =
 		boost::intrusive::list<
@@ -157,21 +159,21 @@ public:
 # define CADR_IMAGE_MEMORY_INLINE_FUNCTIONS
 namespace CadR {
 
-inline ImageMemory::BufferToImageUpload::BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
+inline ImageMemory::BufferToImageUpload::BufferToImageUpload(StagingMemory* stagingMemory, CopyRecord* copyRecord, vk::Image dstImage,
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierDstStages,
 	vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::BufferImageCopy region, size_t dataSize) :
-		copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage), oldLayout(oldLayout),
+		stagingMemory(stagingMemory), copyRecord(copyRecord), dstImage(dstImage), oldLayout(oldLayout),
 		copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
 		newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags),
-		regionCount(1), region(region), regionList(nullptr), dataSize(dataSize)  {}
-inline ImageMemory::BufferToImageUpload::BufferToImageUpload(CopyRecord* copyRecord, vk::Buffer srcBuffer, vk::Image dstImage,
+		regionCount(1), region(region), regionList(nullptr), dataSize(dataSize)  { stagingMemory->ref(); }
+inline ImageMemory::BufferToImageUpload::BufferToImageUpload(StagingMemory* stagingMemory, CopyRecord* copyRecord, vk::Image dstImage,
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 	uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList, size_t dataSize) :
-		copyRecord(copyRecord), srcBuffer(srcBuffer), dstImage(dstImage), oldLayout(oldLayout),
+		stagingMemory(stagingMemory), copyRecord(copyRecord), dstImage(dstImage), oldLayout(oldLayout),
 		copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
 		newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(regionCount),
-		regionList(regionList.release()), dataSize(dataSize)  {}
+		regionList(regionList.release()), dataSize(dataSize)  { stagingMemory->ref(); }
 inline ImageMemory::ImageMemory(ImageStorage& imageStorage) : _imageStorage(&imageStorage)  {}
 inline ImageStorage& ImageMemory::imageStorage() const  { return *_imageStorage; }
 inline size_t ImageMemory::size() const  { return _bufferEndAddress; }

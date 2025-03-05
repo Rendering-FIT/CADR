@@ -66,7 +66,7 @@ public:
 namespace CadR {
 
 //inline StagingBuffer::StagingBuffer(DataStorage& dataStorage, size_t numBytes, size_t alignment)  : StagingBuffer(std::move(dataStorage.createStagingBuffer(numBytes, alignment)))  {}
-inline StagingBuffer::StagingBuffer(ImageStorage& imageStorage, size_t numBytes, size_t alignment)  : StagingBuffer(std::move(imageStorage.createStagingBuffer(numBytes, alignment)))  {}
+inline StagingBuffer::StagingBuffer(ImageStorage& imageStorage, size_t numBytes, size_t alignment)  : StagingBuffer(imageStorage.createStagingBuffer(numBytes, alignment))  {}
 inline StagingBuffer::StagingBuffer(StagingBuffer&& other) noexcept  : _startAddress(other._startAddress), _size(other._size), _stagingMemory(other._stagingMemory) { other._stagingMemory=nullptr; }
 inline StagingBuffer& StagingBuffer::operator=(StagingBuffer&& rhs) noexcept  { if(_stagingMemory && _stagingMemory != rhs._stagingMemory) _stagingMemory->unref(); _startAddress=rhs._startAddress; _size=rhs._size; _stagingMemory=rhs._stagingMemory; rhs._stagingMemory=nullptr; return *this; }
 template<typename T> inline T* StagingBuffer::data()  { return reinterpret_cast<T*>(_startAddress); }

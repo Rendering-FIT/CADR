@@ -38,10 +38,13 @@ ImageMemory::~ImageMemory()
 
 	// clear UploadInProgressList
 	for(UploadInProgress& p : _uploadInProgressList)
-		for(CopyRecord* c : p.copyRecordList) {
+		for(auto& t : p.copyRecordList) {
+			CopyRecord* c = get<0>(t);
 			c->copyOpCounter--;
 			if(c->referenceCounter == 0 && c->copyOpCounter == 0)
 				deleteCopyRecord(c, device);
+			StagingMemory* sm = get<1>(t);
+			sm->unref();
 		}
 	_uploadInProgressList.clear();
 
@@ -187,7 +190,7 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 			);
 
 		// transfer
-		device.cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, copyLayout, regionCount, &region);
+		device.cmdCopyBufferToImage(commandBuffer, stagingMemory->buffer(), dstImage, copyLayout, regionCount, &region);
 
 		// change image layout (copyLayout -> newLayout)
 		if(newLayoutBarrierDstStages != vk::PipelineStageFlags() || copyLayout != newLayout)
@@ -264,7 +267,7 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 		}
 
 		// transfer
-		device.cmdCopyBufferToImage(commandBuffer, srcBuffer, dstImage, copyLayout, regionCount, regionList);
+		device.cmdCopyBufferToImage(commandBuffer, stagingMemory->buffer(), dstImage, copyLayout, regionCount, regionList);
 
 		// change image layout (copyLayout -> newLayout)
 		if(newLayoutBarrierDstStages != vk::PipelineStageFlags() || copyLayout != newLayout) {
@@ -344,25 +347,24 @@ size_t ImageMemory::BufferToImageUpload::record(VulkanDevice& device, vk::Comman
 	do {
 		auto it = _bufferToImageUploadList.begin();
 
-		// decrement referenceCounter
-		// (do not delete CopyRecord if it reaches zero because CopyRecord::copyOpCounter is non-zero)
+		// BufferToImageUpload and CopyRecord
 		BufferToImageUpload& u = *it;
 		CopyRecord* c = u.copyRecord;
-		c->referenceCounter--;
 
-		// test for already destroyed ImageAllocation
-		// (we still might have StagingBuffers and/or BufferToImageUploads around;
-		// copy only if ImageAllocation still exists)
+		// test for already destroyed ImageAllocation,
+		// if value is null it was not destroyed
 		if(c->imageToDestroy == vk::Image(nullptr)) {
 
 			// record into command buffer
 			numBytesToUpload += u.record(device, commandBuffer);
 			c->copyOpCounter++;
-			p->copyRecordList.push_back(c);
+			p->copyRecordList.emplace_back(c, u.stagingMemory);
+			u.stagingMemory->ref();
 
 		}
 
 		// delete CopyRecord
+		c->referenceCounter--;
 		if(c->referenceCounter == 0 && c->copyOpCounter == 0) {
 			if(c->imageToDestroy)
 				device.destroy(c->imageToDestroy);
@@ -384,10 +386,13 @@ void ImageMemory::uploadDone(void* pointer) noexcept
 {
 	UploadInProgress* p = reinterpret_cast<UploadInProgress*>(pointer);
 	VulkanDevice& device = _imageStorage->renderer().device();
-	for(CopyRecord* c : p->copyRecordList) {
+	for(auto& t : p->copyRecordList) {
+		CopyRecord* c = get<0>(t);
 		c->copyOpCounter--;
 		if(c->referenceCounter == 0 && c->copyOpCounter == 0)
 			deleteCopyRecord(c, device);
+		StagingMemory* sm = get<1>(t);
+		sm->unref();
 	}
 	delete p;  // this auto-unlinks p from _uploadInProgressList
 }
