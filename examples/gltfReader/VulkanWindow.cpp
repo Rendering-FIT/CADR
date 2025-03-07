@@ -4,11 +4,12 @@
 #  define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # endif
 # ifndef WIN32_LEAN_AND_MEAN
-# define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
+#  define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
 # endif
 # include <windows.h>
 # include <windowsx.h>
 # include <tchar.h>
+# include <type_traits>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
 # include <map>
@@ -19,6 +20,8 @@
 # include <climits>
 # include <cstring>
 # include <dlfcn.h>
+# include <sys/mman.h>
+# include <unistd.h>
 # include <map>
 #elif defined(USE_PLATFORM_SDL3)
 # include <SDL3/SDL_error.h>
@@ -51,8 +54,48 @@
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
-#include <string>
 #include <iostream>  // for debugging
+
+// xcbcommon types and funcs
+// (we avoid dependency on include xkbcommon/xkbcommon.h to lessen VulkanWindow dependencies)
+#if defined(USE_PLATFORM_XLIB)
+typedef uint32_t xkb_keysym_t;
+extern "C" uint32_t xkb_keysym_to_utf32(xkb_keysym_t keysym);
+#endif
+
+// xkb type and function definitions
+// (we avoid dependency on include xkbcommon/xkbcommon.h to lessen VulkanWindow dependencies;
+// instead we replace the include by the following enums and structs)
+#if defined(USE_PLATFORM_WAYLAND)
+enum xkb_context_flags {
+	XKB_CONTEXT_NO_FLAGS = 0,
+};
+enum xkb_keymap_format {
+	XKB_KEYMAP_FORMAT_TEXT_V1 = 1,
+};
+enum xkb_keymap_compile_flags {
+	XKB_KEYMAP_COMPILE_NO_FLAGS = 0,
+};
+enum xkb_state_component {};
+typedef uint32_t xkb_keycode_t;
+typedef uint32_t xkb_keysym_t;
+typedef uint32_t xkb_mod_mask_t;
+typedef uint32_t xkb_layout_index_t;
+extern "C" struct xkb_context* xkb_context_new(enum xkb_context_flags flags);
+extern "C" struct xkb_keymap* xkb_keymap_new_from_string(
+	struct xkb_context* context, const char* string,
+	enum xkb_keymap_format format, enum xkb_keymap_compile_flags flags);
+extern "C" void xkb_keymap_unref(struct xkb_keymap* keymap);
+extern "C" struct xkb_state* xkb_state_new(struct xkb_keymap* keymap);
+extern "C" void xkb_state_unref(struct xkb_state* state);
+extern "C" enum xkb_state_component xkb_state_update_mask(
+	struct xkb_state *state, xkb_mod_mask_t depressed_mods,
+	xkb_mod_mask_t latched_mods, xkb_mod_mask_t locked_mods,
+	xkb_layout_index_t depressed_layout, xkb_layout_index_t latched_layout,
+	xkb_layout_index_t locked_layout);
+extern "C" uint32_t xkb_state_key_get_utf32(struct xkb_state* state, xkb_keycode_t key);
+extern "C" void xkb_context_unref(struct xkb_context* context);
+#endif
 
 // libdecor enums and structs
 // (we avoid dependency on include libdecor-0/libdecor.h to lessen VulkanWindow dependencies;
@@ -132,6 +175,7 @@ public:
 	static void libdecorFrameCommit(libdecor_frame* frame, void* data);
 	static void libdecorFrameDismissPopup(libdecor_frame* frame, const char* seatName, void* data);
 	static void frameListenerDone(void *data, wl_callback* cb, uint32_t time);
+	static void syncListenerDone(void *data, wl_callback* cb, uint32_t time);
 	static void seatListenerCapabilities(void* data, wl_seat* seat, uint32_t capabilities);
 	static void pointerListenerEnter(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
 	                                 wl_fixed_t surface_x, wl_fixed_t surface_y);
@@ -155,26 +199,38 @@ public:
 // (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
 static vector<VulkanWindow*> framePendingWindows;
 
+// scan code to key conversion table
+// (the table is updated upon each keyboard layout change)
+static VulkanWindow::KeyCode keyConversionTable[128];
+
 // Win32 UTF-8 string to wstring conversion
-# if defined(_UNICODE)
-static wstring utf8toWString(const char* s)
+static wstring utf8toWString(const string& s)
 {
 	// get string lengths
-	if(s == nullptr)  return {};
-	int l1 = int(strlen(s));  // strlen() might return bigger length of s becase s is not normal string but multibyte string
+	int l1 = int(s.length());  // length() returns number of bytes of the string but number of characters might be lower because it is utf8 string
 	if(l1 == 0)  return {};
 	l1++;  // include null terminating character
-	int l2 = MultiByteToWideChar(CP_UTF8, 0, s, l1, NULL, 0);
+	int l2 = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), l1, NULL, 0);
 	if(l2 == 0)
 		throw runtime_error("MultiByteToWideChar(): The function failed.");
 
 	// perform the conversion
 	wstring r(l2, '\0'); // resize the string and initialize it with zeros because we have no simple way to leave it unitialized
-	if(MultiByteToWideChar(CP_UTF8, 0, s, l1, r.data(), l2) == 0)
+	if(MultiByteToWideChar(CP_UTF8, 0, s.c_str(), l1, r.data(), l2) == 0)
 		throw runtime_error("MultiByteToWideChar(): The function failed.");
 	return r;
 }
-# endif
+
+// Win32 wchar_t (UTF-16LE) to Unicode character number (code point) conversion
+static VulkanWindow::KeyCode wchar16ToKeyCode(WCHAR wch16)
+{
+	// make sure that we are not dealing with two WCHARs (surrogate pair)
+	if((wch16 & 0xf800) == 0xd800)
+		return VulkanWindow::KeyCode(0xfffd);  // return "replacement character" indicating the error
+
+	// Win32 uses UTF-16LE (little endian) that can be converted directly to KeyCode
+	return VulkanWindow::KeyCode(wch16);
+};
 
 // remove VulkanWindow from framePendingWindows; VulkanWindow MUST be in framePendingWindows
 static void removeFromFramePendingWindows(VulkanWindow* w)
@@ -205,6 +261,38 @@ static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
 	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::MediaSelect;
 	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
 	default: return VulkanWindow::ScanCode::Unknown;
+	}
+}
+
+static void initKeyConversionTable()
+{
+	for(uint8_t scanCode=0; scanCode<128; scanCode++)
+	{
+		// get scan code
+		int vk = MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK);
+		if(vk == 0) {
+			keyConversionTable[scanCode] = VulkanWindow::KeyCode::Unknown;
+			continue;
+		}
+
+		// get virtual code
+		int wch16 = (MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0xffff);
+		if(wch16 == 0) {
+			keyConversionTable[scanCode] = VulkanWindow::KeyCode::Unknown;
+			continue;
+		}
+
+		// convert WCHAR (=UTF-16 on Win32) to UTF-8
+		VulkanWindow::KeyCode key = wchar16ToKeyCode(wch16);
+
+		// normalize case
+		// (convert A..Z into a..z)
+		using UnderlyingType = underlying_type<VulkanWindow::KeyCode>::type;
+		if(key >= VulkanWindow::KeyCode('A') && key <= VulkanWindow::KeyCode('Z'))
+			key = VulkanWindow::KeyCode(UnderlyingType(key) + 32);
+
+		// update table
+		keyConversionTable[scanCode] = key;
 	}
 }
 
@@ -253,6 +341,9 @@ static libdecor_frame_interface libdecorFrameInterface{
 };
 static const wl_callback_listener frameListener{
 	VulkanWindowPrivate::frameListenerDone,
+};
+static const wl_callback_listener syncListener{
+	VulkanWindowPrivate::syncListenerDone,
 };
 static const wl_seat_listener seatListener{
 	VulkanWindowPrivate::seatListenerCapabilities,
@@ -310,6 +401,11 @@ struct Funcs {
 	struct libdecor_frame* (*libdecor_decorate)(struct libdecor* context, struct wl_surface* surface,
 		const struct libdecor_frame_interface* iface, void* user_data);
 	void (*libdecor_frame_set_title)(struct libdecor_frame* frame, const char* title);
+	void (*libdecor_frame_set_minimized)(struct libdecor_frame* frame);
+	void (*libdecor_frame_set_maximized)(struct libdecor_frame* frame);
+	void (*libdecor_frame_unset_maximized)(struct libdecor_frame* frame);
+	void (*libdecor_frame_set_fullscreen)(struct libdecor_frame *frame, struct wl_output *output);
+	void (*libdecor_frame_unset_fullscreen)(struct libdecor_frame *frame);
 	void (*libdecor_frame_map)(struct libdecor_frame* frame);
 	bool (*libdecor_configuration_get_content_size)(struct libdecor_configuration* configuration,
 		struct libdecor_frame* frame, int* width, int* height);
@@ -619,24 +715,29 @@ void VulkanWindow::init()
 	// register window class with the first window
 	_hInstance = GetModuleHandle(NULL);
 	_windowClass =
-		RegisterClassEx(
-			&(const WNDCLASSEX&)WNDCLASSEX{
-				sizeof(WNDCLASSEX),  // cbSize
-				0,                   // style
+		RegisterClassExW(
+			&(const WNDCLASSEXW&)WNDCLASSEXW{
+				sizeof(WNDCLASSEXW),  // cbSize
+				0,                    // style
 				VulkanWindowPrivate::wndProc,  // lpfnWndProc
-				0,                   // cbClsExtra
-				sizeof(LONG_PTR),    // cbWndExtra
+				0,                    // cbClsExtra
+				sizeof(LONG_PTR),     // cbWndExtra
 				HINSTANCE(_hInstance),  // hInstance
 				LoadIcon(NULL, IDI_APPLICATION),  // hIcon
 				LoadCursor(NULL, IDC_ARROW),  // hCursor
-				NULL,                // hbrBackground
-				NULL,                // lpszMenuName
-				_T("VulkanWindow"),  // lpszClassName
+				NULL,                 // hbrBackground
+				NULL,                 // lpszMenuName
+				L"VulkanWindow",      // lpszClassName
 				LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
 			}
 		);
 	if(!_windowClass)
 		throw runtime_error("Cannot register window class.");
+
+	// init keyboard stuff
+	// (WM_INPUTLANGCHANGE is sent after keyboard layout was changed;
+	// any layout change since application start is reported this way)
+	initKeyConversionTable();
 
 #elif defined(USE_PLATFORM_XLIB)
 
@@ -652,6 +753,8 @@ void VulkanWindow::init()
 	// get atoms
 	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
 	_wmStateProperty = XInternAtom(_display, "WM_STATE", False);
+	_netWmName  = XInternAtom(_display, "_NET_WM_NAME", False);
+	_utf8String = XInternAtom(_display, "UTF8_STRING", False);
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -775,6 +878,8 @@ void VulkanWindow::init(void* data)
 	// get atoms
 	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
 	_wmStateProperty = XInternAtom(_display, "WM_STATE", False);
+	_netWmName  = XInternAtom(_display, "_NET_WM_NAME", False);
+	_utf8String = XInternAtom(_display, "UTF8_STRING", False);
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -822,6 +927,11 @@ void VulkanWindow::init(void* data)
 	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
 		throw runtime_error("wl_seat_add_listener() failed.");
 
+	// xkb_context
+	_xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if(_xkbContext == NULL)
+		throw runtime_error("VulkanWindow::init(): Cannot create XKB context.");
+
 	// libdecor
 	if(!_zxdgDecorationManagerV1) {
 
@@ -839,6 +949,11 @@ void VulkanWindow::init(void* data)
 		reinterpret_cast<void*&>(funcs.libdecor_frame_set_user_data) = dlsym(libdecorHandle, "libdecor_frame_set_user_data");
 		reinterpret_cast<void*&>(funcs.libdecor_decorate)            = dlsym(libdecorHandle, "libdecor_decorate");
 		reinterpret_cast<void*&>(funcs.libdecor_frame_set_title)     = dlsym(libdecorHandle, "libdecor_frame_set_title");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_set_minimized) = dlsym(libdecorHandle, "libdecor_frame_set_minimized");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_set_maximized) = dlsym(libdecorHandle, "libdecor_frame_set_maximized");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_unset_maximized) = dlsym(libdecorHandle, "libdecor_frame_unset_maximized");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_set_fullscreen) = dlsym(libdecorHandle, "libdecor_frame_set_fullscreen");
+		reinterpret_cast<void*&>(funcs.libdecor_frame_unset_fullscreen) = dlsym(libdecorHandle, "libdecor_frame_unset_fullscreen");
 		reinterpret_cast<void*&>(funcs.libdecor_frame_map)           = dlsym(libdecorHandle, "libdecor_frame_map");
 		reinterpret_cast<void*&>(funcs.libdecor_configuration_get_content_size) = dlsym(libdecorHandle, "libdecor_configuration_get_content_size");
 		reinterpret_cast<void*&>(funcs.libdecor_state_new)           = dlsym(libdecorHandle, "libdecor_state_new");
@@ -846,7 +961,9 @@ void VulkanWindow::init(void* data)
 		reinterpret_cast<void*&>(funcs.libdecor_state_free)          = dlsym(libdecorHandle, "libdecor_state_free");
 		reinterpret_cast<void*&>(funcs.libdecor_dispatch)            = dlsym(libdecorHandle, "libdecor_dispatch");
 		if(!funcs.libdecor_new || !funcs.libdecor_unref || !funcs.libdecor_frame_unref || !funcs.libdecor_decorate ||
-		   !funcs.libdecor_frame_set_title || !funcs.libdecor_frame_map || !funcs.libdecor_configuration_get_content_size ||
+		   !funcs.libdecor_frame_set_title || !funcs.libdecor_frame_set_minimized || !funcs.libdecor_frame_set_maximized ||
+		   !funcs.libdecor_frame_unset_maximized || !funcs.libdecor_frame_set_fullscreen ||
+		   !funcs.libdecor_frame_unset_fullscreen || !funcs.libdecor_frame_map || !funcs.libdecor_configuration_get_content_size ||
 		   !funcs.libdecor_state_new || !funcs.libdecor_frame_commit || !funcs.libdecor_state_free || !funcs.libdecor_dispatch)
 		{
 			throw runtime_error("Cannot retrieve all function pointers out of libdecor-0.so.");
@@ -976,9 +1093,9 @@ void VulkanWindow::finalize() noexcept
 	// so ignore the errors in release builds and assert in debug builds)
 	if(_windowClass) {
 # ifdef NDEBUG
-		UnregisterClass(MAKEINTATOM(_windowClass), HINSTANCE(_hInstance));
+		UnregisterClassW(LPWSTR(MAKEINTATOM(_windowClass)), HINSTANCE(_hInstance));
 # else
-		if(!UnregisterClass(MAKEINTATOM(_windowClass), HINSTANCE(_hInstance)))
+		if(!UnregisterClassW(LPWSTR(MAKEINTATOM(_windowClass)), HINSTANCE(_hInstance)))
 			assert(0 && "UnregisterClass(): The function failed.");
 # endif
 		_windowClass = 0;
@@ -1022,6 +1139,14 @@ void VulkanWindow::finalize() noexcept
 	if(_seat) {
 		wl_seat_release(_seat);
 		_seat = nullptr;
+	}
+	if(_xkbState) {
+		xkb_state_unref(_xkbState);
+		_xkbState = nullptr;
+	}
+	if(_xkbContext) {
+		xkb_context_unref(_xkbContext);
+		_xkbContext = nullptr;
 	}
 	if(_xdgWmBase) {
 		xdg_wm_base_destroy(_xdgWmBase);
@@ -1124,9 +1249,9 @@ void VulkanWindow::destroy() noexcept
 		_hwnd = nullptr;
 	}
 # else
-	assert(_windowClass && "VulkanWindow::destroy(): Window class does not exist. "
-		                   "Did you called VulkanWindow::finalize() prematurely?");
 	if(_hwnd) {
+		assert(_windowClass && "VulkanWindow::destroy(): Window class does not exist. "
+		                       "Did you called VulkanWindow::finalize() prematurely?");
 		if(!DestroyWindow(HWND(_hwnd)))
 			assert(0 && "DestroyWindow(): The function failed.");
 		_hwnd = nullptr;
@@ -1355,7 +1480,6 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 		wl_callback_set_user_data(_scheduledFrameCallback, this);
 
 	_forcedFrame = other._forcedFrame;
-	_title = move(other._title);
 
 	// update pointers to this object
 	if(windowUnderPointer == &other)
@@ -1444,6 +1568,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_mouseButtonCallback = move(other._mouseButtonCallback);
 	_mouseWheelCallback = move(other._mouseWheelCallback);
 	_keyCallback = move(other._keyCallback);
+	_title = move(other._title);
 }
 
 
@@ -1511,7 +1636,6 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	if(_scheduledFrameCallback)
 		wl_callback_set_user_data(_scheduledFrameCallback, this);
 	_forcedFrame = other._forcedFrame;
-	_title = move(other._title);
 
 	// update pointers to this object
 	if(windowUnderPointer == &other)
@@ -1600,13 +1724,40 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_mouseButtonCallback = move(other._mouseButtonCallback);
 	_mouseWheelCallback = move(other._mouseWheelCallback);
 	_keyCallback = move(other._keyCallback);
+	_title = move(other._title);
 
 	return *this;
 }
 
 
-VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent, const char* title,
+VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent, string&& title,
                                   PFN_vkGetInstanceProcAddr getInstanceProcAddr)
+{
+	// destroy any previous window data
+	// (this makes calling create() multiple times safe operation)
+	destroy();
+
+	_title = move(title);
+
+	return createInternal(instance, surfaceExtent, getInstanceProcAddr);
+}
+
+
+VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent, const string& title,
+                                  PFN_vkGetInstanceProcAddr getInstanceProcAddr)
+{
+	// destroy any previous window data
+	// (this makes calling create() multiple times safe operation)
+	destroy();
+
+	_title = title;
+
+	return createInternal(instance, surfaceExtent, getInstanceProcAddr);
+}
+
+
+VkSurfaceKHR VulkanWindow::createInternal(VkInstance instance, VkExtent2D surfaceExtent,
+                                          PFN_vkGetInstanceProcAddr getInstanceProcAddr)
 {
 	// asserts for valid usage
 	assert(instance && "The parameter instance must not be null.");
@@ -1619,10 +1770,6 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 #elif defined(USE_PLATFORM_QT)
 	assert(qGuiApplication && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #endif
-
-	// destroy any previous window data
-	// (this makes calling init() multiple times safe operation)
-	destroy();
 
 	// set Vulkan instance
 	_instance = instance;
@@ -1648,14 +1795,10 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 
 	// create window
 	_hwnd =
-		CreateWindowEx(
+		CreateWindowExW(
 			WS_EX_CLIENTEDGE,  // dwExStyle
-			MAKEINTATOM(_windowClass),  // lpClassName
-		#if _UNICODE
-			utf8toWString(title).c_str(),  // lpWindowName
-		#else
-			title,  // lpWindowName
-		#endif
+			LPWSTR(MAKEINTATOM(_windowClass)),  // lpClassName
+			utf8toWString(_title).c_str(),  // lpWindowName
 			WS_OVERLAPPEDWINDOW,  // dwStyle
 			CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
 			surfaceExtent.width, surfaceExtent.height,  // width, height
@@ -1718,8 +1861,18 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 		);
 	if(vulkanWindowMap.emplace(_window, this).second == false)
 		throw runtime_error("VulkanWindow: The window already exists.");
-	XSetStandardProperties(_display, _window, title, title, None, NULL, 0, NULL);
 	XSetWMProtocols(_display, _window, &_wmDeleteMessage, 1);
+	XSetStandardProperties(_display, _window, _title.c_str(), _title.c_str(), None, NULL, 0, NULL);
+	XChangeProperty(
+		_display,
+		_window,
+		_netWmName,  // property
+		_utf8String,  // type
+		8,  // format
+		PropModeReplace,  // mode
+		reinterpret_cast<const unsigned char*>(_title.c_str()),  // data
+		_title.size()  // nelements
+	);
 
 	// create surface
 	PFN_vkCreateXlibSurfaceKHR vulkanCreateXlibSurfaceKHR =
@@ -1748,7 +1901,6 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 
 	// init variables
 	_forcedFrame = false;
-	_title = title;
 
 	// create wl surface
 	_wlSurface = wl_compositor_create_surface(_compositor);
@@ -1792,7 +1944,7 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 
 	// create Vulkan window
 	_window = SDL_CreateWindow(
-		title,  // title
+		_title.c_str(),  // title
 		surfaceExtent.width, surfaceExtent.height,  // w,h
 		SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN  // flags
 	);
@@ -1822,7 +1974,7 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 
 	// create Vulkan window
 	_window = SDL_CreateWindow(
-		title,  // title
+		_title.c_str(),  // title
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,  // x,y
 		surfaceExtent.width, surfaceExtent.height,  // w,h
 		SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN  // flags
@@ -1843,8 +1995,10 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 
 	// init variables
 	_framePendingState = FramePendingState::NotPending;
-	_visible = true;
+	_visible = false;
 	_minimized = false;
+	_savedWidth = surfaceExtent.width;
+	_savedHeight = surfaceExtent.height;
 
 	// create window
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -1854,7 +2008,7 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 		// glfwShowWindow(): "Wayland: Focusing a window requires user interaction"; seen on glfw 3.3.8 and Kubuntu 22.10,
 		// however we need the focus on show on Win32 to get proper window focus
 # endif
-	_window = glfwCreateWindow(surfaceExtent.width, surfaceExtent.height, title, nullptr, nullptr);
+	_window = glfwCreateWindow(surfaceExtent.width, surfaceExtent.height, _title.c_str(), nullptr, nullptr);
 	if(_window == nullptr)
 		throwError("glfwCreateWindow");
 
@@ -1946,6 +2100,10 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 			}
 			ButtonState buttonState = (action == GLFW_PRESS) ? ButtonState::Pressed : ButtonState::Released;
 			w->_mouseState.buttons.set(b, action == GLFW_PRESS);
+			w->_mouseState.modifiers.set(Modifier::Ctrl,  mods & GLFW_MOD_CONTROL);
+			w->_mouseState.modifiers.set(Modifier::Shift, mods & GLFW_MOD_SHIFT);
+			w->_mouseState.modifiers.set(Modifier::Alt,   mods & GLFW_MOD_ALT);
+			w->_mouseState.modifiers.set(Modifier::Meta,  mods & GLFW_MOD_SUPER);
 			if(w->_mouseButtonCallback)
 				w->_mouseButtonCallback(*w, b, buttonState, w->_mouseState);
 		}
@@ -1963,27 +2121,40 @@ VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent,
 		[](GLFWwindow* window, int key, int nativeScanCode, int action, int mods) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			if(action != GLFW_REPEAT) {
-				if(key >= GLFW_KEY_LEFT_SHIFT && key <= GLFW_KEY_RIGHT_SUPER) {
-					bool down = (action == GLFW_PRESS);
-					switch(key) {
-					case GLFW_KEY_LEFT_SHIFT:    w->_mouseState.mods.set(Modifier::Shift, down); break;
-					case GLFW_KEY_LEFT_CONTROL:  w->_mouseState.mods.set(Modifier::Ctrl,  down); break;
-					case GLFW_KEY_LEFT_ALT:      w->_mouseState.mods.set(Modifier::Alt,   down); break;
-					case GLFW_KEY_LEFT_SUPER:    w->_mouseState.mods.set(Modifier::Meta,  down); break;
-					case GLFW_KEY_RIGHT_SHIFT:   w->_mouseState.mods.set(Modifier::Shift, down); break;
-					case GLFW_KEY_RIGHT_CONTROL: w->_mouseState.mods.set(Modifier::Ctrl,  down); break;
-					case GLFW_KEY_RIGHT_ALT:     w->_mouseState.mods.set(Modifier::Alt,   down); break;
-					case GLFW_KEY_RIGHT_SUPER:   w->_mouseState.mods.set(Modifier::Meta,  down); break;
-					}
-				}
+				w->_mouseState.modifiers.set(Modifier::Ctrl,  mods & GLFW_MOD_CONTROL);
+				w->_mouseState.modifiers.set(Modifier::Shift, mods & GLFW_MOD_SHIFT);
+				w->_mouseState.modifiers.set(Modifier::Alt,   mods & GLFW_MOD_ALT);
+				w->_mouseState.modifiers.set(Modifier::Meta,  mods & GLFW_MOD_SUPER);
 				if(w->_keyCallback) {
 # ifdef _WIN32
 					ScanCode scanCode = translateScanCode(nativeScanCode);
 # else
 					ScanCode scanCode = ScanCode(nativeScanCode - 8);
 # endif
-					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, scanCode);
+					if(key >= 'A' && key <= 'Z')
+						key += 32;
+					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, scanCode, KeyCode(key));
 				}
+			}
+		}
+	);
+	glfwSetWindowPosCallback(
+		_window,
+		[](GLFWwindow* window, int posX, int posY) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			if(w->canUpdateSavedGeometry()) {
+				w->_savedPosX = posX;
+				w->_savedPosY = posY;
+			}
+		}
+	);
+	glfwSetWindowSizeCallback(
+		_window,
+		[](GLFWwindow* window, int width, int height) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			if(w->canUpdateSavedGeometry()) {
+				w->_savedWidth = width;
+				w->_savedHeight = height;
 			}
 		}
 	);
@@ -2203,10 +2374,10 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 	auto handleModifiers =
 		[](VulkanWindowPrivate* w, WPARAM wParam) -> void
 		{
-			w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
-			w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
-			w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
-			w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
+			w->_mouseState.modifiers.set(Modifier::Ctrl,  wParam & MK_CONTROL);
+			w->_mouseState.modifiers.set(Modifier::Shift, wParam & MK_SHIFT);
+			w->_mouseState.modifiers.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
+			w->_mouseState.modifiers.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
 		};
 	auto handleMouseMove =
 		[](VulkanWindowPrivate* w, float x, float y)
@@ -2225,11 +2396,11 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		{
 			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
 
-			// handle mods
-			w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
-			w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
-			w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
-			w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
+			// handle modifiers
+			w->_mouseState.modifiers.set(Modifier::Ctrl,  wParam & MK_CONTROL);
+			w->_mouseState.modifiers.set(Modifier::Shift, wParam & MK_SHIFT);
+			w->_mouseState.modifiers.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
+			w->_mouseState.modifiers.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
 
 			// handle mouse move, if any
 			float x = float(GET_X_LPARAM(lParam));
@@ -2367,7 +2538,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			GetCursorPos(&point);
 			ScreenToClient(hwnd, &point);
 			PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
-			return DefWindowProc(hwnd, msg, wParam, lParam);
+			return DefWindowProcW(hwnd, msg, wParam, lParam);
 		}
 
 		// vertical and horizontal mouse wheel
@@ -2405,7 +2576,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
 			// handle Alt-F4
 			if((lParam & 0xff0000) == (LPARAM(62) << 16) && GetKeyState(VK_MENU) < 0)
-				return DefWindowProc(hwnd, msg, wParam, lParam);
+				return DefWindowProcW(hwnd, msg, wParam, lParam);
 
 			// callback
 			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
@@ -2417,8 +2588,19 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				if(scanCode == ScanCode::Unknown)
 					scanCode = getScanCodeOfSpecialKey(wParam);
 
+				// key code
+				KeyCode keyCode;
+				if(nativeScanCode < 128)
+					keyCode = keyConversionTable[nativeScanCode];
+				else
+				{
+					UINT nativeKeyCode = wParam & 0xff;
+					UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
+					keyCode = wchar16ToKeyCode(wch16);
+				}
+
 				// callback
-				w->_keyCallback(*w, KeyState::Pressed, scanCode);
+				w->_keyCallback(*w, KeyState::Pressed, scanCode, keyCode);
 			}
 			return 0;
 		}
@@ -2434,10 +2616,26 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				if(scanCode == ScanCode::Unknown)
 					scanCode = getScanCodeOfSpecialKey(wParam);
 
+				// key code
+				KeyCode key;
+				if(nativeScanCode < 128)
+					key = keyConversionTable[nativeScanCode];
+				else
+				{
+					UINT nativeKeyCode = wParam & 0xff;
+					UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
+					key = wchar16ToKeyCode(wch16);
+				}
+
 				// callback
-				w->_keyCallback(*w, KeyState::Released, scanCode);
+				w->_keyCallback(*w, KeyState::Released, scanCode, key);
 			}
 			return 0;
+		}
+
+		case WM_INPUTLANGCHANGE: {
+			initKeyConversionTable();
+			return DefWindowProcW(hwnd, msg, wParam, lParam);
 		}
 
 		// window resize message
@@ -2448,7 +2646,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
 				w->scheduleResize();
 			}
-			return DefWindowProc(hwnd, msg, wParam, lParam);
+			return DefWindowProcW(hwnd, msg, wParam, lParam);
 		}
 
 		// window show and hide message
@@ -2477,7 +2675,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 				}
 
 			}
-			return DefWindowProc(hwnd, msg, wParam, lParam);
+			return DefWindowProcW(hwnd, msg, wParam, lParam);
 		}
 
 		// close window message
@@ -2513,7 +2711,7 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
 		// all other messages are handled by standard DefWindowProc()
 		default:
-			return DefWindowProc(hwnd, msg, wParam, lParam);
+			return DefWindowProcW(hwnd, msg, wParam, lParam);
 	}
 }
 
@@ -2632,10 +2830,10 @@ void VulkanWindow::mainLoop()
 	auto handleModifiers =
 		[](VulkanWindow* w, unsigned int state)
 		{
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  state & ControlMask);
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Shift, state & ShiftMask);
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Alt,   state & (Mod1Mask|Mod5Mask));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  state & Mod4Mask);
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Ctrl,  state & ControlMask);
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Shift, state & ShiftMask);
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Alt,   state & (Mod1Mask|Mod5Mask));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Meta,  state & Mod4Mask);
 		};
 	auto handleMouseMove =
 		[](VulkanWindow* w, float newX, float newY)
@@ -2750,8 +2948,22 @@ void VulkanWindow::mainLoop()
 			// callback
 			if(w->_keyCallback)
 			{
+				// get scan code
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-				w->_keyCallback(*w, KeyState::Pressed, scanCode);
+
+				// get utf32 character representing the keyboard key
+				KeySym keySym;
+				e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
+				                  Mod1Mask |  // ignore Alt
+				                  Mod2Mask |  // ignore Num Lock
+				                  Mod3Mask |  // ignore Scroll Lock
+				                  Mod4Mask |  // ignore WinKey  );
+				                  Mod5Mask);  // ignore unknown modifier
+				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+				uint32_t codePoint = xkb_keysym_to_utf32(keySym);
+
+				// callback
+				w->_keyCallback(*w, KeyState::Pressed, scanCode, KeyCode(codePoint));
 			}
 			continue;
 		}
@@ -2772,8 +2984,22 @@ void VulkanWindow::mainLoop()
 			// callback
 			if(w->_keyCallback)
 			{
+				// get scan code
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-				w->_keyCallback(*w, KeyState::Released, scanCode);
+
+				// get utf32 character representing the keyboard key
+				KeySym keySym;
+				e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
+				                  Mod1Mask |  // ignore Alt
+				                  Mod2Mask |  // ignore Num Lock
+				                  Mod3Mask |  // ignore Scroll Lock
+				                  Mod4Mask |  // ignore WinKey  );
+				                  Mod5Mask);  // ignore unknown modifier
+				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+				uint32_t codePoint = xkb_keysym_to_utf32(keySym);
+
+				// callback
+				w->_keyCallback(*w, KeyState::Released, scanCode, KeyCode(codePoint));
 			}
 			continue;
 		}
@@ -2880,7 +3106,7 @@ void VulkanWindow::scheduleFrame()
 #elif defined(USE_PLATFORM_WAYLAND)
 
 
-void VulkanWindow::show()
+void VulkanWindow::show(void (*xdgConfigFunc)(VulkanWindow&), void (*libdecorConfigFunc)(VulkanWindow&))
 {
 	// asserts for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
@@ -2893,15 +3119,19 @@ void VulkanWindow::show()
 
 	if(_libdecorContext)
 	{
+
 		// create libdecor decorations
 		_libdecorFrame = funcs.libdecor_decorate(_libdecorContext, _wlSurface, &libdecorFrameInterface, this);
 		if(_libdecorFrame == nullptr)
 			throw runtime_error("VulkanWindow::show(): libdecor_decorate() failed.");
 		funcs.libdecor_frame_set_title(_libdecorFrame, _title.c_str());
+		libdecorConfigFunc(*this);
 		funcs.libdecor_frame_map(_libdecorFrame);
+
 	}
 	else
 	{
+
 		// create xdg surface
 		_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
 		if(_xdgSurface == nullptr)
@@ -2920,22 +3150,52 @@ void VulkanWindow::show()
 		xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
 		if(xdg_toplevel_add_listener(_xdgTopLevel, &xdgToplevelListener, this))
 			throw runtime_error("xdg_toplevel_add_listener() failed.");
+		xdgConfigFunc(*this);
 		wl_surface_commit(_wlSurface);
+
 	}
+
+	// send callback
+	wl_callback* callback = wl_display_sync(_display);
+	if(wl_callback_add_listener(callback, &syncListener, this))
+		throw runtime_error("wl_callback_add_listener() failed.");
+	_numSyncEventsOnTheFly++;
+	wl_display_flush(_display);
 
 	_forcedFrame = true;
 	_resizePending = true;
 }
 
 
-void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*)
+void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array* states)
 {
 	cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
+
+	// update window state
+	// (following for loop is equivalent to wl_array_for_each(s, states) used in C)
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
+	bool fullscreen = false;
+	bool maximized = false;
+	uint32_t* p;
+	for(p = static_cast<uint32_t*>(states->data);
+			reinterpret_cast<char*>(p) < static_cast<char*>(states->data) + states->size;
+			p++)
+	{
+		switch(*p) {
+		case XDG_TOPLEVEL_STATE_MAXIMIZED: maximized = true; break;
+		case XDG_TOPLEVEL_STATE_FULLSCREEN: fullscreen = true; break;
+		}
+	}
+	if(fullscreen)
+		w->_windowState = WindowState::FullScreen;
+	else if(maximized)
+		w->_windowState = WindowState::Maximized;
+	else
+		w->_windowState = WindowState::Normal;
 
 	// if width or height of the window changed,
 	// schedule swapchain resize and force new frame rendering
 	// (width and height of zero means that the compositor does not know the window dimension)
-	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 	if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
 		w->_surfaceExtent.width = width;
 		if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
@@ -3031,6 +3291,10 @@ void VulkanWindowPrivate::xdgToplevelListenerClose(void* data, xdg_toplevel* xdg
 		w->hide();
 		VulkanWindow::exitMainLoop();
 	}
+
+	// update window state
+	if(w->_xdgTopLevel == nullptr)
+		w->_windowState = WindowState::Hidden;
 }
 
 
@@ -3078,6 +3342,7 @@ void VulkanWindow::hide()
 		wl_surface_attach(_wlSurface, nullptr, 0, 0);
 		wl_surface_commit(_wlSurface);
 	}
+	_windowState = WindowState::Hidden;
 }
 
 
@@ -3125,7 +3390,8 @@ void VulkanWindow::scheduleFrame()
 
 	cout << "s" << flush;
 	_scheduledFrameCallback = wl_surface_frame(_wlSurface);
-	wl_callback_add_listener(_scheduledFrameCallback, &frameListener, this);
+	if(wl_callback_add_listener(_scheduledFrameCallback, &frameListener, this))
+		throw runtime_error("wl_callback_add_listener() failed.");
 	wl_surface_commit(_wlSurface);
 }
 
@@ -3215,8 +3481,10 @@ void VulkanWindowPrivate::pointerListenerMotion(void* data, wl_pointer* pointer,
 		windowUnderPointer->_mouseState.relY = y - windowUnderPointer->_mouseState.posY;
 		windowUnderPointer->_mouseState.posX = x;
 		windowUnderPointer->_mouseState.posY = y;
-		if(windowUnderPointer->_mouseMoveCallback)
+		if(windowUnderPointer->_mouseMoveCallback) {
+			windowUnderPointer->_mouseState.modifiers = _modifiers;
 			windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+		}
 	}
 }
 
@@ -3239,6 +3507,7 @@ void VulkanWindowPrivate::pointerListenerButton(void* data, wl_pointer* pointer,
 	}
 	windowUnderPointer->_mouseState.buttons.set(index, state == WL_POINTER_BUTTON_STATE_PRESSED);
 	if(windowUnderPointer->_mouseButtonCallback) {
+		windowUnderPointer->_mouseState.modifiers = _modifiers;
 		ButtonState buttonState =
 			(state == WL_POINTER_BUTTON_STATE_PRESSED) ? ButtonState::Pressed : ButtonState::Released;
 		windowUnderPointer->_mouseButtonCallback(
@@ -3263,14 +3532,51 @@ void VulkanWindowPrivate::pointerListenerAxis(void* data, wl_pointer* pointer, u
 		wheelX = v;
 		wheelY = 0;
 	}
-	if(windowUnderPointer->_mouseWheelCallback)
+	if(windowUnderPointer->_mouseWheelCallback) {
+		windowUnderPointer->_mouseState.modifiers = _modifiers;
 		windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, wheelX, wheelY,
 		                                        windowUnderPointer->_mouseState);
+	}
 }
 
 
 void VulkanWindowPrivate::keyboardListenerKeymap(void* data, wl_keyboard* keyboard, uint32_t format, int32_t fd, uint32_t size)
 {
+	if(format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+		return;
+
+	// map memory
+	char* m = static_cast<char*>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
+	if(m == MAP_FAILED)
+		throw runtime_error("VulkanWindow::init(): Failed to map memory in keymap event.");
+
+	// create keymap
+	struct xkb_keymap* keymap = xkb_keymap_new_from_string(_xkbContext,
+		m, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+	int r1 = munmap(m, size);
+	int r2 = close(fd);
+
+	// handle errors
+	if(keymap == nullptr)
+		throw runtime_error("VulkanWindow::init(): Failed to create keymap in keymap event.");
+	if(r1 != 0) {
+		xkb_keymap_unref(keymap);
+		throw runtime_error("VulkanWindow::init(): Failed to unmap memory in keymap event.");
+	}
+	if(r2 != 0) {
+		xkb_keymap_unref(keymap);
+		throw runtime_error("VulkanWindow::init(): Failed to close file descriptor in keymap event.");
+	}
+
+	// unref old xkb_state
+	if(_xkbState)
+		xkb_state_unref(_xkbState);
+
+	// create new xkb_state
+	_xkbState = xkb_state_new(keymap);
+	xkb_keymap_unref(keymap);
+	if(_xkbState == nullptr)
+		throw runtime_error("VulkanWindow::create(): Cannot create XKB state object in keymap event.");
 }
 
 
@@ -3278,6 +3584,20 @@ void VulkanWindowPrivate::keyboardListenerEnter(void* data, wl_keyboard* keyboar
 {
 	windowWithKbFocus = static_cast<VulkanWindowPrivate*>(wl_surface_get_user_data(surface));
 	assert(windowWithKbFocus && "wl_surface userData does not contain pointer to VulkanWindow.");
+
+#if 0 // this seems not needed for our simple key down and key up callbacks
+	// iterate keys array;
+	// the keys array contains currently pressed keys
+	// (following for loop is equivalent to wl_array_for_each(key, keys) used in C)
+	uint32_t* p;
+	for(p = static_cast<uint32_t*>(keys->data);
+			reinterpret_cast<char*>(p) < static_cast<char*>(keys->data) + keys->size;
+			p++)
+	{
+		uint32_t scanCode = *p;
+		xkb_state_key_get_utf32(_xkbState, scanCode + 8);
+	}
+#endif
 }
 
 
@@ -3289,12 +3609,16 @@ void VulkanWindowPrivate::keyboardListenerLeave(void* data, wl_keyboard* keyboar
 
 void VulkanWindowPrivate::keyboardListenerKey(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t scanCode, uint32_t state)
 {
+	// get code point
+	uint32_t codePoint = xkb_state_key_get_utf32(_xkbState, scanCode + 8);
+
 	// callback
 	if(windowWithKbFocus->_keyCallback) {
 		windowWithKbFocus->_keyCallback(
 			*windowWithKbFocus,
 			state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyState::Pressed : KeyState::Released,
-			ScanCode(scanCode)
+			ScanCode(scanCode),
+			KeyCode(codePoint)
 		);
 	}
 }
@@ -3303,6 +3627,16 @@ void VulkanWindowPrivate::keyboardListenerKey(void* data, wl_keyboard* keyboard,
 void VulkanWindowPrivate::keyboardListenerModifiers(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
                                                     uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 {
+#if 0 // xkb_state_update_mask() disturbs keys that we pass to keyCallbacks
+      // because we do not want them to be affected by any key modifiers
+	xkb_state_update_mask(_xkbState, mods_depressed, mods_latched, mods_locked, 0, 0, group);
+#endif
+
+	// update modifiers global state
+	_modifiers.set(VulkanWindow::Modifier::Ctrl,  mods_depressed & 0x04);
+	_modifiers.set(VulkanWindow::Modifier::Shift, mods_depressed & 0x01);
+	_modifiers.set(VulkanWindow::Modifier::Alt,   mods_depressed & 0x88);
+	_modifiers.set(VulkanWindow::Modifier::Meta,  mods_depressed & 0x40);
 }
 
 
@@ -3376,10 +3710,10 @@ void VulkanWindow::mainLoop()
 		[](VulkanWindow* w) -> void
 		{
 			SDL_Keymod m = SDL_GetModState();
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  m & (SDL_KMOD_LCTRL |SDL_KMOD_RCTRL));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & (SDL_KMOD_LSHIFT|SDL_KMOD_RSHIFT));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Alt,   m & (SDL_KMOD_LALT  |SDL_KMOD_RALT));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  m & (SDL_KMOD_LGUI  |SDL_KMOD_RGUI));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Ctrl,  m & (SDL_KMOD_LCTRL |SDL_KMOD_RCTRL));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Shift, m & (SDL_KMOD_LSHIFT|SDL_KMOD_RSHIFT));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Alt,   m & (SDL_KMOD_LALT  |SDL_KMOD_RALT));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Meta,  m & (SDL_KMOD_LGUI  |SDL_KMOD_RGUI));
 		};
 	auto handleMouseMove =
 		[](VulkanWindow* w, float newX, float newY) -> void
@@ -3557,7 +3891,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.scancode);
-				w->_keyCallback(*w, KeyState::Pressed, scanCode);
+				KeyCode keyCode = KeyCode((event.key.key & SDLK_SCANCODE_MASK) ? 0 : event.key.key);
+				w->_keyCallback(*w, KeyState::Pressed, scanCode, keyCode);
 			}
 			break;
 		}
@@ -3566,7 +3901,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.scancode);
-				w->_keyCallback(*w, KeyState::Released, scanCode);
+				KeyCode keyCode = KeyCode((event.key.key & SDLK_SCANCODE_MASK) ? 0 : event.key.key);
+				w->_keyCallback(*w, KeyState::Released, scanCode, keyCode);
 			}
 			break;
 		}
@@ -3692,10 +4028,10 @@ void VulkanWindow::mainLoop()
 		[](VulkanWindow* w) -> void
 		{
 			SDL_Keymod m = SDL_GetModState();
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  m & (KMOD_LCTRL|KMOD_RCTRL));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & (KMOD_LSHIFT|KMOD_RSHIFT));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Alt,   m & (KMOD_LALT|KMOD_RALT));
-			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  m & (KMOD_LGUI|KMOD_RGUI));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Ctrl,  m & (KMOD_LCTRL|KMOD_RCTRL));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Shift, m & (KMOD_LSHIFT|KMOD_RSHIFT));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Alt,   m & (KMOD_LALT|KMOD_RALT));
+			w->_mouseState.modifiers.set(VulkanWindow::Modifier::Meta,  m & (KMOD_LGUI|KMOD_RGUI));
 		};
 	auto handleMouseMove =
 		[](VulkanWindow* w, float newX, float newY) -> void
@@ -3883,7 +4219,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				w->_keyCallback(*w, KeyState::Pressed, scanCode);
+				KeyCode keyCode = KeyCode((event.key.keysym.sym & SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym);
+				w->_keyCallback(*w, KeyState::Pressed, scanCode, keyCode);
 			}
 			break;
 		}
@@ -3893,7 +4230,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				w->_keyCallback(*w, KeyState::Released, scanCode);
+				KeyCode keyCode = KeyCode((event.key.keysym.sym & SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym);
+				w->_keyCallback(*w, KeyState::Released, scanCode, keyCode);
 			}
 			break;
 		}
@@ -4179,10 +4517,10 @@ bool QtRenderingWindow::event(QEvent* event)
 			[](VulkanWindow* vulkanWindow, QInputEvent* e)
 			{
 				Qt::KeyboardModifiers m = e->modifiers();
-				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  m & Qt::ControlModifier);
-				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & Qt::ShiftModifier);
-				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Alt,   m & Qt::AltModifier);
-				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  m & Qt::MetaModifier);
+				vulkanWindow->_mouseState.modifiers.set(VulkanWindow::Modifier::Ctrl,  m & Qt::ControlModifier);
+				vulkanWindow->_mouseState.modifiers.set(VulkanWindow::Modifier::Shift, m & Qt::ShiftModifier);
+				vulkanWindow->_mouseState.modifiers.set(VulkanWindow::Modifier::Alt,   m & Qt::AltModifier);
+				vulkanWindow->_mouseState.modifiers.set(VulkanWindow::Modifier::Meta,  m & Qt::MetaModifier);
 			};
 		auto handleMouseMove =
 			[](VulkanWindow* vulkanWindow, float newX, float newY)
@@ -4322,36 +4660,54 @@ bool QtRenderingWindow::event(QEvent* event)
 		// handle key events
 		case QEvent::Type::KeyPress: {
 			if(vulkanWindow->_keyCallback) {
-				QKeyEvent *k = static_cast<QKeyEvent*>(event);
-				if(!k->isAutoRepeat()) {
+				QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+				if(!keyEvent->isAutoRepeat()) {
 
 					// scan code
 				#ifdef _WIN32
-					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
+					VulkanWindow::ScanCode scanCode = translateScanCode(keyEvent->nativeScanCode());
 				#else
-					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
+					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(keyEvent->nativeScanCode() - 8);
 				#endif
 
+					// convert to lower case
+					int32_t k = keyEvent->key();
+					if(k >= Qt::Key_A && k <= Qt::Key_Z)
+						k += 32;
+					else {
+						u32string s =  keyEvent->text().toStdU32String();
+						k = (s.empty()) ? 0 : int32_t(s.front());
+					}
+
 					// callback
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, scanCode);
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, scanCode, VulkanWindow::KeyCode(k));
 				}
 			}
 			return true;
 		}
 		case QEvent::Type::KeyRelease: {
 			if(vulkanWindow->_keyCallback) {
-				QKeyEvent *k = static_cast<QKeyEvent*>(event);
-				if(!k->isAutoRepeat()) {
+				QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+				if(!keyEvent->isAutoRepeat()) {
 
 					// scan code
 				#ifdef _WIN32
-					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
+					VulkanWindow::ScanCode scanCode = translateScanCode(keyEvent->nativeScanCode());
 				#else
-					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
+					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(keyEvent->nativeScanCode() - 8);
 				#endif
 
+					// convert to lower case
+					int32_t k = keyEvent->key();
+					if(k >= Qt::Key_A && k <= Qt::Key_Z)
+						k += 32;
+					else {
+						u32string s =  keyEvent->text().toStdU32String();
+						k = (s.empty()) ? 0 : int32_t(s.front());
+					}
+
 					// callback
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, scanCode);
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, scanCode, VulkanWindow::KeyCode(k));
 				}
 			}
 			return true;
@@ -4404,6 +4760,552 @@ void VulkanWindow::scheduleFrame()
 
 
 #endif
+
+
+
+#if defined(USE_PLATFORM_WIN32)
+
+void VulkanWindow::updateTitle()
+{
+	wstring s = utf8toWString(_title.c_str());
+	if(!SetWindowTextW(HWND(_hwnd), s.c_str()))
+		throw runtime_error("VulkanWindow::updateTitle(): Failed to set window title.");
+}
+
+#elif defined(USE_PLATFORM_XLIB)
+
+void VulkanWindow::updateTitle()
+{
+	XStoreName(_display, _window, _title.c_str());
+	XChangeProperty(
+		_display,
+		_window,
+		_netWmName,  // property
+		_utf8String,  // type
+		8,  // format
+		PropModeReplace,  // mode
+		reinterpret_cast<const unsigned char*>(_title.c_str()),  // data
+		_title.size()  // nelements
+	);
+}
+
+#elif defined(USE_PLATFORM_WAYLAND)
+
+void VulkanWindow::updateTitle()
+{
+	// if libdecor is used, use libdecor_frame_set_title()
+	// otherwise set it using xdg_toplevel_set_title()
+	if(_libdecorFrame)
+		funcs.libdecor_frame_set_title(_libdecorFrame, _title.c_str());
+	if(_xdgTopLevel)
+		xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
+}
+
+#elif defined(USE_PLATFORM_SDL3)
+
+void VulkanWindow::updateTitle()
+{
+	if(!SDL_SetWindowTitle(_window, _title.c_str()))
+		throw runtime_error("VulkanWindow::updateTitle(): Failed to set window title.");
+}
+
+#elif defined(USE_PLATFORM_SDL2)
+
+void VulkanWindow::updateTitle()
+{
+	SDL_SetWindowTitle(_window, _title.c_str());
+}
+
+#elif defined(USE_PLATFORM_GLFW)
+
+void VulkanWindow::updateTitle()
+{
+	glfwSetWindowTitle(_window, _title.c_str());
+}
+
+#elif defined(USE_PLATFORM_QT)
+
+void VulkanWindow::updateTitle()
+{
+	_window->setTitle(_title.c_str()); // this treats _title as utf8 string
+}
+
+#endif
+
+
+
+#if defined(USE_PLATFORM_WIN32)
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	if(!_visible)
+		return WindowState::Hidden;
+
+	WINDOWPLACEMENT wp;
+	wp.length = sizeof(WINDOWPLACEMENT);
+	if(!GetWindowPlacement(HWND(_hwnd), &wp))
+		throw runtime_error("VulkanWindow::windowState(): The function GetWindowPlacement() failed.");
+
+	switch(wp.showCmd) {
+	case SW_HIDE:             return WindowState::Hidden;
+	case SW_MINIMIZE:
+	case SW_SHOWMINIMIZED:
+	case SW_SHOWMINNOACTIVE:
+	case SW_FORCEMINIMIZE:    return WindowState::Minimized;
+	case SW_SHOW:
+	case SW_SHOWNORMAL:
+	case SW_SHOWNA:
+	case SW_SHOWNOACTIVATE:
+	case SW_SHOWDEFAULT:
+	case SW_RESTORE:          return WindowState::Normal;
+	case SW_SHOWMAXIMIZED:    return WindowState::Maximized;
+	default:                  return WindowState::Normal;  // unknown value => exception might be thrown here;
+	                                                       // let's rather consider it some new Windows value and try as less harm as possible
+	}
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+	switch(windowState) {
+	case WindowState::Hidden:     hide(); break;
+	case WindowState::Minimized:  ShowWindow(HWND(_hwnd), SW_SHOWMINIMIZED); _visible = true; break;
+	case WindowState::Normal:     ShowWindow(HWND(_hwnd), SW_SHOWNORMAL); break;
+	case WindowState::Maximized:  ShowWindow(HWND(_hwnd), SW_SHOWMAXIMIZED); _visible = true; break;
+	case WindowState::FullScreen: break;
+	}
+}
+
+#elif defined(USE_PLATFORM_XLIB)
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	return WindowState::Normal;
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+}
+
+#elif defined(USE_PLATFORM_WAYLAND)
+
+void VulkanWindowPrivate::syncListenerDone(void *data, wl_callback* cb, uint32_t time)
+{
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
+	w->_numSyncEventsOnTheFly--;
+}
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	// make sure all window state changes were processed by Wayland server
+	// (if _numSyncEventsOnTheFly is not zero, dispatch Wayland events until it becomes zero)
+	while(_numSyncEventsOnTheFly != 0)
+		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+			throw runtime_error("wl_display_dispatch() failed.");
+
+	return _windowState;
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+	// change window state
+	switch(windowState) {
+	case WindowState::Hidden:
+		hide();
+		break;
+	case WindowState::Minimized:
+		if(!isVisible())
+
+			// show the window with appropriate settings
+			show(
+				[](VulkanWindow& w) { xdg_toplevel_set_minimized(w._xdgTopLevel); },
+				[](VulkanWindow& w) { funcs.libdecor_frame_set_minimized(w._libdecorFrame); }
+			);
+
+		else
+
+			// set window state
+			if(_libdecorFrame)
+				funcs.libdecor_frame_set_minimized(_libdecorFrame);
+			else
+				xdg_toplevel_set_minimized(_xdgTopLevel);
+
+		break;
+	case WindowState::Normal:
+		if(!isVisible())
+
+			// show the window with appropriate settings
+			show(
+				[](VulkanWindow& w) { xdg_toplevel_unset_maximized(w._xdgTopLevel); xdg_toplevel_unset_fullscreen(w._xdgTopLevel); },
+				[](VulkanWindow& w) { funcs.libdecor_frame_unset_maximized(w._libdecorFrame); funcs.libdecor_frame_unset_fullscreen(w._libdecorFrame); }
+			);
+
+		else {
+
+			// set window state
+			if(_libdecorFrame) {
+				funcs.libdecor_frame_unset_maximized(_libdecorFrame);
+				funcs.libdecor_frame_unset_fullscreen(_libdecorFrame);
+			}
+			else {
+				xdg_toplevel_unset_maximized(_xdgTopLevel);
+				xdg_toplevel_unset_fullscreen(_xdgTopLevel);
+			}
+
+			// send callback
+			wl_callback* callback = wl_display_sync(_display);
+			if(wl_callback_add_listener(callback, &syncListener, this))
+				throw runtime_error("wl_callback_add_listener() failed.");
+			_numSyncEventsOnTheFly++;
+			wl_display_flush(_display);
+
+		}
+		break;
+	case WindowState::Maximized:
+		if(!isVisible())
+
+			// show the window with appropriate settings
+			show(
+				[](VulkanWindow& w) { xdg_toplevel_set_maximized(w._xdgTopLevel); xdg_toplevel_unset_fullscreen(w._xdgTopLevel); },
+				[](VulkanWindow& w) { funcs.libdecor_frame_set_maximized(w._libdecorFrame); funcs.libdecor_frame_unset_fullscreen(w._libdecorFrame); }
+			);
+
+		else {
+
+			// send callback
+			if(_libdecorFrame) {
+				funcs.libdecor_frame_set_maximized(_libdecorFrame);
+				funcs.libdecor_frame_unset_fullscreen(_libdecorFrame);
+			}
+			else {
+				xdg_toplevel_set_maximized(_xdgTopLevel);
+				xdg_toplevel_unset_fullscreen(_xdgTopLevel);
+			}
+
+			// send callback
+			wl_callback* callback = wl_display_sync(_display);
+			if(wl_callback_add_listener(callback, &syncListener, this))
+				throw runtime_error("wl_callback_add_listener() failed.");
+			_numSyncEventsOnTheFly++;
+			wl_display_flush(_display);
+
+		}
+		break;
+	case WindowState::FullScreen:
+		if(!isVisible())
+
+			// show the window with appropriate settings
+			show(
+				[](VulkanWindow& w) { /*xdg_toplevel_set_fullscreen(w._xdgTopLevel);*/ },
+				[](VulkanWindow& w) { /*libdecor_frame_unset_maximized(w._libdecorFrame);*/ }
+			);
+
+		else {
+
+			// send callback
+			if(_libdecorFrame)
+				;//libdecor_frame_unset_maximized(_libdecorFrame);
+			else
+				;//xdg_toplevel_set_fullscreen(_xdgTopLevel);
+
+			// send callback
+			wl_callback* callback = wl_display_sync(_display);
+			if(wl_callback_add_listener(callback, &syncListener, this))
+				throw runtime_error("wl_callback_add_listener() failed.");
+			_numSyncEventsOnTheFly++;
+			wl_display_flush(_display);
+
+		}
+		break;
+	default:
+		throw runtime_error("VulkanWindow::setWindowState(): Invalid WindowState value passed as parameter.");
+	}
+	if(wl_display_roundtrip(_display) == -1)
+		throw runtime_error("wl_display_roundtrip() failed.");
+}
+
+#elif defined(USE_PLATFORM_SDL3)
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	SDL_WindowFlags f = SDL_GetWindowFlags(_window);
+	if(f & SDL_WINDOW_HIDDEN)
+		return WindowState::Hidden;
+	if(f & SDL_WINDOW_MINIMIZED)
+		return WindowState::Minimized;
+	if(f & SDL_WINDOW_FULLSCREEN)
+		return WindowState::FullScreen;
+	if(f & SDL_WINDOW_MAXIMIZED)
+		return WindowState::Maximized;
+	else
+		return WindowState::Normal;
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+	// leave fullscreen mode if needed
+	SDL_WindowFlags f = SDL_GetWindowFlags(_window);
+	if(f & SDL_WINDOW_FULLSCREEN) {
+		if(windowState == WindowState::FullScreen)
+			return;
+		else
+			SDL_SetWindowFullscreen(_window, false);
+	}
+
+	// change window state
+	switch(windowState) {
+	case WindowState::Hidden:
+		hide();
+		break;
+	case WindowState::Minimized:
+		if(!SDL_MinimizeWindow(_window))
+			throw runtime_error("VulkanWindow::setWindowState(): Failed to minimize window.");
+		show();
+		break;
+	case WindowState::Normal:
+		if(!SDL_RestoreWindow(_window))
+			throw runtime_error("VulkanWindow::setWindowState(): Failed to restore window.");
+		show();
+		break;
+	case WindowState::Maximized:
+		if(!SDL_MaximizeWindow(_window))
+			throw runtime_error("VulkanWindow::setWindowState(): Failed to maximize window.");
+		show();
+		break;
+	case WindowState::FullScreen:
+		if(!SDL_SetWindowFullscreen(_window, true))
+			throw runtime_error("VulkanWindow::setWindowState(): Failed to make window fullscreen.");
+		show();
+		break;
+	default:
+		throw runtime_error("VulkanWindow::setWindowState(): Invalid WindowState value passed as parameter.");
+	}
+}
+
+#elif defined(USE_PLATFORM_SDL2)
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	Uint32 f = SDL_GetWindowFlags(_window);
+	if(f & SDL_WINDOW_HIDDEN)
+		return WindowState::Hidden;
+	if(f & SDL_WINDOW_MINIMIZED)
+		return WindowState::Minimized;
+	if(f & SDL_WINDOW_FULLSCREEN)
+		return WindowState::FullScreen;
+	if(f & SDL_WINDOW_MAXIMIZED)
+		return WindowState::Maximized;
+	else
+		return WindowState::Normal;
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+	// leave fullscreen mode if needed
+	Uint32 f = SDL_GetWindowFlags(_window);
+	if(f & SDL_WINDOW_FULLSCREEN) {
+		if(windowState == WindowState::FullScreen)
+			return;
+		else
+			SDL_SetWindowFullscreen(_window, 0);  // leave full screen mode
+	}
+
+	// change window state
+	switch(windowState) {
+	case WindowState::Hidden:     hide(); break;
+	case WindowState::Minimized:  show(); SDL_MinimizeWindow(_window); break;
+	case WindowState::Normal:     SDL_RestoreWindow(_window); show(); break;
+	case WindowState::Maximized:  SDL_MaximizeWindow(_window); show(); break;
+	case WindowState::FullScreen: if(SDL_SetWindowFullscreen(_window, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
+		                              throw runtime_error("VulkanWindow::setWindowState(): Failed to make window fullscreen.");
+		                          show();
+		                          break;
+	default: throw runtime_error("VulkanWindow::setWindowState(): Invalid WindowState value passed as parameter.");
+	}
+}
+
+#elif defined(USE_PLATFORM_GLFW)
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	if(!glfwGetWindowAttrib(_window, GLFW_VISIBLE))
+		return WindowState::Hidden;
+	if(glfwGetWindowAttrib(_window, GLFW_ICONIFIED))
+		return WindowState::Minimized;
+	if(glfwGetWindowMonitor(_window) != nullptr)
+		return WindowState::FullScreen;
+	if(glfwGetWindowAttrib(_window, GLFW_MAXIMIZED))
+		return WindowState::Maximized;
+	else
+		return WindowState::Normal;
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+	// leave fullscreen mode if needed
+	if(glfwGetWindowMonitor(_window) != nullptr) {
+		if(windowState == WindowState::FullScreen)
+			return;
+		else {
+			if(windowState == WindowState::Hidden || windowState == WindowState::Normal ||
+			   windowState == WindowState::Maximized)
+				glfwSetWindowMonitor(_window, nullptr, _savedPosX, _savedPosY, _savedWidth, _savedHeight, 0);
+			if(windowState == WindowState::Maximized)
+				glfwRestoreWindow(_window);  // this seems necessary to transition correctly from full screen to maximized state (seen on glfw 3.3.8 on 2025-02-14)
+		}
+	}
+
+	// change window state
+	switch(windowState) {
+	case WindowState::Hidden:     hide(); break;
+	case WindowState::Minimized:  glfwIconifyWindow(_window); show(); break;
+	case WindowState::Normal:     glfwRestoreWindow(_window); show(); break;
+	case WindowState::Maximized:  glfwMaximizeWindow(_window); show(); break;
+	case WindowState::FullScreen: {
+			GLFWmonitor* m = glfwGetPrimaryMonitor();
+			const GLFWvidmode* mode = glfwGetVideoMode(m);
+			glfwSetWindowMonitor(_window, m, 0, 0, mode->width, mode->height, mode->refreshRate);
+			show();
+			break;
+		}
+	default: throw runtime_error("VulkanWindow::setWindowState(): Invalid WindowState value passed as parameter.");
+	}
+}
+
+bool VulkanWindow::canUpdateSavedGeometry() const
+{
+	if(glfwGetWindowAttrib(_window, GLFW_MAXIMIZED))
+		return false;
+	if(glfwGetWindowAttrib(_window, GLFW_ICONIFIED))
+		return false;
+	if(!glfwGetWindowAttrib(_window, GLFW_VISIBLE))
+		return false;
+	if(glfwGetWindowMonitor(_window) != nullptr)
+		return false;
+	return true;
+}
+
+#elif defined(USE_PLATFORM_QT)
+
+VulkanWindow::WindowState VulkanWindow::windowState() const
+{
+	if(!_window->isVisible())
+		return WindowState::Hidden;
+	switch(_window->windowState()) {
+	case Qt::WindowMinimized:   return WindowState::Minimized;
+	case Qt::WindowNoState:     return WindowState::Normal;
+	case Qt::WindowMaximized:   return WindowState::Maximized;
+	case Qt::WindowFullScreen:  return WindowState::FullScreen;
+	default: throw runtime_error("VulkanWindow::windowState(): Unknown WindowState value.");
+	}
+}
+
+void VulkanWindow::setWindowState(WindowState windowState)
+{
+	switch(windowState) {
+	case WindowState::Hidden:     hide(); break;
+	case WindowState::Minimized:  _window->showMinimized(); break;
+	case WindowState::Normal:     _window->showNormal(); break;
+	case WindowState::Maximized:  _window->showMaximized(); break;
+	case WindowState::FullScreen: _window->showFullScreen(); break;
+	default: throw runtime_error("VulkanWindow::setWindowState(): Invalid WindowState value passed as parameter.");
+	}
+}
+
+#endif
+
+
+
+constexpr VulkanWindow::KeyCode VulkanWindow::fromUtf8(const char* s)
+{
+	// decode single character
+	char ch1 = *s;
+	if(ch1 < 0x80)
+		return KeyCode(ch1);
+
+	// decode 2 character sequence
+	if(ch1 < 0xe0) {
+		if(ch1 < 0xc0)
+			return KeyCode(0xfffd);  // return "replacement character" indicating the error
+		s++;
+		char ch2 = *s;
+		return KeyCode((ch1&0x1f)<<6 | (ch2&0x3f));
+	}
+
+	// decode 3 character sequence
+	if(ch1 < 0xf0) {
+		s++;
+		char ch2 = *s;
+		s++;
+		char ch3 = *s;
+		return KeyCode((ch1&0x0f)<<12 | (ch2&0x3f)<<6 | (ch3&0x3f));
+	}
+
+	// decode 4 character sequence
+	if(ch1 < 0xf8) {
+		s++;
+		char ch2 = *s;
+		s++;
+		char ch3 = *s;
+		s++;
+		char ch4 = *s;
+		return KeyCode((ch1&0x07)<<18 | (ch2&0x3f)<<12 | (ch3&0x3f)<<6 | (ch4&0x3f));
+	}
+
+	// more than 4 character sequences are forbidden
+	return KeyCode(0xfffd);  // return "replacement character" indicating the error
+}
+
+
+array<char, 5> VulkanWindow::toCharArray(VulkanWindow::KeyCode keyCode)
+{
+	// write 1 byte sequence
+	array<char, 5> r;
+	uint32_t k = uint32_t(keyCode);
+	if(k < 128) {
+		*reinterpret_cast<uint32_t*>(r.data()) = k;
+		r[4] = 0;
+		return r;
+	}
+
+	// write 2 byte sequence
+	if(k < 2048) {
+		*reinterpret_cast<uint32_t*>(r.data()) = 0xc0 | ((k&0x07c0)>>6) | 0x8000 | ((k&0x3f)<<8);
+		r[4] = 0;
+		return r;
+	}
+
+	// write 3 byte sequence
+	if(k < 65536) {
+		*reinterpret_cast<uint32_t*>(r.data()) = 0xe0 | ((k&0xf000)>>12) | 0x8000 | ((k&0x0fc0)<<2) |
+		                                         0x800000 | ((k&0x3f)<<16);
+		r[4] = 0;
+		return r;
+	}
+
+	// write 4 byte sequence
+	if(k < 2097152) {
+		*reinterpret_cast<uint32_t*>(r.data()) = 0xf0 | ((k&0x1c0000)>>18) | 0x8000 | ((k&0x03f000)>>4) |
+		                                         0x800000 | ((k&0x0fc0)<<10) | 0x80000000 | ((k&0x3f)<<24);
+		r[4] = 0;
+		return r;
+	}
+
+	// more than 4 character sequences are forbidden
+	// (return "replacement character" (value 0xfffd) indicating the error)
+	*reinterpret_cast<uint32_t*>(r.data()) = 0xe0 | (0xf000>>12) | 0x8000 | (0x0fc0<<2) |
+	                                         0x800000 | 0x3d<<16;
+	r[4] = 0;
+	return r;
+}
+
+
+string VulkanWindow::toString(KeyCode keyCode)
+{
+	string s;
+	s.reserve(4);  // this shall allocate at least 4 chars and one null byte, e.g. at least 5 bytes
+	s.assign(toCharArray(keyCode).data());
+	return s;
+}
 
 
 

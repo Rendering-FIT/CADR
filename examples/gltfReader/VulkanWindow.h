@@ -1,9 +1,11 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <array>
 #include <bitset>
 #include <exception>
 #include <functional>
+#include <string>
 
 
 
@@ -15,6 +17,9 @@ public:
 	typedef void ResizeCallback(VulkanWindow& window,
 		const VkSurfaceCapabilitiesKHR& surfaceCapabilities, VkExtent2D newSurfaceExtent);
 	typedef void CloseCallback(VulkanWindow& window);
+
+	// window state
+	enum class WindowState { Hidden, Minimized, Normal, Maximized, FullScreen };
 
 	// input structures and enums
 	struct MouseButton {
@@ -41,7 +46,7 @@ public:
 		float posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
 		float relX, relY;  // relative against the state of previous mouse callback
 		std::bitset<16> buttons;
-		std::bitset<16> mods;
+		std::bitset<16> modifiers;
 	};
 	enum class ScanCode : uint16_t {
 		Unknown = 0, Escape = 1,
@@ -66,12 +71,29 @@ public:
 		MediaSelect = 171, BrowserHome = 172,
 		Search = 217,
 	};
+	enum class KeyCode : char32_t {
+		Unknown = 0,
+		A = 'a', B = 'b', C = 'c', D = 'd',
+		E = 'e', F = 'f', G = 'g', H = 'h',
+		I = 'i', J = 'j', K = 'k', L = 'l',
+		M = 'm', N = 'n', O = 'o', P = 'p',
+		Q = 'q', R = 'r', S = 's', T = 't',
+		U = 'u', V = 'v', W = 'w', X = 'x',
+		Y = 'y', Z = 'z',
+		Space = ' ', Backspace = 0x08,
+		Enter = '\n', Escape = 0x1b,
+		Tab = '\t',
+	};
+	static constexpr KeyCode fromUtf8(const char* s);
+	static constexpr KeyCode fromAscii(char ch);
+	static std::string toString(KeyCode keyCode);
+	static std::array<char, 5> toCharArray(KeyCode keyCode);
 
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
 	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonState buttonState, const MouseState& mouseState);
 	typedef void MouseWheelCallback(VulkanWindow& window, float wheelX, float wheelY, const MouseState& mouseState);
-	typedef void KeyCallback(VulkanWindow& window, KeyState newKeyState, ScanCode scanCode);
+	typedef void KeyCallback(VulkanWindow& window, KeyState newKeyState, ScanCode scanCode, KeyCode key);
 
 protected:
 
@@ -100,6 +122,8 @@ protected:
 	static inline struct _XDisplay* _display = nullptr;  // struct _XDisplay* is used instead of Display* type
 	static inline unsigned long _wmDeleteMessage;  // unsigned long is used for Atom type
 	static inline unsigned long _wmStateProperty;  // unsigned long is used for Atom type
+	static inline unsigned long _netWmName;  // unsigned long is used for Atom type
+	static inline unsigned long _utf8String;  // unsigned long is used for Atom type
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
 
@@ -117,7 +141,8 @@ protected:
 
 	// state
 	bool _forcedFrame;
-	std::string _title;
+	unsigned _numSyncEventsOnTheFly = 0;
+	WindowState _windowState = WindowState::Hidden;
 
 	// globals
 	static inline struct wl_display* _display = nullptr;
@@ -134,9 +159,14 @@ protected:
 	static inline struct wl_seat* _seat = nullptr;
 	static inline struct wl_pointer* _pointer = nullptr;
 	static inline struct wl_keyboard* _keyboard = nullptr;
+	static inline struct xkb_context* _xkbContext = nullptr;
+	static inline struct xkb_state* _xkbState = nullptr;
+	static inline std::bitset<16> _modifiers;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
+
+	void show(void (*xdgConfigFunc)(VulkanWindow&), void (*libdecorConfigFunc)(VulkanWindow&));
 
 #elif defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 
@@ -153,6 +183,12 @@ protected:
 	FramePendingState _framePendingState;
 	bool _visible;
 	bool _minimized;
+	int _savedPosX = 0;
+	int _savedPosY = 0;
+	int _savedWidth;
+	int _savedHeight;
+
+	bool canUpdateSavedGeometry() const;
 
 #elif defined(USE_PLATFORM_QT)
 
@@ -183,6 +219,12 @@ protected:
 	std::function<MouseWheelCallback> _mouseWheelCallback;
 	std::function<KeyCallback> _keyCallback;
 
+	std::string _title;
+
+	VkSurfaceKHR createInternal(VkInstance instance, VkExtent2D surfaceExtent,
+	                            PFN_vkGetInstanceProcAddr getInstanceProcAddr);
+	void updateTitle();
+
 public:
 
 	// initialization and finalization
@@ -203,7 +245,9 @@ public:
 	VulkanWindow& operator=(const VulkanWindow&) = delete;
 
 	// general methods
-	VkSurfaceKHR create(VkInstance instance, VkExtent2D surfaceExtent, const char* title = "Vulkan window",
+	VkSurfaceKHR create(VkInstance instance, VkExtent2D surfaceExtent, std::string&& title = "Vulkan window",
+	                    PFN_vkGetInstanceProcAddr getInstanceProcAddr = ::vkGetInstanceProcAddr);
+	VkSurfaceKHR create(VkInstance instance, VkExtent2D surfaceExtent, const std::string& title = "Vulkan window",
 	                    PFN_vkGetInstanceProcAddr getInstanceProcAddr = ::vkGetInstanceProcAddr);
 	void setDevice(VkDevice device, VkPhysicalDevice physicalDevice);
 	void show();
@@ -240,6 +284,19 @@ public:
 	VkSurfaceKHR surface() const;
 	VkExtent2D surfaceExtent() const;
 	bool isVisible() const;
+	const std::string& title() const;
+	WindowState windowState() const;
+
+	// setters
+	void setTitle(std::string&& s);
+	void setTitle(const std::string& s);
+	void setWindowState(WindowState windowState);
+
+	// setWindowState() convenience functions
+	void showFullScreen();
+	void showMaximized();
+	void showNormal();
+	void showMinimized();
 
 	// schedule methods
 	void scheduleFrame();
@@ -288,7 +345,15 @@ inline VkExtent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; 
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
 inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr || _libdecorFrame != nullptr; }
+inline void VulkanWindow::show()  { show([](VulkanWindow&){}, [](VulkanWindow&){}); }
 #endif
+inline const std::string& VulkanWindow::title() const  { return _title; }
+inline void VulkanWindow::setTitle(std::string&& s)  { if(s==_title) return; _title=std::move(s); updateTitle(); }
+inline void VulkanWindow::setTitle(const std::string& s)  { if(s==_title) return; _title=s; updateTitle(); }
+inline void VulkanWindow::showFullScreen()  { setWindowState(WindowState::FullScreen); }
+inline void VulkanWindow::showMaximized()  { setWindowState(WindowState::Maximized); }
+inline void VulkanWindow::showNormal()  { setWindowState(WindowState::Normal); }
+inline void VulkanWindow::showMinimized()  { setWindowState(WindowState::Minimized); }
 inline void VulkanWindow::scheduleResize()  { _resizePending = true; scheduleFrame(); }
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
@@ -296,6 +361,7 @@ inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vec
 inline uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(_requiredInstanceExtensions.size()); }
 inline const char* const* VulkanWindow::requiredExtensionNames()  { return _requiredInstanceExtensions.data(); }
 #endif
+inline constexpr VulkanWindow::KeyCode VulkanWindow::fromAscii(char ch)  { return VulkanWindow::KeyCode(ch); }
 
 
 // nifty counter / Schwarz counter
