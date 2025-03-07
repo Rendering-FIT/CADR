@@ -122,8 +122,9 @@ StagingBuffer ImageStorage::createStagingBuffer(size_t numBytes, size_t alignmen
 	// if there is enough unused space in it
 	if(_lastStagingMemory) {
 		size_t smSize = _lastStagingMemory->size();
-		if(smSize - _lastStagingMemory->_numBytesAllocated >= numBytes + alignment) {
-			size_t offset = (_lastStagingMemory->_numBytesAllocated - 1) / alignment * (alignment + 1);
+		if(smSize - _lastStagingMemory->_numBytesAllocated >= numBytes) {
+			uint64_t a = alignment - 1;
+			size_t offset = (_lastStagingMemory->_numBytesAllocated + a) & (~a);
 			size_t newNumBytesAllocated = offset + numBytes;
 			if(newNumBytesAllocated <= smSize) {
 				_lastStagingMemory->_numBytesAllocated = newNumBytesAllocated;
@@ -166,6 +167,7 @@ StagingBuffer ImageStorage::createStagingBuffer(size_t numBytes, size_t alignmen
 haveMemory:
 	sm->_numBytesAllocated = numBytes;
 	sm->_referenceCounter = 0;
+	_lastStagingMemory = sm;
 	return StagingBuffer(*sm, sm->data(), numBytes);  // does not throw
 }
 
@@ -196,6 +198,7 @@ tuple<TransferResources,size_t> ImageStorage::recordUploads(vk::CommandBuffer co
 				totalDataSize += dataSize;
 			}
 		}
+	_currentFrameStagingBytesTransferred += totalDataSize;
 
 	// return
 	if(transferResourceList.empty())
@@ -204,7 +207,7 @@ tuple<TransferResources,size_t> ImageStorage::recordUploads(vk::CommandBuffer co
 		return {
 			TransferResources(
 				[](vector<tuple<ImageMemory*,void*>>& transferResourceList) {
-					for(auto& item : transferResourceList)
+					for(tuple<ImageMemory*,void*>& item : transferResourceList)
 						get<0>(item)->uploadDone(get<1>(item));
 				},
 				move(transferResourceList)

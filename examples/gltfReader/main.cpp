@@ -791,11 +791,21 @@ void App::init()
 					if(!stbi_info_from_memory(imgBuffer.get(), int(fileSize), &width, &height, &numComponents))
 						goto failed;
 					vk::Format format;
+					size_t alignment;
 					switch(numComponents) {
-					case 4: format = vk::Format::eR8G8B8A8Srgb; break;
-					case 3: if(rgb8srgbSupported) format = vk::Format::eR8G8B8Srgb;
-					        else { format = vk::Format::eR8G8B8A8Srgb; numComponents = 4; }
-						break;
+					case 4: format = vk::Format::eR8G8B8A8Srgb;
+					        alignment = 4;
+					        break;
+					case 3: if(rgb8srgbSupported) {
+						        format = vk::Format::eR8G8B8Srgb;
+						        alignment = 3;
+					        }
+					        else {
+						        format = vk::Format::eR8G8B8A8Srgb;
+						        alignment = 4;
+						        numComponents = 4;
+					        }
+					        break;
 					default: goto failed;
 					}
 
@@ -810,7 +820,7 @@ void App::init()
 
 					// copy data to staging buffer
 					size_t bufferSize = size_t(width) * height * numComponents;
-					CadR::StagingBuffer sb(renderer.imageStorage(), bufferSize, 1);
+					CadR::StagingBuffer sb(renderer.imageStorage(), bufferSize, alignment);
 					memcpy(sb.data(), data.get(), bufferSize);
 					data.reset();
 
