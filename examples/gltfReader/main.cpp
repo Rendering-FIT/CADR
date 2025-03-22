@@ -512,7 +512,7 @@ void App::init()
 			auto it = glTF.find(key);
 			if(it != glTF.end())
 				return it->get_ref<json::array_t&>();
-			auto ref = newGltfItems[key];
+			auto& ref = newGltfItems[key];
 			if(ref.is_null())
 				ref = json::array();
 			return ref.get_ref<json::array_t&>();
@@ -1098,7 +1098,7 @@ void App::init()
 			bool doubleSided;
 			glm::vec4 baseColorFactor;
 			size_t baseColorTextureIndex;
-			unsigned baseColorTextureCoord;
+			//unsigned baseColorTextureCoord; <- not used yet
 			float metallicFactor;
 			float roughnessFactor;
 			glm::vec3 emissiveFactor;
@@ -1107,7 +1107,7 @@ void App::init()
 				material = nullptr;
 				doubleSided = false;
 				baseColorTextureIndex = ~size_t(0);
-				baseColorTextureCoord = ~0;
+				//baseColorTextureCoord = ~0; <- not used yet
 			}
 			else {
 				size_t materialIndex = it->get_ref<json::number_unsigned_t&>();
@@ -1141,12 +1141,12 @@ void App::init()
 						baseColorTextureIndex = baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>();
 						if(baseColorTextureIndex >= textureDB.size())
 							throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
-						baseColorTextureCoord = baseColorTextureIt->value("texCoord", 0);
+						//baseColorTextureCoord = baseColorTextureIt->value("texCoord", 0); <- not used yet
 
 					}
 					else {
 						baseColorTextureIndex = ~size_t(0);
-						baseColorTextureCoord = ~0;
+						//baseColorTextureCoord = ~0; <- not used yet
 					}
 					if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
 						throw GltfError("Unsupported functionality: metallic-roughness material model.");
@@ -1157,7 +1157,7 @@ void App::init()
 					// default values when pbrMetallicRoughness is not present
 					baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
 					baseColorTextureIndex = ~size_t(0);
-					baseColorTextureCoord = 0;
+					//baseColorTextureCoord = 0; <- not used yet
 					metallicFactor = 1.f;
 					roughnessFactor = 1.f;
 				}
@@ -2068,7 +2068,7 @@ void App::init()
 									0,  // dstArrayElement
 									1,  // descriptorCount
 									vk::DescriptorType::eCombinedImageSampler,  // descriptorType
-									&(vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
+									&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
 										t.sampler(),  // sampler
 										t.imageView(),  // imageView
 										vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
