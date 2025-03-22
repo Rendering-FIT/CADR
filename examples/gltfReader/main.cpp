@@ -177,7 +177,7 @@ constexpr array<T, N> createPipelineStateSetList(T2& t, Ts&... ts)
 }
 
 
-#if _WIN32
+#ifdef _WIN32
 static string utf16toUtf8(const wchar_t* ws)
 {
 	if(ws == nullptr)
@@ -253,7 +253,7 @@ App::App(int argc, char** argv)
 	, pipelineStateSetList{ createPipelineStateSetList<PipelineStateSet, numPipelines>(renderer) }
 	, defaultSampler(renderer)
 {
-#if _WIN32
+#ifdef _WIN32
 	// get wchar_t command line
 	LPWSTR commandLine = GetCommandLineW();
 	unique_ptr<wchar_t*, void(*)(wchar_t**)> wargv(
@@ -266,7 +266,7 @@ App::App(int argc, char** argv)
 	if(argc < 2)
 		throw ExitWithMessage(99, "Please, specify glTF file to load.");
 
-#if _WIN32
+#ifdef _WIN32
 	filePath = wargv.get()[1];
 #else
 	filePath = argv[1];
@@ -585,7 +585,11 @@ void App::init()
 	}
 
 	// parse json
+#ifdef _WIN32
 	cout << "Processing file " << utf16toUtf8(filePath.c_str()) << "..." << endl;
+#else
+	cout << "Processing file " << filePath.native() << "..." << endl;
+#endif
 	json glTF, newGltfItems;
 	f >> glTF;
 	f.close();
