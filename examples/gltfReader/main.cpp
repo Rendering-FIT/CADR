@@ -26,6 +26,11 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#ifdef _WIN32
+# define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
+# include <windows.h>  // needed for SetConsoleOutputCP()
+# include <shellapi.h>  // needed for CommandLineToArgvW()
+#endif
 
 using namespace std;
 
@@ -172,6 +177,73 @@ constexpr array<T, N> createPipelineStateSetList(T2& t, Ts&... ts)
 }
 
 
+#if _WIN32
+static string utf16toUtf8(const wchar_t* ws)
+{
+	if(ws == nullptr)
+		return {};
+
+	// alloc buffer
+	unique_ptr<char[]> buffer(new char[wcslen(ws)*3+1]);
+
+	// perform conversion
+	size_t pos = 0;
+	size_t i = 0;
+	char16_t c = ws[0];
+	while(c != 0) {
+		if((c & 0xfc00) != 0xd800 || (ws[i+1] & 0xfc00) != 0xfc00) {
+			if(c < 128)
+				// 1 byte utf-8 sequence
+				buffer[pos++] = char(c);  // bits 0x7f
+			else if(c < 2048) {
+				// 2 bytes utf-8 sequence
+				buffer[pos++] = 0xc0 | (c >> 6);  // bits 0x07c0
+				buffer[pos++] = 0x80 | (c & 0x3f);  // bits 0x3f
+			}
+			else {
+				// 3 bytes utf-8 sequence
+				buffer[pos++] = 0xe0 | (c >> 12);  // bits 0xf000
+				buffer[pos++] = 0x80 | ((c >> 6) & 0x3f);  // bits 0x0fc0
+				buffer[pos++] = 0x80 | (c & 0x3f);  // bits 0x3f
+			}
+			i++;
+			c = ws[i];
+		}
+		else {
+			char16_t cNext = ws[i+1];
+			uint32_t codePoint = (uint32_t(c & 0x03ff) << 10) | (cNext & 0x03ff);
+			if(codePoint >= 65536) {
+				// 4 bytes utf-8 sequence
+				buffer[pos++] = 0xf0 | (codePoint >> 18);  // bits 0x1c0000
+				buffer[pos++] = 0x80 | ((codePoint >> 12) & 0x3f);  // bits 0x3f000
+				buffer[pos++] = 0x80 | ((codePoint >> 6) & 0x3f);  // bits 0x0fc0
+				buffer[pos++] = 0x80 | (codePoint & 0x3f);  // bits 0x3f
+			}
+			else if(codePoint >= 2048) {
+				// 3 bytes utf-8 sequence
+				buffer[pos++] = 0xe0 | (c >> 12);  // bits 0xf000
+				buffer[pos++] = 0x80 | ((c >> 6) & 0x3f);  // bits 0x0fc0
+				buffer[pos++] = 0x80 | (c & 0x3f);  // bits 0x3f
+			}
+			else if(codePoint >= 128) {
+				// 2 bytes utf-8 sequence
+				buffer[pos++] = 0xc0 | (c >> 6);  // bits 0x07c0
+				buffer[pos++] = 0x80 | (c & 0x3f);  // bits 0x3f
+			}
+			else {
+				// 1 byte utf-8 sequence
+				buffer[pos++] = char(c);  // bits 0x7f
+			}
+			i += 2;
+			c = ws[i];
+		}
+	}
+
+	return string(buffer.get(), pos);
+}
+#endif
+
+
 /// Construct application object
 App::App(int argc, char** argv)
 	// none of the following initializators shall be allowed to throw,
@@ -181,10 +253,24 @@ App::App(int argc, char** argv)
 	, pipelineStateSetList{ createPipelineStateSetList<PipelineStateSet, numPipelines>(renderer) }
 	, defaultSampler(renderer)
 {
+#if _WIN32
+	// get wchar_t command line
+	LPWSTR commandLine = GetCommandLineW();
+	unique_ptr<wchar_t*, void(*)(wchar_t**)> wargv(
+		CommandLineToArgvW(commandLine, &argc),
+		[](wchar_t** p) { if(LocalFree(p) != 0) assert(0 && "LocalFree() failed."); }
+	);
+#endif
+
 	// process command-line arguments
 	if(argc < 2)
 		throw ExitWithMessage(99, "Please, specify glTF file to load.");
+
+#if _WIN32
+	filePath = wargv.get()[1];
+#else
 	filePath = argv[1];
+#endif
 }
 
 
@@ -499,7 +585,7 @@ void App::init()
 	}
 
 	// parse json
-	cout << "Processing file " << filePath << "..." << endl;
+	cout << "Processing file " << utf16toUtf8(filePath.c_str()) << "..." << endl;
 	json glTF, newGltfItems;
 	f >> glTF;
 	f.close();
@@ -565,7 +651,7 @@ void App::init()
 		if(uriIt == b.end())
 			throw GltfError("Unsupported functionality: Undefined buffer.uri.");
 		const string& s = uriIt->get_ref<json::string_t&>();
-		filesystem::path p = s;
+		filesystem::path p = u8string_view(reinterpret_cast<const char8_t*>(s.data()), s.size());
 		if(p.is_relative())
 			p = filePath.parent_path() / p;
 
@@ -764,7 +850,7 @@ void App::init()
 				// image file name
 				const string& imageFileName = uriIt->get_ref<json::string_t&>();
 				cout << "   " << imageFileName;
-				filesystem::path p = imageFileName;
+				filesystem::path p = u8string_view(reinterpret_cast<const char8_t*>(imageFileName.data()), imageFileName.size());
 				if(p.is_relative())
 					p = filePath.parent_path() / p;
 
@@ -2768,9 +2854,15 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 }
 
 
-int main(int argc, char** argv)
+int main(int argc, char* argv[])
 {
 	try {
+
+		// set console code page to utf-8 to print non-ASCII characters correctly
+#ifdef _WIN32
+		if(!SetConsoleOutputCP(CP_UTF8))
+			cout << "Failed to set console code page to utf-8." << endl;
+#endif
 
 		App app(argc, argv);
 		app.init();
