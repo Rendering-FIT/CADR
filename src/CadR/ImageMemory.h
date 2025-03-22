@@ -62,7 +62,7 @@ protected:
 		size_t dataSize;
 
 		size_t record(VulkanDevice& device, vk::CommandBuffer commandBuffer);
-		void allocRegionList(size_t n)  { delete[] regionList; regionList = new vk::BufferImageCopy[n]; }
+		inline void allocRegionList(size_t n);
 		inline BufferToImageUpload(StagingMemory* stagingMemory, CopyRecord* copyRecord, vk::Image dstImage,
 				vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 				vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
@@ -71,7 +71,7 @@ protected:
 				vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 				vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 				uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList, size_t dataSize);
-		~BufferToImageUpload()  { delete[] regionList; stagingMemory->unref(); }
+		inline ~BufferToImageUpload();
 	};
 	std::list<BufferToImageUpload> _bufferToImageUploadList;
 
@@ -157,12 +157,14 @@ public:
 // inline methods
 #if !defined(CADR_IMAGE_MEMORY_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_IMAGE_MEMORY_INLINE_FUNCTIONS
+# include <CadR/StagingMemory.h>
 namespace CadR {
 
+inline void ImageMemory::BufferToImageUpload::allocRegionList(size_t n)  { delete[] regionList; regionList = new vk::BufferImageCopy[n]; }
 inline ImageMemory::BufferToImageUpload::BufferToImageUpload(StagingMemory* stagingMemory, CopyRecord* copyRecord, vk::Image dstImage,
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout, vk::PipelineStageFlags newLayoutBarrierDstStages,
 	vk::AccessFlags newLayoutBarrierDstAccessFlags, vk::BufferImageCopy region, size_t dataSize) :
-		stagingMemory(stagingMemory), copyRecord(copyRecord), dstImage(dstImage), oldLayout(oldLayout),
+		copyRecord(copyRecord), stagingMemory(stagingMemory), dstImage(dstImage), oldLayout(oldLayout),
 		copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
 		newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags),
 		regionCount(1), region(region), regionList(nullptr), dataSize(dataSize)  { stagingMemory->ref(); }
@@ -170,10 +172,12 @@ inline ImageMemory::BufferToImageUpload::BufferToImageUpload(StagingMemory* stag
 	vk::ImageLayout oldLayout, vk::ImageLayout copyLayout, vk::ImageLayout newLayout,
 	vk::PipelineStageFlags newLayoutBarrierDstStages, vk::AccessFlags newLayoutBarrierDstAccessFlags,
 	uint32_t regionCount, std::unique_ptr<vk::BufferImageCopy[]>&& regionList, size_t dataSize) :
-		stagingMemory(stagingMemory), copyRecord(copyRecord), dstImage(dstImage), oldLayout(oldLayout),
+		copyRecord(copyRecord), stagingMemory(stagingMemory), dstImage(dstImage), oldLayout(oldLayout),
 		copyLayout(copyLayout), newLayout(newLayout), newLayoutBarrierDstStages(newLayoutBarrierDstStages),
 		newLayoutBarrierDstAccessFlags(newLayoutBarrierDstAccessFlags), regionCount(regionCount),
 		regionList(regionList.release()), dataSize(dataSize)  { stagingMemory->ref(); }
+inline ImageMemory::BufferToImageUpload::~BufferToImageUpload()  { delete[] regionList; stagingMemory->unref(); }
+
 inline ImageMemory::ImageMemory(ImageStorage& imageStorage) : _imageStorage(&imageStorage)  {}
 inline ImageStorage& ImageMemory::imageStorage() const  { return *_imageStorage; }
 inline size_t ImageMemory::size() const  { return _bufferEndAddress; }

@@ -1,6 +1,7 @@
 #include <CadR/Texture.h>
 #include <CadR/Exceptions.h>
 #include <CadR/ImageAllocation.h>
+#include <CadR/StateSet.h>
 #include <CadR/VulkanDevice.h>
 
 using namespace std;
@@ -12,18 +13,19 @@ Texture::~Texture() noexcept
 {
 	_descriptorUpdaterList.clear_and_dispose([](StateSetDescriptorUpdater* u){ delete u; });
 	releaseHandles();
-	delete _imageViewCreateInfo.pNext;
+	free(const_cast<void*>(_imageViewCreateInfo.pNext));
 }
 
 
 Texture::Texture(ImageAllocation& a, const vk::ImageViewCreateInfo& imageViewCreateInfo,
 		const vk::Sampler& sampler, CadR::VulkanDevice& device)
 	: _device(&device)
-	, _imageViewCreateInfo(imageViewCreateInfo)
 	, _sampler(sampler)
+	, _imageViewCreateInfo(imageViewCreateInfo)
 {
 	if(imageViewCreateInfo.pNext)
-		throw LogicError("Texture::Texture(): imageViewCreateInfo.pNext must be null. Please, use different constructor.");
+		throw LogicError("Texture::Texture(): imageViewCreateInfo.pNext must be null. "
+		                 "For non-null values, please, use different constructor.");
 	_imageViewCreateInfo.image = a.image();
 	_imageView = _device->createImageView(_imageViewCreateInfo);
 	initImageChangedCallback();
@@ -32,13 +34,13 @@ Texture::Texture(ImageAllocation& a, const vk::ImageViewCreateInfo& imageViewCre
 
 
 Texture::Texture(ImageAllocation& a, const vk::ImageViewCreateInfo& imageViewCreateInfo,
-                 unique_ptr<void>&& imageViewCreateInfoPNext, const vk::Sampler& sampler,
+                 void* mallocedImageViewCreateInfoPNext, const vk::Sampler& sampler,
                  CadR::VulkanDevice& device)
 	: _device(&device)
-	, _imageViewCreateInfo(imageViewCreateInfo)
 	, _sampler(sampler)
+	, _imageViewCreateInfo(imageViewCreateInfo)
 {
-	_imageViewCreateInfo.pNext = imageViewCreateInfoPNext.release();
+	_imageViewCreateInfo.pNext = mallocedImageViewCreateInfoPNext;
 	_imageViewCreateInfo.image = a.image();
 	_imageView = _device->createImageView(_imageViewCreateInfo);
 	initImageChangedCallback();
@@ -50,7 +52,7 @@ Texture::Texture(Texture&& other) noexcept
 	: _imageView(other._imageView)
 	, _device(other._device)
 	, _sampler(other._sampler)
-	, _imageViewCreateInfo(_imageViewCreateInfo)
+	, _imageViewCreateInfo(other._imageViewCreateInfo)
 {
 	other._imageView = nullptr;
 	other._imageViewCreateInfo.pNext = nullptr;

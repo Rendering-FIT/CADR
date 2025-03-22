@@ -49,7 +49,7 @@ public:
 	Texture(ImageAllocation& a, const vk::ImageViewCreateInfo& imageViewCreateInfo,
 			const vk::Sampler& sampler, CadR::VulkanDevice& device);
 	Texture(ImageAllocation& a, const vk::ImageViewCreateInfo& imageViewCreateInfo,
-			std::unique_ptr<void>&& imageViewCreateInfoPNext, const vk::Sampler& sampler,
+			void* mallocedImageViewCreateInfoPNext, const vk::Sampler& sampler,
 			CadR::VulkanDevice& device);
 	~Texture() noexcept;
 
