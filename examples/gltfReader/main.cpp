@@ -1124,10 +1124,10 @@ void App::init()
 						json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
 						if(a.size() != 4)
 							throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
-						baseColorFactor[0] = float(a[0].get_ref<json::number_float_t&>());
-						baseColorFactor[1] = float(a[1].get_ref<json::number_float_t&>());
-						baseColorFactor[2] = float(a[2].get_ref<json::number_float_t&>());
-						baseColorFactor[3] = float(a[3].get_ref<json::number_float_t&>());
+						baseColorFactor[0] = float(a[0].get<json::number_float_t>());
+						baseColorFactor[1] = float(a[1].get<json::number_float_t>());
+						baseColorFactor[2] = float(a[2].get<json::number_float_t>());
+						baseColorFactor[3] = float(a[3].get<json::number_float_t>());
 					}
 					else
 						baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
@@ -1167,9 +1167,9 @@ void App::init()
 					json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
 					if(a.size() != 3)
 						throw GltfError("Material.emissiveFactor is not vector of three components.");
-					emissiveFactor[0] = float(a[0].get_ref<json::number_float_t&>());
-					emissiveFactor[1] = float(a[1].get_ref<json::number_float_t&>());
-					emissiveFactor[2] = float(a[2].get_ref<json::number_float_t&>());
+					emissiveFactor[0] = float(a[0].get<json::number_float_t>());
+					emissiveFactor[1] = float(a[1].get<json::number_float_t>());
+					emissiveFactor[2] = float(a[2].get<json::number_float_t>());
 				}
 				else
 					emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
@@ -1440,13 +1440,13 @@ void App::init()
 					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
 
 					// accessor.type is mandatory and it must be VEC3 or VEC4 for color accessors
-					json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+					const json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
 					if(t != "VEC3" && t != "VEC4")
 						throw GltfError("Color attribute is not of VEC3 or VEC4 type.");
 
 					// accessor.componentType is mandatory and it must be FLOAT (5126),
 					// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
-					json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
+					const json::number_unsigned_t ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
 					if(ct != 5126 && ct != 5121 && ct != 5123)
 						throw GltfError("Color attribute componentType is not float, unsigned byte, or unsigned short.");
 
@@ -1496,13 +1496,13 @@ void App::init()
 					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
 
 					// accessor.type is mandatory and it must be VEC2 for texCoord accessors
-					json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+					const json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
 					if(t != "VEC2")
 						throw GltfError("TexCoord attribute is not of VEC2 type.");
 
 					// accessor.componentType is mandatory and it must be FLOAT (5126),
 					// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
-					json::number_unsigned_t& ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
+					const json::number_unsigned_t ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
 					if(ct != 5126 && ct != 5121 && ct != 5123)
 						throw GltfError("TexCoord attribute componentType is not float, unsigned byte, or unsigned short.");
 
@@ -1551,7 +1551,7 @@ void App::init()
 				json& accessor = accessors.at(indicesIt.value().get_ref<json::number_unsigned_t&>());
 
 				// accessor.type is mandatory and it must be SCALAR for index accessors
-				json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
+				const json::string_t& t = accessor.at("type").get_ref<json::string_t&>();
 				if(t != "SCALAR")
 					throw GltfError("Indices are not of SCALAR type.");
 
