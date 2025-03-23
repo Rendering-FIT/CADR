@@ -859,7 +859,7 @@ void App::init()
 					p = filePath.parent_path() / p;
 
 				// open stream
-				basic_ifstream<unsigned char> fs(p, ios_base::in | ios_base::binary);
+				ifstream fs(p, ios_base::in | ios_base::binary);
 				if(!fs)
 					goto failed;
 				else {
@@ -871,7 +871,7 @@ void App::init()
 
 					// read file content
 					unique_ptr<unsigned char[]> imgBuffer = make_unique<unsigned char[]>(fileSize);
-					fs.read(imgBuffer.get(), fileSize);
+					fs.read(reinterpret_cast<ifstream::char_type*>(imgBuffer.get()), fileSize);
 					if(!fs)
 						goto failed;
 					fs.close();
@@ -950,8 +950,8 @@ void App::init()
 				}
 				goto succeed;
 			failed:
-				cout << " - failed";
-				imageDB.emplace_back(renderer.imageStorage());
+				cout << " - failed" << endl;
+				throw GltfError("Failed to load texture " + imageFileName + ".");
 			succeed:
 				cout << endl;
 			}
