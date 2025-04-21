@@ -25,7 +25,7 @@ layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buf
 };
 const uint DrawableGpuDataSize = 40;
 
-layout(buffer_reference, std430, buffer_reference_align=32) restrict writeonly buffer IndirectDataRef {
+layout(buffer_reference, std430, buffer_reference_align=16) restrict writeonly buffer IndirectDataRef {
 	uint vertexCount;
 	uint instanceCount;
 	uint firstVertex;
