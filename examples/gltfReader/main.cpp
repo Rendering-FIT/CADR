@@ -840,6 +840,10 @@ void App::init()
 		bool rgb8srgbSupported =
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
+		fp = vulkanInstance.getPhysicalDeviceFormatProperties(physicalDevice, vk::Format::eR8G8Srgb);
+		bool rg8srgbSupported =
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
 
 		// load images
 		size_t c = images.size();
@@ -883,19 +887,34 @@ void App::init()
 					vk::Format format;
 					size_t alignment;
 					switch(numComponents) {
-					case 4: format = vk::Format::eR8G8B8A8Srgb;
-					        alignment = 4;
-					        break;
-					case 3: if(rgb8srgbSupported) {
-						        format = vk::Format::eR8G8B8Srgb;
-						        alignment = 3;
-					        }
-					        else {
-						        format = vk::Format::eR8G8B8A8Srgb;
-						        alignment = 4;
-						        numComponents = 4;
-					        }
-					        break;
+					case 4: // red, green, blue, alpha
+						format = vk::Format::eR8G8B8A8Srgb;
+						alignment = 4;
+						break;
+					case 3: // red, green, blue
+						if(rgb8srgbSupported) {
+							format = vk::Format::eR8G8B8Srgb;
+							alignment = 3;
+						}
+						else {
+							// fallback to alpha always one
+							format = vk::Format::eR8G8B8A8Srgb;
+							alignment = 4;
+							numComponents = 4;
+						}
+						break;
+					case 2: // grey, alpha
+						if(rg8srgbSupported) {
+							format = vk::Format::eR8G8Srgb;
+							alignment = 2;
+						}
+						else {
+							// fallback to expand grey into red+green+blue
+							format = vk::Format::eR8G8B8A8Srgb;
+							alignment = 4;
+							numComponents = 4;
+						}
+						break;
 					default: goto failed;
 					}
 
@@ -1239,7 +1258,7 @@ void App::init()
 						//baseColorTextureCoord = ~0; <- not used yet
 					}
 					if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-						throw GltfError("Unsupported functionality: metallic-roughness material model.");
+						throw GltfError("Unsupported functionality: metallic-roughness texture.");
 
 				}
 				else
