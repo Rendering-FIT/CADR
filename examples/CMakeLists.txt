@@ -7,6 +7,7 @@ set(PACKAGES
 	VulkanComputeShader
 	VulkanInfo
 	gltfReader
+	Text
 	)
 
 foreach(pkg ${PACKAGES})
