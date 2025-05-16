@@ -1,4 +1,4 @@
-prefix=C:/Code/vfont-demo/out/install/x64-Debug
+prefix=C:/Code/vfont-demo/out/install/x64-Release
 exec_prefix=${prefix}
 libdir=${prefix}/lib
 includedir=${prefix}/include

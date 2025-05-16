@@ -78,7 +78,7 @@ protected:
 
     std::vector<CircularDLL<Edge>::Node *> _getEdgesStartingAt(uint32_t vertex);
     const Contour &_getContourOfEdge(CircularDLL<Edge>::Node *edge);
-    const Outline::Orientation &_getOrientationOfSubcontour(const Outline &outline, CircularDLL<Edge>::Node *start);
+    Outline::Orientation _getOrientationOfSubcontour(const Outline &outline, CircularDLL<Edge>::Node *start);
     double _signedAreaOfContour(const Outline &outline);
     bool _isOnLeftSide(glm::vec2 lineStartingPoint, glm::vec2 lineEndingPoint, glm::vec2 point);
     double _determinant(double a, double b, double c, double d);
