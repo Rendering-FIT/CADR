@@ -1,0 +1,12 @@
+prefix=C:/Code/vfont-demo/out/install/x64-Release
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: harfbuzz subsetter
+Description: HarfBuzz font subsetter
+Version: 10.2.0
+
+Requires: harfbuzz = 10.2.0
+Libs: -L${libdir} -lharfbuzz-subset
+Cflags: -I${includedir}/harfbuzz
