@@ -1,5 +1,5 @@
-#include "VulkanWindow.h"
 #if defined(USE_PLATFORM_WIN32)
+# define VK_USE_PLATFORM_WIN32_KHR
 # ifndef NOMINMAX
 #  define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # endif
@@ -11,9 +11,11 @@
 # include <tchar.h>
 # include <type_traits>
 #elif defined(USE_PLATFORM_XLIB)
+# define VK_USE_PLATFORM_XLIB_KHR
 # include <X11/Xutil.h>
 # include <map>
 #elif defined(USE_PLATFORM_WAYLAND)
+# define VK_USE_PLATFORM_WAYLAND_KHR
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
 # include <wayland-cursor.h>
@@ -51,10 +53,14 @@
 # include <QWheelEvent>
 # include <fstream>
 #endif
+#include "VulkanWindow.h"
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
 #include <iostream>  // for debugging
+
+using namespace std;
+
 
 // xcbcommon types and funcs
 // (we avoid dependency on include xkbcommon/xkbcommon.h to lessen VulkanWindow dependencies)
@@ -105,6 +111,17 @@ enum libdecor_error {
 	LIBDECOR_ERROR_COMPOSITOR_INCOMPATIBLE,
 	LIBDECOR_ERROR_INVALID_FRAME_CONFIGURATION,
 };
+enum libdecor_window_state {
+	LIBDECOR_WINDOW_STATE_NONE = 0,
+	LIBDECOR_WINDOW_STATE_ACTIVE = 1 << 0,
+	LIBDECOR_WINDOW_STATE_MAXIMIZED = 1 << 1,
+	LIBDECOR_WINDOW_STATE_FULLSCREEN = 1 << 2,
+	LIBDECOR_WINDOW_STATE_TILED_LEFT = 1 << 3,
+	LIBDECOR_WINDOW_STATE_TILED_RIGHT = 1 << 4,
+	LIBDECOR_WINDOW_STATE_TILED_TOP = 1 << 5,
+	LIBDECOR_WINDOW_STATE_TILED_BOTTOM = 1 << 6,
+	LIBDECOR_WINDOW_STATE_SUSPENDED = 1 << 7,
+};
 struct libdecor_configuration;
 struct libdecor_interface {
 	void (*error)(struct libdecor* context, enum libdecor_error error, const char* message);
@@ -137,9 +154,12 @@ struct libdecor_frame_interface {
 	void (*reserved8)();
 	void (*reserved9)();
 };
-struct libdecor_frame_private_workaround {  // taken from libdecor.c to workaround missing libdecor_frame_set_user_data()
-	// on libdecor 0.1.0 to 0.2.2; libdecor_frame_private stays the same for all mentioned versions for its first 5 members;
-	// libdecor_frame_set_user_data() is expected to come out in the first release after 0.2.2
+struct libdecor_frame_private_workaround {  // taken from libdecor.c to workaround missing libdecor_frame_set_user_data();
+	// libdecor_frame_set_user_data() is already available in the master branch since 2024-01-15, but it is missing
+	// in libdecor 0.1.0 to 0.2.2, e.g. in all libdecor releases as of today (2025-02-27);
+	// it is expected to come out in the first release after 0.2.2;
+	// to workaround it, we use this structure;
+	// libdecor_frame_private stays the same for its first 5 members for all libdecor versions from 0.1.0 to 0.2.2;
 	int ref_count;
 	struct libdecor* context;
 	struct wl_surface* wl_surface;
@@ -147,15 +167,13 @@ struct libdecor_frame_private_workaround {  // taken from libdecor.c to workarou
 	void* user_data;
 	// all following members after user_data omitted
 };
-struct libdecor_frame_workaround {  // taken from libdecor-plugin.h to workaround missing libdecor_frame_set_user_data()
-	// on libdecor 0.1.0 to 0.2.2; libdecor_frame stays the same for all mentioned versions;
-	// libdecor_frame_set_user_data() is expected to come out in the first release after 0.2.2
+struct libdecor_frame_workaround {  // taken from libdecor-plugin.h to workaround missing libdecor_frame_set_user_data();
+	// for more details, see comment in libdecor_frame_private_workaround structure;
+	// libdecor_frame stays the same for libdecor 0.1.0 to 0.2.2, e.g. in all libdecor releases as of today (2025-02-27)
 	struct libdecor_frame_private* priv;
 	struct wl_list link;
 };
 #endif
-
-using namespace std;
 
 
 class VulkanWindowPrivate : public VulkanWindow {
@@ -314,6 +332,7 @@ static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
 static VulkanWindowPrivate* windowUnderPointer = nullptr;
 static VulkanWindowPrivate* windowWithKbFocus = nullptr;
+static const char* vulkanWindowTag = "VulkanWindow";
 
 // listeners
 static const wl_registry_listener registryListener{
@@ -407,6 +426,8 @@ struct Funcs {
 	void (*libdecor_frame_set_fullscreen)(struct libdecor_frame *frame, struct wl_output *output);
 	void (*libdecor_frame_unset_fullscreen)(struct libdecor_frame *frame);
 	void (*libdecor_frame_map)(struct libdecor_frame* frame);
+	bool (*libdecor_configuration_get_window_state)(struct libdecor_configuration* configuration,
+		enum libdecor_window_state* window_state);
 	bool (*libdecor_configuration_get_content_size)(struct libdecor_configuration* configuration,
 		struct libdecor_frame* frame, int* width, int* height);
 	struct libdecor_state* (*libdecor_state_new)(int width, int height);
@@ -725,7 +746,7 @@ void VulkanWindow::init()
 				HINSTANCE(_hInstance),  // hInstance
 				LoadIcon(NULL, IDI_APPLICATION),  // hIcon
 				LoadCursor(NULL, IDC_ARROW),  // hCursor
-				NULL,                 // hbrBackground
+				(HBRUSH)(COLOR_WINDOW + 1),  // hbrBackground
 				NULL,                 // lpszMenuName
 				L"VulkanWindow",      // lpszClassName
 				LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
@@ -936,11 +957,11 @@ void VulkanWindow::init(void* data)
 	if(!_zxdgDecorationManagerV1) {
 
 		// load libdecor library
-		libdecorHandle = dlopen("libdecor-0.so", RTLD_NOW);
+		libdecorHandle = dlopen("libdecor-0.so.0", RTLD_NOW);
 		if(libdecorHandle == nullptr)
 			throw runtime_error("Cannot activate window decorations. There is no support for server-side decorations "
 			                    "in Wayland server (zxdg_decoration_manager_v1 protocol required) and "
-			                    "cannot open libdecor-0.so library for client-side decorations.");
+			                    "cannot open libdecor-0.so.0 library for client-side decorations.");
 
 		// function pointers
 		reinterpret_cast<void*&>(funcs.libdecor_new)                 = dlsym(libdecorHandle, "libdecor_new");
@@ -955,6 +976,7 @@ void VulkanWindow::init(void* data)
 		reinterpret_cast<void*&>(funcs.libdecor_frame_set_fullscreen) = dlsym(libdecorHandle, "libdecor_frame_set_fullscreen");
 		reinterpret_cast<void*&>(funcs.libdecor_frame_unset_fullscreen) = dlsym(libdecorHandle, "libdecor_frame_unset_fullscreen");
 		reinterpret_cast<void*&>(funcs.libdecor_frame_map)           = dlsym(libdecorHandle, "libdecor_frame_map");
+		reinterpret_cast<void*&>(funcs.libdecor_configuration_get_window_state) = dlsym(libdecorHandle, "libdecor_configuration_get_window_state");
 		reinterpret_cast<void*&>(funcs.libdecor_configuration_get_content_size) = dlsym(libdecorHandle, "libdecor_configuration_get_content_size");
 		reinterpret_cast<void*&>(funcs.libdecor_state_new)           = dlsym(libdecorHandle, "libdecor_state_new");
 		reinterpret_cast<void*&>(funcs.libdecor_frame_commit)        = dlsym(libdecorHandle, "libdecor_frame_commit");
@@ -963,7 +985,8 @@ void VulkanWindow::init(void* data)
 		if(!funcs.libdecor_new || !funcs.libdecor_unref || !funcs.libdecor_frame_unref || !funcs.libdecor_decorate ||
 		   !funcs.libdecor_frame_set_title || !funcs.libdecor_frame_set_minimized || !funcs.libdecor_frame_set_maximized ||
 		   !funcs.libdecor_frame_unset_maximized || !funcs.libdecor_frame_set_fullscreen ||
-		   !funcs.libdecor_frame_unset_fullscreen || !funcs.libdecor_frame_map || !funcs.libdecor_configuration_get_content_size ||
+		   !funcs.libdecor_frame_unset_fullscreen || !funcs.libdecor_frame_map ||
+		   !funcs.libdecor_configuration_get_window_state || !funcs.libdecor_configuration_get_content_size ||
 		   !funcs.libdecor_state_new || !funcs.libdecor_frame_commit || !funcs.libdecor_state_free || !funcs.libdecor_dispatch)
 		{
 			throw runtime_error("Cannot retrieve all function pointers out of libdecor-0.so.");
@@ -1422,12 +1445,17 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 {
 #if defined(USE_PLATFORM_WIN32)
 
-	// move Win32 members
+	// move members
 	_hwnd = other._hwnd;
 	other._hwnd = nullptr;
 	_framePendingState = other._framePendingState;
+	other._framePendingState = FramePendingState::NotPending;
 	_visible = other._visible;
+	other._visible = false;
 	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+	_titleBarLeftButtonDownMsgOnHold = other._titleBarLeftButtonDownMsgOnHold;
+	other._titleBarLeftButtonDownMsgOnHold = false;
+	_titleBarLeftButtonDownPos = other._titleBarLeftButtonDownPos;
 
 	// update pointers to this object
 	if(_hwnd)
@@ -1479,7 +1507,12 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	if(_scheduledFrameCallback)
 		wl_callback_set_user_data(_scheduledFrameCallback, this);
 
+	// move members
 	_forcedFrame = other._forcedFrame;
+	_numSyncEventsOnTheFly = other._numSyncEventsOnTheFly;
+	other._numSyncEventsOnTheFly = 0;
+	_windowState = other._windowState;
+	other._windowState = WindowState::Hidden;
 
 	// update pointers to this object
 	if(windowUnderPointer == &other)
@@ -1495,6 +1528,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_framePending = other._framePending;
 	_hiddenWindowFramePending = other._hiddenWindowFramePending;
 	_visible = other._visible;
+	other._visible = false;
 	_minimized = other._minimized;
 
 	if(_window != nullptr)
@@ -1514,6 +1548,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_framePending = other._framePending;
 	_hiddenWindowFramePending = other._hiddenWindowFramePending;
 	_visible = other._visible;
+	other._visible = false;
 	_minimized = other._minimized;
 
 	// update pointer to this object
@@ -1527,6 +1562,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	other._window = nullptr;
 	_framePendingState = other._framePendingState;
 	_visible = other._visible;
+	other._visible = false;
 	_minimized = other._minimized;
 
 	// update pointers to this object
@@ -1579,12 +1615,17 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 
 #if defined(USE_PLATFORM_WIN32)
 
-	// move Win32 members
+	// move members
 	_hwnd = other._hwnd;
 	other._hwnd = nullptr;
 	_framePendingState = other._framePendingState;
+	other._framePendingState = FramePendingState::NotPending;
 	_visible = other._visible;
+	other._visible = false;
 	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+	_titleBarLeftButtonDownMsgOnHold = other._titleBarLeftButtonDownMsgOnHold;
+	other._titleBarLeftButtonDownMsgOnHold = false;
+	_titleBarLeftButtonDownPos = other._titleBarLeftButtonDownPos;
 
 	// update pointers to this object
 	if(_hwnd)
@@ -1635,7 +1676,13 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	other._scheduledFrameCallback = nullptr;
 	if(_scheduledFrameCallback)
 		wl_callback_set_user_data(_scheduledFrameCallback, this);
+
+	// move members
 	_forcedFrame = other._forcedFrame;
+	_numSyncEventsOnTheFly = other._numSyncEventsOnTheFly;
+	other._numSyncEventsOnTheFly = 0;
+	_windowState = other._windowState;
+	other._windowState = WindowState::Hidden;
 
 	// update pointers to this object
 	if(windowUnderPointer == &other)
@@ -1651,6 +1698,7 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_framePending = other._framePending;
 	_hiddenWindowFramePending = other._hiddenWindowFramePending;
 	_visible = other._visible;
+	other._visible = false;
 	_minimized = other._minimized;
 
 	if(_window != nullptr)
@@ -1683,6 +1731,7 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	other._window = nullptr;
 	_framePendingState = other._framePendingState;
 	_visible = other._visible;
+	other._visible = false;
 	_minimized = other._minimized;
 
 	// update pointers to this object
@@ -1906,6 +1955,9 @@ VkSurfaceKHR VulkanWindow::createInternal(VkInstance instance, VkExtent2D surfac
 	_wlSurface = wl_compositor_create_surface(_compositor);
 	if(_wlSurface == nullptr)
 		throw runtime_error("VulkanWindow: wl_compositor_create_surface() failed.");
+
+	// set tag on surface
+	wl_proxy_set_tag(reinterpret_cast<wl_proxy*>(_wlSurface), &vulkanWindowTag);
 
 	// associate surface with VulkanWindow
 	wl_surface_set_user_data(_wlSurface, this);
@@ -2443,10 +2495,11 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
 	switch(msg)
 	{
-		// erase background message
-		// (we ignore the message)
+#if 0  // window resize looks more nice with backgroud erasing, so we are not ignoring the message;
+       // The message is sent on window show, resize and move, in general. So, it is not a performance issue.
 		case WM_ERASEBKGND:
 			return 1;  // returning non-zero means that background should be considered erased
+#endif
 
 		// paint the window message
 		// (we render the window content here)
@@ -2511,6 +2564,12 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		// mouse move
 		case WM_MOUSEMOVE: {
 			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(w->_titleBarLeftButtonDownMsgOnHold) {
+				// workaround for WM_NCLBUTTONDOWN window freeze
+				w->_titleBarLeftButtonDownMsgOnHold = false;
+				DefWindowProcW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, w->_titleBarLeftButtonDownPos);
+				return DefWindowProcW(hwnd, msg, wParam, lParam);
+			}
 			handleModifiers(w, wParam);
 			handleMouseMove(w, float(GET_X_LPARAM(lParam)), float(GET_Y_LPARAM(lParam)));
 			return 0;
@@ -2530,14 +2589,47 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		// (application freeze for several hundred of milliseconds is workarounded here)
 		case WM_NCLBUTTONDOWN: {
 			// This is a workaround for window freeze for several hundred of milliseconds
-			// if you click on its title bar. The clicking on the title bar
+			// if you left-click on its title bar. The clicking on the title bar
 			// makes execution of DefWindowProc to not return for several hundreds of milliseconds,
 			// making the application frozen for this time period.
-			// Sending extra WM_MOUSEMOVE workarounds the problem.
-			POINT point;
-			GetCursorPos(&point);
-			ScreenToClient(hwnd, &point);
-			PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
+			// We workaround the problem by delaying WM_NCLBUTTONDOWN message until further related mouse event.
+			// Processing both messages at once avoids the freeze.
+			if(wParam == HTCAPTION) {
+				VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+				w->_titleBarLeftButtonDownMsgOnHold = true;
+				w->_titleBarLeftButtonDownPos = lParam;
+				return 0;
+			}
+			else
+				return DefWindowProcW(hwnd, msg, wParam, lParam);
+		}
+
+		// workaround for WM_NCLBUTTONDOWN window freeze
+		case WM_NCMOUSEMOVE: {
+
+			// if WM_NCLBUTTONDOWN is not on hold, just process the current message
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(!w->_titleBarLeftButtonDownMsgOnHold)
+				return DefWindowProcW(hwnd, msg, wParam, lParam);
+
+			// skip WM_NCMOUSEMOVE with the same coordinates
+			if(w->_titleBarLeftButtonDownPos == lParam)
+				return 0;
+
+			// process WM_NCLBUTTONDOWN and WM_NCMOUSEMOVE
+			w->_titleBarLeftButtonDownMsgOnHold = false;
+			DefWindowProcW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, w->_titleBarLeftButtonDownPos);
+			return DefWindowProcW(hwnd, WM_NCMOUSEMOVE, wParam, lParam);
+
+		}
+
+		// workaround for WM_NCLBUTTONDOWN window freeze
+		case WM_NCLBUTTONUP: {
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(w->_titleBarLeftButtonDownMsgOnHold) {
+				w->_titleBarLeftButtonDownMsgOnHold = false;
+				DefWindowProcW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, w->_titleBarLeftButtonDownPos);
+			}
 			return DefWindowProcW(hwnd, msg, wParam, lParam);
 		}
 
@@ -2658,6 +2750,9 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 
 				// store frame pending state
 				w->_hiddenWindowFramePending = w->_framePendingState == FramePendingState::Pending;
+
+				// cancel WM_NCLBUTTONDOWN hold operation, if active
+				w->_titleBarLeftButtonDownMsgOnHold = false;
 
 				// cancel frame pending state
 				if(w->_framePendingState == FramePendingState::Pending) {
@@ -3230,6 +3325,19 @@ void VulkanWindowPrivate::libdecorFrameConfigure(libdecor_frame* frame, libdecor
 {
 	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 
+	// update window state
+	libdecor_window_state s;
+	if(funcs.libdecor_configuration_get_window_state(config, &s)) {
+		if(s & LIBDECOR_WINDOW_STATE_FULLSCREEN)
+			w->_windowState = WindowState::FullScreen;
+		else if(s & LIBDECOR_WINDOW_STATE_MAXIMIZED)
+			w->_windowState = WindowState::Maximized;
+		else
+			w->_windowState = WindowState::Normal;
+	}
+	else
+		throw runtime_error("libdecor_configuration_get_window_state() failed.");
+
 	// if width or height of the window changed,
 	// schedule swapchain resize and force new frame rendering
 	int width, height;
@@ -3307,6 +3415,10 @@ void VulkanWindowPrivate::libdecorFrameClose(libdecor_frame* frame, void* data)
 		w->hide();
 		VulkanWindow::exitMainLoop();
 	}
+
+	// update window state
+	if(w->_libdecorFrame == nullptr)
+		w->_windowState = WindowState::Hidden;
 }
 
 
@@ -3437,6 +3549,11 @@ void VulkanWindowPrivate::seatListenerCapabilities(void* data, wl_seat* seat, ui
 void VulkanWindowPrivate::pointerListenerEnter(void* data, wl_pointer* pointer, uint32_t serial,
                                                wl_surface* surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
 {
+	// ignore foreign surfaces
+	// (this is necessary on some compositors, to name some: gnome-shell on Ubuntu 24.04 + Fedora 41)
+	if(wl_proxy_get_tag(reinterpret_cast<wl_proxy*>(surface)) != &vulkanWindowTag)
+		return;
+
 	// set cursor
 	wl_pointer_set_cursor(pointer, serial, _cursorSurface, _cursorHotspotX, _cursorHotspotY);
 
@@ -4995,17 +5112,17 @@ void VulkanWindow::setWindowState(WindowState windowState)
 
 			// show the window with appropriate settings
 			show(
-				[](VulkanWindow& w) { /*xdg_toplevel_set_fullscreen(w._xdgTopLevel);*/ },
-				[](VulkanWindow& w) { /*libdecor_frame_unset_maximized(w._libdecorFrame);*/ }
+				[](VulkanWindow& w) { xdg_toplevel_set_fullscreen(w._xdgTopLevel, nullptr); },
+				[](VulkanWindow& w) { funcs.libdecor_frame_set_fullscreen(w._libdecorFrame, nullptr); }
 			);
 
 		else {
 
 			// send callback
 			if(_libdecorFrame)
-				;//libdecor_frame_unset_maximized(_libdecorFrame);
+				funcs.libdecor_frame_set_fullscreen(_libdecorFrame, nullptr);
 			else
-				;//xdg_toplevel_set_fullscreen(_xdgTopLevel);
+				xdg_toplevel_set_fullscreen(_xdgTopLevel, nullptr);
 
 			// send callback
 			wl_callback* callback = wl_display_sync(_display);

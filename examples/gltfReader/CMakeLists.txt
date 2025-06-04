@@ -39,8 +39,8 @@ elseif(WIN32)
 endif()
 
 # GUI dependencies
-include(GuiMacros.cmake)
-GuiConfigure(APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines includes)
+include(VulkanWindow.cmake)
+VulkanWindowConfigure(APP_SOURCES APP_INCLUDES libs defines includes)
 
 # executable
 process_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
@@ -50,7 +50,6 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${includes})
 target_compile_definitions(${APP_NAME} PRIVATE ${defines})
 target_link_libraries(${APP_NAME} ${libs} CadR)
-set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulkanWindowDefines})
 set_property(TARGET ${APP_NAME} PROPERTY FOLDER "${examples_folder_name}")
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 20)
 

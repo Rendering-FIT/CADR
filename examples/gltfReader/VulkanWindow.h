@@ -104,6 +104,8 @@ protected:
 	FramePendingState _framePendingState;
 	bool _visible = false;
 	bool _hiddenWindowFramePending;
+	bool _titleBarLeftButtonDownMsgOnHold = false;
+	__int64 _titleBarLeftButtonDownPos;
 
 	static inline void* _hInstance = 0;  // void* is used instead of HINSTANCE type to avoid #include <windows.h>
 	static inline uint16_t _windowClass = 0;  // uint16_t is used instead of ATOM type to avoid #include <windows.h>
