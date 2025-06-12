@@ -2652,6 +2652,7 @@ void App::frame(VulkanWindow&)
 			&imageIndex               // pImageIndex
 		);
 	if(r != vk::Result::eSuccess) {
+		renderer.endFrame();
 		if(r == vk::Result::eSuboptimalKHR) {
 			window.scheduleResize();
 			return;
@@ -2744,6 +2745,11 @@ void App::frame(VulkanWindow&)
 		} else
 			throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
 	}
+
+	// end of the frame
+	// (gpu computations might be running asynchronously now
+	// and presentation might be waiting for the rendering to finish)
+	renderer.endFrame();
 }
 
 

@@ -80,12 +80,12 @@ protected:
 	bool _collectFrameInfo = false;  ///< True if frame timing information collecting is enabled.
 	bool _useCalibratedTimestamps;  ///< True if use of calibrated timestamps is enabled. It requires VK_EXT_calibrated_timestamps Vulkan extension to be present and enabled.
 	vk::TimeDomainEXT _timestampHostTimeDomain;  ///< Time domain used for the cpu timestamps.
+	vk::QueryPool _frameInfoTimestampPool;  ///< QueryPool for timestamps that are collected during frame rendering.
 	struct FrameInfoCollector : public FrameInfo {  ///< The structure is used during collection of FrameInfo.
-		vk::UniqueHandle<vk::QueryPool,VulkanDevice> timestampPool;  ///< QueryPool for timestamps that are collected during frame rendering.
+		uint32_t numTimestamps;  ///< Number of timestamps written so far to the timestampPool.
 	};
 	std::list<FrameInfoCollector> _inProgressFrameInfoList;  ///< List of FrameInfo structures whose data are still being collected.
 	std::list<FrameInfo> _completedFrameInfoList;  ///< List of FrameInfo structures whose data are complete and ready to be handed to the user.
-	uint32_t _timestampIndex;  ///< Timestamp index used during recording of frame to track the index of the next timestamp that will be recorded to the command buffer.
 
 	static Renderer* _defaultRenderer;
 	static RequiredFeaturesStructChain _requiredFeatures;
