@@ -2679,7 +2679,7 @@ void App::frame(VulkanWindow&)
 		0,  // offset
 		sizeof(uint64_t),  // size
 		array<uint64_t,1>{  // pValues
-			renderer.drawablePayloadDeviceAddress(),  // payloadBufferPtr
+			renderer.drawablePointersBufferAddress(),  // payloadBufferPtr
 		}.data()
 	);
 	device.cmdPushConstants(

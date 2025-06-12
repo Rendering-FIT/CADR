@@ -33,12 +33,12 @@ layout(buffer_reference, std430, buffer_reference_align=16) restrict writeonly b
 };
 const uint IndirectDataSize = 16;
 
-layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly buffer PayloadDataRef {
+layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly buffer DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
 	uint64_t shaderDataPtr;
 };
-const uint PayloadDataSize = 24;
+const uint DrawablePointersSize = 24;
 
 layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer HandleTableRef {
 	uint64_t pointers[4096];
@@ -50,7 +50,7 @@ layout(push_constant) uniform pushConstants {
 	HandleTableRef handleTable;
 	uint64_t drawableListPtr;  // one buffer for the whole scene
 	uint64_t indirectDataPtr;  // one buffer for the whole scene
-	uint64_t payloadDataPtr;  // one buffer for the whole scene
+	uint64_t drawablePointersBufferPtr;  // one buffer for the whole scene
 };
 
 
@@ -72,30 +72,31 @@ uint64_t lookupHandle(uint64_t handle)
 void main()
 {
 	// read drawable data
-	DrawableGpuDataRef d = DrawableGpuDataRef(drawableListPtr + (gl_WorkGroupID.x * DrawableGpuDataSize));
+	uint workGroupID = gl_WorkGroupID.y * 32768 + gl_WorkGroupID.x;
+	DrawableGpuDataRef d = DrawableGpuDataRef(drawableListPtr + (workGroupID * DrawableGpuDataSize));
 	PrimitiveSetRef ps = PrimitiveSetRef(lookupHandle(d.primitiveSetHandle) + d.primitiveSetOffset);
 
 	// write indirect data
-	IndirectDataRef indirectData = IndirectDataRef(indirectDataPtr + (gl_WorkGroupID.x * IndirectDataSize));
+	IndirectDataRef indirectData = IndirectDataRef(indirectDataPtr + (workGroupID * IndirectDataSize));
 	indirectData.vertexCount = ps.count;
 	indirectData.instanceCount = d.numInstances;
 	indirectData.firstVertex = ps.first;
 	indirectData.baseInstance = 0;
 
-	// write payload
-	PayloadDataRef pd = PayloadDataRef(payloadDataPtr + (gl_WorkGroupID.x * PayloadDataSize));
-	pd.vertexDataPtr = lookupHandle(d.vertexDataHandle);
-	pd.indexDataPtr  = lookupHandle(d.indexDataHandle);
-	pd.shaderDataPtr = lookupHandle(d.shaderDataHandle);
+	// write drawable pointers
+	DrawablePointersRef dp = DrawablePointersRef(drawablePointersBufferPtr + (workGroupID * DrawablePointersSize));
+	dp.vertexDataPtr = lookupHandle(d.vertexDataHandle);
+	dp.indexDataPtr  = lookupHandle(d.indexDataHandle);
+	dp.shaderDataPtr = lookupHandle(d.shaderDataHandle);
 
 #if 0  // debug print; to enable it, you also need to (1) enable GL_EXT_debug_printf extension on the beginning of this shader,
        // you need to (2) enable VK_KHR_shader_non_semantic_info device extension (look for VK_KHR_shader_non_semantic_info
        // text in InitAndFinalize.cpp) and you need to (3) have Vulkan Configurator (vkconfig) running and you need to
        // (4) enable "Debug Printf" in Vulkan Configurator in Shader-Based validation;
        //  you might also need to increase "Printf buffer size"
-	debugPrintfEXT("Drawable %u, GpuData: 0x%lx, VertexDataPtr: 0x%lx (handle: %u), IndexDataPtr: 0x%lx (handle: %u), PrimitiveSet: 0x%lx (handle: %u, memoryOffset: %u, count %u, first: %u, numInstances: %u), ShaderData: 0x%lx, IndirectData: 0x%lx, PayloadData: 0x%lx.\n",
-	               gl_WorkGroupID.x, uint64_t(d), lookupHandle(d.vertexDataHandle), uint(d.vertexDataHandle), lookupHandle(d.indexDataHandle), uint(d.indexDataHandle),
+	debugPrintfEXT("Drawable %u, GpuData: 0x%lx, VertexDataPtr: 0x%lx (handle: %u), IndexDataPtr: 0x%lx (handle: %u), PrimitiveSet: 0x%lx (handle: %u, memoryOffset: %u, count %u, first: %u, numInstances: %u), ShaderData: 0x%lx, IndirectData: 0x%lx, DrawablePointers address: 0x%lx.\n",
+	               workGroupID, uint64_t(d), lookupHandle(d.vertexDataHandle), uint(d.vertexDataHandle), lookupHandle(d.indexDataHandle), uint(d.indexDataHandle),
 	               uint64_t(ps), uint(d.primitiveSetHandle), d.primitiveSetOffset, ps.count, ps.first, d.numInstances,
-	               lookupHandle(d.shaderDataHandle), uint64_t(indirectData), uint64_t(pd));
+	               lookupHandle(d.shaderDataHandle), uint64_t(indirectData), uint64_t(dp));
 #endif
 }

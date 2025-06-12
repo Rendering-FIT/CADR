@@ -233,7 +233,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 			numDrawables*sizeof(DrawableGpuData)  // size
 		);
 
-		// update payload address
+		// update address of drawable pointers
 		device.cmdPushConstants(
 			commandBuffer,  // commandBuffer
 			currentPipelineLayout,  // pipelineLayout
@@ -241,7 +241,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 			0,  // offset
 			sizeof(uint64_t),  // size
 			array<uint64_t,1>{  // pValues
-				_renderer->drawablePayloadDeviceAddress() + (drawableCounter * Renderer::drawablePayloadRecordSize),  // payloadBufferPtr
+				_renderer->drawablePointersBufferAddress() + (drawableCounter * Renderer::drawablePointersRecordSize),  // stateSetDrawablePointersPtr
 			}.data()
 		);
 

@@ -1813,7 +1813,7 @@ void App::frame(bool collectInfo)
 		0,  // offset
 		sizeof(uint64_t),  // size
 		array<uint64_t,1>{  // pValues
-			renderer.drawablePayloadDeviceAddress(),  // payloadBufferPtr
+			renderer.drawablePointersBufferAddress(),  // payloadBufferPtr
 		}.data()
 	);
 	device.cmdPushConstants(

@@ -51,9 +51,9 @@ protected:
 	vk::Buffer        _drawIndirectBuffer;
 	vk::DeviceMemory  _drawIndirectMemory;
 	vk::DeviceAddress _drawIndirectBufferAddress;
-	vk::Buffer        _drawablePayloadBuffer;
-	vk::DeviceMemory  _drawablePayloadMemory;
-	vk::DeviceAddress _drawablePayloadDeviceAddress;
+	vk::Buffer        _drawablePointersBuffer;
+	vk::DeviceMemory  _drawablePointersMemory;
+	vk::DeviceAddress _drawablePointersBufferAddress;
 
 	mutable StagingManager _stagingManager;
 	mutable DataStorage _dataStorage;
@@ -164,8 +164,8 @@ public:
 	inline DrawableGpuData* drawableStagingData() const;
 	inline vk::Buffer drawIndirectBuffer() const;
 	inline vk::DeviceAddress drawIndirectBufferAddress() const;
-	inline vk::Buffer drawablePayloadBuffer() const;
-	inline vk::DeviceAddress drawablePayloadDeviceAddress() const;
+	inline vk::Buffer drawablePointersBuffer() const;
+	inline vk::DeviceAddress drawablePointersBufferAddress() const;
 
 	// pipelines and commandPools
 	inline vk::PipelineCache pipelineCache() const;
@@ -185,7 +185,7 @@ public:
 	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
 
-	static constexpr uint32_t drawablePayloadRecordSize = 24;
+	static constexpr uint32_t drawablePointersRecordSize = 24;
 
 };
 
@@ -228,8 +228,8 @@ inline vk::Buffer Renderer::drawableStagingBuffer() const  { return _drawableSta
 inline DrawableGpuData* Renderer::drawableStagingData() const  { return _drawableStagingData; }
 inline vk::Buffer Renderer::drawIndirectBuffer() const  { return _drawIndirectBuffer; }
 inline vk::DeviceAddress Renderer::drawIndirectBufferAddress() const  { return _drawIndirectBufferAddress; }
-inline vk::Buffer Renderer::drawablePayloadBuffer() const  { return _drawablePayloadBuffer; }
-inline vk::DeviceAddress Renderer::drawablePayloadDeviceAddress() const  { return _drawablePayloadDeviceAddress; }
+inline vk::Buffer Renderer::drawablePointersBuffer() const  { return _drawablePointersBuffer; }
+inline vk::DeviceAddress Renderer::drawablePointersBufferAddress() const  { return _drawablePointersBufferAddress; }
 inline vk::PipelineCache Renderer::pipelineCache() const  { return _pipelineCache; }
 inline vk::Pipeline Renderer::processDrawablesPipeline(size_t handleLevel) const  { return _processDrawablesPipelineList[handleLevel-1]; }
 inline vk::PipelineLayout Renderer::processDrawablesPipelineLayout() const  { return _processDrawablesPipelineLayout; }

@@ -48,14 +48,13 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 	layout(offset=64) mat4 modelMatrix[];
 };
 
-// payload data
-// holding per-drawable data pointers
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer PayloadDataRef {
+// drawable data pointers
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
 	uint64_t shaderDataPtr;
 };
-const uint PayloadDataSize = 24;
+const uint DrawablePointersSize = 24;
 
 // scene data
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer SceneDataRef {
@@ -65,7 +64,7 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 
 // push constants
 layout(push_constant) uniform pushConstants {
-	uint64_t payloadBufferPtr;  // one buffer for the whole scene
+	uint64_t stateSetDrawablePointersPtr;  // per-StateSet pointer into the buffer
 	uint64_t sceneDataPtr;  // one buffer for the whole scene
 };
 
@@ -118,13 +117,13 @@ void main()
 {
 
 	// memory pointers
-	PayloadDataRef pd = PayloadDataRef(payloadBufferPtr + (gl_DrawID * PayloadDataSize));
-	outDataPtr = pd.shaderDataPtr;
-	ShaderDataRef data = ShaderDataRef(pd.shaderDataPtr);
+	DrawablePointersRef dp = DrawablePointersRef(stateSetDrawablePointersPtr + (gl_DrawID * DrawablePointersSize));
+	outDataPtr = dp.shaderDataPtr;
+	ShaderDataRef data = ShaderDataRef(dp.shaderDataPtr);
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
-	IndexDataRef indexData = IndexDataRef(pd.indexDataPtr);
+	IndexDataRef indexData = IndexDataRef(dp.indexDataPtr);
 	uint index = indexData.indices[gl_VertexIndex];
-	VertexDataRef vertex = VertexDataRef(pd.vertexDataPtr + (index * VertexDataSize));
+	VertexDataRef vertex = VertexDataRef(dp.vertexDataPtr + (index * VertexDataSize));
 
 	// matrices and positions
 	mat4 modelViewMatrix = scene.viewMatrix * data.modelMatrix[gl_InstanceIndex];
@@ -158,7 +157,7 @@ void main()
        // (4) enable "Debug Printf" in Vulkan Configurator in Shader-Based validation;
        //  you might also need to increase "Printf buffer size"
 	debugPrintfEXT("BaseColor, DrawID: %u, Vertex: %u, Index: %u, Instance %u, dataPtr: %lx, VertexDataBase: 0x%lx, VertexDataPtr: 0x%lx, VertexDataSize: %u, position: %.2f,%.2f,%.2f.\n",
-	               gl_DrawID, gl_VertexIndex, index, gl_InstanceIndex, outDataPtr, pd.vertexDataPtr, uint64_t(vertex), VertexDataSize, vertex.position.x, vertex.position.y, vertex.position.z);
+	               gl_DrawID, gl_VertexIndex, index, gl_InstanceIndex, outDataPtr, dp.vertexDataPtr, uint64_t(vertex), VertexDataSize, vertex.position.x, vertex.position.y, vertex.position.z);
 #endif
 
 }

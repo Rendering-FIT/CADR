@@ -325,16 +325,16 @@ void Renderer::finalize()
 	_device->freeMemory(_drawableStagingMemory);
 	_device->destroy(_drawIndirectBuffer);
 	_device->freeMemory(_drawIndirectMemory);
-	_device->destroy(_drawablePayloadBuffer);
-	_device->freeMemory(_drawablePayloadMemory);
+	_device->destroy(_drawablePointersBuffer);
+	_device->freeMemory(_drawablePointersMemory);
 	_drawableBuffer = nullptr;
 	_drawableBufferMemory = nullptr;
 	_drawableStagingBuffer = nullptr;
 	_drawableStagingMemory = nullptr;
 	_drawIndirectBuffer = nullptr;
 	_drawIndirectMemory = nullptr;
-	_drawablePayloadBuffer = nullptr;
-	_drawablePayloadMemory = nullptr;
+	_drawablePointersBuffer = nullptr;
+	_drawablePointersMemory = nullptr;
 
 	_device = nullptr;
 }
@@ -458,16 +458,16 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 		_device->free(_drawableStagingMemory);
 		_device->destroy(_drawIndirectBuffer);
 		_device->free(_drawIndirectMemory);  
-		_device->destroy(_drawablePayloadBuffer);
-		_device->free(_drawablePayloadMemory);
+		_device->destroy(_drawablePointersBuffer);
+		_device->free(_drawablePointersMemory);
 		_drawableBuffer = nullptr;
 		_drawableBufferMemory = nullptr;
 		_drawableStagingBuffer = nullptr;
 		_drawableStagingMemory = nullptr;
 		_drawIndirectBuffer = nullptr;
 		_drawIndirectMemory = nullptr;
-		_drawablePayloadBuffer = nullptr;
-		_drawablePayloadMemory = nullptr;
+		_drawablePointersBuffer = nullptr;
+		_drawablePointersMemory = nullptr;
 
 		// drawable buffer
 		_drawableBuffer =
@@ -548,7 +548,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 			);
 
 		// payload buffer
-		_drawablePayloadBuffer =
+		_drawablePointersBuffer =
 			_device->createBuffer(
 				vk::BufferCreateInfo(
 					vk::BufferCreateFlags(),      // flags
@@ -559,17 +559,17 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 					nullptr                       // pQueueFamilyIndices
 				)
 			);
-		tie(_drawablePayloadMemory, ignore) =
-			allocatePointerAccessMemory(_drawablePayloadBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		tie(_drawablePointersMemory, ignore) =
+			allocatePointerAccessMemory(_drawablePointersBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		_device->bindBufferMemory(
-			_drawablePayloadBuffer,  // buffer
-			_drawablePayloadMemory,  // memory
+			_drawablePointersBuffer,  // buffer
+			_drawablePointersMemory,  // memory
 			0  // memoryOffset
 		);
-		_drawablePayloadDeviceAddress =
+		_drawablePointersBufferAddress =
 			_device->getBufferDeviceAddress(
 				vk::BufferDeviceAddressInfo(
-					_drawablePayloadBuffer  // buffer
+					_drawablePointersBuffer  // buffer
 				)
 			);
 	}
@@ -641,7 +641,7 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 			_dataStorage.handleTableDeviceAddress(),  // handleTablePtr
 			_drawableBufferAddress,  // drawableListPtr
 			_drawIndirectBufferAddress,  // indirectDataPtr
-			_drawablePayloadDeviceAddress,  // payloadDataPtr
+			_drawablePointersBufferAddress,  // drawablePointersBufferPtr
 		}.data()
 	);
 	if(numDrawables <= 32768)
