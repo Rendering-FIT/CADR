@@ -9,20 +9,20 @@
 #include <CadR/VulkanLibrary.h>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
-#include <glm/mat4x4.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vulkan/vulkan.hpp>
 #include <iomanip>
 #include <iostream>
 #include <tuple>
+#include "VulkanWindow.h"
+#include "Tests.h"
 
 using namespace std;
 using namespace CadR;
 
 
-// constants
-static const vk::Extent2D imageExtent(1920, 1080);
+// global variables
+static const vk::Extent2D defaultImageExtent(1920, 1080);
 static const constexpr auto shortTestDuration = chrono::milliseconds(2000);
 static const constexpr auto longTestDuration = chrono::seconds(20);
 static const string appName = "RenderingPerformance";
@@ -31,22 +31,6 @@ static const uint32_t vulkanAppVersion = VK_MAKE_VERSION(0, 0, 0);
 static const string engineName = "CADR";
 static const uint32_t engineVersion = VK_MAKE_VERSION(0, 0, 0);
 static const uint32_t vulkanApiVersion = VK_API_VERSION_1_2;
-
-
-enum class TestType
-{
-	Undefined,
-	TrianglePerformance,
-	TriangleStripPerformance,
-	DrawablePerformance,
-	PrimitiveSetPerformance,
-	BakedBoxesPerformance,
-	BakedBoxesScene,
-	InstancedBoxesPerformance,
-	InstancedBoxesScene,
-	IndependentBoxesPerformance,
-	IndependentBoxesScene,
-};
 
 
 enum class RenderingSetup {
@@ -60,25 +44,6 @@ struct SceneGpuData {
 	glm::mat4 viewMatrix;   // current camera view matrix
 	float p11,p22,p33,p43;  // projectionMatrix - members that depend on zNear and zFar clipping planes
 };
-
-
-struct PrimitiveSetGpuData {
-	uint32_t count;
-	uint32_t first;
-};
-
-
-struct ShaderData {
-	glm::vec3 ambient;
-	uint32_t materialType;
-	glm::vec3 diffuse;
-	float alpha;
-	glm::vec3 specular;
-	float shininess;
-	glm::vec3 emission;
-	float pointSize;
-};
-static_assert(sizeof(ShaderData) == 64, "Size of ShaderData is not 64.");
 
 
 // shader code in SPIR-V binary
@@ -104,16 +69,10 @@ public:
 	~App();
 
 	void init();
+	void resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	void frame();
 	void mainLoop();
-	void frame(bool collectInfo);
 	void printResults();
-	void generateInvisibleTriangleScene(glm::uvec2 screenSize,
-		size_t requestedNumTriangles, TestType testType);
-	void generateBoxesScene(glm::uvec3 numBoxes, glm::vec3 center, glm::vec3 boxToBoxDistance,
-		glm::vec3 boxSize, bool instanced, bool singleGeometry);
-	void generateBakedBoxesScene(glm::uvec3 numBoxes,
-		glm::vec3 center, glm::vec3 boxToBoxDistance, glm::vec3 boxSize);
-	void deleteScene();
 
 	// no move constructor and operator
 	App(App&&) = delete;
@@ -126,33 +85,43 @@ public:
 	VulkanDevice device;
 	vk::PhysicalDevice physicalDevice;
 	uint32_t graphicsQueueFamily;
+	uint32_t presentationQueueFamily;
 	vk::Queue graphicsQueue;
+	vk::Queue presentationQueue;
 	Renderer renderer;
 	array<vk::RenderPass, RenderingSetupCount> renderPassList;
 	RenderingSetup renderingSetup = RenderingSetup::Performance;
+	vk::Extent2D imageExtent = defaultImageExtent;
+	VulkanWindow window;
+	vk::SwapchainKHR swapchain;
 	vk::Image colorImage;
 	vk::Image depthImage;
 	vk::Image idImage;
 	vk::DeviceMemory colorImageMemory;
 	vk::DeviceMemory depthImageMemory;
 	vk::DeviceMemory idImageMemory;
-	vk::ImageView colorImageView;
+	vector<vk::ImageView> colorImageViews;
 	vk::ImageView depthImageView;
 	vk::ImageView idImageView;
-	vk::Framebuffer framebuffer;
+	vector<vk::Framebuffer> framebuffers;
 	vk::ShaderModule vsModule;
 	vk::ShaderModule fsModule;
 	vk::CommandPool commandPool;
 	vk::CommandBuffer commandBuffer;
-	vk::Fence renderingFinishedFence;
+	vk::Semaphore imageAvailableSemaphore;
+	vk::Semaphore renderFinishedSemaphore;
+	vk::Fence renderFinishedFence;
 
 	TestType testType = TestType::Undefined;
 	bool longTest = false;
+	bool useWindow = false;
+	bool rasterizerDiscard = false;
 	bool printFrameTimes = false;
 	int deviceIndex = -1;
 	string deviceNameFilter;
 	size_t requestedNumTriangles = 0;
 	bool calibratedTimestampsSupported = false;
+	vk::ColorSpaceKHR colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
 	vk::Format colorFormat = vk::Format::eR8G8B8A8Srgb;
 	vk::Format depthFormat = vk::Format::eUndefined;
 	glm::vec4 backgroundColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
@@ -170,678 +139,11 @@ public:
 		} matrix;
 		array<glm::mat4,2> projectionAndViewMatrix;
 	};
-	vector<Geometry*> geometryList;
+	vector<Geometry> geometryList;
 	vector<Drawable> drawableList;
 
 };
 
-
-
-void App::deleteScene()
-{
-	//for(Drawable* d : drawableList)  delete d;
-	for(Geometry* g : geometryList)  delete g;
-	drawableList.clear();
-	geometryList.clear();
-}
-
-
-void App::generateInvisibleTriangleScene(glm::uvec2 screenSize, size_t requestedNumTriangles, TestType testType)
-{
-	deleteScene();
-
-	if(screenSize.x <= 1 || screenSize.y <= 1)
-		return;
-
-	// initialize variables
-	// (final number of triangles stored in numTriangles is always equal or a little higher
-	// than requestedNumTriangles, but at the end we create primitive set to render only
-	// requestedNumTriangles)
-	uint32_t numSeries = uint32_t(screenSize.x - 1 + screenSize.y - 1);
-	size_t numTrianglesInSeries = (requestedNumTriangles + numSeries - 1) / numSeries;
-	if(testType == TestType::BakedBoxesPerformance || testType == TestType::IndependentBoxesPerformance ||
-	   testType == TestType::InstancedBoxesPerformance)
-	{
-		numTrianglesInSeries = ((numTrianglesInSeries + 11) / 12) * 12;  // make it divisible by 12
-	}
-	size_t numTriangles = numTrianglesInSeries * numSeries;
-	float triangleDistanceX = float(screenSize.x) / numTrianglesInSeries;
-	float triangleDistanceY = float(screenSize.y) / numTrianglesInSeries;
-
-	// create geometry
-	geometryList.reserve(1);
-	geometryList.emplace_back(new Geometry(renderer));
-	Geometry* geometry = geometryList.back();
-
-	// numVertices
-	size_t numVertices;
-	switch (testType)
-	{
-		case TestType::TrianglePerformance:
-		case TestType::PrimitiveSetPerformance:
-			numVertices = numTriangles * 3;
-			break;
-		case TestType::TriangleStripPerformance:
-			numVertices = numSeries * (numTrianglesInSeries + 2);
-			break;
-		case TestType::DrawablePerformance:
-			numVertices = 3;
-			break;
-		case TestType::BakedBoxesPerformance:
-		case TestType::IndependentBoxesPerformance:
-			numVertices = numTriangles / 12 * 8;
-			break;
-		case TestType::InstancedBoxesPerformance:
-			numVertices = 8;
-			break;
-		default:
-			numVertices = 0;
-	}
-
-	// generate vertex positions,
-	// first horizontal strips followed by vertical strips
-	StagingData positionStagingData = geometry->createVertexStagingData(numVertices * sizeof(glm::vec3));
-	glm::vec3* positions = positionStagingData.data<glm::vec3>();
-	size_t i = 0;
-	if (testType == TestType::TrianglePerformance || testType == TestType::PrimitiveSetPerformance)
-	{
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-			for (size_t x = 0; x < numTrianglesInSeries; x++)
-			{
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
-				positions[i++] = glm::vec3((float(x) + 0.5f) * triangleDistanceX, float(y) + 0.6f, 0.9f);
-			}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-			for (size_t y = 0; y < numTrianglesInSeries; y++)
-			{
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, (float(y) + 0.5f) * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
-			}
-	}
-	else if (testType == TestType::TriangleStripPerformance)
-	{
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-		{
-			size_t x;
-			for (x = 0; x <= numTrianglesInSeries; x += 2)
-			{
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
-			}
-			if (x == numTrianglesInSeries + 1)
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-		}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-		{
-			size_t y;
-			for (y = 0; y <= numTrianglesInSeries; y += 2)
-			{
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
-			}
-			if (y == numTrianglesInSeries + 1)
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-		}
-	}
-	else if (testType == TestType::DrawablePerformance)
-	{
-		positions[i++] = glm::vec3(0.f,  0.6f, 0.9f);
-		positions[i++] = glm::vec3(0.f,  0.8f, 0.9f);
-		positions[i++] = glm::vec3(0.2f, 0.6f, 0.9f);
-	}
-	else if (testType == TestType::BakedBoxesPerformance || testType == TestType::IndependentBoxesPerformance)
-	{
-		// we generate boxes in horizontal and vertical strips
-		// (numTrianglesPerStrip divided by 12 gives number of boxes in the strip)
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-		{
-			size_t x;
-			for (x = 0; x < numTrianglesInSeries; x += 12)
-			{
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.6f, 0.8f);
-				positions[i++] = glm::vec3(x * triangleDistanceX, float(y) + 0.8f, 0.8f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.6f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.8f, 0.9f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.6f, 0.8f);
-				positions[i++] = glm::vec3(x * triangleDistanceX + 0.2f, float(y) + 0.8f, 0.8f);
-			}
-		}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-		{
-			size_t y;
-			for (y = 0; y < numTrianglesInSeries; y += 12)
-			{
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY, 0.8f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY, 0.8f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY + 0.2f, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY + 0.2f, 0.9f);
-				positions[i++] = glm::vec3(float(x) + 0.6f, y * triangleDistanceY + 0.2f, 0.8f);
-				positions[i++] = glm::vec3(float(x) + 0.8f, y * triangleDistanceY + 0.2f, 0.8f);
-			}
-		}
-	}
-	else if (testType == TestType::InstancedBoxesPerformance)
-	{
-		// generate single box
-		positions[i++] = glm::vec3(0.f,  0.6f, 0.9f);
-		positions[i++] = glm::vec3(0.f,  0.8f, 0.9f);
-		positions[i++] = glm::vec3(0.f,  0.6f, 0.8f);
-		positions[i++] = glm::vec3(0.f,  0.8f, 0.8f);
-		positions[i++] = glm::vec3(0.2f, 0.6f, 0.9f);
-		positions[i++] = glm::vec3(0.2f, 0.8f, 0.9f);
-		positions[i++] = glm::vec3(0.2f, 0.6f, 0.8f);
-		positions[i++] = glm::vec3(0.2f, 0.8f, 0.8f);
-	}
-
-	// generate indices
-	size_t numIndices;
-	switch (testType) {
-	case TestType::DrawablePerformance: numIndices = 3; break;
-	case TestType::InstancedBoxesPerformance: numIndices = 36; break;
-	default: numIndices = numTriangles * 3; break;
-	}
-	StagingData indexStagingData = geometry->createIndexStagingData(numIndices * sizeof(uint32_t));
-	uint32_t* indices = indexStagingData.data<uint32_t>();
-	if (testType == TestType::TrianglePerformance || testType == TestType::PrimitiveSetPerformance ||
-		testType == TestType::DrawablePerformance)
-	{
-		for (uint32_t i = 0, c = uint32_t(numIndices); i < c; i++)
-			indices[i] = i;
-	}
-	else if (testType == TestType::TriangleStripPerformance)
-	{
-		size_t i = 0;
-		for (uint32_t s = 0; s < numSeries; s++)
-		{
-			uint32_t si = s * uint32_t(numTrianglesInSeries + 2);
-			for (uint32_t ti = 0; ti < uint32_t(numTrianglesInSeries); ti++)
-			{
-				indices[i++] = si + ti;
-				indices[i++] = si + ti + 1;
-				indices[i++] = si + ti + 2;
-			}
-		}
-	}
-	else if (testType == TestType::BakedBoxesPerformance || testType == TestType::IndependentBoxesPerformance ||
-	         testType == TestType::InstancedBoxesPerformance)
-	{
-		for (uint32_t i = 0, c = uint32_t(numIndices), j = 0; i < c;)
-		{
-			// -x face
-			indices[i++] = j + 0;
-			indices[i++] = j + 1;
-			indices[i++] = j + 2;
-			indices[i++] = j + 2;
-			indices[i++] = j + 1;
-			indices[i++] = j + 3;
-			// -y face
-			indices[i++] = j + 0;
-			indices[i++] = j + 2;
-			indices[i++] = j + 4;
-			indices[i++] = j + 4;
-			indices[i++] = j + 2;
-			indices[i++] = j + 6;
-			// +z face
-			indices[i++] = j + 0;
-			indices[i++] = j + 1;
-			indices[i++] = j + 4;
-			indices[i++] = j + 4;
-			indices[i++] = j + 1;
-			indices[i++] = j + 5;
-			// +x face
-			indices[i++] = j + 4;
-			indices[i++] = j + 5;
-			indices[i++] = j + 6;
-			indices[i++] = j + 6;
-			indices[i++] = j + 5;
-			indices[i++] = j + 7;
-			// +y face
-			indices[i++] = j + 1;
-			indices[i++] = j + 3;
-			indices[i++] = j + 5;
-			indices[i++] = j + 5;
-			indices[i++] = j + 3;
-			indices[i++] = j + 7;
-			// -z face
-			indices[i++] = j + 2;
-			indices[i++] = j + 3;
-			indices[i++] = j + 6;
-			indices[i++] = j + 6;
-			indices[i++] = j + 3;
-			indices[i++] = j + 7;
-			j += 8;
-		}
-	}
-
-	// numPrimitiveSets
-	size_t numPrimitiveSets;
-	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance ||
-	    testType == TestType::DrawablePerformance || testType == TestType::BakedBoxesPerformance ||
-	    testType == TestType::InstancedBoxesPerformance)
-	{
-		numPrimitiveSets = 1;
-	}
-	else if (testType == TestType::PrimitiveSetPerformance)
-		numPrimitiveSets = requestedNumTriangles;  // only requestedNumTriangles is rendered, although numTriangles were generated
-	else if (testType == TestType::IndependentBoxesPerformance)
-		numPrimitiveSets = (requestedNumTriangles + 11) / 12;
-
-	// generate primitiveSets
-	StagingData primitiveSetStagingData = geometry->createPrimitiveSetStagingData(numPrimitiveSets * sizeof(PrimitiveSetGpuData));
-	PrimitiveSetGpuData* primitiveSets = primitiveSetStagingData.data<PrimitiveSetGpuData>();
-	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance ||
-	    testType == TestType::BakedBoxesPerformance)
-	{
-		primitiveSets[0] = { uint32_t(requestedNumTriangles)*3, 0 };  // only requestedNumTriangles is rendered, although numTriangles were generated
-	}
-	else if (testType == TestType::DrawablePerformance)
-	{
-		primitiveSets[0] = { 3, 0 };
-	}
-	else if (testType == TestType::PrimitiveSetPerformance)
-	{
-		for (size_t i = 0; i < numPrimitiveSets; i++)
-			primitiveSets[i] = { 3, uint32_t(i) * 3 };
-	}
-	else if (testType == TestType::IndependentBoxesPerformance)
-	{
-		for (size_t i = 0; i < numPrimitiveSets; i++)
-			primitiveSets[i] = { 36, uint32_t(i) * 36 };
-	}
-	else if (testType == TestType::InstancedBoxesPerformance)
-	{
-		primitiveSets[0] = { 36, 0 };
-	}
-
-
-	// create drawable(s)
-	StagingData shaderStagingData;
-	if (testType == TestType::TrianglePerformance || testType == TestType::TriangleStripPerformance ||
-	    testType == TestType::BakedBoxesPerformance)
-	{
-		drawableList.reserve(1);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
-		drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
-
-		uint8_t* b = shaderStagingData.data<uint8_t>();
-		ShaderData* d = reinterpret_cast<ShaderData*>(b);
-		memset(d, 0, sizeof(ShaderData));
-		d->diffuse = glm::vec3(1.f, 1.f, 0.f);
-		d->alpha = 1.f;
-		constexpr const glm::mat4 identityMatrix(1.f);
-		memcpy(b+64, &identityMatrix, 64);
-	}
-	else if (testType == TestType::DrawablePerformance)
-	{
-		drawableList.reserve(requestedNumTriangles);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-		{
-			size_t x;
-			for (x = 0; x < numTrianglesInSeries; x++)
-			{
-				drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
-
-				uint8_t* b = shaderStagingData.data<uint8_t>();
-				ShaderData* d = reinterpret_cast<ShaderData*>(b);
-				memset(d, 0, sizeof(ShaderData));
-				d->diffuse = glm::vec3(1.f, 1.f, 0.f);
-				d->alpha = 1.f;
-				*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
-					glm::vec3(x * triangleDistanceX, y, 0.f));
-
-				if(drawableList.size() == requestedNumTriangles)
-					return;
-			}
-		}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-		{
-			size_t y;
-			for (y = 0; y < numTrianglesInSeries; y++)
-			{
-				drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
-
-				uint8_t* b = shaderStagingData.data<uint8_t>();
-				ShaderData* d = reinterpret_cast<ShaderData*>(b);
-				memset(d, 0, sizeof(ShaderData));
-				d->diffuse = glm::vec3(1.f, 1.f, 0.f);
-				d->alpha = 1.f;
-				*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
-					glm::vec3(float(x) + 0.6f, y * triangleDistanceY - 0.6f, 0.f));
-
-				if(drawableList.size() == requestedNumTriangles)
-					return;
-			}
-		}
-	}
-	else if (testType == TestType::PrimitiveSetPerformance)
-	{
-		drawableList.reserve(requestedNumTriangles);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
-		for (uint32_t offset=0, e=uint32_t(requestedNumTriangles)*sizeof(PrimitiveSetGpuData); offset<e; offset+=sizeof(PrimitiveSetGpuData))
-		{
-			drawableList.emplace_back(*geometry, offset, shaderStagingData, 128, 1, stateSetRoot);
-
-			uint8_t* b = shaderStagingData.data<uint8_t>();
-			ShaderData* d = reinterpret_cast<ShaderData*>(b);
-			memset(d, 0, sizeof(ShaderData));
-			d->diffuse = glm::vec3(1.f, 1.f, 0.f);
-			d->alpha = 1.f;
-			constexpr const glm::mat4 identityMatrix(1.f);
-			memcpy(b+64, &identityMatrix, 64);
-		}
-	}
-	else if (testType == TestType::InstancedBoxesPerformance)
-	{
-		size_t numInstances = numTriangles / 12;
-		drawableList.reserve(1);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
-		drawableList.emplace_back(*geometry, 0, shaderStagingData, 64+(64*numInstances), uint32_t(numInstances), stateSetRoot);
-
-		uint8_t* b = shaderStagingData.data<uint8_t>();
-		ShaderData* d = reinterpret_cast<ShaderData*>(b);
-		memset(d, 0, sizeof(ShaderData));
-		d->diffuse = glm::vec3(1.f, 1.f, 0.f);
-		d->alpha = 1.f;
-		b += 64;
-		for (unsigned y = 0, c = screenSize.y - 1; y < c; y++)
-		{
-			size_t x;
-			for (x = 0; x < numTrianglesInSeries; x += 12)
-			{
-				*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
-					glm::vec3(x * triangleDistanceX, y, 0.f));
-				b += 64;
-			}
-		}
-		for (unsigned x = 0, c = screenSize.x - 1; x < c; x++)
-		{
-			size_t y;
-			for (y = 0; y < numTrianglesInSeries; y += 12)
-			{
-				*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
-					glm::vec3(float(x) + 0.6f, y * triangleDistanceY - 0.6f, 0.f));
-				b += 64;
-			}
-		}
-	}
-	else if (testType == TestType::IndependentBoxesPerformance)
-	{
-		drawableList.reserve(numPrimitiveSets);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
-		for (uint32_t offset=0, e=uint32_t(numPrimitiveSets)*sizeof(PrimitiveSetGpuData); offset<e; offset+=sizeof(PrimitiveSetGpuData))
-		{
-			drawableList.emplace_back(*geometry, offset, shaderStagingData, 128, 1, stateSetRoot);
-
-			uint8_t* b = shaderStagingData.data<uint8_t>();
-			ShaderData* d = reinterpret_cast<ShaderData*>(b);
-			memset(d, 0, sizeof(ShaderData));
-			d->diffuse = glm::vec3(1.f, 1.f, 0.f);
-			d->alpha = 1.f;
-			constexpr const glm::mat4 identityMatrix(1.f);
-			memcpy(b+64, &identityMatrix, 64);
-		}
-	}
-}
-
-
-static const uint32_t boxIndices[36] =
-{
-	0, 2, 1,  1, 2, 3,  // face x,y
-	0, 1, 4,  4, 1, 5,  // face x,z
-	0, 4, 2,  2, 4, 6,  // face y,z
-	4, 5, 6,  6, 5, 7,  // face x,y
-	2, 6, 3,  3, 6, 7,  // face x,z
-	1, 3, 5,  5, 3, 7,  // face y,z
-};
-
-
-void App::generateBoxesScene(
-	glm::uvec3 numBoxes,
-	glm::vec3 center,
-	glm::vec3 boxToBoxDistance,
-	glm::vec3 boxSize,
-	bool instanced,
-	bool singleGeometry)
-{
-	deleteScene();
-
-	// make sure valid parameters were passed in
-	if(instanced == true && singleGeometry == false)
-		throw runtime_error("RenderingPerformance::generateBoxScene(): Invalid function arguments. "
-		                    "If parameter instanced is true, singleGeometry parameter must be true as well.");
-	if(numBoxes.x == 0 || numBoxes.y == 0 || numBoxes.z == 0)
-		return;
-
-	// generate Geometries
-	size_t boxesCount = numBoxes.x * numBoxes.y * numBoxes.z;
-	size_t numGeometries = (singleGeometry) ? 1 : boxesCount;
-	size_t geometryIndex = geometryList.size();
-	geometryList.reserve(numGeometries);
-	for(size_t i=0; i<numGeometries; i++) {
-
-		// create Geometry
-		geometryList.emplace_back(new Geometry(renderer));
-		Geometry* geometry = geometryList.back();
-
-		// alloc positions
-		StagingData positionStagingData = geometry->createVertexStagingData(8 * sizeof(glm::vec3));
-		glm::vec3* positions = positionStagingData.data<glm::vec3>();
-
-		// generate vertex positions
-		glm::vec3 d = boxSize / 2.f;
-		positions[0] = glm::vec3(-d.x, -d.y, -d.z);
-		positions[1] = glm::vec3( d.x, -d.y, -d.z);
-		positions[2] = glm::vec3(-d.x,  d.y, -d.z);
-		positions[3] = glm::vec3( d.x,  d.y, -d.z);
-		positions[4] = glm::vec3(-d.x, -d.y,  d.z);
-		positions[5] = glm::vec3( d.x, -d.y,  d.z);
-		positions[6] = glm::vec3(-d.x,  d.y,  d.z);
-		positions[7] = glm::vec3( d.x,  d.y,  d.z);
-
-		// indices
-		StagingData indexStagingData = geometry->createIndexStagingData(sizeof(boxIndices));
-		uint32_t* indices = indexStagingData.data<uint32_t>();
-		memcpy(indices, boxIndices, sizeof(boxIndices));
-
-		// primitiveSet
-		StagingData primitiveSetStagingData = geometry->createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
-		PrimitiveSetGpuData* primitiveSet = primitiveSetStagingData.data<PrimitiveSetGpuData>();
-		primitiveSet->count = 36;
-		primitiveSet->first = 0;
-	}
-
-	// create Drawables
-	StagingData shaderStagingData;
-	if(instanced)
-	{
-		drawableList.reserve(1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
-		drawableList.emplace_back(*geometryList.front(), 0, shaderStagingData, 64+(64*boxesCount), uint32_t(boxesCount), stateSetRoot);
-
-		// shader staging data
-		uint8_t* b = shaderStagingData.data<uint8_t>();
-		ShaderData* d = reinterpret_cast<ShaderData*>(b);
-		memset(d, 0, sizeof(ShaderData));
-		d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-		d->alpha = 1.f;
-		b += 64;
-
-		// generate transformations
-		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
-		for(uint32_t k=0; k<numBoxes.z; k++) {
-			auto planeZ = origin.z + (k * boxToBoxDistance.z);
-			for(uint32_t j=0; j<numBoxes.y; j++) {
-				auto lineY = origin.y + (j * boxToBoxDistance.y);
-				for(uint32_t i=0; i<numBoxes.x; i++)
-				{
-					*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
-						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
-					b += 64;
-				}
-			}
-		}
-	}
-	else
-	{
-		drawableList.reserve(boxesCount);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
-
-		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
-		for(uint32_t k=0; k<numBoxes.z; k++) {
-			auto planeZ = origin.z + (k * boxToBoxDistance.z);
-			for(uint32_t j=0; j<numBoxes.y; j++) {
-				auto lineY = origin.y + (j * boxToBoxDistance.y);
-				for(uint32_t i=0; i<numBoxes.x; i++)
-				{
-					Geometry& g = (singleGeometry) ? *geometryList.front() : *geometryList[geometryIndex++];
-					drawableList.emplace_back(g, 0, shaderStagingData, 128, 1, stateSetRoot);
-
-					// shader staging data
-					uint8_t* b = shaderStagingData.data<uint8_t>();
-					ShaderData* d = reinterpret_cast<ShaderData*>(b);
-					memset(d, 0, sizeof(ShaderData));
-					d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-					d->alpha = 1.f;
-					*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
-						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
-				}
-			}
-		}
-	}
-}
-
-
-void App::generateBakedBoxesScene(
-	glm::uvec3 numBoxes,
-	glm::vec3 center,
-	glm::vec3 boxToBoxDistance,
-	glm::vec3 boxSize)
-{
-	deleteScene();
-
-	// make sure valid parameters were passed in
-	if(numBoxes.x == 0 || numBoxes.y == 0 || numBoxes.z == 0)
-		return;
-
-	// create Geometry
-	geometryList.reserve(1);
-	geometryList.emplace_back(new Geometry(renderer));
-	Geometry* geometry = geometryList.back();
-
-	// alloc positions
-	size_t numPositions = numBoxes.x * numBoxes.y * numBoxes.z * 8;
-	StagingData positionStagingData = geometry->createVertexStagingData(numPositions * sizeof(glm::vec3));
-	glm::vec3* positions = positionStagingData.data<glm::vec3>();
-
-	// generate vertex positions
-	glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
-	glm::vec3 d = boxSize / 2.f;
-	size_t index = 0;
-	for(uint32_t k=0; k<numBoxes.z; k++) {
-		auto planeZ = origin.z + (k * boxToBoxDistance.z);
-		for(uint32_t j=0; j<numBoxes.y; j++) {
-			auto lineY = origin.y + (j * boxToBoxDistance.y);
-			for(uint32_t i=0; i<numBoxes.x; i++)
-			{
-				glm::vec3 t = glm::vec3(origin.x + (i * boxToBoxDistance.x), lineY, planeZ);
-				positions[index++] = t + glm::vec3(-d.x, -d.y, -d.z);
-				positions[index++] = t + glm::vec3( d.x, -d.y, -d.z);
-				positions[index++] = t + glm::vec3(-d.x,  d.y, -d.z);
-				positions[index++] = t + glm::vec3( d.x,  d.y, -d.z);
-				positions[index++] = t + glm::vec3(-d.x, -d.y,  d.z);
-				positions[index++] = t + glm::vec3( d.x, -d.y,  d.z);
-				positions[index++] = t + glm::vec3(-d.x,  d.y,  d.z);
-				positions[index++] = t + glm::vec3( d.x,  d.y,  d.z);
-			}
-		}
-	}
-	assert(index == numPositions);
-
-	// alloc indices
-	uint32_t numIndices = numBoxes.x * numBoxes.y * numBoxes.z * 36;
-	StagingData indexStagingData = geometry->createIndexStagingData(numIndices * sizeof(uint32_t));
-	uint32_t* indices = indexStagingData.data<uint32_t>();
-
-	// generate indices
-	index = 0;
-	uint32_t boxIndexOffset = 0;
-	for(uint32_t k=0; k<numBoxes.z; k++) {
-		for(uint32_t j=0; j<numBoxes.y; j++) {
-			for(uint32_t i=0; i<numBoxes.x; i++)
-			{
-				// face x,y
-				indices[index++] = boxIndexOffset + 0;
-				indices[index++] = boxIndexOffset + 2;
-				indices[index++] = boxIndexOffset + 1;
-				indices[index++] = boxIndexOffset + 1;
-				indices[index++] = boxIndexOffset + 2;
-				indices[index++] = boxIndexOffset + 3;
-
-				// face x,z
-				indices[index++] = boxIndexOffset + 0;
-				indices[index++] = boxIndexOffset + 1;
-				indices[index++] = boxIndexOffset + 4;
-				indices[index++] = boxIndexOffset + 4;
-				indices[index++] = boxIndexOffset + 1;
-				indices[index++] = boxIndexOffset + 5;
-
-				// face y,z
-				indices[index++] = boxIndexOffset + 0;
-				indices[index++] = boxIndexOffset + 4;
-				indices[index++] = boxIndexOffset + 2;
-				indices[index++] = boxIndexOffset + 2;
-				indices[index++] = boxIndexOffset + 4;
-				indices[index++] = boxIndexOffset + 6;
-
-				// face x,y
-				indices[index++] = boxIndexOffset + 4;
-				indices[index++] = boxIndexOffset + 5;
-				indices[index++] = boxIndexOffset + 6;
-				indices[index++] = boxIndexOffset + 6;
-				indices[index++] = boxIndexOffset + 5;
-				indices[index++] = boxIndexOffset + 7;
-
-				// face x,z
-				indices[index++] = boxIndexOffset + 2;
-				indices[index++] = boxIndexOffset + 6;
-				indices[index++] = boxIndexOffset + 3;
-				indices[index++] = boxIndexOffset + 3;
-				indices[index++] = boxIndexOffset + 6;
-				indices[index++] = boxIndexOffset + 7;
-
-				// face y,z
-				indices[index++] = boxIndexOffset + 1;
-				indices[index++] = boxIndexOffset + 3;
-				indices[index++] = boxIndexOffset + 5;
-				indices[index++] = boxIndexOffset + 5;
-				indices[index++] = boxIndexOffset + 3;
-				indices[index++] = boxIndexOffset + 7;
-
-				boxIndexOffset += 8;
-			}
-		}
-	}
-	assert(index == numIndices);
-
-	// primitiveSet
-	StagingData primitiveSetStagingData = geometry->createPrimitiveSetStagingData(sizeof(PrimitiveSetGpuData));
-	PrimitiveSetGpuData* primitiveSet = primitiveSetStagingData.data<PrimitiveSetGpuData>();
-	primitiveSet->count = numIndices;
-	primitiveSet->first = 0;
-
-	// create Drawables
-	StagingData shaderStagingData;
-	drawableList.reserve(1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
-	drawableList.emplace_back(*geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
-
-	// shader staging data
-	uint8_t* b = shaderStagingData.data<uint8_t>();
-	ShaderData* sd = reinterpret_cast<ShaderData*>(b);
-	memset(sd, 0, sizeof(ShaderData));
-	sd->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-	sd->alpha = 1.f;
-	*reinterpret_cast<glm::mat4*>(b+64) = glm::mat4(1.f);
-}
 
 
 /// Construct application object
@@ -948,6 +250,23 @@ App::App(int argc, char** argv)
 			// process simple options
 			if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--long") == 0)
 				longTest = true;
+			if(strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--window") == 0)
+				useWindow = true;
+			if(strncmp(argv[i], "-s=", 3) == 0 || strncmp(argv[i], "--size=", 7) == 0) {
+				char* endp = nullptr;
+				char* startp = &argv[i][argv[i][2]=='=' ? 3 : 7];
+				imageExtent.width = strtoul(startp, &endp, 10);
+				if((imageExtent.width == 0 && endp == startp) || *endp != 'x')
+					printHelp = true;
+				else {
+					startp = endp + 1;
+					imageExtent.height = strtoul(startp, &endp, 10);
+					if(imageExtent.height == 0 && endp == startp)
+						printHelp = true;
+				}
+			}
+			if(strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--rasterizer-discard") == 0)
+				rasterizerDiscard = true;
 			if(strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--print-frame-times") == 0)
 				printFrameTimes = true;
 			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
@@ -1056,22 +375,15 @@ App::App(int argc, char** argv)
 		        chrono::duration<unsigned>(longTestDuration).count() << " seconds\n"
 		        "        and short test " << setprecision(2) <<
 		        chrono::duration<float>(shortTestDuration).count() <<" seconds\n"
+		        "   -w[=wxh] or --window[=wxh] - perform rendering into the window\n"
+		        "      instead of offscreen\n"
+		        "   -s=wxh or --size=wxh - width and height of the framebuffer\n"
+		        "   -d or --rasterizer-discard - discards primitives in the rasterizer\n"
+		        "      just before the rasterization; no fragments are produced\n"
 		        "   -p or --print-frame-times - print times of each rendered frame\n"
 		        "   --help or -h - prints this usage information" << endl;
 		exit(99);
 	}
-
-	// projection and view matrix
-	matrix.projection =
-		glm::orthoLH_ZO(
-			0.f,  // left
-			float(imageExtent.width),  // right
-			0.f,  // bottom
-			float(imageExtent.height),  // top
-			0.5f,  // near
-			100.f  // far
-		);
-	matrix.view = glm::mat4(1.f);
 }
 
 
@@ -1089,19 +401,27 @@ App::~App()
 
 		// delete scene
 		drawableList.clear();
-		for(Geometry* g : geometryList)  delete g;
 		geometryList.clear();
 
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
+		sceneDataAllocation.free();
+		stateSetRoot.destroy();
 		pipeline.destroyPipeline();
 		pipeline.destroyPipelineLayout();
-		device.destroy(renderingFinishedFence);
+		renderer.finalize();
+		device.destroy(renderFinishedFence);
+		device.destroy(imageAvailableSemaphore);
+		device.destroy(renderFinishedSemaphore);
 		device.destroy(commandPool);
 		device.destroy(fsModule);
 		device.destroy(vsModule);
-		device.destroy(framebuffer);
-		device.destroy(colorImageView);
+		for(auto f : framebuffers)
+			device.destroy(f);
+		framebuffers.clear();
+		for(auto v : colorImageViews)
+			device.destroy(v);
+		colorImageViews.clear();
 		device.destroy(depthImageView);
 		device.destroy(idImageView);
 		device.free(colorImageMemory);
@@ -1110,9 +430,32 @@ App::~App()
 		device.destroy(colorImage);
 		device.destroy(depthImage);
 		device.destroy(idImage);
-		for(auto r : renderPassList)  device.destroy(r);
+		if(swapchain)
+			device.destroy(swapchain);
+		for(auto r : renderPassList)
+			device.destroy(r);
+		frameInfoList.clear();
+		id2stateSetMap.clear();
+		device.destroy();
 	}
-	// device, instance and library will be destroyed automatically in their destructors
+
+	if(useWindow) {
+		window.destroy();
+	#if defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_QT)
+		// On Xlib, VulkanWindow::finalize() needs to be called before instance destroy to avoid crash.
+		// It is workaround for the known bug in libXext: https://gitlab.freedesktop.org/xorg/lib/libxext/-/issues/3,
+		// that crashes the application inside XCloseDisplay(). The problem seems to be present
+		// especially on Nvidia drivers (reproduced on versions 470.129.06 and 515.65.01, for example).
+		//
+		// On Qt, VulkanWindow::finalize() needs to be called not too late after leaving main() because
+		// crash might follow. Probably Qt gets partly finalized. Seen on Linux with Qt 5.15.13 and Qt 6.4.2 on 2024-05-03.
+		// Calling VulkanWindow::finalize() before leaving main() seems to be a safe solution. For simplicity, we are doing it here.
+		VulkanWindow::finalize();
+	#endif
+	}
+
+	instance.destroy();
+	library.unload();
 }
 
 
@@ -1120,6 +463,10 @@ void App::init()
 {
 	// header
 	cout << appName << " tests various performance characteristics of CADR library.\n" << endl;
+
+	// init window
+	if(useWindow)
+		VulkanWindow::init();
 
 	// init Vulkan
 	library.load();
@@ -1131,12 +478,37 @@ void App::init()
 		engineVersion,  // engine version
 		vulkanApiVersion,  // api version
 		nullptr,  // enabled layers
-		nullptr  // enabled extensions
+		useWindow ? VulkanWindow::requiredExtensions()  // enabled extensions
+		          : vector<const char*>{}
 	);
+	if(useWindow) {
+		window.create(instance, imageExtent, vulkanAppName, library.vkGetInstanceProcAddr);
+		window.setResizeCallback(bind(&App::resize, this, placeholders::_2, placeholders::_3));
+		window.setFrameCallback(bind(&App::frame, this));
+	}
 
 	// select device
-	tie(physicalDevice, graphicsQueueFamily, ignore) =
-		instance.chooseDevice(vk::QueueFlagBits::eGraphics, nullptr, deviceNameFilter, deviceIndex);
+	tie(physicalDevice, graphicsQueueFamily, presentationQueueFamily) =
+		instance.chooseDevice(
+			vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,
+			useWindow ? window.surface() : nullptr,
+			[](CadR::VulkanInstance& instance, vk::PhysicalDevice pd) -> bool  // filterCallback
+			{
+				if(instance.getPhysicalDeviceProperties(pd).apiVersion < VK_API_VERSION_1_2)
+					return false;
+				auto features =
+					instance.getPhysicalDeviceFeatures2<
+						vk::PhysicalDeviceFeatures2,
+						vk::PhysicalDeviceVulkan11Features,
+						vk::PhysicalDeviceVulkan12Features>(pd);
+				return features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
+				       features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 &&
+				       features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+				       features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
+			},
+			"",  // nameFilter
+			deviceIndex  // index
+		);
 	cout << "Device:" << endl;
 	if(!physicalDevice) {
 		if(deviceIndex == -1 && deviceNameFilter.empty())
@@ -1183,16 +555,52 @@ void App::init()
 		instance,  // instance
 		physicalDevice,
 		graphicsQueueFamily,
-		graphicsQueueFamily,
+		presentationQueueFamily,
 	#if 0 // enable to use debugPrintfEXT in shader code
-		vector<const char*>{"VK_KHR_shader_non_semantic_info"},  //extensions
+		useWindow ? vector<const char*>{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"}  // extensions
+		          : vector<const char*>{"VK_KHR_shader_non_semantic_info"},
 	#else
-		nullptr,  // extensions
+		useWindow ? vector<const char*>{"VK_KHR_swapchain"}  // extensions
+		          : vector<const char*>{},
 	#endif
 		Renderer::requiredFeatures()  // features
 	);
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
+	presentationQueue = device.getQueue(presentationQueueFamily, 0);
 	renderer.init(device, instance, physicalDevice, graphicsQueueFamily);
+	renderer.setCollectFrameInfo(true, calibratedTimestampsSupported);
+	if(useWindow)
+		window.setDevice(device, physicalDevice);
+
+	// choose surface format
+	if(useWindow)
+		tie(colorFormat, colorSpace) =
+			[](vk::PhysicalDevice physicalDevice, CadR::VulkanInstance& vulkanInstance, vk::SurfaceKHR surface)
+				-> tuple<vk::Format, vk::ColorSpaceKHR>
+			{
+				constexpr const array candidateFormats{
+					vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+					vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+					vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
+				};
+				vector<vk::SurfaceFormatKHR> availableFormats =
+					physicalDevice.getSurfaceFormatsKHR(surface, vulkanInstance);
+				if(availableFormats.size()==1 && availableFormats[0].format==vk::Format::eUndefined)
+					// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
+					// with the meaning you can use any valid vk::Format value.
+					// Now, it is forbidden, but let's handle any old driver.
+					return {candidateFormats[0].format, candidateFormats[0].colorSpace};
+				else {
+					for(vk::SurfaceFormatKHR sf : availableFormats) {
+						auto it = std::find(candidateFormats.begin(), candidateFormats.end(), sf);
+						if(it != candidateFormats.end())
+							return {it->format, it->colorSpace};
+					}
+					if(availableFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
+						throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
+					return {availableFormats[0].format, availableFormats[0].colorSpace};
+				}
+			}(physicalDevice, instance, window.surface());
 
 	// depth format
 	bool depthFormatIsFloat;
@@ -1230,7 +638,9 @@ void App::init()
 								vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
 								vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
 								vk::ImageLayout::eUndefined,       // initialLayout
-								vk::ImageLayout::eColorAttachmentOptimal  // finalLayout
+								app.useWindow                      // finalLayout
+									? vk::ImageLayout::ePresentSrcKHR
+									: vk::ImageLayout::eColorAttachmentOptimal,
 							},
 							vk::AttachmentDescription{  // depth attachment
 								vk::AttachmentDescriptionFlags(),  // flags
@@ -1287,14 +697,13 @@ void App::init()
 							vk::SubpassDependency(
 								VK_SUBPASS_EXTERNAL,   // srcSubpass
 								0,                     // dstSubpass
-								vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask
+								vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // srcStageMask - eColorAttachmentOutput is required because of WSI and should match pWaitDstStageMask
 								vk::PipelineStageFlags(vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eVertexInput |  // dstStageMask
 									vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eEarlyFragmentTests |
 									vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eLateFragmentTests |
 									vk::PipelineStageFlagBits::eColorAttachmentOutput),
 								vk::AccessFlags(),     // srcAccessMask
-								vk::AccessFlags(vk::AccessFlagBits::eIndirectCommandRead | vk::AccessFlagBits::eIndexRead |  // dstAccessMask
-									vk::AccessFlagBits::eVertexAttributeRead | vk::AccessFlagBits::eShaderRead |
+								vk::AccessFlags(vk::AccessFlagBits::eIndirectCommandRead | vk::AccessFlagBits::eShaderRead |  // dstAccessMask
 									vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite |
 									vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite),
 								vk::DependencyFlags()  // dependencyFlags
@@ -1323,169 +732,6 @@ void App::init()
 		createRenderPass(*this, RenderingSetup::Picking),
 	};
 
-	// framebuffer images
-	colorImage =
-		device.createImage(
-			vk::ImageCreateInfo(
-				vk::ImageCreateFlags(),       // flags
-				vk::ImageType::e2D,           // imageType
-				colorFormat,                  // format
-				vk::Extent3D(imageExtent.width, imageExtent.height, 1),  // extent
-				1,                            // mipLevels
-				1,                            // arrayLayers
-				vk::SampleCountFlagBits::e1,  // samples
-				vk::ImageTiling::eOptimal,    // tiling
-				vk::ImageUsageFlagBits::eColorAttachment,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr,                      // pQueueFamilyIndices
-				vk::ImageLayout::eUndefined   // initialLayout
-			)
-		);
-	depthImage =
-		device.createImage(
-			vk::ImageCreateInfo(
-				vk::ImageCreateFlags(),  // flags
-				vk::ImageType::e2D,      // imageType
-				depthFormat,             // format
-				vk::Extent3D(imageExtent.width, imageExtent.height, 1),  // extent
-				1,                       // mipLevels
-				1,                       // arrayLayers
-				vk::SampleCountFlagBits::e1,  // samples
-				vk::ImageTiling::eOptimal,    // tiling
-				vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr,                      // pQueueFamilyIndices
-				vk::ImageLayout::eUndefined   // initialLayout
-			)
-		);
-	idImage =
-		device.createImage(
-			vk::ImageCreateInfo(
-				vk::ImageCreateFlags(),  // flags
-				vk::ImageType::e2D,      // imageType
-				vk::Format::eR32G32B32A32Uint,  // format, support of eR32G32B32A32Uint format is mandatory in Vulkan
-				vk::Extent3D(imageExtent.width, imageExtent.height, 1),  // extent
-				1,                       // mipLevels
-				1,                       // arrayLayers
-				vk::SampleCountFlagBits::e1,  // samples
-				vk::ImageTiling::eOptimal,    // tiling
-				vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,  // usage
-				vk::SharingMode::eExclusive,  // sharingMode
-				0,                            // queueFamilyIndexCount
-				nullptr,                      // pQueueFamilyIndices
-				vk::ImageLayout::eUndefined   // initialLayout
-			)
-		);
-
-	// memory for image
-	auto allocateMemory =
-		[](App& app, vk::Image image, vk::MemoryPropertyFlags requiredFlags) -> vk::DeviceMemory{
-			vk::MemoryRequirements memoryRequirements = app.device.getImageMemoryRequirements(image);
-			vk::PhysicalDeviceMemoryProperties memoryProperties = app.instance.getPhysicalDeviceMemoryProperties(app.physicalDevice);
-			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-				if(memoryRequirements.memoryTypeBits & (1<<i))
-					if((memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags)
-						return
-							app.device.allocateMemory(
-								vk::MemoryAllocateInfo(
-									memoryRequirements.size,  // allocationSize
-									i                         // memoryTypeIndex
-								)
-							);
-			throw std::runtime_error("No suitable memory type found for image.");
-		};
-	colorImageMemory = allocateMemory(*this, colorImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
-	depthImageMemory = allocateMemory(*this, depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
-	idImageMemory    = allocateMemory(*this, idImage,    vk::MemoryPropertyFlagBits::eDeviceLocal);
-	device.bindImageMemory(
-		colorImage,        // image
-		colorImageMemory,  // memory
-		0                  // memoryOffset
-	);
-	device.bindImageMemory(
-		depthImage,        // image
-		depthImageMemory,  // memory
-		0                  // memoryOffset
-	);
-	device.bindImageMemory(
-		idImage,        // image
-		idImageMemory,  // memory
-		0               // memoryOffset
-	);
-
-	// image view
-	colorImageView =
-		device.createImageView(
-			vk::ImageViewCreateInfo(
-				vk::ImageViewCreateFlags(),  // flags
-				colorImage,                  // image
-				vk::ImageViewType::e2D,      // viewType
-				colorFormat,                 // format
-				vk::ComponentMapping(),      // components
-				vk::ImageSubresourceRange(   // subresourceRange
-					vk::ImageAspectFlagBits::eColor,  // aspectMask
-					0,  // baseMipLevel
-					1,  // levelCount
-					0,  // baseArrayLayer
-					1   // layerCount
-				)
-			)
-		);
-	depthImageView =
-		device.createImageView(
-			vk::ImageViewCreateInfo(
-				vk::ImageViewCreateFlags(),  // flags
-				depthImage,                  // image
-				vk::ImageViewType::e2D,      // viewType
-				depthFormat,                 // format
-				vk::ComponentMapping(),      // components
-				vk::ImageSubresourceRange(   // subresourceRange
-					vk::ImageAspectFlagBits::eDepth,  // aspectMask
-					0,  // baseMipLevel
-					1,  // levelCount
-					0,  // baseArrayLayer
-					1   // layerCount
-				)
-			)
-		);
-	idImageView =
-		device.createImageView(
-			vk::ImageViewCreateInfo(
-				vk::ImageViewCreateFlags(),  // flags
-				idImage  ,                   // image
-				vk::ImageViewType::e2D,      // viewType
-				vk::Format::eR32G32B32A32Uint,  // format, support of eR32G32B32A32Uint format is mandatory in Vulkan
-				vk::ComponentMapping(),      // components
-				vk::ImageSubresourceRange(   // subresourceRange
-					vk::ImageAspectFlagBits::eColor,  // aspectMask
-					0,  // baseMipLevel
-					1,  // levelCount
-					0,  // baseArrayLayer
-					1   // layerCount
-				)
-			)
-		);
-
-	// framebuffers
-	framebuffer =
-		device.createFramebuffer(
-			vk::FramebufferCreateInfo(
-				vk::FramebufferCreateFlags(),  // flags
-				renderPassList[uint32_t(renderingSetup)],  // renderPass
-				(renderingSetup == RenderingSetup::Picking) ? 3 : 2,  // attachmentCount
-				array<vk::ImageView, 3>{  // pAttachments
-					colorImageView,
-					depthImageView,
-					idImageView,
-				}.data(),
-				imageExtent.width,  // width
-				imageExtent.height,  // height
-				1  // layers
-			)
-		);
-
 	// create shader modules
 	vsModule =
 		device.createShaderModule(
@@ -1505,8 +751,10 @@ void App::init()
 		);
 
 	// pipeline layout
-	auto pipelineLayoutUnique =
-		device.createPipelineLayoutUnique(
+	// (pipeline will be supplied in resize() because we need to know framebuffer extent)
+	pipeline.init(
+		nullptr,  // pipeline
+		device.createPipelineLayout(  // pipelineLayout
 			vk::PipelineLayoutCreateInfo{
 				vk::PipelineLayoutCreateFlags(),  // flags
 				0,       // setLayoutCount
@@ -1525,6 +773,99 @@ void App::init()
 					},
 				}.data()
 			}
+		),
+		{}  // descriptorSetLayouts
+	);
+
+	// sceneDataAllocation
+	sceneDataAllocation.alloc(sizeof(SceneGpuData));
+
+	// command pool
+	commandPool =
+		device.createCommandPool(
+			vk::CommandPoolCreateInfo(
+				vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
+				graphicsQueueFamily            // queueFamilyIndex
+			)
+		);
+
+	// allocate command buffer
+	commandBuffer = std::move(
+		device.allocateCommandBuffers(
+			vk::CommandBufferAllocateInfo(
+				commandPool,                       // commandPool
+				vk::CommandBufferLevel::ePrimary,  // level
+				1                                  // commandBufferCount
+			)
+		)[0]);
+
+	// rendering semaphores and fences
+	imageAvailableSemaphore =
+		device.createSemaphore(
+			vk::SemaphoreCreateInfo(
+				vk::SemaphoreCreateFlags()  // flags
+			)
+		);
+	renderFinishedSemaphore =
+		device.createSemaphore(
+			vk::SemaphoreCreateInfo(
+				vk::SemaphoreCreateFlags()  // flags
+			)
+		);
+	renderFinishedFence =
+		device.createFence(
+			vk::FenceCreateInfo(
+				vk::FenceCreateFlagBits::eSignaled  // flags
+			)
+		);
+
+	// scene
+	stateSetRoot.pipeline = &pipeline;
+
+	// do resize
+	if(!useWindow)
+		resize({}, imageExtent);
+}
+
+
+void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newExtent)
+{
+	// clear resources
+	device.destroy(colorImage);
+	device.destroy(depthImage);
+	device.destroy(idImage);
+	for(auto v : colorImageViews)  device.destroy(v);
+	device.destroy(depthImageView);
+	device.destroy(idImageView);
+	device.free(colorImageMemory);
+	device.free(depthImageMemory);
+	device.free(idImageMemory);
+	for(auto f : framebuffers)  device.destroy(f);
+	colorImage = nullptr;
+	depthImage = nullptr;
+	idImage = nullptr;
+	colorImageViews.clear();
+	depthImageView = nullptr;
+	idImageView = nullptr;
+	colorImageMemory = nullptr;
+	depthImageMemory = nullptr;
+	idImageMemory = nullptr;
+	framebuffers.clear();
+
+	// projection and view matrix
+	// ZO - Zero to One is output depth range,
+	// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
+	// LH - Left Hand coordinate system, +Y is down, +Z points into the scene
+	constexpr float zNear = 0.5f;
+	constexpr float zFar = 100.f;
+	matrix.projection =
+		glm::orthoLH_ZO(
+			-float(newExtent.width) / 2.f,  // left
+			 float(newExtent.width) / 2.f,  // right
+			-float(newExtent.height) / 2.f,  // bottom
+			 float(newExtent.height) / 2.f,  // top
+			zNear,  // near
+			zFar  // far
 		);
 
 	// pipeline specialization constants
@@ -1547,7 +888,7 @@ void App::init()
 		specializationConstants.data()  // pData
 	);
 
-	// pipeline
+	// recreate pipeline
 	auto pipelineUnique =
 		device.createGraphicsPipelineUnique(
 			nullptr,  // pipelineCache
@@ -1597,11 +938,11 @@ void App::init()
 					vk::PipelineViewportStateCreateFlags(),  // flags
 					1,  // viewportCount
 					array{  // pViewports
-						vk::Viewport(0.f, 0.f, float(imageExtent.width), float(imageExtent.height), 0.f, 1.f),
+						vk::Viewport(0.f, 0.f, float(newExtent.width), float(newExtent.height), 0.f, 1.f),
 					}.data(),
 					1,  // scissorCount
 					array{  // pScissors
-						vk::Rect2D(vk::Offset2D(0,0), imageExtent)
+						vk::Rect2D({0, 0}, newExtent)
 					}.data(),
 				},
 
@@ -1609,7 +950,7 @@ void App::init()
 				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
 					vk::PipelineRasterizationStateCreateFlags(),  // flags
 					VK_FALSE,  // depthClampEnable
-					VK_FALSE,  // rasterizerDiscardEnable
+					rasterizerDiscard ? VK_TRUE : VK_FALSE,  // rasterizerDiscardEnable
 					vk::PolygonMode::eFill,  // polygonMode
 					vk::CullModeFlagBits::eNone,  // cullMode
 					vk::FrontFace::eCounterClockwise,  // frontFace
@@ -1679,115 +1020,340 @@ void App::init()
 				},
 
 				nullptr,  // pDynamicState
-				pipelineLayoutUnique.get(),  // layout
+				pipeline.layout(),  // layout
 				renderPassList[uint32_t(renderingSetup)],  // renderPass
 				0,  // subpass
 				vk::Pipeline(nullptr),  // basePipelineHandle
 				-1 // basePipelineIndex
 			)
 		);
-	pipeline.init(pipelineUnique.release(), pipelineLayoutUnique.release(), nullptr);
+	pipeline.destroyPipeline();
+	pipeline.set(pipelineUnique.release());
 
-	// _sceneDataAllocation
-	sceneDataAllocation.alloc(sizeof(SceneGpuData));
+	if(useWindow) {
 
-	// command pool
-	commandPool =
-		device.createCommandPool(
-			vk::CommandPoolCreateInfo(
-				vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
-				graphicsQueueFamily            // queueFamilyIndex
+		// print info
+		cout << "Recreating swapchain (extent: " << newExtent.width << "x" << newExtent.height
+		     << ", extent by surfaceCapabilities: " << surfaceCapabilities.currentExtent.width << "x"
+		     << surfaceCapabilities.currentExtent.height << ", minImageCount: " << surfaceCapabilities.minImageCount
+		     << ", maxImageCount: " << surfaceCapabilities.maxImageCount << ")" << endl;
+
+		// create new swapchain
+		constexpr const uint32_t requestedImageCount = 2;
+		vk::UniqueHandle<vk::SwapchainKHR, CadR::VulkanDevice> newSwapchain =
+			device.createSwapchainKHRUnique(
+				vk::SwapchainCreateInfoKHR(
+					vk::SwapchainCreateFlagsKHR(),  // flags
+					window.surface(),               // surface
+					surfaceCapabilities.maxImageCount==0  // minImageCount
+						? max(requestedImageCount, surfaceCapabilities.minImageCount)
+						: clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
+					colorFormat,                    // imageFormat
+					colorSpace,                     // imageColorSpace
+					newExtent,                      // imageExtent
+					1,                              // imageArrayLayers
+					vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+					(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
+					uint32_t(2),  // queueFamilyIndexCount
+					array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+					surfaceCapabilities.currentTransform,    // preTransform
+					vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+					vk::PresentModeKHR::eFifo,  // presentMode
+					VK_TRUE,  // clipped
+					swapchain  // oldSwapchain
+				)
+			);
+		device.destroy(swapchain);
+		swapchain = newSwapchain.release();
+
+		// swapchain images and image views
+		vector<vk::Image> swapchainImages = device.getSwapchainImagesKHR(swapchain);
+		colorImageViews.reserve(swapchainImages.size());
+		for(vk::Image image : swapchainImages)
+			colorImageViews.emplace_back(
+				device.createImageView(
+					vk::ImageViewCreateInfo(
+						vk::ImageViewCreateFlags(),  // flags
+						image,                       // image
+						vk::ImageViewType::e2D,      // viewType
+						colorFormat,                 // format
+						vk::ComponentMapping(),      // components
+						vk::ImageSubresourceRange(   // subresourceRange
+							vk::ImageAspectFlagBits::eColor,  // aspectMask
+							0,  // baseMipLevel
+							1,  // levelCount
+							0,  // baseArrayLayer
+							1   // layerCount
+						)
+					)
+				)
+			);
+
+	} else {
+
+		colorImage =
+			device.createImage(
+				vk::ImageCreateInfo(
+					vk::ImageCreateFlags(),       // flags
+					vk::ImageType::e2D,           // imageType
+					colorFormat,                  // format
+					vk::Extent3D(newExtent, 1),   // extent
+					1,                            // mipLevels
+					1,                            // arrayLayers
+					vk::SampleCountFlagBits::e1,  // samples
+					vk::ImageTiling::eOptimal,    // tiling
+					vk::ImageUsageFlagBits::eColorAttachment,  // usage
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr,                      // pQueueFamilyIndices
+					vk::ImageLayout::eUndefined   // initialLayout
+				)
+			);
+
+	}
+
+	// depth image
+	depthImage =
+		device.createImage(
+			vk::ImageCreateInfo(
+				vk::ImageCreateFlags(),  // flags
+				vk::ImageType::e2D,      // imageType
+				depthFormat,             // format
+				vk::Extent3D(newExtent, 1),  // extent
+				1,                       // mipLevels
+				1,                       // arrayLayers
+				vk::SampleCountFlagBits::e1,  // samples
+				vk::ImageTiling::eOptimal,    // tiling
+				vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr,                      // pQueueFamilyIndices
+				vk::ImageLayout::eUndefined   // initialLayout
 			)
 		);
 
-	// allocate command buffer
-	commandBuffer = std::move(
-		device.allocateCommandBuffers(
-			vk::CommandBufferAllocateInfo(
-				commandPool,                       // commandPool
-				vk::CommandBufferLevel::ePrimary,  // level
-				1                                  // commandBufferCount
+	// id image
+	idImage =
+		device.createImage(
+			vk::ImageCreateInfo(
+				vk::ImageCreateFlags(),  // flags
+				vk::ImageType::e2D,      // imageType
+				vk::Format::eR32G32B32A32Uint,  // format, support of eR32G32B32A32Uint format is mandatory in Vulkan
+				vk::Extent3D(newExtent, 1),  // extent
+				1,                       // mipLevels
+				1,                       // arrayLayers
+				vk::SampleCountFlagBits::e1,  // samples
+				vk::ImageTiling::eOptimal,    // tiling
+				vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,  // usage
+				vk::SharingMode::eExclusive,  // sharingMode
+				0,                            // queueFamilyIndexCount
+				nullptr,                      // pQueueFamilyIndices
+				vk::ImageLayout::eUndefined   // initialLayout
 			)
-		)[0]);
-
-	// fence
-	renderingFinishedFence =
-		device.createFence(
-			vk::FenceCreateInfo{
-				vk::FenceCreateFlags()  // flags
-			}
 		);
 
-	// scene
-	stateSetRoot.pipeline = &pipeline;
-	switch(testType) {
-	case TestType::TrianglePerformance:
-	case TestType::TriangleStripPerformance:
-	case TestType::DrawablePerformance:
-	case TestType::PrimitiveSetPerformance:
-	case TestType::BakedBoxesPerformance:
-	case TestType::InstancedBoxesPerformance:
-	case TestType::IndependentBoxesPerformance:
-		generateInvisibleTriangleScene(glm::vec2(imageExtent.width, imageExtent.height), requestedNumTriangles, testType);
-		break;
-	case TestType::BakedBoxesScene: {
-		float maxSize = float(min(imageExtent.width, imageExtent.height)) * 0.9f;
-		generateBakedBoxesScene(
-			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f));  // boxSize
-		break;
-	}
-	case TestType::InstancedBoxesScene: {
-		float maxSize = float(min(imageExtent.width, imageExtent.height)) * 0.9f;
-		generateBoxesScene(
-			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
-			true,  // instanced
-			true);  // singleGeometry
-		break;
-	}
-	case TestType::IndependentBoxesScene: {
-		float maxSize = float(min(imageExtent.width, imageExtent.height)) * 0.9f;
-		generateBoxesScene(
-			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
-			false,  // instanced
-			false);  // singleGeometry
-		break;
-	}
-	default: break;
-	};
+	// memory for images
+	vk::PhysicalDeviceMemoryProperties memoryProperties = instance.getPhysicalDeviceMemoryProperties(physicalDevice);
+	auto allocateMemory =
+		[](CadR::VulkanDevice& device, vk::Image image, vk::MemoryPropertyFlags requiredFlags,
+		   const vk::PhysicalDeviceMemoryProperties& memoryProperties) -> vk::DeviceMemory
+		{
+			vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(image);
+			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+				if(memoryRequirements.memoryTypeBits & (1<<i))
+					if((memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags)
+						return
+							device.allocateMemory(
+								vk::MemoryAllocateInfo(
+									memoryRequirements.size,  // allocationSize
+									i                         // memoryTypeIndex
+								)
+							);
+			throw std::runtime_error("No suitable memory type found for the image.");
+		};
+	if(!useWindow)
+		colorImageMemory = allocateMemory(device, colorImage, vk::MemoryPropertyFlagBits::eDeviceLocal, memoryProperties);
+	depthImageMemory = allocateMemory(device, depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal, memoryProperties);
+	idImageMemory    = allocateMemory(device, idImage,    vk::MemoryPropertyFlagBits::eDeviceLocal, memoryProperties);
+	if(!useWindow)
+		device.bindImageMemory(
+			colorImage,        // image
+			colorImageMemory,  // memory
+			0                  // memoryOffset
+		);
+	device.bindImageMemory(
+		depthImage,        // image
+		depthImageMemory,  // memory
+		0                  // memoryOffset
+	);
+	device.bindImageMemory(
+		idImage,        // image
+		idImageMemory,  // memory
+		0               // memoryOffset
+	);
+
+	// image views
+	if(!useWindow)
+		colorImageViews.push_back(
+			device.createImageView(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					colorImage,                  // image
+					vk::ImageViewType::e2D,      // viewType
+					colorFormat,                 // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			)
+		);
+	depthImageView =
+		device.createImageView(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),  // flags
+				depthImage,                  // image
+				vk::ImageViewType::e2D,      // viewType
+				depthFormat,                 // format
+				vk::ComponentMapping(),      // components
+				vk::ImageSubresourceRange(   // subresourceRange
+					vk::ImageAspectFlagBits::eDepth,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				)
+			)
+		);
+	idImageView =
+		device.createImageView(
+			vk::ImageViewCreateInfo(
+				vk::ImageViewCreateFlags(),  // flags
+				idImage,                     // image
+				vk::ImageViewType::e2D,      // viewType
+				vk::Format::eR32G32B32A32Uint,  // format, support of eR32G32B32A32Uint format is mandatory in Vulkan
+				vk::ComponentMapping(),      // components
+				vk::ImageSubresourceRange(   // subresourceRange
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1   // layerCount
+				)
+			)
+		);
+
+	// framebuffers
+	framebuffers.reserve(colorImageViews.size());
+	for(size_t i=0, c=colorImageViews.size(); i<c; i++)
+		framebuffers.emplace_back(
+			device.createFramebuffer(
+				vk::FramebufferCreateInfo(
+					vk::FramebufferCreateFlags(),  // flags
+					renderPassList[uint32_t(renderingSetup)],  // renderPass
+					(renderingSetup == RenderingSetup::Picking) ? 3 : 2,  // attachmentCount
+					array<vk::ImageView, 3>{  // pAttachments
+						colorImageViews[i],
+						depthImageView,
+						idImageView,
+					}.data(),
+					newExtent.width,  // width
+					newExtent.height,  // height
+					1  // layers
+				)
+			)
+		);
+
+	// create new test scene
+	drawableList.clear();
+	geometryList.clear();
+	createTestScene(testType, int(newExtent.width), int(newExtent.height),
+		renderer, stateSetRoot, geometryList, drawableList);
+
+	// update image size
+	imageExtent = newExtent;
 }
 
 
-void App::frame(bool collectInfo)
+void App::frame()
 {
-	// begin the frame
-	renderer.setCollectFrameInfo(collectInfo, calibratedTimestampsSupported);
+	// wait for previous frame rendering work
+	// if still not finished
+	// (we might start copy operations before, but we need to exclude TableHandles that must stay intact
+	// until the rendering is finished)
+	vk::Result r =
+		device.waitForFences(
+			renderFinishedFence,  // fences (vk::ArrayProxy)
+			VK_TRUE,       // waitAll
+			uint64_t(3e9)  // timeout (3s)
+		);
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eTimeout)
+			throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+		throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+	}
+	device.resetFences(renderFinishedFence);
+
+	// collect previous frame info
+	frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+
+	// view matrix
+	// (set it to identity for even frames and shift it by 1 in X direction for odd frames)
+	float x = (renderer.frameNumber() & 0x01) ? 0.f : 1.f;
+	matrix.view =
+		glm::lookAtLH(
+			glm::vec3(x,0,-50),  // eye
+			glm::vec3(x,0,0),  // center
+			glm::vec3(0,-1,0));  // up
+
+	// begin new frame
 	renderer.beginFrame();
-
-	// submit all copy operations that were not submitted yet
-	renderer.executeCopyOperations();
-
-	// begin command buffer recording
-	renderer.beginRecording(commandBuffer);
 
 	// update SceneGpuData
 	CadR::StagingData stagingSceneData = sceneDataAllocation.createStagingData();
 	SceneGpuData* sceneData = stagingSceneData.data<SceneGpuData>();
 	assert(sizeof(SceneGpuData) == sceneDataAllocation.size());
-	//sceneData->projectionMatrix = projectionMatrix;
 	sceneData->viewMatrix = matrix.view;
 	sceneData->p11 = matrix.projection[0][0];
 	sceneData->p22 = matrix.projection[1][1];
 	sceneData->p33 = matrix.projection[2][2];
 	sceneData->p43 = matrix.projection[3][2];
+
+	// submit all copy operations that were not submitted yet
+	renderer.executeCopyOperations();
+
+	// acquire image
+	uint32_t imageIndex;
+	if(!useWindow)
+		imageIndex = 0;
+	else {
+		r =
+			device.acquireNextImageKHR(
+				swapchain,                // swapchain
+				uint64_t(3e9),            // timeout (3s)
+				imageAvailableSemaphore,  // semaphore to signal
+				vk::Fence(nullptr),       // fence to signal
+				&imageIndex               // pImageIndex
+			);
+		if(r != vk::Result::eSuccess) {
+			renderer.endFrame();
+			if(r == vk::Result::eSuboptimalKHR) {
+				window.scheduleResize();
+				return;
+			} else if(r == vk::Result::eErrorOutOfDateKHR) {
+				window.scheduleResize();
+				return;
+			} else
+				throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
+		}
+	}
+
+	// begin command buffer recording
+	renderer.beginRecording(commandBuffer);
 
 	// prepare recording
 	numStateSets = 1;  // value zero reserved for no container
@@ -1830,7 +1396,7 @@ void App::frame(bool collectInfo)
 		commandBuffer,  // commandBuffer
 		stateSetRoot,  // stateSetRoot
 		renderPassList[uint32_t(renderingSetup)],  // renderPass
-		framebuffer,  // framebuffer
+		framebuffers[imageIndex],  // framebuffer
 		vk::Rect2D(vk::Offset2D(0, 0), imageExtent),  // renderArea
 		(renderingSetup == RenderingSetup::Picking) ? 3u : 2u,  // clearValueCount
 		array<vk::ClearValue, 3>{  // pClearValues
@@ -1846,48 +1412,108 @@ void App::frame(bool collectInfo)
 	// submit all pending copy operations
 	renderer.executeCopyOperations();
 
-	// render
-	device.queueSubmit(
-		graphicsQueue,  // queue
-		vk::SubmitInfo(
-			0, nullptr, nullptr,  // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
-			1, &commandBuffer,    // commandBufferCount+pCommandBuffers
-			0, nullptr            // signalSemaphoreCount, pSignalSemaphores
-		),
-		renderingFinishedFence  // fence
-	);
+	if(!useWindow) {
+
+		// render
+		device.queueSubmit(
+			graphicsQueue,  // queue
+			vk::SubmitInfo(
+				0, nullptr, nullptr,  // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
+				1, &commandBuffer,    // commandBufferCount+pCommandBuffers
+				0, nullptr            // signalSemaphoreCount, pSignalSemaphores
+			),
+			renderFinishedFence  // fence
+		);
+
+	}
+	else {
+
+		// submit frame
+		device.queueSubmit(
+			graphicsQueue,  // queue
+			vk::SubmitInfo(
+				1, &imageAvailableSemaphore,  // waitSemaphoreCount + pWaitSemaphores +
+				&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
+					vk::PipelineStageFlagBits::eColorAttachmentOutput),
+				1, &commandBuffer,  // commandBufferCount + pCommandBuffers
+				1, &renderFinishedSemaphore  // signalSemaphoreCount + pSignalSemaphores
+			),
+			renderFinishedFence  // fence
+		);
+
+		// present
+		r =
+			device.presentKHR(
+				presentationQueue,  // queue
+				&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(  // presentInfo
+					1, &renderFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
+					1, &swapchain, &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+					nullptr  // pResults
+				)
+			);
+		if(r != vk::Result::eSuccess) {
+			if(r == vk::Result::eSuboptimalKHR) {
+				window.scheduleResize();
+				cout << "present result: Suboptimal" << endl;
+			} else if(r == vk::Result::eErrorOutOfDateKHR) {
+				window.scheduleResize();
+				cout << "present error: OutOfDate" << endl;
+			} else
+				throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
+		}
+
+	}
 
 	// mark the end of the frame
 	renderer.endFrame();
-
-	// wait for the work
-	vk::Result r = device.waitForFences(
-		renderingFinishedFence,  // fences (vk::ArrayProxy)
-		VK_TRUE,       // waitAll
-		uint64_t(3e9)  // timeout (3s)
-	);
-	if(r == vk::Result::eTimeout)
-		throw std::runtime_error("GPU timeout. Task is probably hanging.");
-	device.resetFences(renderingFinishedFence);
 }
 
 
 void App::mainLoop()
 {
-	chrono::steady_clock::duration testTime = longTest ? longTestDuration : shortTestDuration;
-	chrono::steady_clock::time_point startTime = chrono::steady_clock::now();
-	chrono::steady_clock::time_point finishTime = startTime + testTime;
-	chrono::steady_clock::time_point t;
+	if(!useWindow) {
 
-	do{
-		frame(true);
+		chrono::steady_clock::duration testTime = longTest ? longTestDuration : shortTestDuration;
+		chrono::steady_clock::time_point startTime = chrono::steady_clock::now();
+		chrono::steady_clock::time_point finishTime = startTime + testTime;
+		chrono::steady_clock::time_point t;
+
+		do {
+			frame();
+		} while(chrono::steady_clock::now() < finishTime);
+
+		device.waitIdle();
+		realTestTime = chrono::steady_clock::now() - startTime;
 		frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
-		t = chrono::steady_clock::now();
-	}while(t < finishTime);
-	realTestTime = t - startTime;
 
-	device.waitIdle();
-	frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+	}
+	else {
+
+		window.show();
+
+		chrono::steady_clock::duration testTime = longTest ? longTestDuration : shortTestDuration;
+		chrono::steady_clock::time_point startTime = chrono::steady_clock::now();
+		chrono::steady_clock::time_point finishTime = startTime + testTime;
+
+		window.setFrameCallback(
+			bind(
+				[](App& app, chrono::steady_clock::time_point finishTime){
+					app.frame();
+					if(chrono::steady_clock::now() < finishTime)
+						app.window.scheduleFrame();
+					else
+						VulkanWindow::exitMainLoop();
+				},
+				ref(*this),
+				finishTime
+			)
+		);
+		VulkanWindow::mainLoop();
+
+		device.waitIdle();
+		realTestTime = chrono::steady_clock::now() - startTime;
+		frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+	}
 }
 
 
@@ -2018,25 +1644,21 @@ void App::printResults()
 }
 
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+try {
 
-	try {
+	App app(argc, argv);
+	app.init();
+	app.mainLoop();
+	app.printResults();
 
-		App app(argc, argv);
-		app.init();
-		app.mainLoop();
-		app.printResults();
-
-	// catch exceptions
-	} catch(CadR::Error &e) {
-		cout<<"Failed because of CadR exception: "<<e.what()<<endl;
-	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
-	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
-	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
-	}
-
-	return 0;
+// catch exceptions
+} catch(CadR::Error &e) {
+	cout<<"Failed because of CadR exception: "<<e.what()<<endl;
+} catch(vk::Error &e) {
+	cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
+} catch(exception &e) {
+	cout<<"Failed because of exception: "<<e.what()<<endl;
+} catch(...) {
+	cout<<"Failed because of unspecified exception."<<endl;
 }
