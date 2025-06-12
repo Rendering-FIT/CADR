@@ -2613,7 +2613,7 @@ void App::frame(VulkanWindow&)
 	CadR::StagingData sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
 	SceneGpuData* sceneData = sceneStagingData.data<SceneGpuData>();
 	sceneData->viewMatrix =
-		glm::lookAtLH(  // 0,0,+5 is produced inside translation part of viewMatrix
+		glm::lookAtLH(
 			sceneBoundingSphere.center + glm::vec3(  // eye
 				+cameraDistance*sin(-cameraHeading)*cos(cameraElevation),  // x
 				-cameraDistance*sin(cameraElevation),  // y
@@ -2884,63 +2884,61 @@ vk::Format getFormat(int componentType,const string& type,bool normalize,bool wa
 
 
 int main(int argc, char* argv[])
-{
-	try {
+try {
 
-		// set console code page to utf-8 to print non-ASCII characters correctly
+	// set console code page to utf-8 to print non-ASCII characters correctly
 #ifdef _WIN32
-		if(!SetConsoleOutputCP(CP_UTF8))
-			cout << "Failed to set console code page to utf-8." << endl;
+	if(!SetConsoleOutputCP(CP_UTF8))
+		cout << "Failed to set console code page to utf-8." << endl;
 #endif
 
-		App app(argc, argv);
-		app.init();
-		app.window.setResizeCallback(
-			bind(
-				&App::resize,
-				&app,
-				placeholders::_1,
-				placeholders::_2,
-				placeholders::_3
-			)
-		);
-		app.window.setFrameCallback(
-			bind(&App::frame, &app, placeholders::_1)
-		);
-		app.window.setMouseMoveCallback(
-			bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2)
-		);
-		app.window.setMouseButtonCallback(
-			bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4)
-		);
-		app.window.setMouseWheelCallback(
-			bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4)
-		);
+	// init application
+	App app(argc, argv);
+	app.init();
+	app.window.setResizeCallback(
+		bind(
+			&App::resize,
+			&app,
+			placeholders::_1,
+			placeholders::_2,
+			placeholders::_3
+		)
+	);
+	app.window.setFrameCallback(
+		bind(&App::frame, &app, placeholders::_1)
+	);
+	app.window.setMouseMoveCallback(
+		bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2)
+	);
+	app.window.setMouseButtonCallback(
+		bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4)
+	);
+	app.window.setMouseWheelCallback(
+		bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4)
+	);
 
-		// show window and run main loop
-		app.window.show();
-		VulkanWindow::mainLoop();
+	// show window and run main loop
+	app.window.show();
+	VulkanWindow::mainLoop();
 
-		// finish all pending work on device
-		app.device.waitIdle();
-
-	// catch exceptions
-	} catch(CadR::Error &e) {
-		cout << "Failed because of CadR exception: " << e.what() << endl;
-		return 9;
-	} catch(vk::Error &e) {
-		cout << "Failed because of Vulkan exception: " << e.what() << endl;
-		return 9;
-	} catch(ExitWithMessage &e) {
-		cout << e.what() << endl;
-		return e.exitCode();
-	} catch(exception &e) {
-		cout << "Failed because of exception: " << e.what() << endl;
-		return 9;
-	} catch(...) {
-		cout << "Failed because of unspecified exception." << endl;
-		return 9;
-	}
-
+	// finish all pending work on device
+	app.device.waitIdle();
 	return 0;
+
+// catch exceptions
+} catch(CadR::Error &e) {
+	cout << "Failed because of CadR exception: " << e.what() << endl;
+	return 9;
+} catch(vk::Error &e) {
+	cout << "Failed because of Vulkan exception: " << e.what() << endl;
+	return 9;
+} catch(ExitWithMessage &e) {
+	cout << e.what() << endl;
+	return e.exitCode();
+} catch(exception &e) {
+	cout << "Failed because of exception: " << e.what() << endl;
+	return 9;
+} catch(...) {
+	cout << "Failed because of unspecified exception." << endl;
+	return 9;
 }

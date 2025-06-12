@@ -140,13 +140,10 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		// filter devices by supported operations and presentation support
 		for(vk::PhysicalDevice pd : deviceList)
 		{
-			// filter out devices
+			// callback to filter out devices
 			if(filterCallback)
-			{
-				// callback to filter out devices
 				if(filterCallback(*this, pd) == false)
 					continue;
-			}
 
 			// skip devices without VK_KHR_swapchain
 			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
