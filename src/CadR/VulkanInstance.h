@@ -88,6 +88,8 @@ public:
 	inline void getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceFeatures2* pFeatures) const  { physicalDevice.getFeatures2(pFeatures,*this); }
 	inline vk::Result getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,uint32_t* pTimeDomainCount,vk::TimeDomainEXT* pTimeDomains) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(pTimeDomainCount,pTimeDomains,*this); }
 
+	inline vk::Result getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, uint32_t *pPresentModeCount, vk::PresentModeKHR* pPresentModes) const;
+
 #ifndef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline void destroy(vk::Optional<const vk::AllocationCallbacks> allocator) const noexcept  { _instance.destroy(allocator,*this); }
 	inline vk::ResultValueType<vk::Device>::type createDevice(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return physicalDevice.createDevice(createInfo,allocator,*this); }
@@ -137,6 +139,11 @@ public:
 	template<typename Allocator=std::allocator<vk::TimeDomainEXT>>
 	inline typename vk::ResultValueType<std::vector<vk::TimeDomainEXT,Allocator>>::type getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(*this); }
 # endif
+
+	template <typename VectorAllocator = std::allocator<vk::PresentModeKHR>>
+	inline typename std::vector<vk::PresentModeKHR, VectorAllocator> getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface) const;
+	template <typename VectorAllocator = std::allocator<vk::PresentModeKHR>>
+	inline typename std::vector<vk::PresentModeKHR, VectorAllocator> getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, VectorAllocator& vectorAllocator) const;
 #endif
 
 #ifndef VULKAN_HPP_NO_SMART_HANDLE
@@ -226,6 +233,53 @@ inline bool VulkanInstance::supportsVersion(uint32_t version) const  { return _v
 inline bool VulkanInstance::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version >= VK_MAKE_VERSION(major,minor,patch); }
 inline vk::Instance VulkanInstance::get() const  { return _instance; }
 inline void VulkanInstance::set(nullptr_t)  { _instance = nullptr; }
+
+inline vk::Result VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, uint32_t *pPresentModeCount, vk::PresentModeKHR* pPresentModes) const  { return static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, pPresentModeCount, reinterpret_cast<VkPresentModeKHR*>(pPresentModes))); }
+
+#ifndef VULKAN_HPP_DISABLE_ENHANCED_MODE
+template <typename VectorAllocator>
+inline typename std::vector<vk::PresentModeKHR, VectorAllocator>
+VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface) const
+{
+	std::vector<vk::PresentModeKHR, VectorAllocator> presentModes;
+	uint32_t presentModeCount;
+	vk::Result r;
+	do {
+		r = static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr));
+		if((r == vk::Result::eSuccess) && presentModeCount != 0)
+		{
+			presentModes.resize(presentModeCount);
+			r = static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, reinterpret_cast<VkPresentModeKHR*>(presentModes.data())));
+		}
+	} while(r == vk::Result::eIncomplete);
+	vk::resultCheck(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	if(presentModeCount < presentModes.size())
+		presentModes.resize(presentModeCount);
+	return vk::createResultValueType(r, std::move(presentModes));
+}
+
+template <typename VectorAllocator>
+inline typename std::vector<vk::PresentModeKHR, VectorAllocator>
+VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, VectorAllocator& vectorAllocator) const
+{
+	std::vector<vk::PresentModeKHR, VectorAllocator> presentModes(vectorAllocator);
+	uint32_t presentModeCount;
+	vk::Result r;
+	do {
+		r = static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr));
+		if((r == vk::Result::eSuccess) && presentModeCount != 0)
+		{
+			presentModes.resize(presentModeCount);
+			r = static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, reinterpret_cast<VkPresentModeKHR*>(presentModes.data())));
+		}
+	} while(r == vk::Result::eIncomplete);
+	vk::resultCheck(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	if(presentModeCount < presentModes.size())
+		presentModes.resize(presentModeCount);
+	return vk::createResultValueType(r, std::move(presentModes));
+}
+
+#endif /* VULKAN_HPP_DISABLE_ENHANCED_MODE */
 
 
 }

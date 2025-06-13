@@ -125,6 +125,7 @@ public:
 	vk::Format colorFormat = vk::Format::eR8G8B8A8Srgb;
 	vk::Format depthFormat = vk::Format::eUndefined;
 	glm::vec4 backgroundColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
+	vk::PresentModeKHR presentationMode = vk::PresentModeKHR::eFifo;
 	list<FrameInfo> frameInfoList;
 	chrono::steady_clock::duration realTestTime;
 	uint32_t numStateSets;
@@ -222,7 +223,7 @@ App::App(int argc, char** argv)
 			}
 
 			// select rendering setup
-			if(strcmp(argv[i], "-r") == 0 || strncmp(argv[i], "--rendering-setup=", 18) == 0)
+			else if(strcmp(argv[i], "-r") == 0 || strncmp(argv[i], "--rendering-setup=", 18) == 0)
 			{
 				const char* start;
 				if(argv[i][1] == 'r') {
@@ -248,11 +249,11 @@ App::App(int argc, char** argv)
 			}
 
 			// process simple options
-			if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--long") == 0)
+			else if(strcmp(argv[i], "-l") == 0 || strcmp(argv[i], "--long") == 0)
 				longTest = true;
-			if(strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--window") == 0)
+			else if(strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--window") == 0)
 				useWindow = true;
-			if(strncmp(argv[i], "-s=", 3) == 0 || strncmp(argv[i], "--size=", 7) == 0) {
+			else if(strncmp(argv[i], "-s=", 3) == 0 || strncmp(argv[i], "--size=", 7) == 0) {
 				char* endp = nullptr;
 				char* startp = &argv[i][argv[i][2]=='=' ? 3 : 7];
 				imageExtent.width = strtoul(startp, &endp, 10);
@@ -265,13 +266,16 @@ App::App(int argc, char** argv)
 						printHelp = true;
 				}
 			}
-			if(strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--rasterizer-discard") == 0)
+			else if(strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--rasterizer-discard") == 0)
 				rasterizerDiscard = true;
-			if(strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--print-frame-times") == 0)
+			else if(strcmp(argv[i], "-p") == 0 || strcmp(argv[i], "--print-frame-times") == 0)
 				printFrameTimes = true;
-			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+			else if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+				printHelp = true;
+			else
 				printHelp = true;
 		}
+
 		// parse whatever does not start with '-'
 		else {
 			// parse numbers
@@ -375,7 +379,7 @@ App::App(int argc, char** argv)
 		        chrono::duration<unsigned>(longTestDuration).count() << " seconds\n"
 		        "        and short test " << setprecision(2) <<
 		        chrono::duration<float>(shortTestDuration).count() <<" seconds\n"
-		        "   -w[=wxh] or --window[=wxh] - perform rendering into the window\n"
+		        "   -w or --window - perform rendering into the window\n"
 		        "      instead of offscreen\n"
 		        "   -s=wxh or --size=wxh - width and height of the framebuffer\n"
 		        "   -d or --rasterizer-discard - discards primitives in the rasterizer\n"
@@ -618,6 +622,16 @@ void App::init()
 			}
 			throw std::runtime_error("RI Vulkan error: No suitable depth buffer format.");
 		}(*this);
+
+	// present mode
+	if(useWindow) {
+		vector<vk::PresentModeKHR> presentModes =
+			instance.getPhysicalDeviceSurfacePresentModesKHR(physicalDevice, window.surface());
+		if(find(presentModes.begin(), presentModes.end(), vk::PresentModeKHR::eMailbox) != presentModes.end())
+			presentationMode = vk::PresentModeKHR::eMailbox;
+		else if(find(presentModes.begin(), presentModes.end(), vk::PresentModeKHR::eImmediate) != presentModes.end())
+			presentationMode = vk::PresentModeKHR::eImmediate;
+	}
 
 	// render passes
 	auto createRenderPass =
@@ -896,7 +910,7 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 				vk::PipelineCreateFlags(),  // flags
 
 				// shader stages
-				2,  // stageCount
+				(rasterizerDiscard) ? 1 : 2,  // stageCount
 				array{  // pStages
 					vk::PipelineShaderStageCreateInfo{
 						vk::PipelineShaderStageCreateFlags(),  // flags
@@ -1058,7 +1072,7 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 					array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
 					surfaceCapabilities.currentTransform,    // preTransform
 					vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
-					vk::PresentModeKHR::eFifo,  // presentMode
+					presentationMode,  // presentMode
 					VK_TRUE,  // clipped
 					swapchain  // oldSwapchain
 				)
@@ -1603,7 +1617,11 @@ void App::printResults()
 		std::nth_element(v.begin(), v.begin() + l.size() / 2, v.end());
 		return v[l.size() / 2];
 	};
-	cout << "      Performance: " << size_t(double(requestedNumTriangles) / median(frameTimeList, [](FrameTimeInfo& i) { return i.totalTime; }) / 1e6) << " Mtri/s" << endl;
+	double performance = double(requestedNumTriangles) / median(frameTimeList, [](FrameTimeInfo& i) { return i.totalTime; });
+	if(performance <= 1e9)
+		cout << "      Performance: " << size_t(performance / 1e6 + 0.5) << " MTri/s" << endl;
+	else
+		cout << "      Performance: " << fixed << setprecision(2) << performance / 1e9 << " GTri/s" << endl;
 	cout << fixed << setprecision(3);
 	cout << "      Total time:  " << median(frameTimeList, [](FrameTimeInfo& i) { return i.totalTime; }) * 1000 << "ms" << endl;
 	cout << "      Cpu time:    " << median(frameTimeList, [](FrameTimeInfo& i) { return i.cpuTime; }) * 1000 << "ms" << endl;
