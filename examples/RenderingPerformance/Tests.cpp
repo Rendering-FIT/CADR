@@ -737,9 +737,9 @@ void createTestScene(
 		float maxSize = float(min(imageWidth, imageHeight)) * 0.9f;
 		generateBoxesScene(
 			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			glm::vec3(0.f, 0.f, 0.f),  // center
+			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
+			glm::vec3(maxSize / 200.f),  // boxSize
 			true,  // instanced
 			true,  // singleGeometry
 			1,  // numMaterials
@@ -754,9 +754,9 @@ void createTestScene(
 		float maxSize = float(min(imageWidth, imageHeight)) * 0.9f;
 		generateBoxesScene(
 			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			glm::vec3(0.f, 0.f, 0.f),  // center
+			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
+			glm::vec3(maxSize / 200.f),  // boxSize
 			false,  // instanced
 			false,  // singleGeometry
 			1,  // numMaterials
@@ -771,9 +771,9 @@ void createTestScene(
 		float maxSize = float(min(imageWidth, imageHeight)) * 0.9f;
 		generateBoxesScene(
 			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			glm::vec3(0.f, 0.f, 0.f),  // center
+			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
+			glm::vec3(maxSize / 200.f),  // boxSize
 			false,  // instanced
 			false,  // singleGeometry
 			1000,  // numMaterials
@@ -788,9 +788,9 @@ void createTestScene(
 		float maxSize = float(min(imageWidth, imageHeight)) * 0.9f;
 		generateBoxesScene(
 			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			glm::vec3(0.f, 0.f, 0.f),  // center
+			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
+			glm::vec3(maxSize / 200.f),  // boxSize
 			false,  // instanced
 			false,  // singleGeometry
 			1000000,  // numMaterials
@@ -805,9 +805,9 @@ void createTestScene(
 		float maxSize = float(min(imageWidth, imageHeight)) * 0.9f;
 		generateBoxesScene(
 			glm::uvec3(100, 100, 100),  // numBoxes
-			glm::vec3(maxSize / 2.f),  // center
-			glm::vec3(2.f, 2.f, 2.f),  // boxToBoxDistance
-			glm::vec3(1.f, 1.f, 1.f),  // boxSize
+			glm::vec3(0.f, 0.f, 0.f),  // center
+			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
+			glm::vec3(maxSize / 200.f),  // boxSize
 			false,  // instanced
 			false,  // singleGeometry
 			1,  // numMaterials

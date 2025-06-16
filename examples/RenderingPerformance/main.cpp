@@ -216,6 +216,18 @@ App::App(int argc, char** argv)
 					testType = TestType::IndependentBoxesScene;
 					requestedNumTriangles = size_t(12 * 1e6);
 				}
+				else if(strcmp(start, "IndependentBoxes1000MaterialsScene") == 0) {
+					testType = TestType::IndependentBoxes1000MaterialsScene;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
+				else if(strcmp(start, "IndependentBoxes1000000MaterialsScene") == 0) {
+					testType = TestType::IndependentBoxes1000000MaterialsScene;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
+				else if(strcmp(start, "IndependentBoxesShowHideScene") == 0) {
+					testType = TestType::IndependentBoxesShowHideScene;
+					requestedNumTriangles = size_t(12 * 1e6);
+				}
 				else {
 					cout << "Invalid test type \"" << start << "\"." << endl;
 					printHelp = true;
@@ -367,6 +379,16 @@ App::App(int argc, char** argv)
 		        "                               inbetween pixel sampling locations\n"
 		        "         IndependentBoxesScene - screen visible boxes; each box rendered by\n"
 		        "                               its own Drawable\n"
+		        "         IndependentBoxes1000MaterialsScene - screen visible boxes; each box\n"
+		        "                               rendered by its own Drawable; boxes are using\n"
+		        "                               1000 different materials\n"
+		        "         IndependentBoxes1000000MaterialsScene - screen visible boxes;\n"
+		        "                               each box rendered by its own Drawable;\n"
+		        "                               boxes are using 1000000 different materials\n"
+		        "         IndependentBoxesShowHideScene - screen visible boxes; each box\n"
+		        "                               rendered by its own Drawable; half of boxes\n"
+		        "                               is made visible and half of them invisible\n"
+		        "                               each frame\n"
 		        "   -r <rendering-setup> or --rendering-setup=<rendering-setup> - name of\n"
 		        "      rendering setup; valid values of <rendering-setup>:\n"
 		        "         Performance - rendering pipeline focused on performance without\n"
@@ -542,19 +564,27 @@ void App::init()
 	case TestType::BakedBoxesScene:           cout << "   BakedBoxesScene" << endl; break;
 	case TestType::InstancedBoxesPerformance: cout << "   InstancedBoxesPerformance" << endl; break;
 	case TestType::InstancedBoxesScene:       cout << "   InstancedBoxesScene" << endl; break;
-	case TestType::IndependentBoxesPerformance: cout << "   IndependentBoxesPerformance" << endl; break;
-	case TestType::IndependentBoxesScene:     cout << "   IndependentBoxesScene" << endl; break;
+	case TestType::IndependentBoxesPerformance:   cout << "   IndependentBoxesPerformance" << endl; break;
+	case TestType::IndependentBoxesScene:         cout << "   IndependentBoxesScene" << endl; break;
+	case TestType::IndependentBoxes1000MaterialsScene:    cout << "   IndependentBoxes1000MaterialsScene" << endl; break;
+	case TestType::IndependentBoxes1000000MaterialsScene: cout << "   IndependentBoxes1000000MaterialsScene" << endl; break;
+	case TestType::IndependentBoxesShowHideScene: cout << "   IndependentBoxesShowHideScene" << endl; break;
 	default: cout << "   Undefined" << endl;
 	};
 	cout << "Rendering setup:" << endl;
 	switch(renderingSetup) {
-	case RenderingSetup::Performance: cout << "   Performance" << endl; break;
-	case RenderingSetup::Picking:     cout << "   Picking" << endl; break;
-	default: cout << "   Undefined" << endl;
+	case RenderingSetup::Performance: cout << "   Performance"; break;
+	case RenderingSetup::Picking:     cout << "   Picking"; break;
+	default: cout << "   Undefined";
 	};
-	cout << endl;
+	if(rasterizerDiscard)
+		cout << ", rasterizerDiscard";
+	cout << "\n" << endl;
 
 	// create device
+	vk::PhysicalDeviceFeatures2 features2(Renderer::requiredFeatures());
+	if(renderingSetup == RenderingSetup::Picking)
+		features2.features.setGeometryShader(true);
 	device.create(
 		instance,  // instance
 		physicalDevice,
@@ -567,7 +597,7 @@ void App::init()
 		useWindow ? vector<const char*>{"VK_KHR_swapchain"}  // extensions
 		          : vector<const char*>{},
 	#endif
-		Renderer::requiredFeatures()  // features
+		features2  // features
 	);
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
 	presentationQueue = device.getQueue(presentationQueueFamily, 0);
@@ -1574,6 +1604,18 @@ void App::printResults()
 		     << " drawables)." << endl;
 	else if (testType == TestType::IndependentBoxesScene)
 		cout << "Independent boxes scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in " << size_t(requestedNumTriangles + 11) / 12 << " drawables)." << endl;
+	else if (testType == TestType::IndependentBoxes1000MaterialsScene)
+		cout << "Independent boxes with 1000 materials scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in " << size_t(requestedNumTriangles + 11) / 12 << " drawables)." << endl;
+	else if (testType == TestType::IndependentBoxesScene)
+		cout << "Independent boxes with 1000000 materials scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
+		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
+		     << requestedNumTriangles << " triangles in " << size_t(requestedNumTriangles + 11) / 12 << " drawables)." << endl;
+	else if (testType == TestType::IndependentBoxesShowHideScene)
+		cout << "Independent boxes show and hide scene test of " << size_t((requestedNumTriangles + 11) / 12 / 1e6)
 		     << "M (" << size_t(requestedNumTriangles + 11) / 12 << ") boxes ("
 		     << requestedNumTriangles << " triangles in " << size_t(requestedNumTriangles + 11) / 12 << " drawables)." << endl;
 
