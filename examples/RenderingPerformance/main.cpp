@@ -109,7 +109,7 @@ public:
 	vk::CommandPool commandPool;
 	vk::CommandBuffer commandBuffer;
 	vk::Semaphore imageAvailableSemaphore;
-	vk::Semaphore renderFinishedSemaphore;
+	vector<vk::Semaphore> renderingFinishedSemaphoreList;
 	vk::Fence renderFinishedFence;
 
 	TestType testType = TestType::Undefined;
@@ -127,6 +127,7 @@ public:
 	glm::vec4 backgroundColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
 	vk::PresentModeKHR presentationMode = vk::PresentModeKHR::eFifo;
 	list<FrameInfo> frameInfoList;
+	vector<double> sceneUpdateTimeList;
 	chrono::steady_clock::duration realTestTime;
 	uint32_t numStateSets;
 	vector<CadR::StateSet*> id2stateSetMap;
@@ -438,7 +439,9 @@ App::~App()
 		renderer.finalize();
 		device.destroy(renderFinishedFence);
 		device.destroy(imageAvailableSemaphore);
-		device.destroy(renderFinishedSemaphore);
+		for(vk::Semaphore s : renderingFinishedSemaphoreList)
+			device.destroy(s);
+		renderingFinishedSemaphoreList.clear();
 		device.destroy(commandPool);
 		device.destroy(fsModule);
 		device.destroy(vsModule);
@@ -850,12 +853,6 @@ void App::init()
 				vk::SemaphoreCreateFlags()  // flags
 			)
 		);
-	renderFinishedSemaphore =
-		device.createSemaphore(
-			vk::SemaphoreCreateInfo(
-				vk::SemaphoreCreateFlags()  // flags
-			)
-		);
 	renderFinishedFence =
 		device.createFence(
 			vk::FenceCreateInfo(
@@ -1133,6 +1130,15 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 				)
 			);
 
+		// rendering finished semaphores
+		vk::SemaphoreCreateInfo semaphoreCreateInfo{
+			vk::SemaphoreCreateFlags()  // flags
+		};
+		renderingFinishedSemaphoreList.reserve(swapchainImages.size());
+		for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+			renderingFinishedSemaphoreList.emplace_back(
+				device.createSemaphore(semaphoreCreateInfo));
+
 	} else {
 
 		colorImage =
@@ -1345,6 +1351,22 @@ void App::frame()
 	// collect previous frame info
 	frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
 
+	// update scene
+	if(testType == TestType::IndependentBoxesShowHideScene) {
+		chrono::time_point startTime = chrono::high_resolution_clock::now();
+		updateTestScene(
+			testType,
+			imageExtent.width,
+			imageExtent.height,
+			renderer,
+			stateSetRoot,
+			geometryList,
+			drawableList);
+		chrono::time_point finishTime = chrono::high_resolution_clock::now();
+		double updateTime = chrono::duration<double>(finishTime - startTime).count();
+		sceneUpdateTimeList.push_back(updateTime);
+	}
+
 	// view matrix
 	// (set it to identity for even frames and shift it by 1 in X direction for odd frames)
 	float x = (renderer.frameNumber() & 0x01) ? 0.f : 1.f;
@@ -1473,6 +1495,7 @@ void App::frame()
 	else {
 
 		// submit frame
+		vk::Semaphore renderingFinishedSemaphore = renderingFinishedSemaphoreList[imageIndex];
 		device.queueSubmit(
 			graphicsQueue,  // queue
 			vk::SubmitInfo(
@@ -1480,7 +1503,7 @@ void App::frame()
 				&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
 					vk::PipelineStageFlagBits::eColorAttachmentOutput),
 				1, &commandBuffer,  // commandBufferCount + pCommandBuffers
-				1, &renderFinishedSemaphore  // signalSemaphoreCount + pSignalSemaphores
+				1, &renderingFinishedSemaphore  // signalSemaphoreCount + pSignalSemaphores
 			),
 			renderFinishedFence  // fence
 		);
@@ -1490,7 +1513,7 @@ void App::frame()
 			device.presentKHR(
 				presentationQueue,  // queue
 				&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(  // presentInfo
-					1, &renderFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
+					1, &renderingFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
 					1, &swapchain, &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
 					nullptr  // pResults
 				)

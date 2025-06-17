@@ -456,7 +456,7 @@ static void generateBoxesScene(
 	bool instanced,
 	bool singleGeometry,
 	size_t numMaterials,
-	bool hideOddDrawables,
+	bool doNotCreateDrawables,
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	vector<CadR::Geometry>& geometryList,
@@ -506,6 +506,9 @@ static void generateBoxesScene(
 		primitiveSet->count = 36;
 		primitiveSet->first = 0;
 	}
+
+	if(doNotCreateDrawables)
+		return;
 
 	// create Drawables
 	CadR::StagingData shaderStagingData;
@@ -560,6 +563,47 @@ static void generateBoxesScene(
 					*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
 						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
 				}
+			}
+		}
+	}
+}
+
+
+static void updateDrawablesForShowHideScene(
+	size_t frameNumber,
+	glm::uvec3 numBoxes,
+	glm::vec3 center,
+	glm::vec3 boxToBoxDistance,
+	bool singleGeometry,
+	CadR::StateSet& stateSetRoot,
+	size_t baseGeometry,
+	size_t baseDrawable,
+	vector<CadR::Geometry>& geometryList,
+	vector<CadR::Drawable>& drawableList)
+{
+	drawableList.erase(drawableList.begin() + baseDrawable, drawableList.end());
+
+	uint32_t startI = frameNumber & 0x01;
+
+	CadR::StagingData shaderStagingData;
+	glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
+	for(uint32_t k=0; k<numBoxes.z; k++) {
+		auto planeZ = origin.z + (k * boxToBoxDistance.z);
+		for(uint32_t j=0; j<numBoxes.y; j++) {
+			auto lineY = origin.y + (j * boxToBoxDistance.y);
+			for(uint32_t i=startI; i<numBoxes.x; i+=2)
+			{
+				CadR::Geometry& g = (singleGeometry) ? geometryList.front() : geometryList[baseGeometry++];
+				drawableList.emplace_back(g, 0, shaderStagingData, 128, 1, stateSetRoot);
+
+				// shader staging data
+				uint8_t* b = shaderStagingData.data<uint8_t>();
+				ShaderData* d = reinterpret_cast<ShaderData*>(b);
+				memset(d, 0, sizeof(ShaderData));
+				d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
+				d->alpha = 1.f;
+				*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
+					glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
 			}
 		}
 	}
@@ -743,7 +787,7 @@ void createTestScene(
 			true,  // instanced
 			true,  // singleGeometry
 			1,  // numMaterials
-			false,  // hideOddDrawables
+			false,  // doNotCreateDrawables
 			renderer,
 			stateSetRoot,
 			geometryList,
@@ -760,7 +804,7 @@ void createTestScene(
 			false,  // instanced
 			false,  // singleGeometry
 			1,  // numMaterials
-			false,  // hideOddDrawables
+			false,  // doNotCreateDrawables
 			renderer,
 			stateSetRoot,
 			geometryList,
@@ -777,7 +821,7 @@ void createTestScene(
 			false,  // instanced
 			false,  // singleGeometry
 			1000,  // numMaterials
-			false,  // hideOddDrawables
+			false,  // doNotCreateDrawables
 			renderer,
 			stateSetRoot,
 			geometryList,
@@ -794,7 +838,7 @@ void createTestScene(
 			false,  // instanced
 			false,  // singleGeometry
 			1000000,  // numMaterials
-			false,  // hideOddDrawables
+			false,  // doNotCreateDrawables
 			renderer,
 			stateSetRoot,
 			geometryList,
@@ -811,7 +855,7 @@ void createTestScene(
 			false,  // instanced
 			false,  // singleGeometry
 			1,  // numMaterials
-			true,  // hideOddDrawables
+			true,  // doNotCreateDrawables
 			renderer,
 			stateSetRoot,
 			geometryList,
@@ -820,4 +864,34 @@ void createTestScene(
 	}
 	default: break;
 	};
+}
+
+
+void updateTestScene(
+	TestType testType,
+	int imageWidth,
+	int imageHeight,
+	CadR::Renderer& renderer,
+	CadR::StateSet& stateSetRoot,
+	vector<CadR::Geometry>& geometryList,
+	vector<CadR::Drawable>& drawableList)
+{
+	switch(testType) {
+	case TestType::IndependentBoxesShowHideScene: {
+		float maxSize = float(min(imageWidth, imageHeight)) * 0.9f;
+		updateDrawablesForShowHideScene(
+			renderer.frameNumber(),  // frameNumber
+			glm::uvec3(100, 100, 100),  // numBoxes
+			glm::vec3(0.f, 0.f, 0.f),  // center
+			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
+			false,  // singleGeometry
+			stateSetRoot,  // stateSetRoot
+			0,  // baseGeometry
+			0,  // baseDrawable
+			geometryList,
+			drawableList);
+		break;
+	}
+	default:;
+	}
 }

@@ -28,6 +28,19 @@ enum class TestType
 };
 
 
-void createTestScene(TestType testType, int imageWidth, int imageHeight,
-	CadR::Renderer& renderer, CadR::StateSet& stateSetRoot,
-	std::vector<CadR::Geometry>& geometryList, std::vector<CadR::Drawable>& drawableList);
+void createTestScene(
+	TestType testType,
+	int imageWidth,
+	int imageHeight,
+	CadR::Renderer& renderer,
+	CadR::StateSet& stateSetRoot,
+	std::vector<CadR::Geometry>& geometryList,
+	std::vector<CadR::Drawable>& drawableList);
+void updateTestScene(
+	TestType testType,
+	int imageWidth,
+	int imageHeight,
+	CadR::Renderer& renderer,
+	CadR::StateSet& stateSetRoot,
+	std::vector<CadR::Geometry>& geometryList,
+	std::vector<CadR::Drawable>& drawableList);
