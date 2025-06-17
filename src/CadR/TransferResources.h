@@ -15,16 +15,16 @@ class CADR_EXPORT TransferResources {
 protected:
 	std::function<void(void)> _releaseFunction;
 public:
-	TransferResources();
+	inline TransferResources();
 	template<typename F, typename... Args>
-	TransferResources(F&& f, Args&&... args);
-	void release();
-	~TransferResources();
+	inline TransferResources(F&& f, Args&&... args);
+	inline void release();
+	inline ~TransferResources();
 
 	TransferResources(const TransferResources&) = delete;
-	TransferResources(TransferResources&& other);
+	inline TransferResources(TransferResources&& other);
 	TransferResources& operator=(const TransferResources&) = delete;
-	TransferResources& operator=(TransferResources&& other);
+	inline TransferResources& operator=(TransferResources&& other);
 };
 
 

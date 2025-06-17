@@ -4,6 +4,7 @@
 #include <CadR/ImageStorage.h>
 #include <CadR/StagingManager.h>
 #include <CadR/StateSet.h>
+#include <CadR/TransferResources.h>
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 
