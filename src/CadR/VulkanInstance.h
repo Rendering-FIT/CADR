@@ -252,10 +252,11 @@ VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physi
 			r = static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, reinterpret_cast<VkPresentModeKHR*>(presentModes.data())));
 		}
 	} while(r == vk::Result::eIncomplete);
-	vk::resultCheck(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	if(r != vk::Result::eSuccess )
+		vk::throwResultException(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
 	if(presentModeCount < presentModes.size())
 		presentModes.resize(presentModeCount);
-	return vk::createResultValueType(r, std::move(presentModes));
+	return presentModes;
 }
 
 template <typename VectorAllocator>
@@ -273,10 +274,11 @@ VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physi
 			r = static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, reinterpret_cast<VkPresentModeKHR*>(presentModes.data())));
 		}
 	} while(r == vk::Result::eIncomplete);
-	vk::resultCheck(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	if(r != vk::Result::eSuccess )
+		vk::throwResultException(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
 	if(presentModeCount < presentModes.size())
 		presentModes.resize(presentModeCount);
-	return vk::createResultValueType(r, std::move(presentModes));
+	return presentModes;
 }
 
 #endif /* VULKAN_HPP_DISABLE_ENHANCED_MODE */

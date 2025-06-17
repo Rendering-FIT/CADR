@@ -511,7 +511,7 @@ void App::init()
 		          : vector<const char*>{}
 	);
 	if(useWindow) {
-		window.create(instance, imageExtent, vulkanAppName, library.vkGetInstanceProcAddr);
+		window.create(instance, VkExtent2D(imageExtent), vulkanAppName, library.vkGetInstanceProcAddr);
 		window.setResizeCallback(bind(&App::resize, this, placeholders::_2, placeholders::_3));
 		window.setFrameCallback(bind(&App::frame, this));
 	}
