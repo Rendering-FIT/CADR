@@ -991,7 +991,7 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 				&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
 					vk::PipelineRasterizationStateCreateFlags(),  // flags
 					VK_FALSE,  // depthClampEnable
-					rasterizerDiscard ? VK_TRUE : VK_FALSE,  // rasterizerDiscardEnable
+					vk::Bool32(rasterizerDiscard ? VK_TRUE : VK_FALSE),  // rasterizerDiscardEnable
 					vk::PolygonMode::eFill,  // polygonMode
 					vk::CullModeFlagBits::eNone,  // cullMode
 					vk::FrontFace::eCounterClockwise,  // frontFace
