@@ -151,24 +151,38 @@ public:
 	typename vk::ResultValueType<vk::UniqueHandle<vk::Device,Dispatch>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,Dispatch const &d) const  {
 		vk::Device device;
 		vk::Result result=static_cast<vk::Result>(vkCreateDevice(physicalDevice,reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo),nullptr,reinterpret_cast<VkDevice*>(&device)));
+	#if VK_HEADER_VERSION < 301  // ObjectDestroy moved to detail namespace on 2024-10-30 and went public in 1.3.301
 		vk::ObjectDestroy<vk::NoParent,Dispatch> deleter(nullptr,d);
-	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
-		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
 	#else
-		resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
-		return createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
+		vk::detail::ObjectDestroy<vk::detail::NoParent,Dispatch> deleter(nullptr,d);
+	#endif
+	#if VK_HEADER_VERSION < 210  // change made on 2022-03-28 and went public in 1.3.210
+		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
+	#elif VK_HEADER_VERSION < 282  // resultCheck() and createResultValueType() moved to detail namespace on 2024-04-08 and went public in 1.3.282
+		vk::resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
+		return vk::createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
+	#else
+		vk::detail::resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
+		return vk::detail::createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
 	#endif
 	}
 	template<typename Dispatch>
 	typename vk::ResultValueType<vk::UniqueHandle<vk::Device,Dispatch>>::type createDeviceUnique(vk::PhysicalDevice physicalDevice,const vk::DeviceCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator,Dispatch const &d) const  {
 		vk::Device device;
 		vk::Result result=static_cast<vk::Result>(vkCreateDevice(physicalDevice,reinterpret_cast<const VkDeviceCreateInfo*>(&createInfo),reinterpret_cast<const VkAllocationCallbacks*>(static_cast<const vk::AllocationCallbacks*>(allocator)),reinterpret_cast<VkDevice*>(&device)));
+	#if VK_HEADER_VERSION < 301  // ObjectDestroy moved to detail namespace on 2024-10-30 and went public in 1.3.301
 		vk::ObjectDestroy<vk::NoParent,Dispatch> deleter(allocator,d);
-	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
-		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
 	#else
-		resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
-		return createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
+		vk::detail::ObjectDestroy<vk::detail::NoParent,Dispatch> deleter(allocator,d);
+	#endif
+	#if VK_HEADER_VERSION < 210  // change made on 2022-03-28 and went public in 1.3.210
+		return vk::createResultValue<vk::Device,Dispatch>(result,device,"vk::PhysicalDevice::createDeviceUnique",deleter);
+	#elif VK_HEADER_VERSION < 282  // resultCheck() and createResultValueType() moved to detail namespace on 2024-04-08 and went public in 1.3.282
+		vk::resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
+		return vk::createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
+	#else
+		vk::detail::resultCheck(result, "vk::PhysicalDevice::createDeviceUnique");
+		return vk::detail::createResultValueType(result, vk::UniqueHandle<vk::Device, Dispatch>(device, deleter));
 	#endif
 	}
 #endif
@@ -253,7 +267,11 @@ VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physi
 		}
 	} while(r == vk::Result::eIncomplete);
 	if(r != vk::Result::eSuccess )
+	#if VK_HEADER_VERSION < 256  // throwResultException moved to detail namespace on 2023-06-28 and the change went public in 1.3.256
 		vk::throwResultException(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	#else
+		vk::detail::throwResultException(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	#endif
 	if(presentModeCount < presentModes.size())
 		presentModes.resize(presentModeCount);
 	return presentModes;
@@ -275,7 +293,11 @@ VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physi
 		}
 	} while(r == vk::Result::eIncomplete);
 	if(r != vk::Result::eSuccess )
+	#if VK_HEADER_VERSION < 256  // throwResultException moved to detail namespace on 2023-06-28 and the change went public in 1.3.256
 		vk::throwResultException(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	#else
+		vk::detail::throwResultException(r, "vk::PhysicalDevice::getSurfacePresentModesKHR");
+	#endif
 	if(presentModeCount < presentModes.size())
 		presentModes.resize(presentModeCount);
 	return presentModes;

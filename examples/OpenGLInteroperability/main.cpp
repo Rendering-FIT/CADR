@@ -16,6 +16,12 @@
 #include <limits>
 #include <set>
 
+#if VK_HEADER_VERSION >= 256  // throwResultException moved to detail namespace on 2023-06-28 and the change went public in 1.3.256
+namespace vk {
+	using detail::throwResultException;
+}
+#endif
+
 using namespace std;
 
 

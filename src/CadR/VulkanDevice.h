@@ -384,11 +384,14 @@ public:
 	inline vk::ResultValueType<std::pair<std::vector<uint64_t>, uint64_t>>::type getCalibratedTimestampsEXT(vk::ArrayProxy<const vk::CalibratedTimestampInfoEXT> timestampInfos,vk::ArrayProxy<uint64_t>) const {
 		std::pair<std::vector<uint64_t>, uint64_t> data(std::piecewise_construct, std::forward_as_tuple(timestampInfos.size()), std::forward_as_tuple(0));
 		vk::Result result = static_cast<vk::Result>(vkGetCalibratedTimestampsEXT(_device, timestampInfos.size(), reinterpret_cast<const VkCalibratedTimestampInfoEXT*>(timestampInfos.data()), data.first.data(), &data.second));
-	#if VK_HEADER_VERSION<210  // change made on 2022-03-28 in VulkanHPP and went out in 1.3.210
-		return createResultValue(result, data, "vk::Device::getCalibratedTimestampsEXT");
+	#if VK_HEADER_VERSION < 210  // change made on 2022-03-28 and went public in 1.3.210
+		return vk::createResultValue(result, data, "vk::Device::getCalibratedTimestampsEXT");
+	#elif VK_HEADER_VERSION < 282  // resultCheck() and createResultValueType() moved to detail namespace on 2024-04-08 and went public in 1.3.282
+		vk::resultCheck(result, "vk::Device::getCalibratedTimestampsEXT");
+		return vk::createResultValueType(result, data);
 	#else
-		resultCheck(result, "vk::Device::getCalibratedTimestampsEXT");
-		return createResultValueType(result, data);
+		vk::detail::resultCheck(result, "vk::Device::getCalibratedTimestampsEXT");
+		return vk::detail::createResultValueType(result, data);
 	#endif
 	}
 	inline vk::ResultValueType<vk::QueryPool>::type createQueryPool(const vk::QueryPoolCreateInfo& createInfo,vk::Optional<const vk::AllocationCallbacks> allocator=nullptr) const  { return _device.createQueryPool(createInfo,allocator,*this); }
