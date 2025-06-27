@@ -50,7 +50,7 @@ int main(int,char**)
 
 	// free on nullptr, alloc and destroy single allocation of size 10
 	StagingManager stagingManager(r);
-	DataStorage ds(r);
+	DataStorage& ds = r.dataStorage();
 	ds.init(stagingManager);
 	DataMemoryTest::verifyDataStorageEmpty(ds);
 	HandlelessAllocation a(ds);
@@ -59,6 +59,14 @@ int main(int,char**)
 	vk::DeviceAddress firstAddress = a.deviceAddress();
 	if(firstAddress != m.deviceAddress())
 		throw runtime_error("Allocation is not on the beginning of the buffer");
+	a.free();
+	a.free();
+	r.executeCopyOperations();
+	DataMemoryTest::verifyDataStorageEmpty(ds);
+	a.alloc(10);
+	if(a.deviceAddress() != m.deviceAddress())
+		throw runtime_error("Allocation is not on the beginning of the buffer");
+	r.executeCopyOperations();
 	a.free();
 	a.free();
 	DataMemoryTest::verifyDataStorageEmpty(ds);
@@ -77,6 +85,7 @@ int main(int,char**)
 		if(a.deviceAddress() != firstAddress && (a.deviceAddress() != 0 || s != 0))
 			throw runtime_error("Allocation is not on the beginning of the buffer");
 		a.free();
+		r.executeCopyOperations();
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
@@ -93,6 +102,7 @@ int main(int,char**)
 			throw runtime_error("Allocation is not on the the proper place in the buffer");
 		a1.free();
 		a2.free();
+		r.executeCopyOperations();
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
@@ -109,6 +119,7 @@ int main(int,char**)
 			throw runtime_error("Allocation is not on the the proper place in the buffer");
 		a1.free();
 		a2.free();
+		r.executeCopyOperations();
 		DataMemoryTest::verifyDataStorageEmpty(ds);
 	}
 
@@ -206,6 +217,7 @@ int main(int,char**)
 			for(size_t i=0; i<n; i++)
 				v[i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - allocations released in the reversed order of their allocation
@@ -216,6 +228,7 @@ int main(int,char**)
 			for(size_t i=n; i>0; )
 				v[--i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released starting by even
@@ -228,6 +241,7 @@ int main(int,char**)
 			for(size_t i=1; i<n; i+=2)
 				v[i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released starting by odd
@@ -240,6 +254,7 @@ int main(int,char**)
 			for(size_t i=0; i<n; i+=2)
 				v[i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released in reverse order
@@ -252,6 +267,7 @@ int main(int,char**)
 			for(int64_t i=n-1; i>=0; i-=2)
 				v[i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - each second allocation released in reverse order
@@ -264,6 +280,7 @@ int main(int,char**)
 			for(int64_t i=n-2; i>=0; i-=2)
 				v[i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - allocations allocated in Block1 and released in the order of their allocation
@@ -281,6 +298,7 @@ int main(int,char**)
 			for(size_t i=0; i<n; i++)
 				v[i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 
 			// test - allocations allocated in Block1 and released in the reverse order of their allocation
@@ -297,6 +315,7 @@ int main(int,char**)
 			for(size_t i=n; i>0; )
 				v[--i].free();
 			v.clear();
+			r.executeCopyOperations();
 			DataMemoryTest::verifyDataStorageEmpty(ds);
 		}
 	}

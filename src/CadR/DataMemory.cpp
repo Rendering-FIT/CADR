@@ -376,7 +376,7 @@ DataAllocationRecord* DataMemory::alloc(size_t numBytes)
 				}
 				else {
 					lastStagingMemory->_dataMemoryAddrToStagingAddr = lastStagingMemory->_bufferStartAddress - addr;
-					marker->stagingStartAddress = lastStagingMemory->_bufferStartAddress; 
+					marker->stagingStartAddress = lastStagingMemory->_bufferStartAddress;
 				}
 			}
 		}
