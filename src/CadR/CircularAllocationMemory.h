@@ -399,7 +399,7 @@ void CircularAllocationMemory<AllocationRecord, RecordsPerBlock, AllocationBlock
 				}
 				else {
 					// magicValue is valid allocation (<UINT64_MAX-2) => let's take its address
-					if(blockNumber == 2)
+					if(blockNumber == 1)
 						m->_block1StartAddress = fwdThis->address;
 					else
 						m->_block2StartAddress = fwdThis->address;
