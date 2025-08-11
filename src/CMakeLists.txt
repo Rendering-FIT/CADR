@@ -1,5 +1,6 @@
 set(PACKAGES
     CadR
+    CadText
    )
 
 foreach(pkg ${PACKAGES})
