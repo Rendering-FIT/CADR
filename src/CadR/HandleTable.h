@@ -25,13 +25,12 @@ protected:
 
 	struct LastLevelTable { // ~16KiB on both CPU and GPU
 		HandlelessAllocation allocation;  ///< Allocation of memory for storing copy of addrList on GPU.
-		uint64_t handle;  ///< Handle of memory referenced by allocation member.
 		std::array<uint64_t,numHandlesPerTable> addrList;  ///< Device address list.
 
 		LastLevelTable(DataStorage& storage) noexcept;
 		void init(HandleTable& handleTable);
 		void finalize(HandleTable& handleTable) noexcept;
-		void setValue(unsigned index, uint64_t value);
+		bool setValue(unsigned index, uint64_t value);
 	};
 	struct RoutingTable;
 	union Pointer {
@@ -41,13 +40,12 @@ protected:
 	};
 	struct RoutingTable {  // ~32KiB on CPU, ~16KiB on GPU
 		HandlelessAllocation allocation;  ///< Allocation of memory for storing copy of addrList on GPU.
-		uint64_t handle;  ///< Handle of memory referenced by allocation member.
 		std::array<uint64_t,numHandlesPerTable> addrList;  ///< Device address list.
 		std::array<Pointer,numHandlesPerTable> childTableList;  ///< List of child tables.
 		RoutingTable(DataStorage& storage) noexcept;
 		void init(HandleTable& handleTable);
 		void finalize(HandleTable& handleTable) noexcept;
-		void setValue(unsigned index, uint64_t value);
+		bool setValue(unsigned index, uint64_t value);
 	};
 
 	union {
@@ -69,6 +67,7 @@ protected:
 	uint64_t createHandle0();
 	uint64_t createHandle1();
 	uint64_t createHandle2();
+	uint64_t createHandle3();
 	void setHandle0(uint64_t handle, uint64_t addr);
 	void setHandle1(uint64_t handle, uint64_t addr);
 	void setHandle2(uint64_t handle, uint64_t addr);
@@ -76,6 +75,7 @@ protected:
 	uint64_t rootTableDeviceAddress0() const;
 	uint64_t rootTableDeviceAddress1() const;
 	uint64_t rootTableDeviceAddress2() const;
+	uint64_t rootTableDeviceAddress3() const;
 
 public:
 	HandleTable(DataStorage& storage);

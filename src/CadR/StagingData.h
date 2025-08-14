@@ -28,17 +28,17 @@ struct DataAllocationRecord;
 class CADR_EXPORT StagingData {
 protected:
 	DataAllocationRecord* _record;
-	bool _needInit;
+	bool _wasReallocated;
 public:
 
 	// construction, initialization and destruction
 	StagingData() = default;
-	inline StagingData(DataAllocationRecord* record, bool needInit);
+	inline StagingData(DataAllocationRecord* record, bool wasReallocated);
 
 	// getters
 	template<typename T = void> inline T* data();
 	inline size_t sizeInBytes() const;
-	inline bool needInit() const;
+	inline bool wasReallocated() const;
 
 };
 
@@ -56,10 +56,10 @@ public:
 # undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
-inline StagingData::StagingData(DataAllocationRecord* record, bool needInit) : _record(record), _needInit(needInit)  {}
+inline StagingData::StagingData(DataAllocationRecord* record, bool wasReallocated) : _record(record), _wasReallocated(wasReallocated)  {}
 template<typename T> inline T* StagingData::data()  { return reinterpret_cast<T*>(_record->stagingData); }
 inline size_t StagingData::sizeInBytes() const  { return _record->size; }
-inline bool StagingData::needInit() const  { return _needInit; }
+inline bool StagingData::wasReallocated() const  { return _wasReallocated; }
 
 }
 #endif
