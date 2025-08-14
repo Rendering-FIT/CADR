@@ -62,7 +62,7 @@ public:
 	template<typename T> T getProcAddr(const std::string& name) const;
 
 	operator vk::Instance() const;
-	operator VkInstance() const;
+	explicit operator VkInstance() const;
 	explicit operator bool() const;
 	bool operator!() const;
 

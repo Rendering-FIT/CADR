@@ -98,7 +98,7 @@ public:
 	template<typename T> T getProcAddr(const std::string& name) const;
 
 	operator vk::Device() const;
-	operator VkDevice() const;
+	explicit operator VkDevice() const;
 	explicit operator bool() const;
 	bool operator!() const;
 
@@ -181,6 +181,7 @@ public:
 	inline vk::Result beginCommandBuffer(vk::CommandBuffer commandBuffer,const vk::CommandBufferBeginInfo* pBeginInfo) const  { return commandBuffer.begin(pBeginInfo,*this); }
 	inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,uint32_t size,const void* pValues) const  { commandBuffer.pushConstants(layout,stageFlags,offset,size,pValues,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo* pRenderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(pRenderPassBegin,contents,*this); }
+	inline void cmdNextSubpass(vk::CommandBuffer commandBuffer,vk::SubpassContents contents) const  { commandBuffer.nextSubpass(contents,*this); }
 	inline void cmdEndRenderPass(vk::CommandBuffer commandBuffer) const  { commandBuffer.endRenderPass(*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,uint32_t secondaryCommandBufferCount,const vk::CommandBuffer* pSecondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBufferCount,pSecondaryCommandBuffers,*this); }
 	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,uint32_t regionCount,const vk::BufferCopy* pRegions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regionCount,pRegions,*this); }
@@ -196,6 +197,7 @@ public:
 	inline void cmdDrawIndexed(vk::CommandBuffer commandBuffer,uint32_t indexCount,uint32_t instanceCount,uint32_t firstIndex,int32_t vertexOffset,uint32_t firstInstance) const  { commandBuffer.drawIndexed(indexCount,instanceCount,firstIndex,vertexOffset,firstInstance,*this); }
 	inline void cmdDraw(vk::CommandBuffer commandBuffer,uint32_t vertexCount,uint32_t instanceCount,uint32_t firstVertex,uint32_t firstInstance) const  { commandBuffer.draw(vertexCount,instanceCount,firstVertex,firstInstance,*this); }
 	inline void cmdDrawIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset,uint32_t drawCount,uint32_t stride) const  { commandBuffer.drawIndirect(buffer,offset,drawCount,stride,*this); }
+	inline void cmdFillBuffer(vk::CommandBuffer commandBuffer,vk::Buffer dstBuffer,vk::DeviceSize dstOffset,vk::DeviceSize size,uint32_t data) const  { commandBuffer.fillBuffer(dstBuffer,dstOffset,size,data,*this); }
 	inline void cmdDispatch(vk::CommandBuffer commandBuffer,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatch(groupCountX,groupCountY,groupCountZ,*this); }
 	inline void cmdDispatchIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset) const  { commandBuffer.dispatchIndirect(buffer,offset,*this); }
 	inline void cmdDispatchBase(vk::CommandBuffer commandBuffer,uint32_t baseGroupX,uint32_t baseGroupY,uint32_t baseGroupZ,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatchBase(baseGroupX,baseGroupY,baseGroupZ,groupCountX,groupCountY,groupCountZ,*this); }
@@ -567,6 +569,7 @@ public:
 	PFN_vkResetCommandPool vkResetCommandPool;
 	PFN_vkCmdPushConstants vkCmdPushConstants;
 	PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
+	PFN_vkCmdNextSubpass vkCmdNextSubpass;
 	PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
 	PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
 	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
@@ -581,6 +584,7 @@ public:
 	PFN_vkCmdDrawIndexed vkCmdDrawIndexed;
 	PFN_vkCmdDraw vkCmdDraw;
 	PFN_vkCmdDrawIndirect vkCmdDrawIndirect;
+	PFN_vkCmdFillBuffer vkCmdFillBuffer;
 	PFN_vkCmdDispatch vkCmdDispatch;
 	PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect;
 	PFN_vkCmdDispatchBase vkCmdDispatchBase;

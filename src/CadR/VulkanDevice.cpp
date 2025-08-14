@@ -72,6 +72,7 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkResetCommandPool   =getProcAddr<PFN_vkResetCommandPool   >("vkResetCommandPool");
 	vkCmdPushConstants   =getProcAddr<PFN_vkCmdPushConstants   >("vkCmdPushConstants");
 	vkCmdBeginRenderPass =getProcAddr<PFN_vkCmdBeginRenderPass >("vkCmdBeginRenderPass");
+	vkCmdNextSubpass     =getProcAddr<PFN_vkCmdNextSubpass     >("vkCmdNextSubpass");
 	vkCmdEndRenderPass   =getProcAddr<PFN_vkCmdEndRenderPass   >("vkCmdEndRenderPass");
 	vkCmdExecuteCommands =getProcAddr<PFN_vkCmdExecuteCommands >("vkCmdExecuteCommands");
 	vkCmdCopyBuffer      =getProcAddr<PFN_vkCmdCopyBuffer      >("vkCmdCopyBuffer");
@@ -86,6 +87,7 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkCmdDrawIndexed     =getProcAddr<PFN_vkCmdDrawIndexed     >("vkCmdDrawIndexed");
 	vkCmdDraw            =getProcAddr<PFN_vkCmdDraw            >("vkCmdDraw");
 	vkCmdDrawIndirect    =getProcAddr<PFN_vkCmdDrawIndirect    >("vkCmdDrawIndirect");
+	vkCmdFillBuffer      =getProcAddr<PFN_vkCmdFillBuffer      >("vkCmdFillBuffer");
 	vkCmdDispatch        =getProcAddr<PFN_vkCmdDispatch        >("vkCmdDispatch");
 	vkCmdDispatchIndirect=getProcAddr<PFN_vkCmdDispatchIndirect>("vkCmdDispatchIndirect");
 	vkCmdDispatchBase    =getProcAddr<PFN_vkCmdDispatchBase    >("vkCmdDispatchBase");

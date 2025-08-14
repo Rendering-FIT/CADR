@@ -347,7 +347,7 @@ void App::init()
 	vulkanLib.load(CadR::VulkanLibrary::defaultName());
 	vulkanInstance.create(vulkanLib, "glTF reader", 0, "CADR", 0, VK_API_VERSION_1_2, nullptr,
 	                      VulkanWindow::requiredExtensions());
-	window.create(vulkanInstance, {1024,768}, "glTF reader", vulkanLib.vkGetInstanceProcAddr);
+	window.create(VkInstance(vulkanInstance), {1024,768}, "glTF reader", vulkanLib.vkGetInstanceProcAddr);
 
 	// init device and renderer
 	tuple<vk::PhysicalDevice, uint32_t, uint32_t> deviceAndQueueFamilies =
@@ -393,7 +393,7 @@ void App::init()
 	);
 	graphicsQueueFamily = std::get<1>(deviceAndQueueFamilies);
 	presentationQueueFamily = std::get<2>(deviceAndQueueFamilies);
-	window.setDevice(device, physicalDevice);
+	window.setDevice(VkDevice(device), physicalDevice);
 	renderer.init(device, vulkanInstance, physicalDevice, graphicsQueueFamily);
 
 	// get queues
