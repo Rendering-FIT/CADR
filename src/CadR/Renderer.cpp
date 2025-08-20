@@ -127,6 +127,12 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 	_gpuTimestampPeriod = p.limits.timestampPeriod * 1e-9f;
 	_cpuTimestampPeriod = getCpuTimestampPeriod();
 
+	// FrameInfo structures
+	_inProgressFrameInfo = {};
+	_inProgressFrameInfo.frameNumber = ~size_t(0);
+	_completedFrameInfo = {};
+	_completedFrameInfo.frameNumber = ~size_t(0);
+
 	// create general purpose fence
 	_fence =
 		_device->createFence(vk::FenceCreateInfo{vk::FenceCreateFlags()});
@@ -374,38 +380,17 @@ size_t Renderer::beginFrame()
 	_currentFrameUploadBytes = 0;
 	_dataStorage.setStagingDataSizeHint(_lastFrameUploadBytes);
 
-	// delete completedStats that were not retrieved by the user
-	_completedFrameInfoList.clear();
-
-	// process _inProgressStats if they are ready
-	if(!_inProgressFrameInfoList.empty())
-		_completedFrameInfoList = getFrameInfos();
-
 	// collect frame statistics
 	if(_collectFrameInfo) {
 
 		// prepare frame info collecting
-		_inProgressFrameInfoList.emplace_back();
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
-		frameInfo.frameNumber = _frameNumber;
-		frameInfo.numTimestamps = 0;
+		_inProgressFrameInfo = {};  // perform zero initialization
+		_inProgressFrameInfo.frameNumber = _frameNumber;
+		_inProgressFrameInfo.beingCollected = true;
 
 		// get cpu and gpu timestamps
 		// (they might be calibrated timestamps if supported)
-		tie(frameInfo.cpuBeginFrame, frameInfo.gpuBeginFrame) = getCpuAndGpuTimestamps();
-
-		// zero values
-		// (if it happens that frame rendering ends prematurely
-		// and some values are not written, zero indicates absent value)
-		frameInfo.cpuPrepareRecordingBegin = 0;
-		frameInfo.cpuPrepareRecordingEnd = 0;
-		frameInfo.cpuRecordStateSetsBegin = 0;
-		frameInfo.cpuRecordStateSetsEnd = 0;
-		frameInfo.cpuEndFrame = 0;
-		frameInfo.gpuBeginExecution = 0;
-		frameInfo.gpuAfterTransfersAndBeforeDrawableProcessing = 0;
-		frameInfo.gpuAfterDrawableProcessingAndBeforeRendering = 0;
-		frameInfo.gpuEndExecution = 0;
+		tie(_inProgressFrameInfo.cpuBeginFrame, _inProgressFrameInfo.gpuBeginFrame) = getCpuAndGpuTimestamps();
 
 	}
 
@@ -426,7 +411,6 @@ void Renderer::beginRecording(vk::CommandBuffer commandBuffer)
 
 	// schedule write of gpu timestamp
 	if(_collectFrameInfo) {
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
 		_device->cmdResetQueryPool(
 			commandBuffer,  // commandBuffer
 			_frameInfoTimestampPool,  // queryPool
@@ -437,7 +421,7 @@ void Renderer::beginRecording(vk::CommandBuffer commandBuffer)
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
 			_frameInfoTimestampPool,  // queryPool
-			frameInfo.numTimestamps++  // query
+			_inProgressFrameInfo.numTimestamps++  // query
 		);
 	}
 }
@@ -451,10 +435,9 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 	if(_collectFrameInfo == false)
 		numDrawables = stateSetRoot.prepareRecording();
 	else {
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
-		frameInfo.cpuPrepareRecordingBegin = getCpuTimestamp();
+		_inProgressFrameInfo.cpuPrepareRecordingBegin = getCpuTimestamp();
 		numDrawables = stateSetRoot.prepareRecording();
-		frameInfo.cpuPrepareRecordingEnd = getCpuTimestamp();
+		_inProgressFrameInfo.cpuPrepareRecordingEnd = getCpuTimestamp();
 	}
 
 	// reallocate drawable buffer
@@ -603,18 +586,17 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 		// write two gpu timestamps
 		// as replacement for two timestamps skipped because of the immediate return from this function
 		if(_collectFrameInfo) {
-			FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
 			_device->cmdWriteTimestamp(
 				commandBuffer,  // commandBuffer
 				vk::PipelineStageFlagBits::eTransfer,  // pipelineStage
 				_frameInfoTimestampPool,  // queryPool
-				frameInfo.numTimestamps++  // query
+				_inProgressFrameInfo.numTimestamps++  // query
 			);
 			_device->cmdWriteTimestamp(
 				commandBuffer,  // commandBuffer
 				vk::PipelineStageFlagBits::eTransfer,  // pipelineStage
 				_frameInfoTimestampPool,  // queryPool
-				frameInfo.numTimestamps++  // query
+				_inProgressFrameInfo.numTimestamps++  // query
 			);
 		}
 
@@ -659,12 +641,11 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 
 	// write gpu timestamp
 	if(_collectFrameInfo) {
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
 		_device->cmdWriteTimestamp(
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eTransfer,  // pipelineStage
 			_frameInfoTimestampPool,  // queryPool
-			frameInfo.numTimestamps++  // query
+			_inProgressFrameInfo.numTimestamps++  // query
 		);
 	}
 
@@ -696,12 +677,11 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 
 	// write of gpu timestamp
 	if(_collectFrameInfo) {
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
 		_device->cmdWriteTimestamp(
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eComputeShader,  // pipelineStage
 			_frameInfoTimestampPool,  // queryPool
-			frameInfo.numTimestamps++  // query
+			_inProgressFrameInfo.numTimestamps++  // query
 		);
 	}
 
@@ -746,10 +726,9 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& st
 	if(_collectFrameInfo == false)
 		stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
 	else {
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
-		frameInfo.cpuRecordStateSetsBegin = getCpuTimestamp();
+		_inProgressFrameInfo.cpuRecordStateSetsBegin = getCpuTimestamp();
 		stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
-		frameInfo.cpuRecordStateSetsEnd = getCpuTimestamp();
+		_inProgressFrameInfo.cpuRecordStateSetsEnd = getCpuTimestamp();
 	}
 	assert(drawableCounter <= _drawableBufferSize/sizeof(DrawableGpuData) && "Buffer overflow. This should not happen.");
 
@@ -762,12 +741,11 @@ void Renderer::endRecording(vk::CommandBuffer commandBuffer)
 {
 	// schedule write of gpu timestamp
 	if(collectFrameInfo()) {
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
 		_device->cmdWriteTimestamp(
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eBottomOfPipe,  // pipelineStage
 			_frameInfoTimestampPool,  // queryPool
-			frameInfo.numTimestamps++  // query
+			_inProgressFrameInfo.numTimestamps++  // query
 		);
 	}
 
@@ -784,10 +762,13 @@ void Renderer::endFrame()
 	if(collectFrameInfo()) {
 
 		// write cpu timestamp
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.back();
-		assert(frameInfo.frameNumber == _frameNumber && "Do not start new frame until the recording of previous one is finished.");
-		assert(frameInfo.numTimestamps <= FrameInfo::gpuTimestampPoolSize && "Too many timestamps written.");
-		frameInfo.cpuEndFrame = getCpuTimestamp();
+		assert(_inProgressFrameInfo.frameNumber == _frameNumber && "Do not start new frame until the recording of previous one is finished.");
+		assert(_inProgressFrameInfo.numTimestamps <= FrameInfo::gpuTimestampPoolSize && "Too many timestamps written.");
+		_inProgressFrameInfo.cpuEndFrame = getCpuTimestamp();
+
+		// initialize FrameInfo to invalid frame
+		_completedFrameInfo = {};
+		_completedFrameInfo.frameNumber = ~size_t(0);
 
 	}
 }
@@ -979,58 +960,47 @@ void Renderer::setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::Ti
 }
 
 
-list<FrameInfo> Renderer::getFrameInfos()
+const FrameInfo& Renderer::getFrameInfo()
 {
-	// _completedStats go to the result l
-	list<FrameInfo> l;
-	l.swap(_completedFrameInfoList);
+	if(!_inProgressFrameInfo.beingCollected)
+		return _completedFrameInfo;
 
-	// completed _inProgressStats go to the result l
-	// (we return them "in order", so test only the one
-	// in the front of the _inProgressStats)
-	while(!_inProgressFrameInfoList.empty()) {
+	// query for results
+	array<uint64_t, FrameInfo::gpuTimestampPoolSize> timestamps;
+	vk::Result r =
+		_device->getQueryPoolResults(
+			_frameInfoTimestampPool,      // queryPool
+			0,                            // firstQuery
+			_inProgressFrameInfo.numTimestamps,  // queryCount
+			FrameInfo::gpuTimestampPoolSize*sizeof(uint64_t),  // dataSize
+			timestamps.data(),            // pData
+			sizeof(uint64_t),             // stride
+			vk::QueryResultFlagBits::e64  // flags
+		);
 
-		// query for results
-		FrameInfoCollector& frameInfo = _inProgressFrameInfoList.front();
-		array<uint64_t, FrameInfo::gpuTimestampPoolSize> timestamps;
-		vk::Result r =
-			_device->getQueryPoolResults(
-				_frameInfoTimestampPool,      // queryPool
-				0,                            // firstQuery
-				frameInfo.numTimestamps,      // queryCount
-				FrameInfo::gpuTimestampPoolSize*sizeof(uint64_t),  // dataSize
-				timestamps.data(),            // pData
-				sizeof(uint64_t),             // stride
-				vk::QueryResultFlagBits::e64  // flags
-			);
+	// if not ready, return invalid frame info
+	if(r == vk::Result::eNotReady)
+		return _completedFrameInfo;
 
-		// if not ready, just return what we collected until now
-		if(r == vk::Result::eNotReady)
-			return l;
+	_inProgressFrameInfo.beingCollected = false;
 
-		// if success, append the result in l
-		// and go to the next _inProgressStats item
-		if(r == vk::Result::eSuccess) {
-			if(frameInfo.numTimestamps == 4) {
-				frameInfo.gpuBeginExecution = timestamps[0];
-				frameInfo.gpuAfterTransfersAndBeforeDrawableProcessing = timestamps[1];
-				frameInfo.gpuAfterDrawableProcessingAndBeforeRendering = timestamps[2];
-				frameInfo.gpuEndExecution = timestamps[3];
-			}
-			else
-				throw LogicError("Renderer::getFrameInfos(): Four timestamps are expected to be recorded "
-				                 "during frame rendering and they were not.");
-			l.emplace_back(frameInfo);
-			_inProgressFrameInfoList.pop_front();
-			continue;
+	// if success, append the result in l
+	// and go to the next _inProgressStats item
+	if(r == vk::Result::eSuccess) {
+		if(_inProgressFrameInfo.numTimestamps == 4) {
+			_inProgressFrameInfo.gpuBeginExecution = timestamps[0];
+			_inProgressFrameInfo.gpuAfterTransfersAndBeforeDrawableProcessing = timestamps[1];
+			_inProgressFrameInfo.gpuAfterDrawableProcessingAndBeforeRendering = timestamps[2];
+			_inProgressFrameInfo.gpuEndExecution = timestamps[3];
 		}
+		else
+			throw LogicError("Renderer::getFrameInfo(): Four timestamps are expected to be recorded "
+			                 "during frame rendering and they were not.");
 
-		// handle other unexpected and currently undocumented success values by return
-		return l;
+		_completedFrameInfo = _inProgressFrameInfo;
 	}
 
-	// handle reaching the empty _inProgressStats
-	return l;
+	return _completedFrameInfo;
 }
 
 

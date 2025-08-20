@@ -1349,7 +1349,7 @@ void App::frame()
 	device.resetFences(renderFinishedFence);
 
 	// collect previous frame info
-	frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+	frameInfoList.push_back(renderer.getFrameInfo());
 
 	// update scene
 	if(testType == TestType::IndependentBoxesShowHideScene) {
@@ -1551,7 +1551,7 @@ void App::mainLoop()
 
 		device.waitIdle();
 		realTestTime = chrono::steady_clock::now() - startTime;
-		frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+		frameInfoList.push_back(renderer.getFrameInfo());
 
 	}
 	else {
@@ -1579,7 +1579,7 @@ void App::mainLoop()
 
 		device.waitIdle();
 		realTestTime = chrono::steady_clock::now() - startTime;
-		frameInfoList.splice(frameInfoList.end(), renderer.getFrameInfos());
+		frameInfoList.push_back(renderer.getFrameInfo());
 	}
 }
 

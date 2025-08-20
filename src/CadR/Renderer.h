@@ -16,7 +16,6 @@
 # endif
 # include <vulkan/vulkan.hpp>
 # include <array>
-# include <list>
 # include <tuple>
 
 namespace CadR {
@@ -83,9 +82,10 @@ protected:
 	vk::QueryPool _frameInfoTimestampPool;  ///< QueryPool for timestamps that are collected during frame rendering.
 	struct FrameInfoCollector : public FrameInfo {  ///< The structure is used during collection of FrameInfo.
 		uint32_t numTimestamps;  ///< Number of timestamps written so far to the timestampPool.
+		bool beingCollected;  ///< Flag indicating that the structure is in use and data are being collected.
 	};
-	std::list<FrameInfoCollector> _inProgressFrameInfoList;  ///< List of FrameInfo structures whose data are still being collected.
-	std::list<FrameInfo> _completedFrameInfoList;  ///< List of FrameInfo structures whose data are complete and ready to be handed to the user.
+	FrameInfoCollector _inProgressFrameInfo;  ///< Frame info structure used during frame rendering to collect performance data.
+	FrameInfo _completedFrameInfo;  ///< FrameInfo structure containing info about the recently finished frame. The structure contains invalid frame (frameNumber set to -1) after calling endFrame(). It is set to valid values by getFrameInfo() function when all the data including timestamp queries becomes available. The data of previous frame are always available after calling beginFrame(), because it waits for finishing of the previous frame.
 
 	static Renderer* _defaultRenderer;
 	static RequiredFeaturesStructChain _requiredFeatures;
@@ -144,8 +144,8 @@ public:
 	inline bool collectFrameInfo() const;  ///< Returns whether frame rendering information is collected.
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps = false);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
 	void setCollectFrameInfo(bool on, bool useCalibratedTimestamps, vk::TimeDomainEXT timestampHostTimeDomain);  ///< Sets whether collecting of frame rendering information will be performed. The method should not be called between beginFrame() and endFrame().
-	std::list<FrameInfo> getFrameInfos();  ///< Returns list of FrameInfo for the frames whose collecting of information already completed. Some info is collected as gpu progresses on the frame rendering. The method returns info only about those frames whose collecting of information already finished. To avoid unnecessary memory consumption, unretrieved FrameInfos are deleted after some time. To avoid lost FrameInfos, it is enough to call getFrameInfos() once between each endFrame() and beginFrame() of two consecutive frames.
-	inline FrameInfo& getCurrentFrameInfo();  ///< Returns current FrameInfo being collected just now. It is must be called between beginFrame() and endFrame() and collecting of frame info must be switched on (see setCollectFrameInfo()).
+	const FrameInfo& getFrameInfo();  ///< Returns FrameInfo containing the info about the recently finished frame. After calling endFrame(), it is initialized to invalid frame (frameNumber set to -1). It is set to valid values by getFrameInfo() function when all the data including timestamp queries becomes available. The data of previous frame are always available after calling beginFrame(), because it waits for finishing of the previous frame.
+	inline const FrameInfo& getCurrentFrameInfo();  ///< Returns current FrameInfo being collected just now. It might be useful to read cpu timing information collected between beginFrame() and endFrame(). Some members becomes available only from particular moments of frame rendering. Collecting of frame info must be switched on (see setCollectFrameInfo()).
 	inline double cpuTimestampPeriod() const;  ///< The time period of cpu timestamp begin incremented by 1. The period is given in seconds.
 	inline float gpuTimestampPeriod() const;  ///< The time period of gpu timestamp being incremented by 1. The period is given in seconds.
 	std::tuple<uint64_t, uint64_t> getCpuAndGpuTimestamps() const;
@@ -216,7 +216,7 @@ inline size_t Renderer::standardBufferAlignment() const  { return _standardBuffe
 inline size_t Renderer::alignStandardBuffer(size_t offset) const  { size_t a=_standardBufferAlignment-1; return (offset+a)&(~a); }
 inline size_t Renderer::frameNumber() const noexcept  { return _frameNumber; }
 inline bool Renderer::collectFrameInfo() const  { return _collectFrameInfo; }
-inline FrameInfo& Renderer::getCurrentFrameInfo()  { return _inProgressFrameInfoList.back(); }
+inline const FrameInfo& Renderer::getCurrentFrameInfo()  { return _inProgressFrameInfo; }
 inline double Renderer::cpuTimestampPeriod() const  { return _cpuTimestampPeriod; }
 inline float Renderer::gpuTimestampPeriod() const  { return _gpuTimestampPeriod; }
 inline DataStorage& Renderer::dataStorage() const  { return _dataStorage; }
