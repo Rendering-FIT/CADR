@@ -102,12 +102,12 @@ public:
 	vk::SwapchainKHR swapchain;
 	vector<vk::ImageView> swapchainImageViews;
 	vector<vk::Framebuffer> framebuffers;
+	vector<vk::Semaphore> renderingFinishedSemaphores;
 	vk::Image depthImage;
 	vk::DeviceMemory depthImageMemory;
 	vk::ImageView depthImageView;
 	vk::Semaphore imageAvailableSemaphore;
-	vk::Semaphore renderFinishedSemaphore;
-	vk::Fence renderFinishedFence;
+	vk::Fence renderingFinishedFence;
 
 	CadR::Renderer renderer;
 	PipelineLibrary pipelineLibrary;
@@ -300,11 +300,11 @@ App::~App()
 		pipelineLibrary.destroy();
 		device.destroy(commandPool);
 		renderer.finalize();
-		device.destroy(renderFinishedFence);
-		device.destroy(renderFinishedSemaphore);
+		device.destroy(renderingFinishedFence);
 		device.destroy(imageAvailableSemaphore);
 		for(auto f : framebuffers)  device.destroy(f);
 		for(auto v : swapchainImageViews)  device.destroy(v);
+		for(auto s : renderingFinishedSemaphores)  device.destroy(s);
 		device.destroy(depthImage);
 		device.freeMemory(depthImageMemory);
 		device.destroy(depthImageView);
@@ -532,20 +532,14 @@ void App::init()
 			)
 		);
 
-	// rendering semaphores and fences
+	// rendering semaphore and fence
 	imageAvailableSemaphore =
 		device.createSemaphore(
 			vk::SemaphoreCreateInfo(
 				vk::SemaphoreCreateFlags()  // flags
 			)
 		);
-	renderFinishedSemaphore =
-		device.createSemaphore(
-			vk::SemaphoreCreateInfo(
-				vk::SemaphoreCreateFlags()  // flags
-			)
-		);
-	renderFinishedFence =
+	renderingFinishedFence =
 		device.createFence(
 			vk::FenceCreateInfo(
 				vk::FenceCreateFlagBits::eSignaled  // flags
@@ -2586,6 +2580,15 @@ void App::resize(VulkanWindow& window,
 				)
 			)
 		);
+
+	// render finished semaphores
+	vk::SemaphoreCreateInfo semaphoreCreateInfo{
+		vk::SemaphoreCreateFlags()  // flags
+	};
+	renderingFinishedSemaphores.reserve(swapchainImages.size());
+	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+		renderingFinishedSemaphores.emplace_back(
+			device.createSemaphore(semaphoreCreateInfo));
 }
 
 
@@ -2597,7 +2600,7 @@ void App::frame(VulkanWindow&)
 	// until the rendering is finished)
 	vk::Result r =
 		device.waitForFences(
-			renderFinishedFence,  // fences
+			renderingFinishedFence,  // fences
 			VK_TRUE,  // waitAll
 			uint64_t(3e9)  // timeout
 		);
@@ -2606,7 +2609,7 @@ void App::frame(VulkanWindow&)
 			throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
 		throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
 	}
-	device.resetFences(renderFinishedFence);
+	device.resetFences(renderingFinishedFence);
 
 	// _sceneDataAllocation
 	uint32_t sceneDataSize = uint32_t(sizeof(SceneGpuData));
@@ -2713,6 +2716,7 @@ void App::frame(VulkanWindow&)
 	renderer.executeCopyOperations();
 
 	// submit frame
+	vk::Semaphore renderingFinishedSemaphore = renderingFinishedSemaphores[imageIndex];
 	device.queueSubmit(
 		graphicsQueue,  // queue
 		vk::SubmitInfo(
@@ -2720,9 +2724,9 @@ void App::frame(VulkanWindow&)
 			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
 				vk::PipelineStageFlagBits::eColorAttachmentOutput),
 			1, &commandBuffer,  // commandBufferCount + pCommandBuffers
-			1, &renderFinishedSemaphore  // signalSemaphoreCount + pSignalSemaphores
+			1, &renderingFinishedSemaphore  // signalSemaphoreCount + pSignalSemaphores
 		),
-		renderFinishedFence  // fence
+		renderingFinishedFence  // fence
 	);
 
 	// present
@@ -2730,7 +2734,7 @@ void App::frame(VulkanWindow&)
 		device.presentKHR(
 			presentationQueue,  // queue
 			&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(  // presentInfo
-				1, &renderFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
+				1, &renderingFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
 				1, &swapchain, &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
 				nullptr  // pResults
 			)
