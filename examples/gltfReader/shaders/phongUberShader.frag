@@ -44,7 +44,7 @@ layout(set=0, binding=0) uniform sampler2D baseTexture;
 #endif
 
 
-// input and output
+// input variables
 layout(location = 0) flat in uint64_t inDataPtr;
 layout(location = 1) smooth in vec3 inEyePosition3;
 layout(location = 2) smooth in vec3 inEyeNormal;
@@ -73,6 +73,8 @@ layout(location = 3) flat in uvec2 inId;
 # endif
 #endif
 
+
+// output variables
 layout(location = 0) out vec4 outColor;
 #ifdef ID_BUFFER
 layout(location = 1) out uvec4 outId;

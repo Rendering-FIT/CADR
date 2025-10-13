@@ -50,14 +50,13 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 	layout(offset=64) mat4 modelMatrix[];
 };
 
-// payload data
-// holding per-drawable data pointers
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer DataPointersRef {
+// drawable data pointers
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
 	uint64_t shaderDataPtr;
 };
-const uint DataPointersSize = 24;
+const uint DrawablePointersSize = 24;
 
 
 // Phong light source
@@ -81,7 +80,7 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 
 // push constants
 layout(push_constant) uniform pushConstants {
-	uint64_t dataPointersBufferPtr;  // one buffer for the whole scene
+	uint64_t drawablePointersBufferPtr;  // one buffer for the whole scene
 	uint64_t sceneDataPtr;  // one buffer for the whole scene
 };
 
@@ -135,7 +134,7 @@ void main()
 {
 
 	// memory pointers
-	DataPointersRef dp = DataPointersRef(dataPointersBufferPtr + (gl_DrawID * DataPointersSize));
+	DrawablePointersRef dp = DrawablePointersRef(drawablePointersBufferPtr + (gl_DrawID * DrawablePointersSize));
 	outDataPtr = dp.shaderDataPtr;
 	ShaderDataRef data = ShaderDataRef(dp.shaderDataPtr);
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
