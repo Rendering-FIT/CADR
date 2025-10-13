@@ -2581,14 +2581,19 @@ void App::resize(VulkanWindow& window,
 			)
 		);
 
-	// render finished semaphores
-	vk::SemaphoreCreateInfo semaphoreCreateInfo{
-		vk::SemaphoreCreateFlags()  // flags
-	};
-	renderingFinishedSemaphores.reserve(swapchainImages.size());
-	for(size_t i=0,c=swapchainImages.size(); i<c; i++)
-		renderingFinishedSemaphores.emplace_back(
-			device.createSemaphore(semaphoreCreateInfo));
+	// rendering finished semaphores
+	if(renderingFinishedSemaphores.size() != swapchainImages.size())
+	{
+		for(auto s : renderingFinishedSemaphores)  device.destroy(s);
+		renderingFinishedSemaphores.clear();
+		renderingFinishedSemaphores.reserve(swapchainImages.size());
+		vk::SemaphoreCreateInfo semaphoreCreateInfo{
+			vk::SemaphoreCreateFlags()  // flags
+		};
+		for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+			renderingFinishedSemaphores.emplace_back(
+				device.createSemaphore(semaphoreCreateInfo));
+	}
 }
 
 
