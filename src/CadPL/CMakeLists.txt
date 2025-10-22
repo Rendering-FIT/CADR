@@ -1,5 +1,5 @@
 # project name
-set(LIB_NAME CadR)
+set(LIB_NAME CadPL)
 set(LIB_NAME_UPPER)
 string(TOUPPER ${LIB_NAME} LIB_NAME_UPPER)
 
@@ -16,90 +16,42 @@ else()
 endif()
 
 # public headers
-set(CADR_PUBLIC_HEADERS
-	BoundingBox.h
-	BoundingSphere.h
-	CallbackList.h
-	CircularAllocationMemory.h
-	DataAllocation.h
-	DataMemory.h
-	DataStorage.h
-	Drawable.h
-	Exceptions.h
-	FrameInfo.h
-	Geometry.h
-	HandleTable.h
-	ImageAllocation.h
-	ImageMemory.h
-	ImageStorage.h
-	ParentChildList.h
-	Pipeline.h
-	PrimitiveSet.h
-	Renderer.h
-	RenderPass.h
-	Sampler.h
-	StagingBuffer.h
-	StagingData.h
-	StagingManager.h
-	StagingMemory.h
-	StateSet.h
-	Texture.h
-	TransferResources.h
-	VulkanDevice.h
-	VulkanInstance.h
-	VulkanLibrary.h
+set(CADPL_PUBLIC_HEADERS
+	PipelineLibrary.h
+	ShaderLibrary.h
 	)
 
 # private headers
-set(CADR_PRIVATE_HEADERS
+set(CADPL_PRIVATE_HEADERS
 	)
 
 # sources
-set(CADR_SOURCES
-	DataAllocation.cpp
-	DataMemory.cpp
-	DataStorage.cpp
-	Drawable.cpp
-	Geometry.cpp
-	HandleTable.cpp
-	ImageAllocation.cpp
-	ImageMemory.cpp
-	ImageStorage.cpp
-	Pipeline.cpp
-	PrimitiveSet.cpp
-	Renderer.cpp
-	RenderPass.cpp
-	Sampler.cpp
-	StagingBuffer.cpp
-	StagingData.cpp
-	StagingManager.cpp
-	StagingMemory.cpp
-	StateSet.cpp
-	Texture.cpp
-	VulkanDevice.cpp
-	VulkanInstance.cpp
-	VulkanLibrary.cpp
+set(CADPL_SOURCES
+	PipelineLibrary.cpp
+	ShaderLibrary.cpp
 	)
 
 # grouping of source files
-source_group("Code" FILES ${CADR_PUBLIC_HEADERS} ${CADR_PRIVATE_HEADERS} ${CADR_SOURCES})
+source_group("Code" FILES ${CADPL_PUBLIC_HEADERS} ${CADPL_PRIVATE_HEADERS} ${CADPL_SOURCES})
 
 # dependencies
 find_package(Vulkan REQUIRED)
-find_package(Boost REQUIRED)
 
 # shaders
-add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_1 shaders/processDrawables-l1.comp.spv CADR_SHADER_DEPS)
-add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_2 shaders/processDrawables-l2.comp.spv CADR_SHADER_DEPS)
-add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_3 shaders/processDrawables-l3.comp.spv CADR_SHADER_DEPS)
+add_shader(UberShader.vert  ""  shaders/UberShader.vert.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  ""  shaders/UberShader.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  ""  shaders/UberShader.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.vert  -DID_BUFFER  shaders/UberShader-idBuffer.vert.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  -DID_BUFFER  shaders/UberShader-idBuffer.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  -DID_BUFFER  shaders/UberShader-idBuffer.frag.spv  CADPL_SHADER_DEPS)
 
 # CADR library
 add_library(${LIB_NAME}
 	${CADR_USER_DEFINED_DYNAMIC_OR_STATIC}
-	${CADR_PUBLIC_HEADERS}
-	${CADR_PRIVATE_HEADERS}
-	${CADR_SOURCES}
-	${CADR_SHADER_DEPS}
+	${CADPL_PUBLIC_HEADERS}
+	${CADPL_PRIVATE_HEADERS}
+	${CADPL_SOURCES}
+	${CADPL_SHADER_DEPS}
 	)
 
 # compile definitions
@@ -107,20 +59,20 @@ if(WIN32)
 	if(CADR_DYNAMIC_LINKAGE)
 		target_compile_definitions(${LIB_NAME}
 			PRIVATE
-				"CADR_EXPORT=__declspec(dllexport)"
+				"CADPL_EXPORT=__declspec(dllexport)"
 			INTERFACE
-				"CADR_EXPORT=__declspec(dllimport)"
+				"CADPL_EXPORT=__declspec(dllimport)"
 		)
 	else()
 		target_compile_definitions(${LIB_NAME}
 			PUBlIC
-				"CADR_EXPORT="
+				"CADPL_EXPORT="
 		)
 	endif()
 else()
 	target_compile_definitions(${LIB_NAME}
 		PUBLIC
-			"CADR_EXPORT=__attribute__((visibility(\"default\")))"
+			"CADPL_EXPORT=__attribute__((visibility(\"default\")))"
 	)
 endif()
 
@@ -133,17 +85,14 @@ set_target_properties(${LIB_NAME} PROPERTIES
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # target libraries
-target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)
-if(UNIX)
-	target_link_libraries(${LIB_NAME} dl stdc++fs)
-endif()
+target_link_libraries(${LIB_NAME} Vulkan::Headers CadR)
 
 # other target settings
 set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD 17)
 
 # headers installation
 install(FILES
-	${CADR_PUBLIC_HEADERS}
+	${CADPL_PUBLIC_HEADERS}
 	DESTINATION include/${LIB_NAME}
 	)
 
