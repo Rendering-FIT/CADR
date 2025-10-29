@@ -130,11 +130,11 @@ endmacro()
 # creates custom commands to convert GLSL shader to spir-v using preprocessor defines and output file name
 # and appends the shader and output file name to depsList; depsList contains name of files that should be included among the source files
 macro(add_shader name defines outputFileName depsList)
-	get_filename_component(directory ${name} DIRECTORY)
+	get_filename_component(directory ${outputFileName} DIRECTORY)
 	if(directory)
 		file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${directory}")
 	endif()
-	if(defines STREQUAL "")
+	if("${defines}" STREQUAL "")
 		set(commentText "Converting ${name} (defines: none) to spir-v...")
 	else()
 		set(commentText "Converting ${name} (defines: ${defines}) to spir-v...")
@@ -150,13 +150,21 @@ endmacro()
 
 
 macro(_process_single_shader name outputName outputSuffix defines dependencyList)
+
+	# make sure target directory exists
+	get_filename_component(directory ${outputName} DIRECTORY)
+	if(directory)
+		file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${directory}")
+	endif()
+
 	string(STRIP "${defines}" defines2)
-	if(defines STREQUAL "")
+	separate_arguments(defines2 UNIX_COMMAND "${defines2}")
+	if("${defines}" STREQUAL "")
 		set(commentText "Converting ${name} (defines: none) to spir-v...")
 	else()
 		set(commentText "Converting ${name} (defines: ${defines2}) to spir-v...")
 	endif()
-	separate_arguments(defines2 UNIX_COMMAND "${defines2}")
+
 	add_custom_command(COMMENT "${commentText}"
 	                   MAIN_DEPENDENCY "${name}"
 	                   OUTPUT "${outputName}${outputSuffix}"
@@ -166,9 +174,11 @@ macro(_process_single_shader name outputName outputSuffix defines dependencyList
 		                           ${defines2}  # define pre-processor macros
 		                           ${CMAKE_CURRENT_SOURCE_DIR}/${name}  # source file
 		                           -o ${outputName}${outputSuffix})  # output file
+
 	source_group("Shaders" FILES "${name}")
 	source_group("Shaders/spir-v" FILES "${CMAKE_CURRENT_BINARY_DIR}/${outputName}${outputSuffix}")
 	list(APPEND ${dependencyList} "${name}" "${CMAKE_CURRENT_BINARY_DIR}/${outputName}${outputSuffix}")
+
 endmacro()
 
 
@@ -181,12 +191,6 @@ macro(process_shaders shaderList dependencyList)
 		separate_arguments(stringList UNIX_COMMAND ${line})
 		list(LENGTH stringList listLen)
 		list(GET stringList 0 name)
-
-		# make sure target directory exists
-		get_filename_component(directory ${name} DIRECTORY)
-		if(directory)
-			file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/${directory}")
-		endif()
 
 		# process shaders
 		if(listLen LESS 3)

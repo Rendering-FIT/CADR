@@ -1,4 +1,5 @@
 #include <CadPL/PipelineLibrary.h>
+#include <CadR/VulkanDevice.h>
 
 using namespace std;
 using namespace CadPL;

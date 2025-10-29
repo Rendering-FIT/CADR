@@ -141,7 +141,7 @@ inline SharedShaderModule& SharedShaderModule::operator=(SharedShaderModule&& rh
 inline SharedShaderModule& SharedShaderModule::operator=(const SharedShaderModule& rhs) noexcept  { if(_shaderModule) ShaderLibrary::unrefShaderModule(_owner); _shaderModule=rhs._shaderModule; _owner=rhs._owner; if(_shaderModule) ShaderLibrary::refShaderModule(_owner); return *this; }
 inline vk::ShaderModule SharedShaderModule::get() const  { return _shaderModule; }
 inline SharedShaderModule::operator vk::ShaderModule() const  { return _shaderModule; }
-inline void SharedShaderModule::reset() noexcept  { if(_shaderModule==nullptr) return; ShaderLibrary::unrefShaderModule(_owner); _shaderModule=nullptr; }
+inline void SharedShaderModule::reset() noexcept  { if(!_shaderModule) return; ShaderLibrary::unrefShaderModule(_owner); _shaderModule=nullptr; }
 inline ShaderLibrary::VertexShaderMapKey::VertexShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline ShaderLibrary::GeometryShaderMapKey::GeometryShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}

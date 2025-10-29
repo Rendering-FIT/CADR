@@ -160,7 +160,7 @@ inline SharedPipeline& SharedPipeline::operator=(SharedPipeline&& rhs) noexcept 
 inline SharedPipeline& SharedPipeline::operator=(const SharedPipeline& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); _pipeline=rhs._pipeline; _owner=rhs._owner; if(_pipeline) PipelineFamily::refPipeline(_owner); return *this; }
 inline vk::Pipeline SharedPipeline::get() const  { return _pipeline; }
 inline SharedPipeline::operator vk::Pipeline() const  { return _pipeline; }
-inline void SharedPipeline::reset() noexcept  { if(_pipeline==nullptr) return; PipelineFamily::unrefPipeline(_owner); _pipeline=nullptr; }
+inline void SharedPipeline::reset() noexcept  { if(!_pipeline) return; PipelineFamily::unrefPipeline(_owner); _pipeline=nullptr; }
 inline void PipelineFamily::refPipeline(void* pipelineOwner) noexcept  { size_t& p=reinterpret_cast<size_t&>(pipelineOwner); p++; }
 inline vk::Pipeline PipelineFamily::refAndGetPipeline(void* pipelineOwner) noexcept  { struct PO { size_t counter; vk::Pipeline pipeline; }; PO* p=reinterpret_cast<PO*>(pipelineOwner); p->counter++; return p->pipeline; }
 inline void PipelineFamily::unrefPipeline(void* pipelineOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(pipelineOwner); if(counter==1) PipelineFamily::destroyPipeline(pipelineOwner); else counter--; }

@@ -14,9 +14,9 @@ struct ShaderState;
 
 class CADPL_EXPORT ShaderGenerator {
 public:
-	static [[nodiscard]] vk::ShaderModule createVertexShader(const ShaderState& state, CadR::VulkanDevice& device);
-	static [[nodiscard]] vk::ShaderModule createGeometryShader(const ShaderState& state, CadR::VulkanDevice& device);
-	static [[nodiscard]] vk::ShaderModule createFragmentShader(const ShaderState& state, CadR::VulkanDevice& device);
+	[[nodiscard]] static vk::ShaderModule createVertexShader(const ShaderState& state, CadR::VulkanDevice& device);
+	[[nodiscard]] static vk::ShaderModule createGeometryShader(const ShaderState& state, CadR::VulkanDevice& device);
+	[[nodiscard]] static vk::ShaderModule createFragmentShader(const ShaderState& state, CadR::VulkanDevice& device);
 	static vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> createVertexShaderUnique(const ShaderState& state, CadR::VulkanDevice& device);
 	static vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> createGeometryShaderUnique(const ShaderState& state, CadR::VulkanDevice& device);
 	static vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> createFragmentShaderUnique(const ShaderState& state, CadR::VulkanDevice& device);
