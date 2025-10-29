@@ -268,18 +268,18 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 	array<vk::PipelineShaderStageCreateInfo, 2> shaderStages{
 		vk::PipelineShaderStageCreateInfo{
 			vk::PipelineShaderStageCreateFlags(),  // flags
-			vk::ShaderStageFlagBits::eVertex,	  // stage
+			vk::ShaderStageFlagBits::eVertex,  // stage
 			nullptr,  // module - will be set later
 			"main",  // pName
 			&specializationInfo,  // pSpecializationInfo
 		},
 		vk::PipelineShaderStageCreateInfo{
 			vk::PipelineShaderStageCreateFlags(),  // flags
-			vk::ShaderStageFlagBits::eFragment,	// stage
+			vk::ShaderStageFlagBits::eFragment,  // stage
 			nullptr,  // module - will be set later
 			"main",  // pName
 			&specializationInfo,  // pSpecializationInfo
-		}
+		},
 	};
 	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState{
 		vk::PipelineInputAssemblyStateCreateFlags(),  // flags
@@ -312,7 +312,7 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 		vk::PipelineMultisampleStateCreateFlags(),  // flags
 		vk::SampleCountFlagBits::e1,  // rasterizationSamples
 		VK_FALSE,  // sampleShadingEnable
-		0.f,	   // minSampleShading
+		0.f,       // minSampleShading
 		nullptr,   // pSampleMask
 		VK_FALSE,  // alphaToCoverageEnable
 		VK_FALSE   // alphaToOneEnable
@@ -334,10 +334,10 @@ void PipelineLibrary::create(CadR::VulkanDevice& device, vk::Extent2D surfaceExt
 			VK_FALSE,  // blendEnable
 			vk::BlendFactor::eZero,  // srcColorBlendFactor
 			vk::BlendFactor::eZero,  // dstColorBlendFactor
-			vk::BlendOp::eAdd,	     // colorBlendOp
+			vk::BlendOp::eAdd,       // colorBlendOp
 			vk::BlendFactor::eZero,  // srcAlphaBlendFactor
 			vk::BlendFactor::eZero,  // dstAlphaBlendFactor
-			vk::BlendOp::eAdd,	     // alphaBlendOp
+			vk::BlendOp::eAdd,       // alphaBlendOp
 			vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
 				vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA  // colorWriteMask
 		},

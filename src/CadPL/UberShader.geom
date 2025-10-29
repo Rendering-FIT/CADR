@@ -18,13 +18,13 @@ layout(location = 3) in flat uvec2 inId[3];
 #endif
 
 // output to fragment shader
-layout(location = 0) out flat u64vec4 outVertexAndDrawableDataPtr;  // VertexData on indices 0..2 and ShaderData on index 3
-layout(location = 1) out smooth vec3 outBarycentricCoords;  // barycentric coordinates using perspective correction
-layout(location = 2) out smooth vec3 outVertexPosition3;  // in eye coordinates
-layout(location = 3) out smooth vec3 outVertexNormal;  // in eye coordinates
-layout(location = 4) out smooth vec3 outVertexTangent;  // in eye coordinates
+layout(location = 0) out flat u64vec4 outVertexAndDrawableDataPtr;  // VertexData on indices 0..2 and DrawableData on index 3; it occupies locations 0 and 1
+layout(location = 2) out smooth vec3 outBarycentricCoords;  // barycentric coordinates using perspective correction
+layout(location = 3) out smooth vec3 outVertexPosition3;  // in eye coordinates
+layout(location = 4) out smooth vec3 outVertexNormal;  // in eye coordinates
+layout(location = 5) out smooth vec3 outVertexTangent;  // in eye coordinates
 #ifdef ID_BUFFER
-layout(location = 5) out flat uvec2 outId;
+layout(location = 6) out flat uvec2 outId;
 #endif
 
 

@@ -3,7 +3,6 @@
 #include <bitset>
 #include <map>
 #include <vulkan/vulkan.hpp>
-#include <CadR/VulkanDevice.h>
 
 namespace CadR {
 class VulkanDevice;
@@ -27,6 +26,7 @@ struct ShaderState {
 
 	static constexpr const unsigned numOptimizeFlags = 8;
 	std::bitset<numOptimizeFlags> optimizeFlags = 0;
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeNone = 0x00;
 	static constexpr const std::bitset<numOptimizeFlags> OptimizeAttribs = 0x01;
 	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialModel = 0x02;
 	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialColorAttribute = 0x04;
@@ -41,17 +41,7 @@ struct ShaderState {
 	static constexpr const std::bitset<numOptimizeFlags> OptimizeAll = 0xff;
 
 	bool operator<(const ShaderState& rhs) const  { return idBuffer < rhs.idBuffer; }
-};
 
-
-class CADPL_EXPORT ShaderGenerator {
-public:
-	static [[nodiscard]] vk::ShaderModule createVertexShader(const ShaderState& state, CadR::VulkanDevice& device);
-	static [[nodiscard]] vk::ShaderModule createGeometryShader(const ShaderState& state, CadR::VulkanDevice& device);
-	static [[nodiscard]] vk::ShaderModule createFragmentShader(const ShaderState& state, CadR::VulkanDevice& device);
-	static vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> createVertexShaderUnique(const ShaderState& state, CadR::VulkanDevice& device);
-	static vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> createGeometryShaderUnique(const ShaderState& state, CadR::VulkanDevice& device);
-	static vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> createFragmentShaderUnique(const ShaderState& state, CadR::VulkanDevice& device);
 };
 
 
@@ -123,22 +113,25 @@ protected:
 
 public:
 
+	// construction and destruction
 	ShaderLibrary(CadR::VulkanDevice& device) noexcept;
 	~ShaderLibrary() noexcept;
 
+	// synchronous API to get and create pipelines
+	SharedShaderModule getOrCreateVertexShader(const ShaderState& state);
+	SharedShaderModule getOrCreateGeometryShader(const ShaderState& state);
+	SharedShaderModule getOrCreateFragmentShader(const ShaderState& state);
 	SharedShaderModule getVertexShader(const ShaderState& state);
 	SharedShaderModule getGeometryShader(const ShaderState& state);
 	SharedShaderModule getFragmentShader(const ShaderState& state);
 
+	// getters
 	CadR::VulkanDevice& device() const;
 
 };
 
 
 // inline functions
-inline vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> ShaderGenerator::createVertexShaderUnique(const ShaderState& state, CadR::VulkanDevice& device)  { return vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice>(createVertexShader(state, device)); }
-inline vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> ShaderGenerator::createGeometryShaderUnique(const ShaderState& state, CadR::VulkanDevice& device)  { return vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice>(createGeometryShader(state, device)); }
-inline vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice> ShaderGenerator::createFragmentShaderUnique(const ShaderState& state, CadR::VulkanDevice& device)  { return vk::UniqueHandle<vk::ShaderModule, CadR::VulkanDevice>(createFragmentShader(state, device)); }
 inline SharedShaderModule::SharedShaderModule(void* shaderLibraryModuleOwner) noexcept  : _shaderModule(ShaderLibrary::refAndGetShaderModule(shaderLibraryModuleOwner)), _owner(shaderLibraryModuleOwner) {}
 inline SharedShaderModule::SharedShaderModule(vk::ShaderModule shaderModule, void* shaderLibraryModuleOwner) noexcept  : _shaderModule(shaderModule), _owner(shaderLibraryModuleOwner) { if(shaderModule) ShaderLibrary::refShaderModule(shaderLibraryModuleOwner); }
 inline SharedShaderModule::~SharedShaderModule() noexcept  { if(_shaderModule) ShaderLibrary::unrefShaderModule(_owner); }
@@ -155,6 +148,9 @@ inline ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderSta
 inline void ShaderLibrary::refShaderModule(void* shaderModuleOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(shaderModuleOwner); counter++; }
 inline vk::ShaderModule ShaderLibrary::refAndGetShaderModule(void* shaderModuleOwner) noexcept  { struct SMO { size_t counter; vk::ShaderModule sm; }; SMO* s=reinterpret_cast<SMO*>(shaderModuleOwner); s->counter++; return s->sm; }
 inline void ShaderLibrary::unrefShaderModule(void* shaderModuleOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(shaderModuleOwner); if(counter==1) ShaderLibrary::destroyShaderModule(shaderModuleOwner); else counter--; }
+inline SharedShaderModule ShaderLibrary::getVertexShader(const ShaderState& state)  { auto it=_vertexShaderMap.find(state); return (it!=_vertexShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
+inline SharedShaderModule ShaderLibrary::getGeometryShader(const ShaderState& state)  { auto it=_geometryShaderMap.find(state); return (it!=_geometryShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
+inline SharedShaderModule ShaderLibrary::getFragmentShader(const ShaderState& state)  { auto it=_fragmentShaderMap.find(state); return (it!=_fragmentShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
 inline CadR::VulkanDevice& ShaderLibrary::device() const  { return *_device; }
 
 

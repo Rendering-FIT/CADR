@@ -134,14 +134,18 @@ protected:
 
 public:
 
+	// construction and destruction
 	PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache = nullptr);
 	~PipelineLibrary() noexcept;
 
+	// synchronous API to get and create pipelines
 	SharedPipeline getOrCreatePipeline(const ShaderState& shaderState, const PipelineState& pipelineState);
 	SharedPipeline getPipeline(const ShaderState& shaderState, const PipelineState& pipelineState);
 
+	// getters
 	CadR::VulkanDevice& device() const;
 	ShaderLibrary& shaderLibrary() const;
+	vk::PipelineCache pipelineCache() const;
 
 };
 
@@ -167,6 +171,7 @@ inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::Pipeli
 inline SharedPipeline PipelineLibrary::getPipeline(const ShaderState& shaderState, const PipelineState& pipelineState)  { auto it=_pipelineFamilyMap.find(shaderState); return (it!=_pipelineFamilyMap.end()) ? it->second.getPipeline(pipelineState) : SharedPipeline(); }
 inline CadR::VulkanDevice& PipelineLibrary::device() const  { return *_device; }
 inline ShaderLibrary& PipelineLibrary::shaderLibrary() const  { return *_shaderLibrary; }
+inline vk::PipelineCache PipelineLibrary::pipelineCache() const  { return _pipelineCache; }
 
 
 }

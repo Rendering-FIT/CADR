@@ -1,4 +1,6 @@
 #include <CadPL/ShaderLibrary.h>
+#include <CadPL/ShaderGenerator.h>
+#include <CadR/VulkanDevice.h>
 
 using namespace std;
 using namespace CadPL;
@@ -61,79 +63,7 @@ void ShaderLibrary::destroyShaderModule(void* shaderModuleOwner) noexcept
 }
 
 
-vk::ShaderModule ShaderGenerator::createVertexShader(const ShaderState& state, CadR::VulkanDevice& device)
-{
-	const uint32_t* code;
-	size_t size;
-	if(state.idBuffer) {
-		code = vertexIdBufferUberShaderSpirv;
-		size = sizeof(vertexIdBufferUberShaderSpirv);
-	}
-	else {
-		code = vertexUberShaderSpirv;
-		size = sizeof(vertexUberShaderSpirv);
-	}
-
-	return
-		device.createShaderModule(
-			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),  // flags
-				size,  // codeSize
-				code   // pCode
-			)
-		);
-}
-
-
-vk::ShaderModule ShaderGenerator::createGeometryShader(const ShaderState& state, CadR::VulkanDevice& device)
-{
-	const uint32_t* code;
-	size_t size;
-	if(state.idBuffer) {
-		code = geometryIdBufferUberShaderSpirv;
-		size = sizeof(geometryIdBufferUberShaderSpirv);
-	}
-	else {
-		code = geometryUberShaderSpirv;
-		size = sizeof(geometryUberShaderSpirv);
-	}
-
-	return
-		device.createShaderModule(
-			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),  // flags
-				size,  // codeSize
-				code   // pCode
-			)
-		);
-}
-
-
-vk::ShaderModule ShaderGenerator::createFragmentShader(const ShaderState& state, CadR::VulkanDevice& device)
-{
-	const uint32_t* code;
-	size_t size;
-	if(state.idBuffer) {
-		code = fragmentIdBufferUberShaderSpirv;
-		size = sizeof(fragmentIdBufferUberShaderSpirv);
-	}
-	else {
-		code = fragmentUberShaderSpirv;
-		size = sizeof(fragmentUberShaderSpirv);
-	}
-
-	return
-		device.createShaderModule(
-			vk::ShaderModuleCreateInfo(
-				vk::ShaderModuleCreateFlags(),  // flags
-				size,  // codeSize
-				code   // pCode
-			)
-		);
-}
-
-
-SharedShaderModule ShaderLibrary::getVertexShader(const ShaderState& state)
+SharedShaderModule ShaderLibrary::getOrCreateVertexShader(const ShaderState& state)
 {
 	VertexShaderMapKey key(state);
 	auto [it, newRecord] = _vertexShaderMap.try_emplace(key);
@@ -153,7 +83,7 @@ SharedShaderModule ShaderLibrary::getVertexShader(const ShaderState& state)
 }
 
 
-SharedShaderModule ShaderLibrary::getGeometryShader(const ShaderState& state)
+SharedShaderModule ShaderLibrary::getOrCreateGeometryShader(const ShaderState& state)
 {
 	GeometryShaderMapKey key(state);
 	auto [it, newRecord] = _geometryShaderMap.try_emplace(key);
@@ -173,7 +103,7 @@ SharedShaderModule ShaderLibrary::getGeometryShader(const ShaderState& state)
 }
 
 
-SharedShaderModule ShaderLibrary::getFragmentShader(const ShaderState& state)
+SharedShaderModule ShaderLibrary::getOrCreateFragmentShader(const ShaderState& state)
 {
 	FragmentShaderMapKey key(state);
 	auto [it, newRecord] = _fragmentShaderMap.try_emplace(key);

@@ -8,13 +8,13 @@
 
 
 // input and output
-layout(location = 0) in flat u64vec4 inVertexAndDrawableDataPtr;  // VertexData on indices 0..2 and DrawableData on index 3
-layout(location = 1) in smooth vec3 inBarycentricCoords;  // barycentric coordinates using perspective correction
-layout(location = 2) in smooth vec3 inFragmentPosition3;  // in eye coordinates
-layout(location = 3) in smooth vec3 inFragmentNormal;  // in eye coordinates
-layout(location = 4) in smooth vec3 inFragmentTangent;  // in eye coordinates
+layout(location = 0) in flat u64vec4 inVertexAndDrawableDataPtr;  // VertexData on indices 0..2 and DrawableData on index 3; it occupies locations 0 and 1
+layout(location = 2) in smooth vec3 inBarycentricCoords;  // barycentric coordinates using perspective correction
+layout(location = 3) in smooth vec3 inFragmentPosition3;  // in eye coordinates
+layout(location = 4) in smooth vec3 inFragmentNormal;  // in eye coordinates
+layout(location = 5) in smooth vec3 inFragmentTangent;  // in eye coordinates
 #ifdef ID_BUFFER
-layout(location = 5) in flat uvec2 inId;
+layout(location = 6) in flat uvec2 inId;
 #endif
 layout(location = 0) out vec4 outColor;
 #ifdef ID_BUFFER

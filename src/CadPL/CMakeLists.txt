@@ -18,6 +18,7 @@ endif()
 # public headers
 set(CADPL_PUBLIC_HEADERS
 	PipelineLibrary.h
+	ShaderGenerator.h
 	ShaderLibrary.h
 	)
 
@@ -28,6 +29,7 @@ set(CADPL_PRIVATE_HEADERS
 # sources
 set(CADPL_SOURCES
 	PipelineLibrary.cpp
+	ShaderGenerator.cpp
 	ShaderLibrary.cpp
 	)
 
