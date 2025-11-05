@@ -25,21 +25,21 @@ struct CADPL_EXPORT ShaderState {
 	uint32_t textureSetup[6];
 	uint16_t numTextures;
 
-	static constexpr const unsigned numOptimizeFlags = 8;
-	std::bitset<numOptimizeFlags> optimizeFlags = 0;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeNone = 0x00;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeAttribs = 0x01;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialModel = 0x02;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialColorAttribute = 0x04;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialAlpha = 0x08;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterial = 0x0e;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextureFlags = 0x10;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextureCoordAccess = 0x20;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextureTypes = 0x40;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextures = 0x70;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeLightType = 0x80;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeLights = 0x80;
-	static constexpr const std::bitset<numOptimizeFlags> OptimizeAll = 0xff;
+	static constexpr const unsigned numOptimizeFlags = 7;
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeNone = 0x00;  //< No optimizations. Uber-shader will be used.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeAttribs = 0x01;  //< Optimize attribute access. Number of attributes, their indices, their type and data offset are fixed and hardcoded into the shader code. 
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialModel = 0x02;  //< Optimize material model (unlit, phong, metallic-roughness,...). The material model is fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialColorAttribute = 0x04;  //< Optimize phong color attribute settings (color to diffuse, color to ambient and diffuse). The settings are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterialAlpha = 0x08;  //< Optimize alpha computation (ignore texture alpha, ignore material alpha, ignore color attribute alpha). The alpha flags are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeMaterial = 0x0e;  //< Optimize all material related settings. The settings are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextureTypesAndCoordIndex = 0x10;  //< Optimize texture types and attribute indices from which texture coordinates are sourced. Number of textures, their types (normal texture, occlusion texture, emissive texture, base texture,...) and attribute indices for sourcing texture coordinates are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextureFlags = 0x20;  //< Optimize texture flags (apply strength, apply texture coordinate transformation, blend color included, phong's texture environment, first component index). The settings are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeTextures = 0x30;  //< Optimize all texture related settings. The settings are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeLightTypes = 0x40;  //< Optimize light types. Number of lights and their types are fixed and hardcoded into the shader code.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeLights = 0x40;  //< Optimize all light related settings.
+	static constexpr const std::bitset<numOptimizeFlags> OptimizeAll = 0x7f;  //< Make all available optimizations.
+
+	std::bitset<numOptimizeFlags> optimizeFlags = OptimizeNone;
 
 	bool operator<(const ShaderState& rhs) const  { return idBuffer < rhs.idBuffer; }
 

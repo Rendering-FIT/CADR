@@ -29,7 +29,7 @@ uint getColorAccessInfo()  { return attribAccessInfoList[1] >> 16; }
 uint getTexCoordAccessInfo(uint attribIndex) { uint texCoordAccessInfo = attribAccessInfoList[attribIndex>>1]; if((attribIndex & 0x1) == 0) texCoordAccessInfo &= 0x0000ffff; else texCoordAccessInfo >>= 16; return texCoordAccessInfo; }
 
 // materialSetup
-// bits 0..1: 0 - reserved, 1 - unlit, 2 - phong, 3 - metallicRoughness
+// bits 0..1: material model; 0 - reserved, 1 - unlit, 2 - phong, 3 - metallicRoughness
 // bits 2..7: texture offset (0, 4, 8, 12, .....252)
 // bit 8: use color attribute for ambient and diffuse; material ambient and diffuse values are ignored
 // bit 9: use color attribute for diffuse; material diffuse value is ignored
