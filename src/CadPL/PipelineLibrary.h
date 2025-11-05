@@ -19,7 +19,6 @@ class PipelineLibrary;
 struct PipelineState {
 	std::vector<vk::SpecializationMapEntry> specializationMap;
 	std::vector<uint8_t> specializationData;
-	vk::PrimitiveTopology primitiveTopology;
 	vk::Viewport viewport;
 	vk::Rect2D scissor;
 	vk::CullModeFlagBits cullMode;
@@ -90,13 +89,15 @@ protected:
 	};
 
 	std::map<PipelineState, PipelineOwner> _pipelineMap;
-	
+	vk::PrimitiveTopology _primitiveTopology;
+
 	static void refPipeline(void* pipelineOwner) noexcept;
 	static vk::Pipeline refAndGetPipeline(void* pipelineOwner) noexcept;
 	static void unrefPipeline(void* pipelineOwner) noexcept;
 	static void destroyPipeline(void* pipelineOwner) noexcept;
 	vk::Pipeline createPipeline(const PipelineState& pipelineState);
 	friend SharedPipeline;
+	friend PipelineLibrary;
 
 	CadR::VulkanDevice* _device = nullptr;
 	PipelineLibrary* _pipelineLibrary;
@@ -113,11 +114,6 @@ public:
 	const std::map<PipelineState, PipelineOwner>& pipelineMap() const;
 	PipelineFamily(PipelineLibrary& pipelineLibrary) noexcept;
 	~PipelineFamily() noexcept;
-
-protected:
-
-	void setEraseIt(std::map<ShaderState, PipelineFamily>::iterator eraseIt) noexcept;
-	friend PipelineLibrary;
 
 };
 
@@ -166,7 +162,6 @@ inline vk::Pipeline PipelineFamily::refAndGetPipeline(void* pipelineOwner) noexc
 inline void PipelineFamily::unrefPipeline(void* pipelineOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(pipelineOwner); if(counter==1) PipelineFamily::destroyPipeline(pipelineOwner); else counter--; }
 inline SharedPipeline PipelineFamily::getPipeline(const PipelineState& pipelineState)  { auto it=_pipelineMap.find(pipelineState); return (it!=_pipelineMap.end()) ? SharedPipeline(&it->second.pipeline) : SharedPipeline(); }
 inline const std::map<PipelineState, PipelineFamily::PipelineOwner>& PipelineFamily::pipelineMap() const  { return _pipelineMap; }
-inline void PipelineFamily::setEraseIt(std::map<ShaderState, PipelineFamily>::iterator eraseIt) noexcept  { _eraseIt = eraseIt; }
 inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  : _device(&shaderLibrary.device()), _pipelineCache(pipelineCache) {}
 inline SharedPipeline PipelineLibrary::getPipeline(const ShaderState& shaderState, const PipelineState& pipelineState)  { auto it=_pipelineFamilyMap.find(shaderState); return (it!=_pipelineFamilyMap.end()) ? it->second.getPipeline(pipelineState) : SharedPipeline(); }
 inline CadR::VulkanDevice& PipelineLibrary::device() const  { return *_device; }

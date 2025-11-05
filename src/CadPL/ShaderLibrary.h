@@ -11,9 +11,10 @@ class VulkanDevice;
 namespace CadPL {
 
 
-struct ShaderState {
+struct CADPL_EXPORT ShaderState {
 
 	bool idBuffer;
+	vk::PrimitiveTopology primitiveTopology;
 
 	static constexpr const unsigned maxNumAttribs = 16;
 	uint16_t attribAccessInfo[maxNumAttribs];

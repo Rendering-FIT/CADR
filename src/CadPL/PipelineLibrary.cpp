@@ -78,7 +78,8 @@ SharedPipeline PipelineLibrary::getOrCreatePipeline(const ShaderState& shaderSta
 			_pipelineFamilyMap.erase(it);
 			throw;
 		}
-		it->second.setEraseIt(it);
+		it->second._eraseIt = it;
+		it->second._primitiveTopology = shaderState.primitiveTopology;
 	}
 	return it->second.getOrCreatePipeline(pipelineState);
 }
@@ -117,7 +118,7 @@ vk::Pipeline PipelineFamily::createPipeline(const PipelineState& pipelineState)
 	};
 	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState{
 		vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-		pipelineState.primitiveTopology,  // topology
+		_primitiveTopology,  // topology
 		VK_FALSE  // primitiveRestartEnable
 	};
 	vk::PipelineViewportStateCreateInfo viewportState{

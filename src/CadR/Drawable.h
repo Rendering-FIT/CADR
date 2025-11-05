@@ -107,7 +107,7 @@ typedef boost::intrusive::list<
 #endif
 
 
-// inline methods
+// inline functions
 #if !defined(CADR_DRAWABLE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_DRAWABLE_INLINE_FUNCTIONS
 # include <CadR/Renderer.h>

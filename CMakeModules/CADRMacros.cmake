@@ -158,12 +158,12 @@ macro(_process_single_shader name outputName outputSuffix defines dependencyList
 	endif()
 
 	string(STRIP "${defines}" defines2)
-	separate_arguments(defines2 UNIX_COMMAND "${defines2}")
 	if("${defines}" STREQUAL "")
 		set(commentText "Converting ${name} (defines: none) to spir-v...")
 	else()
 		set(commentText "Converting ${name} (defines: ${defines2}) to spir-v...")
 	endif()
+	separate_arguments(defines2 UNIX_COMMAND "${defines2}")
 
 	add_custom_command(COMMENT "${commentText}"
 	                   MAIN_DEPENDENCY "${name}"
