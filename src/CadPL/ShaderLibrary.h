@@ -73,6 +73,7 @@ protected:
 
 class CADPL_EXPORT ShaderLibrary {
 protected:
+
 	CadR::VulkanDevice* _device;
 
 	enum class OwnerMap { eUnknown = 0, eVertex, eGeometry, eFragment };
@@ -105,6 +106,9 @@ protected:
 	std::map<VertexShaderMapKey, ShaderModuleOwner<VertexShaderMapKey>> _vertexShaderMap;
 	std::map<GeometryShaderMapKey, ShaderModuleOwner<GeometryShaderMapKey>> _geometryShaderMap;
 	std::map<FragmentShaderMapKey, ShaderModuleOwner<FragmentShaderMapKey>> _fragmentShaderMap;
+	vk::PipelineLayout _pipelineLayout;
+	vk::DescriptorSetLayout _descriptorSetLayout;
+	std::vector<vk::DescriptorSetLayout> _descriptorSetLayoutList;
 	
 	static void refShaderModule(void* shaderModuleOwner) noexcept;
 	static vk::ShaderModule refAndGetShaderModule(void* shaderModuleOwner) noexcept;
@@ -115,7 +119,7 @@ protected:
 public:
 
 	// construction and destruction
-	ShaderLibrary(CadR::VulkanDevice& device) noexcept;
+	ShaderLibrary(CadR::VulkanDevice& device, uint32_t maxTextures = 250000);
 	~ShaderLibrary() noexcept;
 
 	// synchronous API to get and create pipelines
@@ -128,6 +132,10 @@ public:
 
 	// getters
 	CadR::VulkanDevice& device() const;
+	vk::PipelineLayout pipelineLayout() const;
+	vk::DescriptorSetLayout descriptorSetLayout() const;
+	std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList();
+	const std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList() const;
 
 };
 
@@ -153,6 +161,10 @@ inline SharedShaderModule ShaderLibrary::getVertexShader(const ShaderState& stat
 inline SharedShaderModule ShaderLibrary::getGeometryShader(const ShaderState& state)  { auto it=_geometryShaderMap.find(state); return (it!=_geometryShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
 inline SharedShaderModule ShaderLibrary::getFragmentShader(const ShaderState& state)  { auto it=_fragmentShaderMap.find(state); return (it!=_fragmentShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
 inline CadR::VulkanDevice& ShaderLibrary::device() const  { return *_device; }
+inline vk::PipelineLayout ShaderLibrary::pipelineLayout() const  { return _pipelineLayout; }
+inline vk::DescriptorSetLayout ShaderLibrary::descriptorSetLayout() const  { return _descriptorSetLayout; }
+inline std::vector<vk::DescriptorSetLayout>* ShaderLibrary::descriptorSetLayoutList()  { return &_descriptorSetLayoutList; }
+inline const std::vector<vk::DescriptorSetLayout>* ShaderLibrary::descriptorSetLayoutList() const  { return &_descriptorSetLayoutList; }
 
 
 }

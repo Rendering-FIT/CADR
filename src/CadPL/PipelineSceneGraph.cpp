@@ -9,7 +9,7 @@ CadR::StateSet& PipelineSceneGraph::createStateSet(const ShaderState& shaderStat
 {
 	StateSetMapItem* item = new StateSetMapItem(shaderState, pipelineState, _root->renderer());
 	_stateSetMap.insert_commit(*item, insertData);
-	//item->sharedPipeline = _pipelineLibrary->getOrCreatePipeline(shaderState, pipelineState);
-	//item->stateSet.pipeline = item->sharedPipeline.get();
+	item->sharedPipeline = _pipelineLibrary->getOrCreatePipeline(shaderState, pipelineState);
+	item->stateSet.pipeline = &item->sharedPipeline;
 	return item->stateSet;
 }

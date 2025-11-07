@@ -25,6 +25,7 @@ protected:
 		ShaderState shaderState;
 		PipelineState pipelineState;
 		CadR::StateSet stateSet;
+		SharedPipeline pipeline;
 		SharedPipeline sharedPipeline;
 
 		StateSetMapItem(const ShaderState& shaderState, const PipelineState& pipelineState,

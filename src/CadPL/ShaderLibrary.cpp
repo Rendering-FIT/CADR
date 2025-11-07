@@ -32,12 +32,59 @@ ShaderLibrary::~ShaderLibrary()
 	assert(_vertexShaderMap.empty() && "ShaderLibrary::~ShaderLibrary(): All SharedShaderModules must be released before destroying ShaderLibrary.");
 	assert(_geometryShaderMap.empty() && "ShaderLibrary::~ShaderLibrary(): All SharedShaderModules must be released before destroying ShaderLibrary.");
 	assert(_fragmentShaderMap.empty() && "ShaderLibrary::~ShaderLibrary(): All SharedShaderModules must be released before destroying ShaderLibrary.");
+
+	_device->destroy(_pipelineLayout);
+	_device->destroy(_descriptorSetLayout);
 }
 
 
-ShaderLibrary::ShaderLibrary(CadR::VulkanDevice& device) noexcept
+ShaderLibrary::ShaderLibrary(CadR::VulkanDevice& device, uint32_t maxTextures)
 	: _device(&device)
 {
+	_descriptorSetLayout =
+		_device->createDescriptorSetLayout(
+			vk::DescriptorSetLayoutCreateInfo(
+				vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool,  // flags
+				1,  // bindingCount
+				array<vk::DescriptorSetLayoutBinding,1>{
+					vk::DescriptorSetLayoutBinding{
+						0,  // binding
+						vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+						maxTextures, // descriptorCount
+						vk::ShaderStageFlagBits::eFragment,  // stageFlags
+						nullptr  // pImmutableSamplers
+					}
+				}.data()
+			).setPNext(
+				vk::DescriptorSetLayoutBindingFlagsCreateInfo(
+					1,  // bindingCount
+					array<vk::DescriptorBindingFlags,1>{  // pBindingFlags
+						vk::DescriptorBindingFlagBits::eUpdateAfterBind |
+							vk::DescriptorBindingFlagBits::eUpdateUnusedWhilePending |
+							vk::DescriptorBindingFlagBits::ePartiallyBound |
+							vk::DescriptorBindingFlagBits::eVariableDescriptorCount
+					}.data()
+				)
+			)
+		);
+	_pipelineLayout =
+		_device->createPipelineLayout(
+			vk::PipelineLayoutCreateInfo(
+				vk::PipelineLayoutCreateFlags(),  // flags
+				1,  // setLayoutCount
+				&_descriptorSetLayout,  // pSetLayouts
+				1,  // pushConstantRangeCount
+				array{
+					vk::PushConstantRange{  // pPushConstantRanges
+						vk::ShaderStageFlagBits::eAll,  // stageFlags
+						0,  // offset
+						56  // size
+					},
+				}.data()
+			)
+		);
+	_descriptorSetLayoutList.reserve(1);
+	_descriptorSetLayoutList.push_back(_descriptorSetLayout);
 }
 
 

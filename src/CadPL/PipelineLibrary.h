@@ -3,6 +3,7 @@
 #include <map>
 #include <vulkan/vulkan.hpp>
 #include <CadPL/ShaderLibrary.h>
+#include <CadR/Pipeline.h>
 
 namespace CadR {
 class VulkanDevice;
@@ -53,9 +54,8 @@ struct PipelineState {
 };
 
 
-class CADPL_EXPORT SharedPipeline {
+class CADPL_EXPORT SharedPipeline : public CadR::Pipeline {
 protected:
-	vk::Pipeline _pipeline;
 	void* _owner = nullptr;
 public:
 
@@ -67,14 +67,11 @@ public:
 	SharedPipeline& operator=(SharedPipeline&& rhs) noexcept;
 	SharedPipeline& operator=(const SharedPipeline& rhs) noexcept;
 
-	vk::Pipeline get() const;
-	operator vk::Pipeline() const;
 	void reset() noexcept;
 
 protected:
 	friend PipelineFamily;
 	SharedPipeline(void* pipelineOwner) noexcept;
-	SharedPipeline(vk::Pipeline pipeline, void* pipelineOwner) noexcept;
 };
 
 
@@ -92,7 +89,7 @@ protected:
 	vk::PrimitiveTopology _primitiveTopology;
 
 	static void refPipeline(void* pipelineOwner) noexcept;
-	static vk::Pipeline refAndGetPipeline(void* pipelineOwner) noexcept;
+	static CadR::Pipeline refAndGetPipeline(void* pipelineOwner) noexcept;
 	static void unrefPipeline(void* pipelineOwner) noexcept;
 	static void destroyPipeline(void* pipelineOwner) noexcept;
 	vk::Pipeline createPipeline(const PipelineState& pipelineState);
@@ -147,19 +144,16 @@ public:
 
 
 // inline functions
-inline SharedPipeline::SharedPipeline(void* pipelineOwner) noexcept  : _pipeline(PipelineFamily::refAndGetPipeline(pipelineOwner)), _owner(pipelineOwner) {}
-inline SharedPipeline::SharedPipeline(vk::Pipeline pipeline, void* pipelineOwner) noexcept  : _pipeline(pipeline), _owner(pipelineOwner) { if(pipeline) PipelineFamily::refPipeline(pipelineOwner); }
+inline SharedPipeline::SharedPipeline(void* pipelineOwner) noexcept  : CadR::Pipeline(PipelineFamily::refAndGetPipeline(pipelineOwner)), _owner(pipelineOwner) {}
 inline SharedPipeline::~SharedPipeline() noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); }
-inline SharedPipeline::SharedPipeline(SharedPipeline&& other) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); _pipeline=other._pipeline; _owner=other._owner; other._pipeline=nullptr; }
-inline SharedPipeline::SharedPipeline(const SharedPipeline& other) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); _pipeline=other._pipeline; _owner=other._owner; if(_pipeline) PipelineFamily::refPipeline(_owner); }
-inline SharedPipeline& SharedPipeline::operator=(SharedPipeline&& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); _pipeline=rhs._pipeline; _owner=rhs._owner; rhs._pipeline=nullptr; return *this; }
-inline SharedPipeline& SharedPipeline::operator=(const SharedPipeline& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); _pipeline=rhs._pipeline; _owner=rhs._owner; if(_pipeline) PipelineFamily::refPipeline(_owner); return *this; }
-inline vk::Pipeline SharedPipeline::get() const  { return _pipeline; }
-inline SharedPipeline::operator vk::Pipeline() const  { return _pipeline; }
+inline SharedPipeline::SharedPipeline(SharedPipeline&& other) noexcept  : CadR::Pipeline(std::move(other)) { _owner=other._owner; other._pipeline=nullptr; }
+inline SharedPipeline::SharedPipeline(const SharedPipeline& other) noexcept  : CadR::Pipeline(other) { _owner=other._owner; if(_pipeline) PipelineFamily::refPipeline(_owner); }
+inline SharedPipeline& SharedPipeline::operator=(SharedPipeline&& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); CadR::Pipeline::operator=(std::move(rhs)); _owner=rhs._owner; rhs._pipeline=nullptr; return *this; }
+inline SharedPipeline& SharedPipeline::operator=(const SharedPipeline& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); CadR::Pipeline::operator=(rhs); _owner=rhs._owner; if(_pipeline) PipelineFamily::refPipeline(_owner); return *this; }
 inline void SharedPipeline::reset() noexcept  { if(!_pipeline) return; PipelineFamily::unrefPipeline(_owner); _pipeline=nullptr; }
-inline void PipelineFamily::refPipeline(void* pipelineOwner) noexcept  { size_t& p=reinterpret_cast<size_t&>(pipelineOwner); p++; }
-inline vk::Pipeline PipelineFamily::refAndGetPipeline(void* pipelineOwner) noexcept  { struct PO { size_t counter; vk::Pipeline pipeline; }; PO* p=reinterpret_cast<PO*>(pipelineOwner); p->counter++; return p->pipeline; }
-inline void PipelineFamily::unrefPipeline(void* pipelineOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(pipelineOwner); if(counter==1) PipelineFamily::destroyPipeline(pipelineOwner); else counter--; }
+inline void PipelineFamily::refPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); po->referenceCounter++; }
+inline CadR::Pipeline PipelineFamily::refAndGetPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); po->referenceCounter++; ShaderLibrary* sl=po->pipelineFamily->_pipelineLibrary->_shaderLibrary; return CadR::Pipeline(po->pipeline, sl->pipelineLayout(), sl->descriptorSetLayoutList()); }
+inline void PipelineFamily::unrefPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); if(po->referenceCounter==1) PipelineFamily::destroyPipeline(pipelineOwner); else po->referenceCounter--; }
 inline SharedPipeline PipelineFamily::getPipeline(const PipelineState& pipelineState)  { auto it=_pipelineMap.find(pipelineState); return (it!=_pipelineMap.end()) ? SharedPipeline(&it->second.pipeline) : SharedPipeline(); }
 inline const std::map<PipelineState, PipelineFamily::PipelineOwner>& PipelineFamily::pipelineMap() const  { return _pipelineMap; }
 inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  : _device(&shaderLibrary.device()), _pipelineCache(pipelineCache) {}

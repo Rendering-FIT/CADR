@@ -139,7 +139,7 @@ public:
 		CadR::StateSet stateSet;
 		list<TextureStateSet> textureStateSetList;
 		vector<TextureStateSet*> textureIndexToStateSet;
-		PipelineStateSet(CadR::Renderer& r) : pipeline(r), stateSet(r) {}
+		PipelineStateSet(CadR::Renderer& r) : stateSet(r) {}
 		void destroy() noexcept  { textureStateSetList.clear(); stateSet.destroy(); }
 	};
 	array<PipelineStateSet,numPipelines> pipelineStateSetList;
@@ -574,7 +574,6 @@ void App::init()
 		p.init(nullptr, pipelineLayout, nullptr);
 		CadR::StateSet& s = pss.stateSet;
 		s.pipeline = &p;
-		s.pipelineLayout = pipelineLayout;
 		stateSetRoot.childList.append(s);
 	}
 

@@ -203,10 +203,6 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 		currentPipelineLayout = pipeline->layout();
 	}
 
-	// set current pipeline layout
-	if(pipelineLayout)
-		currentPipelineLayout = pipelineLayout;
-
 	// bind descriptor sets
 	if(!_descriptorSets.empty()) {
 		device.cmdBindDescriptorSets(

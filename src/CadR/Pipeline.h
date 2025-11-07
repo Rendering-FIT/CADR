@@ -5,33 +5,30 @@
 
 namespace CadR {
 
-class Renderer;
+class VulkanDevice;
 
 
 class CADR_EXPORT Pipeline {
 protected:
-	Renderer* _renderer;
 	vk::Pipeline _pipeline;
 	vk::PipelineLayout _pipelineLayout;
-	std::vector<vk::DescriptorSetLayout>* _descriptorSetLayouts = nullptr;
+	std::vector<vk::DescriptorSetLayout>* _descriptorSetLayoutList = nullptr;
 public:
 
-	inline Pipeline(Renderer& r) noexcept;
-	inline Pipeline(Renderer& r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
+	inline Pipeline() = default;
+	inline Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList);
 
-	inline void destroyPipeline();
-	inline void destroyPipelineLayout();
-	inline void destroyDescriptorSetLayouts();
+	inline void destroyPipeline(VulkanDevice& device);
+	inline void destroyPipelineLayout(VulkanDevice& device);
+	inline void destroyDescriptorSetLayouts(VulkanDevice& device);
 
-	inline void init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
-	inline void init(Renderer* r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts);
+	inline void init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList);
 	inline void set(vk::Pipeline pipeline);
 
-	inline Renderer& renderer() const;
 	inline vk::Pipeline get() const;
 	inline vk::PipelineLayout layout() const;
-	inline std::vector<vk::DescriptorSetLayout>& descriptorSetLayouts() const;
-	inline vk::DescriptorSetLayout descriptorSetLayout(size_t index) const;
+	inline const std::vector<vk::DescriptorSetLayout>& descriptorSetLayoutList() const;
+	inline std::vector<vk::DescriptorSetLayout>& descriptorSetLayoutList();
 
 };
 
@@ -45,26 +42,22 @@ public:
 #if !defined(CADR_PIPELINE_INLINE_FUNCTIONS) && !defined(CADR_NO_INLINE_FUNCTIONS)
 # define CADR_PIPELINE_INLINE_FUNCTIONS
 # define CADR_NO_INLINE_FUNCTIONS
-# include <CadR/Renderer.h>
 # include <CadR/VulkanDevice.h>
 # undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
-inline Pipeline::Pipeline(Renderer& r) noexcept : _renderer(&r)  {}
-inline Pipeline::Pipeline(Renderer& r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts) : _renderer(&r), _pipeline(pipeline), _pipelineLayout(pipelineLayout), _descriptorSetLayouts(descriptorSetLayouts)  {}
-inline void Pipeline::destroyPipeline()  { _renderer->device().destroy(_pipeline); }
-inline void Pipeline::destroyPipelineLayout()  { _renderer->device().destroy(_pipelineLayout); }
-inline void Pipeline::destroyDescriptorSetLayouts()  { if(_descriptorSetLayouts==nullptr) return; for(auto d : *_descriptorSetLayouts) _renderer->device().destroy(d); _descriptorSetLayouts->clear(); }
+inline Pipeline::Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList)  : _pipeline(pipeline), _pipelineLayout(pipelineLayout), _descriptorSetLayoutList(descriptorSetLayoutList) {}
+inline void Pipeline::destroyPipeline(VulkanDevice& device)  { device.destroy(_pipeline); }
+inline void Pipeline::destroyPipelineLayout(VulkanDevice& device)  { device.destroy(_pipelineLayout); }
+inline void Pipeline::destroyDescriptorSetLayouts(VulkanDevice& device)  { if(_descriptorSetLayoutList==nullptr) return; for(auto d : *_descriptorSetLayoutList) device.destroy(d); _descriptorSetLayoutList->clear(); }
 
-inline void Pipeline::init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts)  { _pipeline=pipeline; _pipelineLayout=pipelineLayout; _descriptorSetLayouts=descriptorSetLayouts; }
-inline void Pipeline::init(Renderer* r, vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayouts)  { _renderer=r; init(pipeline, pipelineLayout, descriptorSetLayouts); }
+inline void Pipeline::init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList)  { _pipeline=pipeline; _pipelineLayout=pipelineLayout; _descriptorSetLayoutList=descriptorSetLayoutList; }
 inline void Pipeline::set(vk::Pipeline pipeline)  { _pipeline=pipeline; }
 
-inline Renderer& Pipeline::renderer() const  { return *_renderer; }
 inline vk::Pipeline Pipeline::get() const  { return _pipeline; }
 inline vk::PipelineLayout Pipeline::layout() const  { return _pipelineLayout; }
-inline std::vector<vk::DescriptorSetLayout>& Pipeline::descriptorSetLayouts() const  { return *_descriptorSetLayouts; }
-inline vk::DescriptorSetLayout Pipeline::descriptorSetLayout(size_t index) const  { return (*_descriptorSetLayouts)[index]; }
+inline const std::vector<vk::DescriptorSetLayout>& Pipeline::descriptorSetLayoutList() const  { return *_descriptorSetLayoutList; }
+inline std::vector<vk::DescriptorSetLayout>& Pipeline::descriptorSetLayoutList()  { return *_descriptorSetLayoutList; }
 
 }
 #endif

@@ -151,7 +151,6 @@ public:
 /// Construct application object
 App::App(int argc, char** argv)
 	: stateSetRoot(renderer)
-	, pipeline(renderer)
 	, sceneDataAllocation(renderer.dataStorage())
 {
 	// process command-line arguments
@@ -434,8 +433,8 @@ App::~App()
 		// (the handles are destructed in certain (not arbitrary) order)
 		sceneDataAllocation.free();
 		stateSetRoot.destroy();
-		pipeline.destroyPipeline();
-		pipeline.destroyPipelineLayout();
+		pipeline.destroyPipeline(device);
+		pipeline.destroyPipelineLayout(device);
 		renderer.finalize();
 		device.destroy(renderFinishedFence);
 		device.destroy(imageAvailableSemaphore);
@@ -1068,7 +1067,7 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 				-1 // basePipelineIndex
 			)
 		);
-	pipeline.destroyPipeline();
+	pipeline.destroyPipeline(device);
 	pipeline.set(pipelineUnique.release());
 
 	if(useWindow) {

@@ -61,7 +61,6 @@ public:
 
 	// pipeline to bind
 	CadR::Pipeline* pipeline = nullptr;
-	vk::PipelineLayout pipelineLayout;
 
 	// list of functions that will be called during the preparation for StateSet's command buffer recording
 	std::vector<std::function<void(StateSet&)>> prepareCallList;
