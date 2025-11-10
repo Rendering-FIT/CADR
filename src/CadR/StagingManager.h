@@ -42,7 +42,7 @@ protected:
 	StagingMemory& reuseOrAllocStagingMemory(StagingMemoryList& availableList, StagingMemoryList& inUseList, size_t size);
 public:
 
-	inline StagingManager(Renderer& r);
+	inline StagingManager(Renderer& r) noexcept;
 	inline ~StagingManager() noexcept;
 	void cleanUp() noexcept;
 
@@ -71,7 +71,7 @@ public:
 # undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
-inline StagingManager::StagingManager(Renderer& r)  : _renderer(&r) {}
+inline StagingManager::StagingManager(Renderer& r) noexcept  : _renderer(&r) {}
 inline StagingManager::~StagingManager() noexcept  { cleanUp(); }
 inline StagingMemory& StagingManager::reuseOrAllocSmallStagingMemory()  { return reuseOrAllocStagingMemory(_smallMemoryAvailableList, _smallMemoryInUseList, Renderer::smallMemorySize); }
 inline StagingMemory& StagingManager::reuseOrAllocMediumStagingMemory()  { return reuseOrAllocStagingMemory(_mediumMemoryAvailableList, _mediumMemoryInUseList, Renderer::mediumMemorySize); }

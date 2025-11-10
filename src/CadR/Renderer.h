@@ -32,7 +32,7 @@ public:
 		vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan12Features>;
 protected:
 
-	VulkanDevice* _device;
+	VulkanDevice* _device = nullptr;
 	uint32_t _graphicsQueueFamily;
 	vk::Queue _graphicsQueue;
 	vk::PhysicalDeviceMemoryProperties _memoryProperties;
@@ -100,7 +100,7 @@ public:
 
 	// general static functions
 	static inline Renderer& get();
-	static inline void set(Renderer& r);
+	static inline void set(Renderer& r) noexcept;
 	static inline const vk::PhysicalDeviceFeatures2& requiredFeatures();
 	static inline const RequiredFeaturesStructChain& requiredFeaturesStructChain();
 
@@ -111,7 +111,7 @@ public:
 	Renderer& operator=(Renderer&&) = delete;
 
 	// construction, initialization and destruction
-	Renderer(bool makeDefault = true);
+	Renderer(bool makeDefault = true) noexcept;
 	Renderer(VulkanDevice& device, VulkanInstance& instance, vk::PhysicalDevice physicalDevice,
 	         uint32_t graphicsQueueFamily, bool makeDefault = true);
 	~Renderer();
@@ -205,7 +205,7 @@ public:
 namespace CadR {
 
 inline Renderer& Renderer::get()  { return *_defaultRenderer; }
-inline void Renderer::set(Renderer& r)  { _defaultRenderer = &r; }
+inline void Renderer::set(Renderer& r) noexcept  { _defaultRenderer = &r; }
 inline const vk::PhysicalDeviceFeatures2& Renderer::requiredFeatures()  { return _requiredFeatures.get<vk::PhysicalDeviceFeatures2>(); }
 inline const Renderer::RequiredFeaturesStructChain& Renderer::requiredFeaturesStructChain()  { return _requiredFeatures; }
 inline VulkanDevice& Renderer::device() const  { assert(_device && "Renderer::device(): Renderer must be initialized with valid VulkanDevice to call this function."); return *_device; }

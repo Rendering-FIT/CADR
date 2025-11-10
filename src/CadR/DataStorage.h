@@ -60,7 +60,7 @@ protected:
 public:
 
 	// construction and destruction
-	inline DataStorage(Renderer& r);
+	inline DataStorage(Renderer& r) noexcept;
 	inline ~DataStorage() noexcept;
 	inline void init(StagingManager& stagingManager);
 	void cleanUp() noexcept;
@@ -114,7 +114,7 @@ public:
 namespace CadR {
 
 inline void DataStorage::freeOrRecycleStagingMemory(StagingMemory& sm)  { _stagingManager->freeOrRecycleStagingMemory(sm); }
-inline DataStorage::DataStorage(Renderer& renderer)  : _renderer(&renderer), _stagingManager(nullptr), _handleTable(*this) {}
+inline DataStorage::DataStorage(Renderer& renderer) noexcept  : _renderer(&renderer), _stagingManager(nullptr), _handleTable(*this) {}
 inline DataStorage::~DataStorage() noexcept  { cleanUp(); }
 inline void DataStorage::init(StagingManager& stagingManager)  { _stagingManager = &stagingManager; }
 

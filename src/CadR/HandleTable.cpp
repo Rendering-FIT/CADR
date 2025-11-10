@@ -78,18 +78,6 @@ bool HandleTable::RoutingTable::setValue(unsigned index, uint64_t value)
 
 
 
-HandleTable::HandleTable(DataStorage& storage)
-	: _storage(&storage)
-{
-}
-
-
-HandleTable::~HandleTable() noexcept
-{
-	destroyAll();
-}
-
-
 void HandleTable::destroyAll() noexcept
 {
 	if(_createHandle == &HandleTable::createHandle0) {

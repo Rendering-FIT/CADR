@@ -78,8 +78,9 @@ protected:
 	uint64_t rootTableDeviceAddress3() const;
 
 public:
-	HandleTable(DataStorage& storage);
-	~HandleTable() noexcept;
+
+	inline HandleTable(DataStorage& storage) noexcept;
+	inline ~HandleTable() noexcept;
 	inline uint64_t create();
 	inline uint64_t create(vk::DeviceAddress deviceAddress);
 	void destroy(uint64_t handle) noexcept  { if(handle==0) return; }
@@ -87,6 +88,7 @@ public:
 	inline void set(uint64_t handle, uint64_t addr);
 	inline unsigned handleLevel() const;
 	inline uint64_t rootTableDeviceAddress() const;
+
 };
 
 
@@ -100,6 +102,8 @@ public:
 # define CADR_HANDLE_TABLE_INLINE_FUNCTIONS
 namespace CadR {
 
+inline HandleTable::HandleTable(DataStorage& storage) noexcept  : _storage(&storage) {}
+inline HandleTable::~HandleTable() noexcept  { destroyAll(); }
 inline uint64_t HandleTable::create()  { return (this->*_createHandle)(); }
 inline uint64_t HandleTable::create(vk::DeviceAddress deviceAddress)  { uint64_t r = create(); set(r, deviceAddress); return r; }
 inline void HandleTable::set(uint64_t handle, uint64_t addr)  { (this->*_setHandle)(handle, addr); }

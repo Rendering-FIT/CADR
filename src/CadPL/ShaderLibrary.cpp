@@ -27,20 +27,43 @@ static const uint32_t fragmentIdBufferUberShaderSpirv[]={
 
 
 
-ShaderLibrary::~ShaderLibrary()
+void ShaderLibrary::destroy() noexcept
+{
+	if(_device) {
+		_device->destroy(_pipelineLayout);
+		_device->destroy(_descriptorSetLayout);
+		_pipelineLayout = nullptr;
+		_descriptorSetLayout = nullptr;
+	}
+}
+
+
+ShaderLibrary::~ShaderLibrary() noexcept
 {
 	assert(_vertexShaderMap.empty() && "ShaderLibrary::~ShaderLibrary(): All SharedShaderModules must be released before destroying ShaderLibrary.");
 	assert(_geometryShaderMap.empty() && "ShaderLibrary::~ShaderLibrary(): All SharedShaderModules must be released before destroying ShaderLibrary.");
 	assert(_fragmentShaderMap.empty() && "ShaderLibrary::~ShaderLibrary(): All SharedShaderModules must be released before destroying ShaderLibrary.");
 
-	_device->destroy(_pipelineLayout);
-	_device->destroy(_descriptorSetLayout);
+	if(_device) {
+		_device->destroy(_pipelineLayout);
+		_device->destroy(_descriptorSetLayout);
+	}
 }
 
 
 ShaderLibrary::ShaderLibrary(CadR::VulkanDevice& device, uint32_t maxTextures)
-	: _device(&device)
+	: ShaderLibrary()  // make sure thay destructor will be called when exception is thrown
 {
+	init(device, maxTextures);
+}
+
+
+void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
+{
+	destroy();
+
+	_device = &device;
+
 	_descriptorSetLayout =
 		_device->createDescriptorSetLayout(
 			vk::DescriptorSetLayoutCreateInfo(

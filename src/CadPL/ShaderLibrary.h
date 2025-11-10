@@ -74,7 +74,7 @@ protected:
 class CADPL_EXPORT ShaderLibrary {
 protected:
 
-	CadR::VulkanDevice* _device;
+	CadR::VulkanDevice* _device = nullptr;
 
 	enum class OwnerMap { eUnknown = 0, eVertex, eGeometry, eFragment };
 
@@ -119,8 +119,11 @@ protected:
 public:
 
 	// construction and destruction
+	ShaderLibrary() noexcept = default;
 	ShaderLibrary(CadR::VulkanDevice& device, uint32_t maxTextures = 250000);
 	~ShaderLibrary() noexcept;
+	void init(CadR::VulkanDevice& device, uint32_t maxTextures = 250000);
+	void destroy() noexcept;
 
 	// synchronous API to get and create pipelines
 	SharedShaderModule getOrCreateVertexShader(const ShaderState& state);
@@ -151,6 +154,7 @@ inline SharedShaderModule& SharedShaderModule::operator=(const SharedShaderModul
 inline vk::ShaderModule SharedShaderModule::get() const  { return _shaderModule; }
 inline SharedShaderModule::operator vk::ShaderModule() const  { return _shaderModule; }
 inline void SharedShaderModule::reset() noexcept  { if(!_shaderModule) return; ShaderLibrary::unrefShaderModule(_owner); _shaderModule=nullptr; }
+
 inline ShaderLibrary::VertexShaderMapKey::VertexShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline ShaderLibrary::GeometryShaderMapKey::GeometryShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}

@@ -60,7 +60,7 @@ protected:
 public:
 
 	// construction and destruction
-	inline ImageStorage(Renderer& r);
+	inline ImageStorage(Renderer& r) noexcept;
 	inline ~ImageStorage() noexcept;
 	inline void init(StagingManager& stagingManager, uint32_t memoryTypeCount);
 	void cleanUp() noexcept;
@@ -110,7 +110,7 @@ public:
 namespace CadR {
 
 inline bool ImageStorage::allocFromMemoryType(ImageAllocation& a, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex, vk::Image image, const vk::ImageCreateInfo& imageCreateInfo)  { if(a._record->size != 0) free(a); if(!allocInternalFromMemoryType(a._record, numBytes, alignment, memoryTypeIndex)) return false; a._record->image=image; a._record->imageCreateInfo=imageCreateInfo; return true; }
-inline ImageStorage::ImageStorage(Renderer& r) : _renderer(&r), _stagingManager(nullptr)  {}
+inline ImageStorage::ImageStorage(Renderer& r) noexcept  : _renderer(&r), _stagingManager(nullptr)  {}
 inline ImageStorage::~ImageStorage() noexcept  { cleanUp(); }
 inline void ImageStorage::init(StagingManager& stagingManager, uint32_t memoryTypeCount)  { _stagingManager = &stagingManager; _memoryTypeManagementList.resize(memoryTypeCount); }
 inline Renderer& ImageStorage::renderer() const  { return *_renderer; }

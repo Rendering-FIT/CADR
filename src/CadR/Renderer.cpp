@@ -45,7 +45,7 @@ static inline double getCpuTimestampPeriod();
 
 
 
-Renderer::Renderer(bool makeDefault)
+Renderer::Renderer(bool makeDefault) noexcept
 	: _device(nullptr)
 	, _graphicsQueueFamily(0xffffffff)
 	, _stagingManager(*this)

@@ -12,6 +12,7 @@
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
+#include <CadPL/PipelineSceneGraph.h>
 #include "PipelineLibrary.h"
 #include "VulkanWindow.h"
 #include <vulkan/vulkan.hpp>
@@ -139,10 +140,11 @@ public:
 		CadR::StateSet stateSet;
 		list<TextureStateSet> textureStateSetList;
 		vector<TextureStateSet*> textureIndexToStateSet;
-		PipelineStateSet(CadR::Renderer& r) : stateSet(r) {}
+		PipelineStateSet(CadR::Renderer& r) noexcept  : stateSet(r) {}
 		void destroy() noexcept  { textureStateSetList.clear(); stateSet.destroy(); }
 	};
 	array<PipelineStateSet,numPipelines> pipelineStateSetList;
+	CadPL::PipelineSceneGraph pipelineSceneGraph;
 	vector<CadR::Geometry> geometryDB;
 	vector<CadR::Drawable> drawableDB;
 	vector<CadR::ImageAllocation> imageDB;
@@ -246,9 +248,7 @@ static string utf16toUtf8(const wchar_t* ws)
 
 /// Construct application object
 App::App(int argc, char** argv)
-	// none of the following initializators shall be allowed to throw,
-	// otherwise a special care must be given to avoid memory leaks in the case of exception
-	: sceneDataAllocation(renderer.dataStorage())  // HandlelessAllocation(DataStorage&) does not throw, so it can be here
+	: sceneDataAllocation(renderer.dataStorage())
 	, stateSetRoot(renderer)
 	, pipelineStateSetList{ createPipelineStateSetList<PipelineStateSet, numPipelines>(renderer) }
 	, defaultSampler(renderer)
@@ -395,6 +395,7 @@ void App::init()
 	presentationQueueFamily = std::get<2>(deviceAndQueueFamilies);
 	window.setDevice(VkDevice(device), physicalDevice);
 	renderer.init(device, vulkanInstance, physicalDevice, graphicsQueueFamily);
+	pipelineSceneGraph.init(stateSetRoot);
 
 	// get queues
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
