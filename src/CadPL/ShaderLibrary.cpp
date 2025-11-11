@@ -69,7 +69,7 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 			vk::DescriptorSetLayoutCreateInfo(
 				vk::DescriptorSetLayoutCreateFlagBits::eUpdateAfterBindPool,  // flags
 				1,  // bindingCount
-				array<vk::DescriptorSetLayoutBinding,1>{
+				array<vk::DescriptorSetLayoutBinding,1>{  // pBindings
 					vk::DescriptorSetLayoutBinding{
 						0,  // binding
 						vk::DescriptorType::eCombinedImageSampler,  // descriptorType

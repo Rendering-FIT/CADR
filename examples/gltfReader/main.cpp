@@ -290,6 +290,7 @@ App::~App()
 		// (the handles are destructed in certain (not arbitrary) order)
 		for(PipelineStateSet& pss : pipelineStateSetList)
 			pss.destroy();
+		pipelineSceneGraph.destroy();
 		textureDB.clear();
 		imageDB.clear();
 		samplerDB.clear();
@@ -379,6 +380,10 @@ void App::init()
 		[]() {
 			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
 			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount = true;  // required by CadPL
 			return f;
 		}().get<vk::PhysicalDeviceFeatures2>()
 #else
@@ -386,6 +391,10 @@ void App::init()
 		[]() {
 			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
 			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess = true;
 			return f;
 		}().get<vk::PhysicalDeviceFeatures2>()
