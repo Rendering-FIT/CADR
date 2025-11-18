@@ -158,9 +158,9 @@ inline void SharedShaderModule::reset() noexcept  { if(!_shaderModule) return; S
 inline ShaderLibrary::VertexShaderMapKey::VertexShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline ShaderLibrary::GeometryShaderMapKey::GeometryShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
-inline void ShaderLibrary::refShaderModule(void* shaderModuleOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(shaderModuleOwner); counter++; }
+inline void ShaderLibrary::refShaderModule(void* shaderModuleOwner) noexcept  { size_t& counter=*reinterpret_cast<size_t*>(shaderModuleOwner); counter++; }
 inline vk::ShaderModule ShaderLibrary::refAndGetShaderModule(void* shaderModuleOwner) noexcept  { struct SMO { size_t counter; vk::ShaderModule sm; }; SMO* s=reinterpret_cast<SMO*>(shaderModuleOwner); s->counter++; return s->sm; }
-inline void ShaderLibrary::unrefShaderModule(void* shaderModuleOwner) noexcept  { size_t& counter=reinterpret_cast<size_t&>(shaderModuleOwner); if(counter==1) ShaderLibrary::destroyShaderModule(shaderModuleOwner); else counter--; }
+inline void ShaderLibrary::unrefShaderModule(void* shaderModuleOwner) noexcept  { size_t& counter=*reinterpret_cast<size_t*>(shaderModuleOwner); if(counter==1) ShaderLibrary::destroyShaderModule(shaderModuleOwner); else counter--; }
 inline SharedShaderModule ShaderLibrary::getVertexShader(const ShaderState& state)  { auto it=_vertexShaderMap.find(state); return (it!=_vertexShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
 inline SharedShaderModule ShaderLibrary::getGeometryShader(const ShaderState& state)  { auto it=_geometryShaderMap.find(state); return (it!=_geometryShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }
 inline SharedShaderModule ShaderLibrary::getFragmentShader(const ShaderState& state)  { auto it=_fragmentShaderMap.find(state); return (it!=_fragmentShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }

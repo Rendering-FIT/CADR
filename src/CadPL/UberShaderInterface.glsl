@@ -109,8 +109,6 @@ MetallicRoughnessMaterialRef {
 	float thicknessFactor;
 	float attenuationDistance;
 	vec3 attenuationColor;
-
-	layout(offset=64) mat4 modelMatrix[];
 };
 
 layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
@@ -260,7 +258,8 @@ MatrixListRef getDrawableMatrixList(uint64_t drawableDataPtr)  { return MatrixLi
 uint getDrawableVertexDataSize(uint64_t drawableDataPtr)  { return DrawableDataRef(drawableDataPtr).settings2 & 0x01fc; }
 
 // drawable data pointers
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer DrawablePointersRef {
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
+DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
 	uint64_t drawableDataPtr;
