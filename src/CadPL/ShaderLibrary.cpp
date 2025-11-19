@@ -79,7 +79,7 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 					}
 				}.data()
 			).setPNext(
-				vk::DescriptorSetLayoutBindingFlagsCreateInfo(
+				&(const vk::DescriptorSetLayoutBindingFlagsCreateInfo&)vk::DescriptorSetLayoutBindingFlagsCreateInfo(
 					1,  // bindingCount
 					array<vk::DescriptorBindingFlags,1>{  // pBindingFlags
 						vk::DescriptorBindingFlagBits::eUpdateAfterBind |
