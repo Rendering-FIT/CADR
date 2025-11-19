@@ -90,7 +90,7 @@ public:
 namespace CadPL {
 
 inline PipelineSceneGraph::StateSetMapItem::StateSetMapItem(const ShaderState& shaderState_, const PipelineState& pipelineState_, CadR::Renderer& renderer)  : shaderState(shaderState_), pipelineState(pipelineState_), stateSet(renderer) {}
-inline PipelineSceneGraph::StateSetMapItem& PipelineSceneGraph::stateSetToStateSetMapItem(CadR::StateSet& ss)  { return *reinterpret_cast<StateSetMapItem*>(reinterpret_cast<char*>(&ss) - reinterpret_cast<char*>(&reinterpret_cast<StateSetMapItem*>(nullptr)->stateSet)); }
+inline PipelineSceneGraph::StateSetMapItem& PipelineSceneGraph::stateSetToStateSetMapItem(CadR::StateSet& ss)  { return *reinterpret_cast<StateSetMapItem*>(reinterpret_cast<char*>(&ss) - reinterpret_cast<char*>(&static_cast<StateSetMapItem*>(nullptr)->stateSet)); }
 
 inline PipelineSceneGraph::PipelineSceneGraph() noexcept  : _deleteLibraries(false) {}
 inline PipelineSceneGraph::PipelineSceneGraph(nullptr_t, CadR::StateSet& root, const std::vector<std::bitset<ShaderState::numOptimizeFlags>>& optimizationLevels)  : _pipelineLibrary(nullptr), _shaderLibrary(nullptr), _deleteLibraries(true), _root(&root), _optimizationLevels(optimizationLevels) {}

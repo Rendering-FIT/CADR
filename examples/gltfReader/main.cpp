@@ -101,12 +101,12 @@ public:
 	float maxSamplerAnisotropy;
 	vk::RenderPass renderPass;
 	vk::SwapchainKHR swapchain;
-	vector<vk::ImageView> swapchainImageViews;
-	vector<vk::Framebuffer> framebuffers;
-	vector<vk::Semaphore> renderingFinishedSemaphores;
 	vk::Image depthImage;
 	vk::DeviceMemory depthImageMemory;
 	vk::ImageView depthImageView;
+	vector<vk::ImageView> swapchainImageViews;
+	vector<vk::Framebuffer> framebuffers;
+	vector<vk::Semaphore> renderingFinishedSemaphores;
 	vk::Semaphore imageAvailableSemaphore;
 	vk::Fence renderingFinishedFence;
 
@@ -379,7 +379,9 @@ void App::init()
 		"VK_KHR_swapchain",
 		[]() {
 			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
-			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;
+			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;  // required by samplers, or disable it in samplers when the feature is not available
+			f.get<vk::PhysicalDeviceFeatures2>().features.geometryShader = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL
@@ -390,7 +392,9 @@ void App::init()
 		{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"},
 		[]() {
 			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
-			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;
+			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;  // required by samplers, or disable it in samplers when the feature is not available
+			f.get<vk::PhysicalDeviceFeatures2>().features.geometryShader = true;  // required by CadPL
+			f.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
 			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL

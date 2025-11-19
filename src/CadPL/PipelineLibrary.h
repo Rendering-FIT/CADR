@@ -18,8 +18,6 @@ class PipelineLibrary;
 
 
 struct PipelineState {
-	std::vector<vk::SpecializationMapEntry> specializationMap;
-	std::vector<uint8_t> specializationData;
 	vk::Viewport viewport;
 	vk::Rect2D scissor;
 	vk::CullModeFlagBits cullMode;
@@ -59,15 +57,21 @@ protected:
 	void* _owner = nullptr;
 public:
 
+	// construction and destruction
 	SharedPipeline() = default;
 	~SharedPipeline() noexcept;
 
+	// copy and move constructors and operators
 	SharedPipeline(SharedPipeline&& other) noexcept;
 	SharedPipeline(const SharedPipeline& other) noexcept;
 	SharedPipeline& operator=(SharedPipeline&& rhs) noexcept;
 	SharedPipeline& operator=(const SharedPipeline& rhs) noexcept;
 
+	// functions
 	void reset() noexcept;
+
+	// getters
+	const PipelineState& pipelineState() const;
 
 protected:
 	friend PipelineFamily;
@@ -78,15 +82,23 @@ protected:
 class CADPL_EXPORT PipelineFamily {
 protected:
 
+	CadR::VulkanDevice* _device = nullptr;
+	PipelineLibrary* _pipelineLibrary;
+	std::map<ShaderState, PipelineFamily>::iterator _eraseIt;
+
+	SharedShaderModule _vertexShader;
+	SharedShaderModule _geometryShader;
+	SharedShaderModule _fragmentShader;
+	vk::PrimitiveTopology _primitiveTopology;
+
 	struct PipelineOwner {
 		size_t referenceCounter;
 		vk::Pipeline pipeline;
 		PipelineFamily* pipelineFamily;
-		std::map<PipelineState, PipelineOwner>::iterator eraseIt;
+		std::map<PipelineState, PipelineOwner>::iterator mapIterator;
 	};
 
 	std::map<PipelineState, PipelineOwner> _pipelineMap;
-	vk::PrimitiveTopology _primitiveTopology;
 
 	static void refPipeline(void* pipelineOwner) noexcept;
 	static CadR::Pipeline refAndGetPipeline(void* pipelineOwner) noexcept;
@@ -95,14 +107,6 @@ protected:
 	vk::Pipeline createPipeline(const PipelineState& pipelineState);
 	friend SharedPipeline;
 	friend PipelineLibrary;
-
-	CadR::VulkanDevice* _device = nullptr;
-	PipelineLibrary* _pipelineLibrary;
-	std::map<ShaderState, PipelineFamily>::iterator _eraseIt;
-
-	SharedShaderModule _vertexShader;
-	SharedShaderModule _geometryShader;
-	SharedShaderModule _fragmentShader;
 
 public:
 
@@ -153,14 +157,15 @@ inline SharedPipeline::SharedPipeline(const SharedPipeline& other) noexcept  : C
 inline SharedPipeline& SharedPipeline::operator=(SharedPipeline&& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); CadR::Pipeline::operator=(std::move(rhs)); _owner=rhs._owner; rhs._pipeline=nullptr; return *this; }
 inline SharedPipeline& SharedPipeline::operator=(const SharedPipeline& rhs) noexcept  { if(_pipeline) PipelineFamily::unrefPipeline(_owner); CadR::Pipeline::operator=(rhs); _owner=rhs._owner; if(_pipeline) PipelineFamily::refPipeline(_owner); return *this; }
 inline void SharedPipeline::reset() noexcept  { if(!_pipeline) return; PipelineFamily::unrefPipeline(_owner); _pipeline=nullptr; }
+inline const PipelineState& SharedPipeline::pipelineState() const  { return reinterpret_cast<PipelineFamily::PipelineOwner*>(_owner)->mapIterator->first; }
 
 inline void PipelineFamily::refPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); po->referenceCounter++; }
 inline CadR::Pipeline PipelineFamily::refAndGetPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); po->referenceCounter++; ShaderLibrary* sl=po->pipelineFamily->_pipelineLibrary->_shaderLibrary; return CadR::Pipeline(po->pipeline, sl->pipelineLayout(), sl->descriptorSetLayoutList()); }
-inline void PipelineFamily::unrefPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); if(po->referenceCounter==1) PipelineFamily::destroyPipeline(pipelineOwner); else po->referenceCounter--; }
+inline void PipelineFamily::unrefPipeline(void* pipelineOwner) noexcept  { PipelineOwner* po=reinterpret_cast<PipelineOwner*>(pipelineOwner); if(po->referenceCounter==1) PipelineFamily::destroyPipeline(po); else po->referenceCounter--; }
 inline SharedPipeline PipelineFamily::getPipeline(const PipelineState& pipelineState)  { auto it=_pipelineMap.find(pipelineState); return (it!=_pipelineMap.end()) ? SharedPipeline(&it->second.pipeline) : SharedPipeline(); }
 inline const std::map<PipelineState, PipelineFamily::PipelineOwner>& PipelineFamily::pipelineMap() const  { return _pipelineMap; }
 
-inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  : _device(&shaderLibrary.device()), _pipelineCache(pipelineCache) {}
+inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  : _device(&shaderLibrary.device()), _shaderLibrary(&shaderLibrary), _pipelineCache(pipelineCache) {}
 inline void PipelineLibrary::init(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  { _device=&shaderLibrary.device(); _shaderLibrary=&shaderLibrary; _pipelineCache=pipelineCache; }
 inline SharedPipeline PipelineLibrary::getPipeline(const ShaderState& shaderState, const PipelineState& pipelineState)  { auto it=_pipelineFamilyMap.find(shaderState); return (it!=_pipelineFamilyMap.end()) ? it->second.getPipeline(pipelineState) : SharedPipeline(); }
 inline CadR::VulkanDevice& PipelineLibrary::device() const  { return *_device; }

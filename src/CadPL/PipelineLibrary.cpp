@@ -41,7 +41,7 @@ void PipelineFamily::destroyPipeline(void* pipelineOwner) noexcept
 	PipelineOwner* po = reinterpret_cast<PipelineOwner*>(pipelineOwner); 
 	PipelineFamily* pf = po->pipelineFamily;
 	pf->_device->destroy(po->pipeline);
-	pf->_pipelineMap.erase(po->eraseIt);
+	pf->_pipelineMap.erase(po->mapIterator);
 
 	if(pf->_pipelineMap.empty())
 		pf->_pipelineLibrary->_pipelineFamilyMap.erase(pf->_eraseIt);
@@ -60,7 +60,7 @@ SharedPipeline PipelineFamily::getOrCreatePipeline(const PipelineState& pipeline
 		}
 		it->second.referenceCounter = 0;
 		it->second.pipelineFamily = this;
-		it->second.eraseIt = it;
+		it->second.mapIterator = it;
 	}
 	return SharedPipeline(&it->second);
 }
@@ -71,9 +71,9 @@ SharedPipeline PipelineLibrary::getOrCreatePipeline(const ShaderState& shaderSta
 	auto [it, newRecord] = _pipelineFamilyMap.try_emplace(shaderState, *this);
 	if(newRecord) {
 		try {
-			it->second._vertexShader = _shaderLibrary->getVertexShader(shaderState);
-			it->second._geometryShader = _shaderLibrary->getGeometryShader(shaderState);
-			it->second._fragmentShader = _shaderLibrary->getFragmentShader(shaderState);
+			it->second._vertexShader = _shaderLibrary->getOrCreateVertexShader(shaderState);
+			it->second._geometryShader = _shaderLibrary->getOrCreateGeometryShader(shaderState);
+			it->second._fragmentShader = _shaderLibrary->getOrCreateFragmentShader(shaderState);
 		} catch(...) {
 			_pipelineFamilyMap.erase(it);
 			throw;
@@ -87,33 +87,27 @@ SharedPipeline PipelineLibrary::getOrCreatePipeline(const ShaderState& shaderSta
 
 vk::Pipeline PipelineFamily::createPipeline(const PipelineState& pipelineState)
 {
-	vk::SpecializationInfo specializationInfo{
-		uint32_t(pipelineState.specializationMap.size()),  // mapEntryCount
-		pipelineState.specializationMap.data(),  // pMapEntries
-		pipelineState.specializationData.size(),  // dataSize
-		pipelineState.specializationData.data(),  // pData
-	};
 	array<vk::PipelineShaderStageCreateInfo, 3> shaderStages{
 		vk::PipelineShaderStageCreateInfo{
 			vk::PipelineShaderStageCreateFlags(),  // flags
 			vk::ShaderStageFlagBits::eVertex,  // stage
 			_vertexShader,  // module
 			"main",  // pName
-			&specializationInfo,  // pSpecializationInfo
+			nullptr,  // pSpecializationInfo
 		},
 		vk::PipelineShaderStageCreateInfo{
 			vk::PipelineShaderStageCreateFlags(),  // flags
 			vk::ShaderStageFlagBits::eFragment,  // stage
 			_fragmentShader,  // module
 			"main",  // pName
-			&specializationInfo,  // pSpecializationInfo
+			nullptr,  // pSpecializationInfo
 		},
 		vk::PipelineShaderStageCreateInfo{
 			vk::PipelineShaderStageCreateFlags(),  // flags
 			vk::ShaderStageFlagBits::eGeometry,  // stage
 			_geometryShader,  // module
 			"main",  // pName
-			&specializationInfo,  // pSpecializationInfo
+			nullptr,  // pSpecializationInfo
 		},
 	};
 	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState{
@@ -196,7 +190,7 @@ vk::Pipeline PipelineFamily::createPipeline(const PipelineState& pipelineState)
 		&depthStencilState,  // pDepthStencilState
 		&colorBlendState,  // pColorBlendState
 		nullptr,  // pDynamicState
-		nullptr,  // layout - will be set later
+		_pipelineLibrary->_shaderLibrary->pipelineLayout(),  // layout
 		pipelineState.renderPass,  // renderPass
 		pipelineState.subpass,  // subpass
 		nullptr,  // basePipelineHandle
