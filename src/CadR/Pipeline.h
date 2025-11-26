@@ -15,16 +15,18 @@ protected:
 	std::vector<vk::DescriptorSetLayout>* _descriptorSetLayoutList = nullptr;
 public:
 
+	// construction and destruction
 	inline Pipeline() = default;
-	inline Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList);
+	inline Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList) noexcept;
+	inline void destroyPipeline(VulkanDevice& device) noexcept;
+	inline void destroyPipelineLayout(VulkanDevice& device) noexcept;
+	inline void destroyDescriptorSetLayouts(VulkanDevice& device) noexcept;
 
-	inline void destroyPipeline(VulkanDevice& device);
-	inline void destroyPipelineLayout(VulkanDevice& device);
-	inline void destroyDescriptorSetLayouts(VulkanDevice& device);
+	// set functions
+	inline void init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList) noexcept;
+	inline void set(vk::Pipeline pipeline) noexcept;
 
-	inline void init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList);
-	inline void set(vk::Pipeline pipeline);
-
+	// getters
 	inline vk::Pipeline get() const;
 	inline vk::PipelineLayout layout() const;
 	inline const std::vector<vk::DescriptorSetLayout>& descriptorSetLayoutList() const;
@@ -46,13 +48,13 @@ public:
 # undef CADR_NO_INLINE_FUNCTIONS
 namespace CadR {
 
-inline Pipeline::Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList)  : _pipeline(pipeline), _pipelineLayout(pipelineLayout), _descriptorSetLayoutList(descriptorSetLayoutList) {}
-inline void Pipeline::destroyPipeline(VulkanDevice& device)  { device.destroy(_pipeline); }
-inline void Pipeline::destroyPipelineLayout(VulkanDevice& device)  { device.destroy(_pipelineLayout); }
-inline void Pipeline::destroyDescriptorSetLayouts(VulkanDevice& device)  { if(_descriptorSetLayoutList==nullptr) return; for(auto d : *_descriptorSetLayoutList) device.destroy(d); _descriptorSetLayoutList->clear(); }
+inline Pipeline::Pipeline(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList) noexcept  : _pipeline(pipeline), _pipelineLayout(pipelineLayout), _descriptorSetLayoutList(descriptorSetLayoutList) {}
+inline void Pipeline::destroyPipeline(VulkanDevice& device) noexcept  { device.destroy(_pipeline); }
+inline void Pipeline::destroyPipelineLayout(VulkanDevice& device) noexcept  { device.destroy(_pipelineLayout); }
+inline void Pipeline::destroyDescriptorSetLayouts(VulkanDevice& device) noexcept  { if(_descriptorSetLayoutList==nullptr) return; for(auto d : *_descriptorSetLayoutList) device.destroy(d); _descriptorSetLayoutList->clear(); }
 
-inline void Pipeline::init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList)  { _pipeline=pipeline; _pipelineLayout=pipelineLayout; _descriptorSetLayoutList=descriptorSetLayoutList; }
-inline void Pipeline::set(vk::Pipeline pipeline)  { _pipeline=pipeline; }
+inline void Pipeline::init(vk::Pipeline pipeline, vk::PipelineLayout pipelineLayout, std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList) noexcept  { _pipeline=pipeline; _pipelineLayout=pipelineLayout; _descriptorSetLayoutList=descriptorSetLayoutList; }
+inline void Pipeline::set(vk::Pipeline pipeline) noexcept  { _pipeline=pipeline; }
 
 inline vk::Pipeline Pipeline::get() const  { return _pipeline; }
 inline vk::PipelineLayout Pipeline::layout() const  { return _pipelineLayout; }

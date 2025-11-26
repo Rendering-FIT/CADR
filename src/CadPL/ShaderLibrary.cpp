@@ -99,7 +99,7 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 				1,  // pushConstantRangeCount
 				array{
 					vk::PushConstantRange{  // pPushConstantRanges
-						vk::ShaderStageFlagBits::eAll,  // stageFlags
+						vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 						0,  // offset
 						56  // size
 					},
@@ -111,24 +111,24 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 }
 
 
-void ShaderLibrary::destroyShaderModule(void* shaderModuleOwner) noexcept
+void ShaderLibrary::destroyShaderModule(void* shaderModuleObject) noexcept
 {
 	struct SMO {
 		size_t counter;
 		vk::ShaderModule sm;
 		ShaderLibrary* shaderLibrary;
-		OwnerMap ownerMap;
+		OwningMap owningMap;
 	};
-	SMO* s = reinterpret_cast<SMO*>(shaderModuleOwner); 
+	SMO* s = reinterpret_cast<SMO*>(shaderModuleObject); 
 
 	s->shaderLibrary->_device->destroy(s->sm);
 
-	switch(s->ownerMap) {
-	case OwnerMap::eVertex:   s->shaderLibrary->_vertexShaderMap.erase(reinterpret_cast<ShaderModuleOwner<VertexShaderMapKey>*>(shaderModuleOwner)->eraseIt); break;
-	case OwnerMap::eGeometry: s->shaderLibrary->_geometryShaderMap.erase(reinterpret_cast<ShaderModuleOwner<GeometryShaderMapKey>*>(shaderModuleOwner)->eraseIt); break;
-	case OwnerMap::eFragment: s->shaderLibrary->_fragmentShaderMap.erase(reinterpret_cast<ShaderModuleOwner<FragmentShaderMapKey>*>(shaderModuleOwner)->eraseIt); break;
+	switch(s->owningMap) {
+	case OwningMap::eVertex:   s->shaderLibrary->_vertexShaderMap.erase(reinterpret_cast<ShaderModuleObject<VertexShaderMapKey>*>(shaderModuleObject)->eraseIt); break;
+	case OwningMap::eGeometry: s->shaderLibrary->_geometryShaderMap.erase(reinterpret_cast<ShaderModuleObject<GeometryShaderMapKey>*>(shaderModuleObject)->eraseIt); break;
+	case OwningMap::eFragment: s->shaderLibrary->_fragmentShaderMap.erase(reinterpret_cast<ShaderModuleObject<FragmentShaderMapKey>*>(shaderModuleObject)->eraseIt); break;
 	default:
-		assert(0 && "ShaderModuleOwner::ownerMapIndex contains unhandled value.");
+		assert(0 && "ShaderModuleObject::owningMap contains unknown value.");
 	}
 }
 
@@ -146,7 +146,7 @@ SharedShaderModule ShaderLibrary::getOrCreateVertexShader(const ShaderState& sta
 		}
 		it->second.referenceCounter = 0;
 		it->second.shaderLibrary = this;
-		it->second.ownerMap = OwnerMap::eVertex;
+		it->second.owningMap = OwningMap::eVertex;
 		it->second.eraseIt = it;
 	}
 	return SharedShaderModule(&it->second);
@@ -166,7 +166,7 @@ SharedShaderModule ShaderLibrary::getOrCreateGeometryShader(const ShaderState& s
 		}
 		it->second.referenceCounter = 0;
 		it->second.shaderLibrary = this;
-		it->second.ownerMap = OwnerMap::eGeometry;
+		it->second.owningMap = OwningMap::eGeometry;
 		it->second.eraseIt = it;
 	}
 	return SharedShaderModule(&it->second);
@@ -186,7 +186,7 @@ SharedShaderModule ShaderLibrary::getOrCreateFragmentShader(const ShaderState& s
 		}
 		it->second.referenceCounter = 0;
 		it->second.shaderLibrary = this;
-		it->second.ownerMap = OwnerMap::eFragment;
+		it->second.owningMap = OwningMap::eFragment;
 		it->second.eraseIt = it;
 	}
 	return SharedShaderModule(&it->second);

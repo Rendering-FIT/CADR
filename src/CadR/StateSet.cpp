@@ -233,8 +233,8 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 		device.cmdPushConstants(
 			commandBuffer,  // commandBuffer
 			currentPipelineLayout,  // pipelineLayout
-			vk::ShaderStageFlagBits::eVertex,  // stageFlags
-			0,  // offset
+			vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
+			8,  // offset
 			sizeof(uint64_t),  // size
 			array<uint64_t,1>{  // pValues
 				_renderer->drawablePointersBufferAddress() + (drawableCounter * Renderer::drawablePointersRecordSize),  // stateSetDrawablePointersPtr

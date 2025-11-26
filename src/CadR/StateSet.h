@@ -60,7 +60,7 @@ protected:
 public:
 
 	// pipeline to bind
-	CadR::Pipeline* pipeline = nullptr;
+	const CadR::Pipeline* pipeline = nullptr;
 
 	// list of functions that will be called during the preparation for StateSet's command buffer recording
 	std::vector<std::function<void(StateSet&)>> prepareCallList;

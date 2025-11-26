@@ -14,8 +14,8 @@ uint getLightDataOffset()  { return 128; }
 
 // push constants
 layout(push_constant) uniform pushConstants {
-	layout(offset=0) uint64_t drawablePointersBufferPtr;  // one buffer for the whole scene
-	layout(offset=8) uint64_t sceneDataPtr;  // one buffer for the whole scene
+	layout(offset=0) uint64_t sceneDataPtr;  // pointer to SceneDataRef; usually updated per scene render pass or once per scene rendering
+	layout(offset=8) uint64_t drawablePointersBufferPtr;  // pointer to DrawablePointersRef array; there is one DrawablePointersRef array for each StateSet, so the pointer is updated before each StateSet rendering
 	layout(offset=16) uint attribAccessInfoList[8];  // per-stateSet attribAccessInfo for 16 attribs
 	layout(offset=48) uint materialSetup;
 #ifdef ID_BUFFER
