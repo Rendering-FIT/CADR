@@ -61,8 +61,6 @@ public:
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;
 
-	operator vk::Instance() const;
-	explicit operator VkInstance() const;
 	explicit operator bool() const;
 	bool operator!() const;
 
@@ -70,7 +68,8 @@ public:
 	bool supportsVersion(uint32_t version) const;
 	bool supportsVersion(uint32_t major, uint32_t minor, uint32_t patch=0) const;
 
-	vk::Instance get() const;
+	VkInstance handle() const;
+	vk::Instance cppHandle() const;
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _instance.getProcAddr(pName,*this); }
@@ -238,14 +237,13 @@ inline bool VulkanInstance::initialized() const  { return _instance.operator boo
 template<typename T> T VulkanInstance::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name, *this)); }
 template<typename T> T VulkanInstance::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_instance.getProcAddr(name, *this)); }
 
-inline VulkanInstance::operator vk::Instance() const  { return _instance; }
-inline VulkanInstance::operator VkInstance() const  { return _instance; }
 inline VulkanInstance::operator bool() const  { return _instance.operator bool(); }
 inline bool VulkanInstance::operator!() const  { return _instance.operator!(); }
 inline uint32_t VulkanInstance::version() const  { return _version; }
 inline bool VulkanInstance::supportsVersion(uint32_t version) const  { return _version >= version; }
 inline bool VulkanInstance::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version >= VK_MAKE_VERSION(major,minor,patch); }
-inline vk::Instance VulkanInstance::get() const  { return _instance; }
+inline VkInstance VulkanInstance::handle() const  { return _instance; }
+inline vk::Instance VulkanInstance::cppHandle() const  { return _instance; }
 inline void VulkanInstance::set(nullptr_t)  { _instance = nullptr; }
 
 inline vk::Result VulkanInstance::getPhysicalDeviceSurfacePresentModesKHR(vk::PhysicalDevice physicalDevice, vk::SurfaceKHR surface, uint32_t *pPresentModeCount, vk::PresentModeKHR* pPresentModes) const  { return static_cast<vk::Result>(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, pPresentModeCount, reinterpret_cast<VkPresentModeKHR*>(pPresentModes))); }

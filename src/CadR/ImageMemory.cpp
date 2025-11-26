@@ -113,7 +113,7 @@ ImageMemory* ImageMemory::tryCreate(ImageStorage& imageStorage, size_t size, uin
 {
 	Renderer& renderer = imageStorage.renderer();
 	VulkanDevice& device = renderer.device();
-	vk::Device d = device.get();
+	vk::Device d = device.handle();
 
 	// allocate memory
 	vk::DeviceMemory m =

@@ -132,7 +132,7 @@ DataMemory* DataMemory::tryCreate(DataStorage& dataStorage, size_t size)
 {
 	Renderer& renderer = dataStorage.renderer();
 	VulkanDevice& device = renderer.device();
-	vk::Device d = device.get();
+	vk::Device d = device.handle();
 
 	// try create buffer
 	vk::Buffer b;

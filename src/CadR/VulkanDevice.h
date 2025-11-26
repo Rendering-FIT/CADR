@@ -97,8 +97,6 @@ public:
 	template<typename T> T getProcAddr(const char* name) const;
 	template<typename T> T getProcAddr(const std::string& name) const;
 
-	operator vk::Device() const;
-	explicit operator VkDevice() const;
 	explicit operator bool() const;
 	bool operator!() const;
 
@@ -106,7 +104,8 @@ public:
 	bool supportsVersion(uint32_t version) const;
 	bool supportsVersion(uint32_t major,uint32_t minor,uint32_t patch=0) const;
 
-	vk::Device get() const;
+	VkDevice handle() const;
+	vk::Device cppHandle() const;
 	void set(nullptr_t);
 
 	inline PFN_vkVoidFunction getProcAddr(const char* pName) const  { return _device.getProcAddr(pName,*this); }
@@ -630,14 +629,13 @@ inline bool VulkanDevice::initialized() const  { return _device.operator bool();
 template<typename T> T VulkanDevice::getProcAddr(const char* name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 template<typename T> T VulkanDevice::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(_device.getProcAddr(name,*this)); }
 
-inline VulkanDevice::operator vk::Device() const  { return _device; }
-inline VulkanDevice::operator VkDevice() const  { return _device; }
 inline VulkanDevice::operator bool() const  { return _device.operator bool(); }
 inline bool VulkanDevice::operator!() const  { return _device.operator!(); }
 inline uint32_t VulkanDevice::version() const  { return _version; }
 inline bool VulkanDevice::supportsVersion(uint32_t version) const  { return _version>=version; }
 inline bool VulkanDevice::supportsVersion(uint32_t major,uint32_t minor,uint32_t patch) const  { return _version>=VK_MAKE_VERSION(major,minor,patch); }
-inline vk::Device VulkanDevice::get() const  { return _device; }
+inline VkDevice VulkanDevice::handle() const  { return _device; }
+inline vk::Device VulkanDevice::cppHandle() const  { return _device; }
 inline void VulkanDevice::set(nullptr_t)  { _device=nullptr; }
 
 

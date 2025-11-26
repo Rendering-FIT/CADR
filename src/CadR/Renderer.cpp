@@ -783,7 +783,7 @@ vk::DeviceMemory Renderer::allocateMemoryTypeNoThrow(size_t size, uint32_t memor
 	);
 	VkResult r =
 		_device->vkAllocateMemory(
-			VkDevice(*_device),  // device
+			_device->handle(),  // device
 			reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 			nullptr,  // pAllocator
 			reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
@@ -808,7 +808,7 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(size_t size, uint32_t
 				allocateInfo.memoryTypeIndex = i;
 				VkResult r =
 					_device->vkAllocateMemory(
-						VkDevice(*_device),  // device
+						_device->handle(),  // device
 						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 						nullptr,  // pAllocator
 						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
@@ -838,7 +838,7 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(size_t s
 				allocateInfo.memoryTypeIndex = i;
 				VkResult r =
 					_device->vkAllocateMemory(
-						VkDevice(*_device),  // device
+						_device->handle(),  // device
 						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 						nullptr,  // pAllocator
 						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
@@ -868,7 +868,7 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(s
 				allocateInfo.memoryTypeIndex = i;
 				VkResult r =
 					_device->vkAllocateMemory(
-						VkDevice(*_device),  // device
+						_device->handle(),  // device
 						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
 						nullptr,  // pAllocator
 						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory

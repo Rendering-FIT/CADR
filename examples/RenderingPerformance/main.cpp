@@ -510,7 +510,7 @@ void App::init()
 		          : vector<const char*>{}
 	);
 	if(useWindow) {
-		window.create(VkInstance(instance), VkExtent2D(imageExtent), vulkanAppName, library.vkGetInstanceProcAddr);
+		window.create(instance.handle(), VkExtent2D(imageExtent), vulkanAppName, library.vkGetInstanceProcAddr);
 		window.setResizeCallback(bind(&App::resize, this, placeholders::_2, placeholders::_3));
 		window.setFrameCallback(bind(&App::frame, this));
 	}
@@ -606,7 +606,7 @@ void App::init()
 	renderer.init(device, instance, physicalDevice, graphicsQueueFamily);
 	renderer.setCollectFrameInfo(true, calibratedTimestampsSupported);
 	if(useWindow)
-		window.setDevice(VkDevice(device), physicalDevice);
+		window.setDevice(device.handle(), physicalDevice);
 
 	// choose surface format
 	if(useWindow)

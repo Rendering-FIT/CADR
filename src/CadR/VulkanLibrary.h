@@ -24,7 +24,7 @@ public:
 	void unload();
 	bool loaded() const;
 
-	void* get() const;
+	void* handle() const;
 	void set(nullptr_t);
 
 	VulkanLibrary(VulkanLibrary&& other) noexcept;
@@ -61,7 +61,7 @@ template<typename T> T VulkanLibrary::getProcAddr(const char* name) const  { ret
 template<typename T> T VulkanLibrary::getProcAddr(const std::string& name) const  { return reinterpret_cast<T>(vkGetInstanceProcAddr(nullptr,name.c_str())); }
 
 inline bool VulkanLibrary::loaded() const  { return _lib!=nullptr; }
-inline void* VulkanLibrary::get() const  { return _lib; }
+inline void* VulkanLibrary::handle() const  { return _lib; }
 inline void VulkanLibrary::set(nullptr_t)  { _lib=nullptr; }
 
 inline uint32_t VulkanLibrary::enumerateInstanceVersion() const  { return (vkEnumerateInstanceVersion==nullptr) ? VK_API_VERSION_1_0 : vk::enumerateInstanceVersion(*this); }
