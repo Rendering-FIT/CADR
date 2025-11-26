@@ -73,11 +73,20 @@ public:
 	CadR::StateSet* getStateSet(const ShaderState& shaderState, const PipelineState& pipelineState);
 	void deleteStateSet(CadR::StateSet& ss) noexcept;
 
+	// viewport and scissor for pipelines
+	void setViewportAndScissor(const vk::Viewport& viewport, const vk::Rect2D& scissor);
+	void setViewportAndScissor(const std::vector<vk::Viewport>& viewportList,
+		const std::vector<vk::Rect2D>& scissorList);
+
 	// getters
 	CadR::VulkanDevice& device() const;
 	PipelineLibrary& pipelineLibrary() const;
 	ShaderLibrary& shaderLibrary() const;
 	vk::PipelineCache pipelineCache() const;
+	vk::PipelineLayout pipelineLayout() const;
+	vk::DescriptorSetLayout descriptorSetLayout() const;
+	std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList();
+	const std::vector<vk::DescriptorSetLayout>* descriptorSetLayoutList() const;
 
 };
 
@@ -102,9 +111,15 @@ inline void PipelineSceneGraph::destroy() noexcept  { _stateSetMap.clear_and_dis
 inline CadR::StateSet& PipelineSceneGraph::getOrCreateStateSet(const ShaderState& shaderState, const PipelineState& pipelineState)  { decltype(_stateSetMap)::insert_commit_data insertData; auto [it, canInsert]=_stateSetMap.insert_check(std::tuple{shaderState, pipelineState}, insertData); return (canInsert) ? createStateSet(shaderState, pipelineState, insertData) : it->stateSet; }
 inline CadR::StateSet* PipelineSceneGraph::getStateSet(const ShaderState& shaderState, const PipelineState& pipelineState)  { auto it=_stateSetMap.find(std::tuple{shaderState, pipelineState}); return (it!=_stateSetMap.end()) ? &it->stateSet : nullptr; }
 inline void PipelineSceneGraph::deleteStateSet(CadR::StateSet& ss) noexcept  { _stateSetMap.erase_and_dispose(decltype(_stateSetMap)::s_iterator_to(stateSetToStateSetMapItem(ss)), [](StateSetMapItem* item){ delete item; }); }
+inline void PipelineSceneGraph::setViewportAndScissor(const vk::Viewport& viewport, const vk::Rect2D& scissor)  { _pipelineLibrary->setViewportAndScissor(viewport, scissor); }
+inline void PipelineSceneGraph::setViewportAndScissor(const std::vector<vk::Viewport>& viewportList, const std::vector<vk::Rect2D>& scissorList)  { _pipelineLibrary->setViewportAndScissor(viewportList, scissorList); }
 inline CadR::VulkanDevice& PipelineSceneGraph::device() const  { return _pipelineLibrary->device(); }
 inline PipelineLibrary& PipelineSceneGraph::pipelineLibrary() const  { return *_pipelineLibrary; }
 inline ShaderLibrary& PipelineSceneGraph::shaderLibrary() const  { return *_shaderLibrary; }
 inline vk::PipelineCache PipelineSceneGraph::pipelineCache() const  { return _pipelineLibrary->pipelineCache(); }
+inline vk::PipelineLayout PipelineSceneGraph::pipelineLayout() const  { return _shaderLibrary->pipelineLayout(); }
+inline vk::DescriptorSetLayout PipelineSceneGraph::descriptorSetLayout() const  { return _shaderLibrary->descriptorSetLayout(); }
+inline std::vector<vk::DescriptorSetLayout>* PipelineSceneGraph::descriptorSetLayoutList()  { return _shaderLibrary->descriptorSetLayoutList(); }
+inline const std::vector<vk::DescriptorSetLayout>* PipelineSceneGraph::descriptorSetLayoutList() const  { return _shaderLibrary->descriptorSetLayoutList(); }
 
 }
