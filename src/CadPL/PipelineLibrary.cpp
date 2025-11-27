@@ -323,13 +323,12 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 				createInfo.pInputAssemblyState = &inputAssemblyStateList[j];
 				goto foundInputAssemblyState;
 			}
-		auto& inputAssemblyState =
-			inputAssemblyStateList.emplace_back(
+		createInfo.pInputAssemblyState =
+			&inputAssemblyStateList.emplace_back(
 				vk::PipelineInputAssemblyStateCreateFlags(),  // flags
 				pipelineFamily._primitiveTopology,  // topology
 				VK_FALSE  // primitiveRestartEnable
 			);
-		createInfo.pInputAssemblyState = &inputAssemblyState;
 	foundInputAssemblyState:;
 
 		// pTessellationState
@@ -338,16 +337,17 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 		// pViewportState
 		vk::Viewport newViewport = viewportList.at(pipelinesToBeUpdated[i]->first.viewportAndScissorIndex);
 		vk::Rect2D newScissor = scissorList.at(pipelinesToBeUpdated[i]->first.viewportAndScissorIndex);
+		decltype(viewportStateList)::value_type* viewportState;
 		for(size_t j=0, c=viewportStateList.size(); j<c; j++)
 			if(get<1>(viewportStateList[j]) == newViewport && get<2>(viewportStateList[j]) == newScissor) {
 				createInfo.pViewportState = &get<0>(viewportStateList[j]);
 				goto foundViewportState;
 			}
-		auto& viewportState =
-			viewportStateList.emplace_back(pipelineEmptyViewportState, newViewport, newScissor);
-		get<0>(viewportState).pViewports = &get<1>(viewportState);
-		get<0>(viewportState).pScissors = &get<2>(viewportState);
-		createInfo.pViewportState = &get<0>(viewportState);
+		viewportState =
+			&viewportStateList.emplace_back(pipelineEmptyViewportState, newViewport, newScissor);
+		get<0>(*viewportState).pViewports = &get<1>(*viewportState);
+		get<0>(*viewportState).pScissors = &get<2>(*viewportState);
+		createInfo.pViewportState = &get<0>(*viewportState);
 	foundViewportState:;
 
 		// pRasterizationState
@@ -366,8 +366,8 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 				goto foundRasterizationState;
 			}
 		}
-		auto& rasterizationState =
-			rasterizationStateList.emplace_back(
+		createInfo.pRasterizationState =
+			&rasterizationStateList.emplace_back(
 				vk::PipelineRasterizationStateCreateInfo{
 					vk::PipelineRasterizationStateCreateFlags(),  // flags
 					VK_FALSE,  // depthClampEnable
@@ -382,7 +382,6 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 					pipelineState.lineWidth  // lineWidth
 				}
 			);
-		createInfo.pRasterizationState = &rasterizationState;
 	foundRasterizationState:;
 
 		// pMultisampleState
@@ -396,8 +395,8 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 				goto foundMultisampleState;
 			}
 		}
-		auto& multisampleState =
-			multisampleStateList.emplace_back(
+		createInfo.pMultisampleState =
+			&multisampleStateList.emplace_back(
 				vk::PipelineMultisampleStateCreateInfo{
 					vk::PipelineMultisampleStateCreateFlags(),  // flags
 					pipelineState.rasterizationSamples,  // rasterizationSamples
@@ -408,7 +407,6 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 					VK_FALSE   // alphaToOneEnable
 				}
 			);
-		createInfo.pMultisampleState = &multisampleState;
 	foundMultisampleState:;
 
 		// pDepthStencilState
@@ -421,8 +419,8 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 				goto foundDepthStencilState;
 			}
 		}
-		auto& depthStencilState =
-			depthStencilStateList.emplace_back(
+		createInfo.pDepthStencilState =
+			&depthStencilStateList.emplace_back(
 				vk::PipelineDepthStencilStateCreateInfo{
 					vk::PipelineDepthStencilStateCreateFlags(),  // flags
 					pipelineState.depthTestEnable,  // depthTestEnable
@@ -436,7 +434,6 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 					0.f   // maxDepthBounds
 				}
 			);
-		createInfo.pDepthStencilState = &depthStencilState;
 	foundDepthStencilState:;
 
 		// pColorBlendState
@@ -468,8 +465,8 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 		blendStateDiffers:;
 		}
 		attachmentsPtr = colorBlendAttachmentStateList.data() + colorBlendAttachmentStateList.size();
-		for(size_t j=0,c=pipelineState.blendState.size(); i<c; i++) {
-			const auto& src = pipelineState.blendState[i];
+		for(size_t j=0,c=pipelineState.blendState.size(); j<c; j++) {
+			const auto& src = pipelineState.blendState[j];
 			colorBlendAttachmentStateList.emplace_back(
 				vk::PipelineColorBlendAttachmentState{
 					src.blendEnable,
@@ -483,8 +480,8 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 				}
 			);
 		};
-		auto& colorBlendState =
-			colorBlendStateList.emplace_back(
+		createInfo.pColorBlendState =
+			&colorBlendStateList.emplace_back(
 				vk::PipelineColorBlendStateCreateInfo(
 					vk::PipelineColorBlendStateCreateFlags(),  // flags
 					VK_FALSE,  // logicOpEnable
@@ -494,7 +491,6 @@ void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& vie
 					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
 				)
 			);
-		createInfo.pColorBlendState = &colorBlendState;
 	foundColorBlendState:;
 
 		// pDynamicState
