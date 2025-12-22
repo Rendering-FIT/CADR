@@ -23,7 +23,7 @@ layout(location = 1) out uvec4 outId;
 
 
 // textures
-layout(set=0, binding=0) uniform sampler2D textureDB[];
+layout(set=0, binding=0) uniform sampler2D textureList[];
 #if 0
 layout(set=0, binding=0) uniform sampler2D baseColorTexture;  // RGB encoded with sRGB transfer function, A represents linear alpha, Hoops uses diffuseTexture (using MaterialKit) and baseColorMap (using PBRMaterialKit)
 layout(set=0, binding=1) uniform sampler2D metallicRoughnessTexture;  // B - metalness, G - roughness, both encoded with linear transfer function, Hoops uses MetalnessMap (in PBRMaterialKit) and RoughnessMap (in PBRMaterialKit)
@@ -236,13 +236,21 @@ void main()
 	// normal
 	vec3 normal;
 	uint materialModel = getMaterialModel();
-	if(materialModel >= 2)
+	if(materialModel >= 1)
 		normal = normalize(inFragmentNormal);
 
-	// normal texture
+	// init textureType and textureInfo
 	uint textureOffset = getMaterialFirstTextureOffset();
-	TextureInfoRef textureInfo = TextureInfoRef(inVertexAndDrawableDataPtr.w + textureOffset);
-	uint textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+	uint textureType;
+	TextureInfoRef textureInfo;
+	if(textureOffset == 0)
+		textureType = 0;
+	else {
+		textureInfo = TextureInfoRef(inVertexAndDrawableDataPtr.w + textureOffset);
+		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+	}
+
+	// normal texture
 	if(textureType == 0x0100) {
 
 		// compute texture coordinates from relevant data,
@@ -251,7 +259,7 @@ void main()
 			vertex2DataPtr, inBarycentricCoords);
 
 		// sample texture
-		vec3 tangentSpaceNormal = texture(textureDB[textureInfo.textureIndex], uv).rgb;
+		vec3 tangentSpaceNormal = texture(textureList[textureInfo.textureIndex], uv).rgb;
 
 		// transform in tangent space and normalize
 		tangentSpaceNormal = tangentSpaceNormal * 2 - 1;  // transform from 0..1 to -1..1
@@ -270,7 +278,7 @@ void main()
 	}
 
 	// unlit material
-	if(materialModel == 1) {
+	if(materialModel == 0) {
 
 		// material data
 		UnlitMaterialRef materialData = UnlitMaterialRef(materialPtr);
@@ -311,7 +319,7 @@ void main()
 				vertex0DataPtr, vertex1DataPtr, vertex2DataPtr, inBarycentricCoords);
 
 			// sample texture
-			vec4 baseTextureValue = texture(textureDB[textureInfo.textureIndex], uv);
+			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
 
 			// multiply by strength
 			if(getTextureUseStrengthFlag(textureInfo))
@@ -354,7 +362,7 @@ void main()
 
 	// Blinn-Phong material model,
 	// implemented in the similar was as OpenGL does
-	else if(materialModel == 2) {
+	else if(materialModel == 1) {
 
 		// occlusion texture
 		float occlusionTextureValue = 1.;
@@ -367,7 +375,7 @@ void main()
 
 			// sample texture
 			uint componentIndex = getTextureFirstComponentIndex(textureInfo);  // glTF uses red component, so 0 should be provided for glTF
-			float occlusionTextureValue = texture(textureDB[textureInfo.textureIndex], uv)[componentIndex];
+			float occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv)[componentIndex];
 
 			// multiply by strength
 			if(getTextureUseStrengthFlag(textureInfo))
@@ -389,7 +397,7 @@ void main()
 				vertex0DataPtr, vertex1DataPtr, vertex2DataPtr, inBarycentricCoords);
 
 			// sample texture
-			emissiveTextureValue = texture(textureDB[textureInfo.textureIndex], uv).rgb;
+			emissiveTextureValue = texture(textureList[textureInfo.textureIndex], uv).rgb;
 
 			// multiply by strength
 			if(getTextureUseStrengthFlag(textureInfo))
@@ -501,7 +509,7 @@ void main()
 				vertex0DataPtr, vertex1DataPtr, vertex2DataPtr, inBarycentricCoords);
 
 			// sample texture
-			vec4 baseTextureValue = texture(textureDB[textureInfo.textureIndex], uv);
+			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
 
 			// multiply by strength
 			if(getTextureUseStrengthFlag(textureInfo))
@@ -543,7 +551,7 @@ void main()
 
 	// Metallic-Roughness material model from PBR family,
 	// implemented in the similar way as glTF does
-	else if(materialModel == 3) {
+	else if(materialModel == 2) {
 
 		// light data
 		uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();

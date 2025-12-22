@@ -10,23 +10,12 @@ project(${APP_NAME})
 
 set(APP_SOURCES
 	main.cpp
-	PipelineLibrary.cpp
 	StbImageImplementation.cpp
 	VulkanWindow.cpp
 	)
 
 set(APP_INCLUDES
-	PipelineLibrary.h
 	VulkanWindow.h
-	)
-
-set(APP_SHADERS
-	"shaders/phongUberShader.vert      shaders/phong           .vert.spv"
-	"shaders/phongUberShader.frag      shaders/phong           .frag.spv"
-	"shaders/phongUberShader.vert      shaders/phongPoint      .vert.spv  -DPOINT_SHADER"
-	"shaders/baseColorUberShader.vert  shaders/baseColor       .vert.spv"
-	"shaders/baseColorUberShader.frag  shaders/baseColor       .frag.spv"
-	"shaders/baseColorUberShader.vert  shaders/baseColorPoint  .vert.spv  -DPOINT_SHADER"
 	)
 
 # dependencies
@@ -43,8 +32,7 @@ include(VulkanWindow.cmake)
 VulkanWindowConfigure(APP_SOURCES APP_INCLUDES libs defines includes)
 
 # executable
-process_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
-add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
+add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
 
 # target
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${includes})

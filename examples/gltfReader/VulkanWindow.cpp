@@ -2421,7 +2421,7 @@ void VulkanWindow::mainLoop()
 
 // window's message handling procedure
 LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
-{
+try {
 	// mouse functions
 	auto handleModifiers =
 		[](VulkanWindowPrivate* w, WPARAM wParam) -> void
@@ -2808,6 +2808,11 @@ LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 		default:
 			return DefWindowProcW(hwnd, msg, wParam, lParam);
 	}
+}
+catch(...) {
+	if(!thrownException)
+		thrownException = std::current_exception();
+	return 0;
 }
 
 

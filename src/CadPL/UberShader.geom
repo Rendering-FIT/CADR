@@ -4,6 +4,10 @@
 #extension GL_GOOGLE_include_directive : require
 #include "UberShaderReadFuncs.glsl"
 #include "UberShaderInterface.glsl"
+#if 0  // debug print; this makes possible to use debugPrintfEXT() in this shader;
+       // for more info, see comments around debugPrintEXT() bellow
+# extension GL_EXT_debug_printf : require
+#endif
 
 layout(triangles) in;
 layout(triangle_strip, max_vertices=3) out;
@@ -58,7 +62,7 @@ void main()
 	uint index0 = indexData.indices[inVertexIndex[0]];
 	uint index1 = indexData.indices[inVertexIndex[1]];
 	uint index2 = indexData.indices[inVertexIndex[2]];
-	uint vertexDataSize = getDrawableVertexDataSize(dp.drawableDataPtr);
+	uint vertexDataSize = getVertexDataSize();
 	uint64_t vertex0DataPtr = dp.vertexDataPtr + (index0 * vertexDataSize);
 	uint64_t vertex1DataPtr = dp.vertexDataPtr + (index1 * vertexDataSize);
 	uint64_t vertex2DataPtr = dp.vertexDataPtr + (index2 * vertexDataSize);
@@ -79,15 +83,29 @@ void main()
 	vec4 eyePosition0 = modelViewMatrix * vec4(position0, 1);
 	vec4 eyePosition1 = modelViewMatrix * vec4(position1, 1);
 	vec4 eyePosition2 = modelViewMatrix * vec4(position2, 1);
+#if 0  // debug print; to enable it, you also need to (1) enable GL_EXT_debug_printf extension on the beginning of this shader,
+       // you need to (2) enable VK_KHR_shader_non_semantic_info device extension (look for VK_KHR_shader_non_semantic_info
+       // text in InitAndFinalize.cpp) and you need to (3) have Vulkan Configurator (vkconfig) running and you need to
+       // (4) enable "Debug Printf" in Vulkan Configurator in Shader-Based validation;
+       //  you might also need to increase "Printf buffer size"
+	debugPrintfEXT("GS: %u,%u,%u, 0x%lx,0x%lx,0x%lx, %.2f,%.2f,%.2f, %.2f,%.2f,%.2f, %.2f,%.2f,%.2f.\n%.2f,%.2f,%.2f, %.2f,%.2f,%.2f, %.2f,%.2f,%.2f.\n",
+	               index0, index1, index2, vertex0DataPtr, vertex1DataPtr, vertex2DataPtr,
+	               position0.x, position0.y, position0.z,  position1.x, position1.y, position1.z,  position2.x, position2.y, position2.z,
+	               eyePosition0.x, eyePosition0.y, eyePosition0.z,  eyePosition1.x, eyePosition1.y, eyePosition1.z,  eyePosition2.x, eyePosition2.y, eyePosition2.z);
+#endif
 
 
 	// first vertex
 
 	// multiplication by projection "matrix"
+#if 1
 	gl_Position.x = scene.p11*eyePosition0.x + p31*eyePosition0.z + p41*eyePosition0.w;
 	gl_Position.y = scene.p22*eyePosition0.y + p32*eyePosition0.z + p42*eyePosition0.w;
 	gl_Position.z = scene.p33*eyePosition0.z + scene.p43*eyePosition0.w;
 	gl_Position.w = p34*eyePosition0.z + p44*eyePosition0.w;
+#else
+	gl_Position = scene.projectionMatrix * eyePosition0;
+#endif
 
 	// set output variables
 	outVertexAndDrawableDataPtr = vertexAndDrawableDataPtr;
@@ -119,10 +137,14 @@ void main()
 	// second vertex
 
 	// multiplication by projection "matrix"
+#if 1
 	gl_Position.x = scene.p11*eyePosition1.x + p31*eyePosition1.z + p41*eyePosition1.w;
 	gl_Position.y = scene.p22*eyePosition1.y + p32*eyePosition1.z + p42*eyePosition1.w;
 	gl_Position.z = scene.p33*eyePosition1.z + scene.p43*eyePosition1.w;
 	gl_Position.w = p34*eyePosition1.z + p44*eyePosition1.w;
+#else
+	gl_Position = scene.projectionMatrix * eyePosition1;
+#endif
 
 	// set output variables
 	outVertexAndDrawableDataPtr = vertexAndDrawableDataPtr;
@@ -152,10 +174,14 @@ void main()
 	// third vertex
 
 	// multiplication by projection "matrix"
+#if 1
 	gl_Position.x = scene.p11*eyePosition2.x + p31*eyePosition2.z + p41*eyePosition2.w;
 	gl_Position.y = scene.p22*eyePosition2.y + p32*eyePosition2.z + p42*eyePosition2.w;
 	gl_Position.z = scene.p33*eyePosition2.z + scene.p43*eyePosition2.w;
 	gl_Position.w = p34*eyePosition2.z + p44*eyePosition2.w;
+#else
+	gl_Position = scene.projectionMatrix * eyePosition2;
+#endif
 
 	// set output variables
 	outVertexAndDrawableDataPtr = vertexAndDrawableDataPtr;

@@ -34,8 +34,13 @@ if(MSVC)
 	# enable exceptions
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
 
+	# tell MSVC that source files are utf-8 encoded
+	# (it sets source charset and execution charset to utf-8)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
+
 	# avoid min and max macros
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /DNOMINMAX")
 
 	# disable warning C4251: class T1 (usually std::vector or so) needs to have dll-interface to be used by clients of class T2 (class containing member T1)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4251")

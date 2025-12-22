@@ -1,6 +1,5 @@
 #include <CadPL/PipelineLibrary.h>
 #include <CadR/VulkanDevice.h>
-#include <memory>
 
 using namespace std;
 using namespace CadPL;
@@ -15,13 +14,14 @@ static constexpr const vk::PipelineVertexInputStateCreateInfo pipelineVertexInpu
 	nullptr  // pVertexAttributeDescriptions
 );
 
-// pipeline empty viewport state
-static constexpr const vk::PipelineViewportStateCreateInfo pipelineEmptyViewportState{
-	vk::PipelineViewportStateCreateFlags(),  // flags
-	1,  // viewportCount
-	nullptr,  // pViewports
-	1,  // scissorCount
-	nullptr  // pScissors
+// specialization data map
+static constexpr const std::array specializationMap {
+	vk::SpecializationMapEntry{0,0,4},  // constantID, offset, size
+	vk::SpecializationMapEntry{1,4,4},
+	vk::SpecializationMapEntry{2,8,4},
+	vk::SpecializationMapEntry{3,12,4},
+	vk::SpecializationMapEntry{4,16,4},
+	vk::SpecializationMapEntry{5,20,4},
 };
 
 
@@ -40,13 +40,6 @@ PipelineFamily::~PipelineFamily()
 }
 
 
-PipelineFamily::PipelineFamily(PipelineLibrary& pipelineLibrary) noexcept
-	: _device(pipelineLibrary._device)
-	, _pipelineLibrary(&pipelineLibrary)
-{
-}
-
-
 void PipelineFamily::destroyPipeline(void* pipelineObject) noexcept
 {
 	PipelineObject* po = reinterpret_cast<PipelineObject*>(pipelineObject); 
@@ -55,29 +48,43 @@ void PipelineFamily::destroyPipeline(void* pipelineObject) noexcept
 	pf->_pipelineMap.erase(po->mapIterator);
 
 	if(pf->_pipelineMap.empty())
-		pf->_pipelineLibrary->_pipelineFamilyMap.erase(pf->_eraseIt);
+		pf->_pipelineLibrary->_pipelineFamilyMap.erase(pf->_mapIterator);
 }
 
 
 SharedPipeline PipelineFamily::getOrCreatePipeline(const PipelineState& pipelineState)
 {
 	auto [it, newRecord] = _pipelineMap.try_emplace(pipelineState);
-	if(newRecord) {
-		try {
-			it->second.cadrPipeline.init(
-				createPipeline(pipelineState),
-				_pipelineLibrary->pipelineLayout(),
-				_pipelineLibrary->descriptorSetLayoutList()
-			);
-		} catch(...) {
-			_pipelineMap.erase(it);
-			throw;
-		}
-		it->second.referenceCounter = 0;
-		it->second.pipelineFamily = this;
-		it->second.mapIterator = it;
-	}
-	return SharedPipeline(&it->second);
+	if(!newRecord)
+		return SharedPipeline(&it->second);
+
+	// initialize new record
+	// (do not throw until SharedPipeline is created)
+	it->second.cadrPipeline.init(
+		nullptr,
+		_pipelineLibrary->pipelineLayout(),
+		&_pipelineLibrary->descriptorSetLayoutList()
+	);
+	it->second.referenceCounter = 0;
+	it->second.pipelineFamily = this;
+	it->second.mapIterator = it;
+	SharedPipeline sharedPipeline(&it->second);
+
+	// if viewport, scissor or projection matrix were not set yet
+	// and they are required by the pipeline, skip pipeline creation;
+	// (the pipeline will be created in setProjectionViewportAndScissor() or similar function)
+	if(pipelineState.viewportAndScissorHandling == PipelineState::ViewportAndScissorHandling::SetFunction &&
+		(_pipelineLibrary->_viewportList.empty() || _pipelineLibrary->_scissorList.empty()))
+			return sharedPipeline;
+	if(_mapIterator->first.projectionHandling == ShaderState::ProjectionHandling::PerspectivePushAndSpecializationConstants &&
+		_pipelineLibrary->_specializationData.empty())
+			return sharedPipeline;
+
+	// create pipeline
+	PipelineLibrary::CreationDataSet creationDataSet(*_pipelineLibrary);
+	creationDataSet.append(SharedPipeline(&it->second), pipelineState);
+	creationDataSet.createPipelines(*_pipelineLibrary);
+	return sharedPipeline;
 }
 
 
@@ -93,441 +100,396 @@ SharedPipeline PipelineLibrary::getOrCreatePipeline(const ShaderState& shaderSta
 			_pipelineFamilyMap.erase(it);
 			throw;
 		}
-		it->second._eraseIt = it;
+		it->second._mapIterator = it;
 		it->second._primitiveTopology = shaderState.primitiveTopology;
 	}
 	return it->second.getOrCreatePipeline(pipelineState);
 }
 
 
-vk::Pipeline PipelineFamily::createPipeline(const PipelineState& pipelineState)
+void PipelineLibrary::setProjectionViewportAndScissor(const std::vector<glm::mat4x4>& projectionMatrixList,
+	const std::vector<vk::Viewport>& viewportList, const std::vector<vk::Rect2D>& scissorList)
 {
-	if(pipelineState.viewportAndScissorHandling == PipelineState::ViewportAndScissorHandling::SetFunction)
-		if(_pipelineLibrary->_viewportList.size() == 0 || _pipelineLibrary->_scissorList.size() == 0)
-			return {};
+	// update specialization constants based on projection matrices
+	_specializationData.resize(projectionMatrixList.size());
+	for(size_t i=0,c=projectionMatrixList.size(); i<c; i++)
+	{
+		const auto& projectionMatrix = projectionMatrixList[i];
+		_specializationData[i] =
+			array<float,6>{
+				projectionMatrix[2][0], projectionMatrix[2][1], projectionMatrix[2][3],
+				projectionMatrix[3][0], projectionMatrix[3][1], projectionMatrix[3][3],
+			};
+	}
 
-	array<vk::PipelineShaderStageCreateInfo, 3> shaderStages{
-		vk::PipelineShaderStageCreateInfo{
-			vk::PipelineShaderStageCreateFlags(),  // flags
-			vk::ShaderStageFlagBits::eVertex,  // stage
-			_vertexShader,  // module
-			"main",  // pName
-			nullptr,  // pSpecializationInfo
-		},
-		vk::PipelineShaderStageCreateInfo{
-			vk::PipelineShaderStageCreateFlags(),  // flags
-			vk::ShaderStageFlagBits::eFragment,  // stage
-			_fragmentShader,  // module
-			"main",  // pName
-			nullptr,  // pSpecializationInfo
-		},
-		vk::PipelineShaderStageCreateInfo{
-			vk::PipelineShaderStageCreateFlags(),  // flags
-			vk::ShaderStageFlagBits::eGeometry,  // stage
-			_geometryShader,  // module
-			"main",  // pName
-			nullptr,  // pSpecializationInfo
-		},
-	};
-	vk::PipelineInputAssemblyStateCreateInfo inputAssemblyState{
-		vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-		_primitiveTopology,  // topology
-		VK_FALSE  // primitiveRestartEnable
-	};
-	vk::PipelineViewportStateCreateInfo viewportState{
-		vk::PipelineViewportStateCreateFlags(),  // flags
-		1,  // viewportCount
-		&pipelineState.viewport,  // pViewports
-		1,  // scissorCount
-		&pipelineState.scissor  // pScissors
-	};
-	vk::PipelineRasterizationStateCreateInfo rasterizationState{
-		vk::PipelineRasterizationStateCreateFlags(),  // flags
-		VK_FALSE,  // depthClampEnable
-		VK_FALSE,  // rasterizerDiscardEnable
-		vk::PolygonMode::eFill,  // polygonMode
-		pipelineState.cullMode,  // cullMode
-		pipelineState.frontFace,  // frontFace
-		pipelineState.depthBiasEnable,  // depthBiasEnable
-		pipelineState.depthBiasConstantFactor,  // depthBiasConstantFactor
-		pipelineState.depthBiasClamp,  // depthBiasClamp
-		pipelineState.depthBiasSlopeFactor,  // depthBiasSlopeFactor
-		pipelineState.lineWidth  // lineWidth
-	};
-	vk::PipelineMultisampleStateCreateInfo multisampleState{
-		vk::PipelineMultisampleStateCreateFlags(),  // flags
-		pipelineState.rasterizationSamples,  // rasterizationSamples
-		pipelineState.sampleShadingEnable,  // sampleShadingEnable
-		pipelineState.minSampleShading,  // minSampleShading
-		nullptr,   // pSampleMask
-		VK_FALSE,  // alphaToCoverageEnable
-		VK_FALSE   // alphaToOneEnable
-	};
-	vk::PipelineDepthStencilStateCreateInfo depthStencilState{
-		vk::PipelineDepthStencilStateCreateFlags(),  // flags
-		pipelineState.depthTestEnable,  // depthTestEnable
-		pipelineState.depthWriteEnable,  // depthWriteEnable
-		vk::CompareOp::eLess,  // depthCompareOp
-		VK_FALSE,  // depthBoundsTestEnable
-		VK_FALSE,  // stencilTestEnable
-		vk::StencilOpState(),  // front
-		vk::StencilOpState(),  // back
-		0.f,  // minDepthBounds
-		0.f   // maxDepthBounds
-	};
-	vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachmentStates(pipelineState.blendState.size());
-	for(size_t i=0,c=pipelineState.blendState.size(); i<c; i++) {
-		const auto& src = pipelineState.blendState[i];
-		vk::PipelineColorBlendAttachmentState& dst = colorBlendAttachmentStates[i];
-		dst.blendEnable         = src.blendEnable;
-		dst.srcColorBlendFactor = src.srcColorBlendFactor;
-		dst.dstColorBlendFactor = src.dstColorBlendFactor;
-		dst.colorBlendOp        = src.colorBlendOp;
-		dst.srcAlphaBlendFactor = src.srcAlphaBlendFactor;
-		dst.dstAlphaBlendFactor = src.dstAlphaBlendFactor;
-		dst.alphaBlendOp        = src.alphaBlendOp;
-		dst.colorWriteMask      = src.colorWriteMask;
-	};
-	vk::PipelineColorBlendStateCreateInfo colorBlendState{
-		vk::PipelineColorBlendStateCreateFlags(),  // flags
-		VK_FALSE,  // logicOpEnable
-		vk::LogicOp::eClear,  // logicOp
-		uint32_t(colorBlendAttachmentStates.size()),  // attachmentCount
-		colorBlendAttachmentStates.data(),  // pAttachments
-		array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-	};
-	vk::GraphicsPipelineCreateInfo createInfo(
-		vk::PipelineCreateFlags(),  // flags
-		uint32_t(shaderStages.size()),  // stageCount
-		shaderStages.data(),  // pStages
-		&pipelineVertexInputStateCreateInfo,  // pVertexInputState
-		&inputAssemblyState,  // pInputAssemblyState
-		nullptr, // pTessellationState
-		&viewportState,  // pViewportState
-		&rasterizationState,  // pRasterizationState
-		&multisampleState,  // pMultisampleState
-		&depthStencilState,  // pDepthStencilState
-		&colorBlendState,  // pColorBlendState
-		nullptr,  // pDynamicState
-		_pipelineLibrary->_shaderLibrary->pipelineLayout(),  // layout
-		pipelineState.renderPass,  // renderPass
-		pipelineState.subpass,  // subpass
-		nullptr,  // basePipelineHandle
-		-1 // basePipelineIndex
-	);
-
-	return
-		_device->createGraphicsPipeline(
-			_pipelineLibrary->_pipelineCache,  // pipelineCache
-			createInfo  // createInfo
-		);
-}
-
-
-void PipelineLibrary::setViewportAndScissor(const std::vector<vk::Viewport>& viewportList,
-	const std::vector<vk::Rect2D>& scissorList)
-{
-	// update variables
+	// update viewports and scissors
 	_viewportList = viewportList;
 	_scissorList = scissorList;
-	if(viewportList.size() == 0 || scissorList.size() == 0)
-		return;
 
-	// get list of pipelines to be updated
-	vector<map<PipelineState,PipelineFamily::PipelineObject>::iterator> pipelinesToBeUpdated;
+	// CreationDataSet - used for storing all pipeline creation data
+	// so we create pipelines in batches and not one by one.
+	// This might allow Vulkan driver for speeding up creation.
+	CreationDataSet creationDataSet(*this);
+
+	// create list of pipelines to be recompiled
 	for(auto familyIt=_pipelineFamilyMap.begin(); familyIt!=_pipelineFamilyMap.end(); familyIt++) {
+		const ShaderState& shaderState = familyIt->first;
 		PipelineFamily& f = familyIt->second;
-		for(auto pipelineIt=f._pipelineMap.begin(); pipelineIt!=f._pipelineMap.end(); pipelineIt++)
-			if(pipelineIt->first.viewportAndScissorHandling == PipelineState::ViewportAndScissorHandling::SetFunction)
-				pipelinesToBeUpdated.push_back(pipelineIt);
-	}
-	size_t numPipelines = pipelinesToBeUpdated.size();
-	if(numPipelines == 0)
-		return;
-
-	// prepare pipeline create structs
-	unique_ptr<array<vk::PipelineShaderStageCreateInfo,3>[]> shaderStageList =
-		make_unique<array<vk::PipelineShaderStageCreateInfo,3>[]>(numPipelines);
-	vector<vk::PipelineInputAssemblyStateCreateInfo> inputAssemblyStateList;
-	vector<tuple<vk::PipelineViewportStateCreateInfo,vk::Viewport,vk::Rect2D>> viewportStateList;
-	vector<vk::PipelineRasterizationStateCreateInfo> rasterizationStateList;
-	vector<vk::PipelineMultisampleStateCreateInfo> multisampleStateList;
-	vector<vk::PipelineDepthStencilStateCreateInfo> depthStencilStateList;
-	vector<vk::PipelineColorBlendAttachmentState> colorBlendAttachmentStateList;
-	vector<vk::PipelineColorBlendStateCreateInfo> colorBlendStateList;
-	vector<vk::GraphicsPipelineCreateInfo> createInfoList;
-	inputAssemblyStateList.reserve(numPipelines);
-	viewportStateList.reserve(numPipelines);
-	rasterizationStateList.reserve(numPipelines);
-	multisampleStateList.reserve(numPipelines);
-	depthStencilStateList.reserve(numPipelines);
-	colorBlendStateList.reserve(numPipelines);
-	createInfoList.resize(numPipelines);
-
-	// maximum size of colorBlendAttachmentStateList
-	colorBlendAttachmentStateList.reserve(
-		[&](){
-			size_t numAttachments = 0;
-			for(auto it : pipelinesToBeUpdated)
-				numAttachments += it->first.blendState.size();
-			return numAttachments;
-		}()
-	);
-
-	for(size_t i=0; i<numPipelines; i++) {
-
-		// flags
-		auto& createInfo = createInfoList[i];
-		createInfo.flags = vk::PipelineCreateFlags();
-
-		// stageCount and pStages
-		const PipelineFamily& pipelineFamily = *pipelinesToBeUpdated[i]->second.pipelineFamily;
-		auto& shaderStages = shaderStageList[i];
-		shaderStages[0] =
-			vk::PipelineShaderStageCreateInfo{
-				vk::PipelineShaderStageCreateFlags(),  // flags
-				vk::ShaderStageFlagBits::eVertex,  // stage
-				pipelineFamily._vertexShader,  // module
-				"main",  // pName
-				nullptr,  // pSpecializationInfo
-			};
-		shaderStages[1] =
-			vk::PipelineShaderStageCreateInfo{
-				vk::PipelineShaderStageCreateFlags(),  // flags
-				vk::ShaderStageFlagBits::eFragment,  // stage
-				pipelineFamily._fragmentShader,  // module
-				"main",  // pName
-				nullptr,  // pSpecializationInfo
-			};
-		if(pipelineFamily._geometryShader) {
-			shaderStages[2] =
-				vk::PipelineShaderStageCreateInfo{
-					vk::PipelineShaderStageCreateFlags(),  // flags
-					vk::ShaderStageFlagBits::eGeometry,  // stage
-					pipelineFamily._geometryShader,  // module
-					"main",  // pName
-					nullptr,  // pSpecializationInfo
-				};
-			createInfo.stageCount = 3;
-		}
-		else
-			createInfo.stageCount = 2;
-		createInfo.pStages = shaderStages.data();
-
-		// pVertexInputState
-		createInfo.pVertexInputState = &pipelineVertexInputStateCreateInfo;
-
-		// pInputAssemblyState
-		for(size_t j=0, c=inputAssemblyStateList.size(); j<c; j++)
-			if(inputAssemblyStateList[j].topology == pipelineFamily._primitiveTopology) {
-				createInfo.pInputAssemblyState = &inputAssemblyStateList[j];
-				goto foundInputAssemblyState;
-			}
-		createInfo.pInputAssemblyState =
-			&inputAssemblyStateList.emplace_back(
-				vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-				pipelineFamily._primitiveTopology,  // topology
-				VK_FALSE  // primitiveRestartEnable
-			);
-	foundInputAssemblyState:;
-
-		// pTessellationState
-		createInfo.pTessellationState = nullptr;
-
-		// pViewportState
-		vk::Viewport newViewport = viewportList.at(pipelinesToBeUpdated[i]->first.viewportAndScissorIndex);
-		vk::Rect2D newScissor = scissorList.at(pipelinesToBeUpdated[i]->first.viewportAndScissorIndex);
-		decltype(viewportStateList)::value_type* viewportState;
-		for(size_t j=0, c=viewportStateList.size(); j<c; j++)
-			if(get<1>(viewportStateList[j]) == newViewport && get<2>(viewportStateList[j]) == newScissor) {
-				createInfo.pViewportState = &get<0>(viewportStateList[j]);
-				goto foundViewportState;
-			}
-		viewportState =
-			&viewportStateList.emplace_back(pipelineEmptyViewportState, newViewport, newScissor);
-		get<0>(*viewportState).pViewports = &get<1>(*viewportState);
-		get<0>(*viewportState).pScissors = &get<2>(*viewportState);
-		createInfo.pViewportState = &get<0>(*viewportState);
-	foundViewportState:;
-
-		// pRasterizationState
-		const PipelineState& pipelineState = pipelinesToBeUpdated[i]->first;
-		for(size_t j=0, c=rasterizationStateList.size(); j<c; j++) {
-			const auto& rasterizationState = rasterizationStateList[j];
-			if(rasterizationState.cullMode == pipelineState.cullMode &&
-			   rasterizationState.frontFace == pipelineState.frontFace &&
-			   (rasterizationState.depthBiasEnable!=0) == pipelineState.depthBiasEnable &&
-			   rasterizationState.depthBiasConstantFactor == pipelineState.depthBiasConstantFactor &&
-			   rasterizationState.depthBiasClamp == pipelineState.depthBiasClamp &&
-			   rasterizationState.depthBiasSlopeFactor == pipelineState.depthBiasSlopeFactor &&
-			   rasterizationState.lineWidth == pipelineState.lineWidth)
+		for(auto pipelineIt=f._pipelineMap.begin(); pipelineIt!=f._pipelineMap.end(); pipelineIt++) {
+			const PipelineState& pipelineState = pipelineIt->first;
+			if(pipelineState.viewportAndScissorHandling == PipelineState::ViewportAndScissorHandling::SetFunction)
 			{
-				createInfo.pRasterizationState = &rasterizationStateList[j];
-				goto foundRasterizationState;
+				// update viewport and scissor
+				const_cast<vk::Viewport&>(pipelineState.viewport) =
+					viewportList.at(pipelineState.viewportIndex);
+				const_cast<vk::Rect2D&>(pipelineState.scissor) =
+					scissorList.at(pipelineState.scissorIndex);
+
+				// append pipeline into the set for recompilation
+				creationDataSet.append(SharedPipeline(&pipelineIt->second), pipelineState);
 			}
+			else if(shaderState.projectionHandling == ShaderState::ProjectionHandling::PerspectivePushAndSpecializationConstants)
+				// append pipeline into the set for recompilation
+				creationDataSet.append(SharedPipeline(&pipelineIt->second), pipelineState);
 		}
-		createInfo.pRasterizationState =
-			&rasterizationStateList.emplace_back(
-				vk::PipelineRasterizationStateCreateInfo{
-					vk::PipelineRasterizationStateCreateFlags(),  // flags
-					VK_FALSE,  // depthClampEnable
-					VK_FALSE,  // rasterizerDiscardEnable
-					vk::PolygonMode::eFill,  // polygonMode
-					pipelineState.cullMode,  // cullMode
-					pipelineState.frontFace,  // frontFace
-					pipelineState.depthBiasEnable,  // depthBiasEnable
-					pipelineState.depthBiasConstantFactor,  // depthBiasConstantFactor
-					pipelineState.depthBiasClamp,  // depthBiasClamp
-					pipelineState.depthBiasSlopeFactor,  // depthBiasSlopeFactor
-					pipelineState.lineWidth  // lineWidth
-				}
-			);
-	foundRasterizationState:;
-
-		// pMultisampleState
-		for(size_t j=0, c=multisampleStateList.size(); j<c; j++) {
-			const auto& multisampleState = multisampleStateList[j];
-			if(multisampleState.rasterizationSamples == pipelineState.rasterizationSamples &&
-			   (multisampleState.sampleShadingEnable!=0) == pipelineState.sampleShadingEnable &&
-			   multisampleState.minSampleShading == pipelineState.minSampleShading)
-			{
-				createInfo.pMultisampleState = &multisampleStateList[j];
-				goto foundMultisampleState;
-			}
-		}
-		createInfo.pMultisampleState =
-			&multisampleStateList.emplace_back(
-				vk::PipelineMultisampleStateCreateInfo{
-					vk::PipelineMultisampleStateCreateFlags(),  // flags
-					pipelineState.rasterizationSamples,  // rasterizationSamples
-					pipelineState.sampleShadingEnable,  // sampleShadingEnable
-					pipelineState.minSampleShading,  // minSampleShading
-					nullptr,   // pSampleMask
-					VK_FALSE,  // alphaToCoverageEnable
-					VK_FALSE   // alphaToOneEnable
-				}
-			);
-	foundMultisampleState:;
-
-		// pDepthStencilState
-		for(size_t j=0, c=depthStencilStateList.size(); j<c; j++) {
-			const auto& depthStencilState = depthStencilStateList[j];
-			if((depthStencilState.depthTestEnable!=0) == pipelineState.depthTestEnable &&
-			   (depthStencilState.depthWriteEnable!=0) == pipelineState.depthWriteEnable)
-			{
-				createInfo.pDepthStencilState = &depthStencilStateList[j];
-				goto foundDepthStencilState;
-			}
-		}
-		createInfo.pDepthStencilState =
-			&depthStencilStateList.emplace_back(
-				vk::PipelineDepthStencilStateCreateInfo{
-					vk::PipelineDepthStencilStateCreateFlags(),  // flags
-					pipelineState.depthTestEnable,  // depthTestEnable
-					pipelineState.depthWriteEnable,  // depthWriteEnable
-					vk::CompareOp::eLess,  // depthCompareOp
-					VK_FALSE,  // depthBoundsTestEnable
-					VK_FALSE,  // stencilTestEnable
-					vk::StencilOpState(),  // front
-					vk::StencilOpState(),  // back
-					0.f,  // minDepthBounds
-					0.f   // maxDepthBounds
-				}
-			);
-	foundDepthStencilState:;
-
-		// pColorBlendState
-		vk::PipelineColorBlendAttachmentState* attachmentsPtr;
-		for(size_t j=0, c=colorBlendStateList.size(); j<c; j++) {
-			const auto& colorBlendStateDst = colorBlendStateList[j];
-			if(colorBlendStateDst.attachmentCount != pipelineState.blendState.size())
-				goto blendStateDiffers;
-			for(size_t k=0,c=pipelineState.blendState.size(); k<c; k++) {
-				const auto& blendStateSrc = pipelineState.blendState[k];
-				const auto& blendStateDst = colorBlendStateDst.pAttachments[k];
-				if(blendStateSrc.blendEnable==false && blendStateDst.blendEnable==false)
-					continue;
-				if(blendStateSrc.blendEnable != (blendStateDst.blendEnable!=0))
-					goto blendStateDiffers;
-				if(blendStateSrc.srcColorBlendFactor != blendStateDst.srcColorBlendFactor ||
-					blendStateSrc.dstColorBlendFactor != blendStateDst.dstColorBlendFactor ||
-					blendStateSrc.colorBlendOp != blendStateDst.colorBlendOp ||
-					blendStateSrc.srcAlphaBlendFactor != blendStateDst.srcAlphaBlendFactor ||
-					blendStateSrc.dstAlphaBlendFactor != blendStateDst.dstAlphaBlendFactor ||
-					blendStateSrc.alphaBlendOp != blendStateDst.alphaBlendOp ||
-					blendStateSrc.colorWriteMask != blendStateDst.colorWriteMask)
-				{
-					goto blendStateDiffers;
-				}
-			}
-			createInfo.pColorBlendState = &colorBlendStateDst;
-			goto foundColorBlendState;
-		blendStateDiffers:;
-		}
-		attachmentsPtr = colorBlendAttachmentStateList.data() + colorBlendAttachmentStateList.size();
-		for(size_t j=0,c=pipelineState.blendState.size(); j<c; j++) {
-			const auto& src = pipelineState.blendState[j];
-			colorBlendAttachmentStateList.emplace_back(
-				vk::PipelineColorBlendAttachmentState{
-					src.blendEnable,
-					src.srcColorBlendFactor,
-					src.dstColorBlendFactor,
-					src.colorBlendOp,
-					src.srcAlphaBlendFactor,
-					src.dstAlphaBlendFactor,
-					src.alphaBlendOp,
-					src.colorWriteMask,
-				}
-			);
-		};
-		createInfo.pColorBlendState =
-			&colorBlendStateList.emplace_back(
-				vk::PipelineColorBlendStateCreateInfo(
-					vk::PipelineColorBlendStateCreateFlags(),  // flags
-					VK_FALSE,  // logicOpEnable
-					vk::LogicOp::eClear,  // logicOp
-					uint32_t(pipelineState.blendState.size()),  // attachmentCount
-					attachmentsPtr,  // pAttachments
-					array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
-				)
-			);
-	foundColorBlendState:;
-
-		// pDynamicState
-		createInfo.pDynamicState = nullptr;
-
-		// remaining createInfo members
-		createInfo.layout = _shaderLibrary->pipelineLayout();
-		createInfo.renderPass = pipelineState.renderPass;
-		createInfo.subpass = pipelineState.subpass;
-		createInfo.basePipelineHandle = nullptr;
-		createInfo.basePipelineIndex = -1;
-
 	}
 
 	// create pipelines
-	vector<vk::Pipeline> pipelineList(numPipelines);
+	creationDataSet.createPipelines(*this);
+}
+
+
+PipelineLibrary::CreationDataSet::CreationDataSet(const PipelineLibrary& pipelineLibrary)
+	: specializationList(pipelineLibrary._specializationData.size())
+	, viewportList(pipelineLibrary._viewportList)
+	, scissorList(pipelineLibrary._scissorList)
+{
+	for(size_t i=0,c=pipelineLibrary._specializationData.size(); i<c; i++) {
+		auto& s = specializationList[i];
+		get<0>(s) = pipelineLibrary._specializationData[i];
+		get<1>(s) =
+			vk::SpecializationInfo(
+				uint32_t(specializationMap.size()),  // mapEntryCount
+				specializationMap.data(),  // pMapEntries
+				6 * sizeof(float),  // dataSize
+				get<0>(s).data()  // pData
+			);
+
+	}
+}
+
+
+void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline, const PipelineState& pipelineState)
+{
+	assert(numSharedPipelines < sharedPipelineList.size() && "CreationDataBatch::append(): CreationDataBatch is full. Cannot append more pipelines.");
+	assert(sharedPipeline.cadrPipeline() != nullptr && "SharedPipeline object must not be empty.");
+
+	// get info from sharedPipeline before we move it
+	const PipelineFamily& pipelineFamily = *sharedPipeline.pipelineFamily();
+	vk::PipelineLayout pipelineLayout = pipelineFamily._pipelineLibrary->pipelineLayout();
+	const ShaderState& shaderState = pipelineFamily.shaderState();
+
+	// move sharedPipeline
+	sharedPipelineList[numSharedPipelines] = sharedPipeline;
+	numSharedPipelines++;
+
+	// flags
+	auto& createInfo = createInfoList[numCreateInfos];
+	createInfo.flags = vk::PipelineCreateFlags();
+	numCreateInfos++;
+
+	// specializationInfo
+	vk::SpecializationInfo* specializationInfo =
+		(shaderState.projectionHandling == ShaderState::ProjectionHandling::PerspectivePushAndSpecializationConstants)
+			? &get<1>(creationDataSet->specializationList.at(pipelineState.projectionIndex))
+			: nullptr;
+
+	// stageCount and pStages
+	auto& shaderStages = shaderStageList[numShaderStages];
+	numShaderStages += 3;
+	shaderStages[0] =
+		vk::PipelineShaderStageCreateInfo{
+			vk::PipelineShaderStageCreateFlags(),  // flags
+			vk::ShaderStageFlagBits::eVertex,  // stage
+			pipelineFamily._vertexShader,  // module
+			"main",  // pName
+			specializationInfo,  // pSpecializationInfo
+		};
+	shaderStages[1] =
+		vk::PipelineShaderStageCreateInfo{
+			vk::PipelineShaderStageCreateFlags(),  // flags
+			vk::ShaderStageFlagBits::eFragment,  // stage
+			pipelineFamily._fragmentShader,  // module
+			"main",  // pName
+			nullptr,  // pSpecializationInfo
+		};
+	if(pipelineFamily._geometryShader) {
+		shaderStages[2] =
+			vk::PipelineShaderStageCreateInfo{
+				vk::PipelineShaderStageCreateFlags(),  // flags
+				vk::ShaderStageFlagBits::eGeometry,  // stage
+				pipelineFamily._geometryShader,  // module
+				"main",  // pName
+				specializationInfo,  // pSpecializationInfo
+			};
+		createInfo.stageCount = 3;
+	}
+	else
+		createInfo.stageCount = 2;
+	createInfo.pStages = &shaderStages;
+
+	// pVertexInputState
+	createInfo.pVertexInputState = &pipelineVertexInputStateCreateInfo;
+
+	// pInputAssemblyState
+	for(size_t i=0; i<numInputAssemblyStates; i++)
+		if(inputAssemblyStateList[i].topology == pipelineFamily._primitiveTopology) {
+			createInfo.pInputAssemblyState = &inputAssemblyStateList[i];
+			goto foundInputAssemblyState;
+		}
+	inputAssemblyStateList[numInputAssemblyStates] =
+		vk::PipelineInputAssemblyStateCreateInfo(
+			vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+			pipelineFamily._primitiveTopology,  // topology
+			VK_FALSE  // primitiveRestartEnable
+		);
+	createInfo.pInputAssemblyState = &inputAssemblyStateList[numInputAssemblyStates];
+	numInputAssemblyStates++;
+	foundInputAssemblyState:;
+
+	// pTessellationState
+	createInfo.pTessellationState = nullptr;
+
+	// pViewportState
+	for(size_t i=0; i<numViewportStates; i++)
+		if(get<1>(viewportStateList[i]) == pipelineState.viewport &&
+		   get<2>(viewportStateList[i]) == pipelineState.scissor)
+		{
+			createInfo.pViewportState = &get<0>(viewportStateList[i]);
+			goto foundViewportState;
+		}
+	get<0>(viewportStateList[numViewportStates]) =
+		vk::PipelineViewportStateCreateInfo(
+			vk::PipelineViewportStateCreateFlags(),  // flags
+			1,  // viewportCount
+			&get<1>(viewportStateList[numViewportStates]),  // pViewports
+			1,  // scissorCount
+			&get<2>(viewportStateList[numViewportStates])  // pScissors
+		);
+	get<1>(viewportStateList[numViewportStates]) = pipelineState.viewport;
+	get<2>(viewportStateList[numViewportStates]) = pipelineState.scissor;
+	createInfo.pViewportState = &get<0>(viewportStateList[numViewportStates]);
+	numViewportStates++;
+	foundViewportState:;
+
+	// pRasterizationState
+	for(size_t i=0; i<numRasterizationStates; i++) {
+		const auto& rasterizationState = rasterizationStateList[i];
+		if(rasterizationState.cullMode == pipelineState.cullMode &&
+		   rasterizationState.frontFace == pipelineState.frontFace &&
+		   (rasterizationState.depthBiasEnable!=0) == pipelineState.depthBiasEnable &&
+		   rasterizationState.depthBiasConstantFactor == pipelineState.depthBiasConstantFactor &&
+		   rasterizationState.depthBiasClamp == pipelineState.depthBiasClamp &&
+		   rasterizationState.depthBiasSlopeFactor == pipelineState.depthBiasSlopeFactor &&
+		   rasterizationState.lineWidth == pipelineState.lineWidth)
+		{
+			createInfo.pRasterizationState = &rasterizationStateList[i];
+			goto foundRasterizationState;
+		}
+	}
+	rasterizationStateList[numRasterizationStates] =
+		vk::PipelineRasterizationStateCreateInfo{
+			vk::PipelineRasterizationStateCreateFlags(),  // flags
+			VK_FALSE,  // depthClampEnable
+			VK_FALSE,  // rasterizerDiscardEnable
+			vk::PolygonMode::eFill,  // polygonMode
+			pipelineState.cullMode,  // cullMode
+			pipelineState.frontFace,  // frontFace
+			pipelineState.depthBiasEnable,  // depthBiasEnable
+			pipelineState.depthBiasConstantFactor,  // depthBiasConstantFactor
+			pipelineState.depthBiasClamp,  // depthBiasClamp
+			pipelineState.depthBiasSlopeFactor,  // depthBiasSlopeFactor
+			pipelineState.lineWidth  // lineWidth
+		};
+	createInfo.pRasterizationState = &rasterizationStateList[numRasterizationStates];
+	numRasterizationStates++;
+	foundRasterizationState:;
+
+	// pMultisampleState
+	for(size_t i=0; i<numMultisampleStates; i++) {
+		const auto& multisampleState = multisampleStateList[i];
+		if(multisampleState.rasterizationSamples == pipelineState.rasterizationSamples &&
+		   (multisampleState.sampleShadingEnable!=0) == pipelineState.sampleShadingEnable &&
+		   multisampleState.minSampleShading == pipelineState.minSampleShading)
+		{
+			createInfo.pMultisampleState = &multisampleStateList[i];
+			goto foundMultisampleState;
+		}
+	}
+	multisampleStateList[numMultisampleStates] =
+		vk::PipelineMultisampleStateCreateInfo{
+			vk::PipelineMultisampleStateCreateFlags(),  // flags
+			pipelineState.rasterizationSamples,  // rasterizationSamples
+			pipelineState.sampleShadingEnable,  // sampleShadingEnable
+			pipelineState.minSampleShading,  // minSampleShading
+			nullptr,   // pSampleMask
+			VK_FALSE,  // alphaToCoverageEnable
+			VK_FALSE   // alphaToOneEnable
+		};
+	createInfo.pMultisampleState = &multisampleStateList[numMultisampleStates];
+	numMultisampleStates++;
+	foundMultisampleState:;
+
+	// pDepthStencilState
+	for(size_t i=0; i<numDepthStencilStates; i++) {
+		const auto& depthStencilState = depthStencilStateList[i];
+		if((depthStencilState.depthTestEnable!=0) == pipelineState.depthTestEnable &&
+		   (depthStencilState.depthWriteEnable!=0) == pipelineState.depthWriteEnable)
+		{
+			createInfo.pDepthStencilState = &depthStencilStateList[i];
+			goto foundDepthStencilState;
+		}
+	}
+	depthStencilStateList[numDepthStencilStates] =
+		vk::PipelineDepthStencilStateCreateInfo{
+			vk::PipelineDepthStencilStateCreateFlags(),  // flags
+			pipelineState.depthTestEnable,  // depthTestEnable
+			pipelineState.depthWriteEnable,  // depthWriteEnable
+			vk::CompareOp::eLess,  // depthCompareOp
+			VK_FALSE,  // depthBoundsTestEnable
+			VK_FALSE,  // stencilTestEnable
+			vk::StencilOpState(),  // front
+			vk::StencilOpState(),  // back
+			0.f,  // minDepthBounds
+			0.f   // maxDepthBounds
+		};
+	createInfo.pDepthStencilState = &depthStencilStateList[numDepthStencilStates];
+	numDepthStencilStates++;
+	foundDepthStencilState:;
+
+	// colorBlendAttachmentState
+	vk::PipelineColorBlendAttachmentState* colorBlendAttachmentsPtr = nullptr;
+	auto isBlendAttachmentStateEqual =
+		[](const vk::PipelineColorBlendAttachmentState& s1,
+		   const PipelineState::BlendAttachmentState& s2) -> bool
+		{
+			if((s1.blendEnable!=0) != s2.blendEnable || s1.colorWriteMask != s2.colorWriteMask)
+				return false;
+			if(s2.blendEnable == false)  // blendEnable is the same on s1 and s2; if both are false, no need to compare blend settings
+				return true;
+			return s1.srcColorBlendFactor != s2.srcColorBlendFactor ||
+			       s1.dstColorBlendFactor != s2.dstColorBlendFactor ||
+			       s1.colorBlendOp        != s2.colorBlendOp ||
+			       s1.srcAlphaBlendFactor != s2.srcAlphaBlendFactor ||
+			       s1.dstAlphaBlendFactor != s2.dstAlphaBlendFactor ||
+			       s1.alphaBlendOp        != s2.alphaBlendOp;
+		};
+	for(size_t i=0,c=numColorBlendAttachmentStates; i<c; i+=numAttachmentsPerPipeline) {
+		for(size_t j=0,d=pipelineState.blendState.size(); j<d; j++)
+			if(!isBlendAttachmentStateEqual(colorBlendAttachmentStateList[i+j], pipelineState.blendState[j]))
+				goto colorBlendAttachmentsDiffer;
+		colorBlendAttachmentsPtr = &colorBlendAttachmentStateList[i];
+		goto colorBlendAttachmentsFound;
+		colorBlendAttachmentsDiffer:;
+	}
+	colorBlendAttachmentsPtr = &colorBlendAttachmentStateList[numColorBlendAttachmentStates];
+	for(size_t i=0,c=pipelineState.blendState.size(); i<c; i++) {
+		const auto& src = pipelineState.blendState[i];
+		colorBlendAttachmentStateList[numColorBlendAttachmentStates+i] =
+			vk::PipelineColorBlendAttachmentState(
+				src.blendEnable,
+				src.srcColorBlendFactor,
+				src.dstColorBlendFactor,
+				src.colorBlendOp,
+				src.srcAlphaBlendFactor,
+				src.dstAlphaBlendFactor,
+				src.alphaBlendOp,
+				src.colorWriteMask
+			);
+	}
+	numColorBlendAttachmentStates += numAttachmentsPerPipeline;
+	colorBlendAttachmentsFound:;
+
+	// pColorBlendState
+	for(size_t i=0; i<numColorBlendStates; i++) {
+		const auto& colorBlendState = colorBlendStateList[i];
+		if(colorBlendState.attachmentCount != pipelineState.blendState.size())
+			continue;
+		if(colorBlendState.pAttachments != colorBlendAttachmentsPtr)
+			continue;
+		createInfo.pColorBlendState = &colorBlendState;
+		goto foundColorBlendState;
+	}
+	colorBlendStateList[numColorBlendStates] =
+		vk::PipelineColorBlendStateCreateInfo(
+			vk::PipelineColorBlendStateCreateFlags(),  // flags
+			VK_FALSE,  // logicOpEnable
+			vk::LogicOp::eClear,  // logicOp
+			uint32_t(pipelineState.blendState.size()),  // attachmentCount
+			colorBlendAttachmentsPtr,  // pAttachments
+			array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+		);
+	createInfo.pColorBlendState = &colorBlendStateList[numColorBlendStates];
+	numColorBlendStates++;
+	foundColorBlendState:;
+
+	// pDynamicState
+	createInfo.pDynamicState = nullptr;
+
+	// remaining createInfo members
+	createInfo.layout = pipelineLayout;
+	createInfo.renderPass = pipelineState.renderPass;
+	createInfo.subpass = pipelineState.subpass;
+	createInfo.basePipelineHandle = nullptr;
+	createInfo.basePipelineIndex = -1;
+}
+
+
+[[nodiscard]] array<vk::Pipeline,PipelineLibrary::CreationDataBatch::numPipelines>
+	PipelineLibrary::CreationDataBatch::createPipelines(
+		CadR::VulkanDevice& device, vk::PipelineCache pipelineCache)
+{
+	// create pipelines
+	array<vk::Pipeline,numPipelines> pipelines;
 	VkResult r =
-		_device->vkCreateGraphicsPipelines(
-			_device->handle(),  // device
-			_pipelineCache,  // pipelineCache
-			uint32_t(numPipelines),  // createInfoCount
-			reinterpret_cast<VkGraphicsPipelineCreateInfo*>(createInfoList.data()),  // pCreateInfos
-			nullptr,  // pAllocator
-			reinterpret_cast<VkPipeline*>(pipelineList.data())  // pPipelines
+		device.vkCreateGraphicsPipelines(
+			device.handle(),
+			pipelineCache,
+			numCreateInfos,
+			reinterpret_cast<VkGraphicsPipelineCreateInfo*>(createInfoList.data()),
+			nullptr,
+			reinterpret_cast<VkPipeline*>(pipelines.data())
 		);
 	if(r != VK_SUCCESS) {
-		for(vk::Pipeline p : pipelineList)
-			_device->destroy(p);
-		pipelineList.clear();
+		for(vk::Pipeline p : pipelines)
+			device.destroy(p);
 	#if VK_HEADER_VERSION < 256  // throwResultException moved to detail namespace on 2023-06-28 and the change went public in 1.3.256
 		vk::throwResultException(vk::Result(r), "vk::Device::createGraphicsPipelines");
 	#else
 		vk::detail::throwResultException(vk::Result(r), "vk::Device::createGraphicsPipelines");
 	#endif
 	}
+	return pipelines;
+}
 
-	// update pipelines inside SharedPipeline object
-	for(size_t i=0, c=pipelinesToBeUpdated.size(); i<c; i++)
-		pipelinesToBeUpdated[i]->second.cadrPipeline.set(pipelineList[i]);
+
+void PipelineLibrary::CreationDataSet::createPipelines(const PipelineLibrary& pipelineLibrary)
+{
+	array<vk::Pipeline,CreationDataBatch::numPipelines> pipelines;
+	while(!batchList.empty())
+	{
+		CreationDataBatch& batch = batchList.front();
+
+		// create pipelines
+		// note: do not throw in the following code until pipelines are safely replaced through
+		// SharedPipeline objects; otherwise pipeline handles will be leaked
+		pipelines = batch.createPipelines(*pipelineLibrary._device, pipelineLibrary._pipelineCache);
+
+		// update pipelines inside SharedPipeline object
+		for(size_t i=0, c=batch.numSharedPipelines; i<c; i++)
+			batch.sharedPipelineList[i].replacePipelineHandle(pipelines[i], *pipelineLibrary._device);
+
+		// release CreationDataBatch
+		batchList.pop_front();
+	}
 }

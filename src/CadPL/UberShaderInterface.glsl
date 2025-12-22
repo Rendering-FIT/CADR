@@ -6,30 +6,44 @@
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
 SceneDataRef {
 	mat4 viewMatrix;        // current camera view matrix
-	float p11,p22,p33,p43;  // projectionMatrix - members that depend on zNear and zFar clipping planes
-	vec3 ambientLight;
-	layout(offset=128) uint lightData[];  // array of OpenGLLight and GltfLight structures is stored here
+	mat4 projectionMatrix;  // current camera projection matrix
+	float p11,p22,p33,p43;  // alternative specification of projectionMatrix - only members that depend on zNear
+	                        // and zFar clipping planes; remaining members are passed in as specialization constants
+	vec3 ambientLight;      // scene ambient light
+	layout(offset=192) uint lightData[];  // array of OpenGLLight and GltfLight structures is stored here
 };
-uint getLightDataOffset()  { return 128; }
+uint getLightDataOffset()  { return 192; }
 
+
+
+//
 // push constants
+//
+
 layout(push_constant) uniform pushConstants {
 	layout(offset=0) uint64_t sceneDataPtr;  // pointer to SceneDataRef; usually updated per scene render pass or once per scene rendering
 	layout(offset=8) uint64_t drawablePointersBufferPtr;  // pointer to DrawablePointersRef array; there is one DrawablePointersRef array for each StateSet, so the pointer is updated before each StateSet rendering
 	layout(offset=16) uint attribAccessInfoList[8];  // per-stateSet attribAccessInfo for 16 attribs
-	layout(offset=48) uint materialSetup;
+	layout(offset=48) uint attribSetup;  // doc is provided bellow with getVertexDataSize()
+	layout(offset=52) uint materialSetup;  // doc is provided with UnlitMaterialRef, PhongMaterialRef and MetallicRoughnessMaterialRef
 #ifdef ID_BUFFER
-	layout(offset=52) uint stateSetID;  // ID of the current StateSet
+	layout(offset=56) uint stateSetID;  // ID of the current StateSet
 #endif
 };
+
+// pushConstants.attribAccessInfoList
 uint getPositionAccessInfo()  { return attribAccessInfoList[0] & 0xffff; }
 uint getNormalAccessInfo()  { return attribAccessInfoList[0] >> 16; }
 uint getTangentAccessInfo()  { return attribAccessInfoList[1] & 0xffff; }
 uint getColorAccessInfo()  { return attribAccessInfoList[1] >> 16; }
 uint getTexCoordAccessInfo(uint attribIndex) { uint texCoordAccessInfo = attribAccessInfoList[attribIndex>>1]; if((attribIndex & 0x1) == 0) texCoordAccessInfo &= 0x0000ffff; else texCoordAccessInfo >>= 16; return texCoordAccessInfo; }
 
-// materialSetup
-// bits 0..1: material model; 0 - reserved, 1 - unlit, 2 - phong, 3 - metallicRoughness
+// pushConstants.attribSetup
+// bit 2..8: vertex data size (0, 4, 8,..., 508)
+uint getVertexDataSize()  { return attribSetup & 0x01fc; }
+
+// pushConstants.materialSetup
+// bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness
 // bits 2..7: texture offset (0, 4, 8, 12, .....252)
 // bit 8: use color attribute for ambient and diffuse; material ambient and diffuse values are ignored
 // bit 9: use color attribute for diffuse; material diffuse value is ignored
@@ -248,14 +262,12 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 DrawableDataRef {
 	// bit 6..8: modelMatrix offset (0, 64, 128, 192,..., 448)
 	uint settings1;
-	// bit 2..8: vertex data size (0, 4, 8,..., 508)
-	uint settings2;
+	uint dummy;
 	uint64_t materialPtr;
 	// [... model matrices ...]
 };
 
 MatrixListRef getDrawableMatrixList(uint64_t drawableDataPtr)  { return MatrixListRef(drawableDataPtr + (DrawableDataRef(drawableDataPtr).settings1 & 0x01c0)); }
-uint getDrawableVertexDataSize(uint64_t drawableDataPtr)  { return DrawableDataRef(drawableDataPtr).settings2 & 0x01fc; }
 
 // drawable data pointers
 layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer

@@ -37,9 +37,9 @@ class CADR_EXPORT StateSet {
 protected:
 
 	Renderer* _renderer;  ///< Renderer associated with this Stateset.
-	bool _skipRecording;  ///< The flag optimizing the rendering. When set, it excludes this and all the child StateSets from recording into the command buffer.
-	                      ///< By default, it is set to true whenever there are no Drawables in this StateSet or any child StateSets. It can be forced to false by setting _forceRecording to true.
-	bool _forceRecording = false;  ///< The flag forces recording to happen always, even if the StateSet does not contain any Drawables. This might be useful as some draw commands might be recorded by the user in the callbacks. 
+	bool _skipRecording;  ///< The internal flag optimizing the rendering. When set, it excludes this and all the child StateSets from recording into the command buffer.
+	                      ///< By default, it is set to true whenever there are no Drawables in this StateSet and in any child StateSets. It can be forced to false by calling setForceRecording() or requestRecording().
+	bool _forceRecording = false;  ///< The flag forces recording to be performed always, even if the StateSet does not contain any Drawables, neither its children. This might be useful as some draw commands might be recorded by the user in the callbacks. 
 	std::vector<DrawableGpuData> _drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
 	std::vector<Drawable*> _drawablePtrList;  ///< List of Drawables attached to this StateSet.
 	vk::DescriptorPool _descriptorPool;
@@ -67,7 +67,7 @@ public:
 
 	// list of functions that will be called during StateSet recording into the command buffer;
 	// each function is called only if the StateSet is recorded, e.g. only if it contains any drawables or its recording is forced
-	std::vector<std::function<void(StateSet&, vk::CommandBuffer)>> recordCallList;
+	std::vector<std::function<void(StateSet&, vk::CommandBuffer, vk::PipelineLayout)>> recordCallList;
 
 	// parent-child relation
 	static const ParentChildListOffsets parentChildListOffsets;
@@ -99,10 +99,11 @@ public:
 	void allocDescriptorSet(vk::DescriptorType type, vk::DescriptorSetLayout layout);  //< Allocate one DescriptorSet if layout contains single descriptor. Type of the descriptor must be passed in type parameter. All previously allocated DescriptorSets are freed.
 	void allocDescriptorSet(uint32_t poolSizeCount, vk::DescriptorPoolSize* poolSizeList, vk::DescriptorSetLayout layout);  //< Allocate one DestriptorSet whose destriptors are described in poolSizeList. The descriptors must be in accordance to the layout. All previously allocated DescriptorSets are freed.
 	void allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descriptorPoolCreateInfo,
-		uint32_t layoutCount, const vk::DescriptorSetLayout& layoutList);  //< Allocate one or more DescriptorSets, according to descriptorPoolCreateInfo parameter. Layout of each DescriptorSet is given in layoutList parameter. All previously allocated DescriptorSets are freed.
+		const std::vector<vk::DescriptorSetLayout>& layoutList, const void* descriptorInfoPNext = nullptr);  //< Allocate one or more DescriptorSets, according to descriptorPoolCreateInfo parameter. Layout of each DescriptorSet is given in layoutList parameter. All previously allocated DescriptorSets are freed.
+	void allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descriptorPoolCreateInfo,
+		uint32_t layoutCount, const vk::DescriptorSetLayout* layoutList, const void* descriptorInfoPNext = nullptr);  //< Allocate one or more DescriptorSets, according to descriptorPoolCreateInfo parameter. Layout of each DescriptorSet is given in layoutList parameter. All previously allocated DescriptorSets are freed.
 	void freeDescriptorSets() noexcept;  //< Releases all DescriptorSets allocated for the StateSet.
 	inline void setDescriptorSets(vk::DescriptorPool descriptorPool, std::vector<vk::DescriptorSet>&& descriptorSetList);  //< Set descriptor pool and descriptor set list and pass their ownership to this StateSet.
-	inline void setDescriptorSets(std::vector<vk::DescriptorSet>&& descriptorSetList);  //< Set descriptor set list. The DescriptorSets must be allocated from DescriptorPool of this StateSet.
 	void updateDescriptorSet(const vk::WriteDescriptorSet& w);  //< Perform single descriptor set update, as specified by the parameter w.
 	void updateDescriptorSet(uint32_t writeCount, vk::WriteDescriptorSet* writes);  //< Perform number of DescriptorSet updates, as described by writes parameter.
 	void updateDescriptorSet(uint32_t writeCount, vk::WriteDescriptorSet* writes, uint32_t copyCount, vk::CopyDescriptorSet* copies);  //< Perform DescriptorSet updates and copies.
@@ -153,8 +154,8 @@ inline vk::DescriptorPool StateSet::descriptorPool() const  { return _descriptor
 inline const std::vector<vk::DescriptorSet> StateSet::descriptorSets() const  { return _descriptorSets; }
 inline uint32_t StateSet::descriptorSetNumber() const  { return _descriptorSetNumber; }
 inline const std::vector<uint32_t>& StateSet::dynamicOffsets() const  { return _dynamicOffsets; }
+inline void StateSet::allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descriptorPoolCreateInfo, const std::vector<vk::DescriptorSetLayout>& layoutList, const void* descriptorInfoPNext)  { allocDescriptorSets(descriptorPoolCreateInfo, uint32_t(layoutList.size()), layoutList.data(), descriptorInfoPNext); }
 inline void StateSet::setDescriptorSets(vk::DescriptorPool descriptorPool, std::vector<vk::DescriptorSet>&& descriptorSets)  { freeDescriptorSets(); _descriptorPool = descriptorPool; _descriptorSets = std::move(descriptorSets); }
-inline void StateSet::setDescriptorSets(std::vector<vk::DescriptorSet>&& descriptorSets)  { _descriptorSets = std::move(descriptorSets); }
 inline void StateSet::setDescriptorSetNumber(uint32_t value)  { _descriptorSetNumber = value; }
 inline void StateSet::setDynamicOffsets(const std::vector<uint32_t>& offsets)  { _dynamicOffsets = offsets; }
 inline void StateSet::setDynamicOffsets(std::vector<uint32_t>&& offsets)  { _dynamicOffsets = std::move(offsets); }

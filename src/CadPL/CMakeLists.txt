@@ -40,6 +40,7 @@ source_group("Code" FILES ${CADPL_PUBLIC_HEADERS} ${CADPL_PRIVATE_HEADERS} ${CAD
 
 # dependencies
 find_package(Vulkan REQUIRED)
+find_package(glm REQUIRED)
 
 # shaders
 add_shader(UberShader.vert  ""  shaders/UberShader.vert.spv  CADPL_SHADER_DEPS)
@@ -89,7 +90,7 @@ set_target_properties(${LIB_NAME} PROPERTIES
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # target libraries
-target_link_libraries(${LIB_NAME} Vulkan::Headers CadR)
+target_link_libraries(${LIB_NAME} Vulkan::Headers glm CadR)
 
 # other target settings
 set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD 17)

@@ -72,14 +72,14 @@ void StateSet::allocDescriptorSet(vk::DescriptorType type, vk::DescriptorSetLayo
 			)
 		);
 
-	_descriptorSets = move(
+	_descriptorSets =
 		d.allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				_descriptorPool,  // descriptorPool
 				1,  // descriptorSetCount
 				&layout  // descriptorSetLayout
 			)
-		));
+		);
 }
 
 
@@ -98,33 +98,35 @@ void StateSet::allocDescriptorSet(uint32_t poolSizeCount, vk::DescriptorPoolSize
 			)
 		);
 
-	_descriptorSets = move(
+	_descriptorSets =
 		d.allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				_descriptorPool,  // descriptorPool
 				1,  // descriptorSetCount
 				&layout  // descriptorSetLayout
 			)
-		));
+		);
 }
 
 
 void StateSet::allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descriptorPoolCreateInfo,
-	uint32_t layoutCount, const vk::DescriptorSetLayout& layoutList)
+	uint32_t layoutCount, const vk::DescriptorSetLayout* layoutList, const void* descriptorInfoPNext)
 {
 	freeDescriptorSets();
 
 	VulkanDevice& d = _renderer->device();
 	_descriptorPool = d.createDescriptorPool(descriptorPoolCreateInfo);
 
-	_descriptorSets = move(
+	_descriptorSets =
 		d.allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				_descriptorPool,  // descriptorPool
 				layoutCount,  // descriptorSetCount
-				&layoutList  // descriptorSetLayout
+				layoutList  // descriptorSetLayout
+			).setPNext(
+				descriptorInfoPNext
 			)
-		));
+		);
 }
 
 
@@ -199,7 +201,8 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 	// bind pipeline
 	VulkanDevice& device = _renderer->device();
 	if(pipeline) {
-		device.cmdBindPipeline(commandBuffer, vk::PipelineBindPoint::eGraphics, pipeline->get());
+		if(pipeline->get())
+			device.cmdBindPipeline(commandBuffer, vk::PipelineBindPoint::eGraphics, pipeline->get());
 		currentPipelineLayout = pipeline->layout();
 	}
 
@@ -217,7 +220,7 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 
 	// call user-registered functions
 	for(auto& f : recordCallList)
-		f(*this, commandBuffer);
+		f(*this, commandBuffer, currentPipelineLayout);
 
 	size_t numDrawables = _drawableDataList.size();
 	if(numDrawables > 0) {

@@ -101,7 +101,7 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 					vk::PushConstantRange{  // pPushConstantRanges
 						vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 						0,  // offset
-						56  // size
+						60  // size
 					},
 				}.data()
 			)
@@ -113,20 +113,14 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 
 void ShaderLibrary::destroyShaderModule(void* shaderModuleObject) noexcept
 {
-	struct SMO {
-		size_t counter;
-		vk::ShaderModule sm;
-		ShaderLibrary* shaderLibrary;
-		OwningMap owningMap;
-	};
-	SMO* s = reinterpret_cast<SMO*>(shaderModuleObject); 
+	AbstractShaderModuleObject* smObject = static_cast<AbstractShaderModuleObject*>(shaderModuleObject); 
 
-	s->shaderLibrary->_device->destroy(s->sm);
+	smObject->shaderLibrary->_device->destroy(smObject->shaderModule);
 
-	switch(s->owningMap) {
-	case OwningMap::eVertex:   s->shaderLibrary->_vertexShaderMap.erase(reinterpret_cast<ShaderModuleObject<VertexShaderMapKey>*>(shaderModuleObject)->eraseIt); break;
-	case OwningMap::eGeometry: s->shaderLibrary->_geometryShaderMap.erase(reinterpret_cast<ShaderModuleObject<GeometryShaderMapKey>*>(shaderModuleObject)->eraseIt); break;
-	case OwningMap::eFragment: s->shaderLibrary->_fragmentShaderMap.erase(reinterpret_cast<ShaderModuleObject<FragmentShaderMapKey>*>(shaderModuleObject)->eraseIt); break;
+	switch(smObject->owningMap) {
+	case OwningMap::eVertex:   smObject->shaderLibrary->_vertexShaderMap.erase(static_cast<ShaderModuleObject<VertexShaderMapKey>*>(smObject)->eraseIt); break;
+	case OwningMap::eGeometry: smObject->shaderLibrary->_geometryShaderMap.erase(static_cast<ShaderModuleObject<GeometryShaderMapKey>*>(smObject)->eraseIt); break;
+	case OwningMap::eFragment: smObject->shaderLibrary->_fragmentShaderMap.erase(static_cast<ShaderModuleObject<FragmentShaderMapKey>*>(smObject)->eraseIt); break;
 	default:
 		assert(0 && "ShaderModuleObject::owningMap contains unknown value.");
 	}

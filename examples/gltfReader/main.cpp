@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #include <CadR/BoundingBox.h>
 #include <CadR/BoundingSphere.h>
 #include <CadR/Geometry.h>
@@ -13,7 +17,6 @@
 #include <CadR/VulkanInstance.h>
 #include <CadR/VulkanLibrary.h>
 #include <CadPL/PipelineSceneGraph.h>
-#include "PipelineLibrary.h"
 #include "VulkanWindow.h"
 #include <vulkan/vulkan.hpp>
 #include <glm/glm.hpp>
@@ -53,12 +56,13 @@ struct LightGpuData {
 constexpr const uint32_t maxLights = 1;
 struct SceneGpuData {
 	glm::mat4 viewMatrix;    // current camera view matrix
+	glm::mat4 projectionMatrix;  // current camera view matrix
 	float p11,p22,p33,p43;   // projectionMatrix - members that depend on zNear and zFar clipping planes
 	glm::vec3 ambientLight;  // we use vec4 instead of vec3 for the purpose of memory alignment; alpha component for light intensities is unused
 	uint32_t numLights;
 	LightGpuData lights[maxLights];
 };
-static_assert(sizeof(SceneGpuData) == 96+(80*maxLights), "Wrong SceneGpuData data size");
+static_assert(sizeof(SceneGpuData) == 128+16+16+(80*maxLights), "Wrong SceneGpuData data size");
 
 
 // application class
@@ -111,7 +115,6 @@ public:
 	vk::Fence renderingFinishedFence;
 
 	CadR::Renderer renderer;
-	PipelineLibrary pipelineLibrary;
 	vk::CommandPool commandPool;
 	vk::CommandBuffer commandBuffer;
 
@@ -130,27 +133,16 @@ public:
 
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
-	static constexpr size_t numPipelines = PipelineLibrary::numPipelines();
-	struct TextureStateSet {
-		CadR::StateSet stateSet;
-		CadR::Texture* texture;
-	};
-	struct PipelineStateSet {
-		CadR::Pipeline pipeline;
-		CadR::StateSet stateSet;
-		list<TextureStateSet> textureStateSetList;
-		vector<TextureStateSet*> textureIndexToStateSet;
-		PipelineStateSet(CadR::Renderer& r) noexcept  : stateSet(r) {}
-		void destroy() noexcept  { textureStateSetList.clear(); stateSet.destroy(); }
-	};
-	array<PipelineStateSet,numPipelines> pipelineStateSetList;
 	CadPL::PipelineSceneGraph pipelineSceneGraph;
-	vector<CadR::Geometry> geometryDB;
-	vector<CadR::Drawable> drawableDB;
-	vector<CadR::ImageAllocation> imageDB;
-	vector<CadR::Sampler> samplerDB;
-	vector<CadR::Texture> textureDB;
+	CadR::Pipeline layoutOnlyPipeline;
+	vector<CadR::Geometry> geometryList;
+	vector<CadR::Drawable> drawableList;
+	vector<CadR::DataAllocation> materialList;
+	vector<CadR::ImageAllocation> imageList;
+	vector<CadR::Sampler> samplerList;
+	vector<CadR::Texture> textureList;
 	CadR::Sampler defaultSampler;
+	CadR::DataAllocation defaultMaterial;
 
 };
 
@@ -165,18 +157,6 @@ public:
 	const char* what() const noexcept  { return _what.c_str(); }
 	int exitCode() const noexcept  { return _exitCode; }
 };
-
-
-// create_array<T,N>() allows for initialization of an std::array when passing the same value to all the constructors is needed
-// (for passing references, use std::ref() and std::cref() to pass them into create_array())
-template<typename T, size_t N, size_t index = N, typename T2, typename... Ts>
-constexpr array<T, N> createPipelineStateSetList(T2& t, Ts&... ts)
-{
-	if constexpr (index <= 1)
-		return array<T, N>{ t, ts... };
-	else
-		return createPipelineStateSetList<T, N, index-1>(t, t, ts...);
-}
 
 
 #ifdef _WIN32
@@ -250,8 +230,8 @@ static string utf16toUtf8(const wchar_t* ws)
 App::App(int argc, char** argv)
 	: sceneDataAllocation(renderer.dataStorage())
 	, stateSetRoot(renderer)
-	, pipelineStateSetList{ createPipelineStateSetList<PipelineStateSet, numPipelines>(renderer) }
 	, defaultSampler(renderer)
+	, defaultMaterial(renderer.dataStorage(), CadR::DataAllocation::noHandle)
 {
 #ifdef _WIN32
 	// get wchar_t command line
@@ -279,26 +259,23 @@ App::~App()
 	if(device) {
 
 		// wait for device idle state
-		// (to prevent errors during destruction of Vulkan resources)
-		try {
-			device.waitIdle();
-		} catch(vk::Error& e) {
-			cout << "Failed because of Vulkan exception: " << e.what() << endl;
-		}
+		// (to prevent errors during destruction of Vulkan resources);
+		// we ignore any returned error codes here
+		// because the device might be in the lost state already, etc.
+		device.vkDeviceWaitIdle(device.handle());
 
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
-		for(PipelineStateSet& pss : pipelineStateSetList)
-			pss.destroy();
 		pipelineSceneGraph.destroy();
-		textureDB.clear();
-		imageDB.clear();
-		samplerDB.clear();
+		stateSetRoot.destroy();
+		textureList.clear();
+		imageList.clear();
+		samplerList.clear();
 		defaultSampler.destroy();
-		drawableDB.clear();
-		geometryDB.clear();
+		drawableList.clear();
+		geometryList.clear();
 		sceneDataAllocation.free();
-		pipelineLibrary.destroy();
+		defaultMaterial.free();
 		device.destroy(commandPool);
 		renderer.finalize();
 		device.destroy(renderingFinishedFence);
@@ -578,19 +555,6 @@ void App::init()
 			)
 		)[0];
 
-	// pipelineStateSetList
-	pipelineLibrary.create(device);
-	for(size_t i=0; i<pipelineStateSetList.size(); i++) {
-		PipelineStateSet& pss = pipelineStateSetList[i];
-		CadR::Pipeline& p = pss.pipeline;
-		vk::PipelineLayout pipelineLayout =
-			(i & 0x02) ? pipelineLibrary.texturePipelineLayout() : pipelineLibrary.pipelineLayout();
-		p.init(nullptr, pipelineLayout, nullptr);
-		CadR::StateSet& s = pss.stateSet;
-		s.pipeline = &p;
-		stateSetRoot.childList.append(s);
-	}
-
 	// parse json
 #ifdef _WIN32
 	cout << "Processing file " << utf16toUtf8(filePath.c_str()) << "..." << endl;
@@ -855,7 +819,7 @@ void App::init()
 		// load images
 		size_t c = images.size();
 		cout << "Processing images (" << c << " in total)..." << endl;
-		imageDB.reserve(c);
+		imageList.reserve(c);
 		imageFormats.resize(c, vk::Format::eUndefined);
 		for(size_t i=0; i<c; i++) {
 			auto& image = images[i];
@@ -941,8 +905,8 @@ void App::init()
 					data.reset();
 
 					// create ImageAllocation
-					CadR::ImageAllocation& a = imageDB.emplace_back(renderer.imageStorage());
-					imageFormats[imageDB.size()-1] = format;
+					CadR::ImageAllocation& a = imageList.emplace_back(renderer.imageStorage());
+					imageFormats[imageList.size()-1] = format;
 					a.alloc(
 						vk::MemoryPropertyFlagBits::eDeviceLocal,  // requiredFlags
 						vk::ImageCreateInfo(  // imageCreateInfo
@@ -1009,7 +973,7 @@ void App::init()
 
 		// read image samplers
 		size_t c = samplers.size();
-		samplerDB.reserve(c);
+		samplerList.reserve(c);
 		for(size_t i=0; i<c; i++) {
 			auto& sampler = samplers[i];
 
@@ -1111,16 +1075,39 @@ void App::init()
 				samplerCreateInfo.addressModeV = vk::SamplerAddressMode::eRepeat;
 
 			// create sampler
-			samplerDB.emplace_back(renderer, samplerCreateInfo);
+			samplerList.emplace_back(renderer, samplerCreateInfo);
 
 		}
 	}
 
+	// texture descriptors
+	size_t numTextures = textures.size();
+	uint32_t numTextureDescriptors = numTextures>0 ? uint32_t(numTextures) : 1;
+	layoutOnlyPipeline.init(nullptr, pipelineSceneGraph.pipelineLayout(), nullptr);
+	stateSetRoot.pipeline = &layoutOnlyPipeline;
+	stateSetRoot.allocDescriptorSets(
+		vk::DescriptorPoolCreateInfo(
+			vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind,  // flags
+			1,  // maxSets
+			1,  // poolSizeCount
+			array{  // pPoolSizes
+				vk::DescriptorPoolSize(
+					vk::DescriptorType::eCombinedImageSampler,  // type
+					numTextureDescriptors  // descriptorCount
+				),
+			}.data()
+		),
+		pipelineSceneGraph.descriptorSetLayoutList(),
+		&(const vk::DescriptorSetVariableDescriptorCountAllocateInfo&)vk::DescriptorSetVariableDescriptorCountAllocateInfo(
+			1,  // descriptorSetCount
+			&numTextureDescriptors  // pDescriptorCounts
+		)
+	);
+
 	// process textures
-	if(!textures.empty()) {
-		size_t c = textures.size();
-		textureDB.reserve(c);
-		for(size_t i=0; i<c; i++) {
+	if(numTextures > 0) {
+		textureList.reserve(numTextures);
+		for(size_t i=0; i<numTextures; i++) {
 			auto& texture = textures[i];
 			auto sourceIt = texture.find("source");
 			if(sourceIt == texture.end())
@@ -1130,9 +1117,10 @@ void App::init()
 			vk::Sampler vkSampler;
 			if(samplerIt != texture.end()) {
 				size_t samplerIndex = samplerIt->get_ref<json::number_unsigned_t&>();
-				vkSampler = samplerDB.at(samplerIndex).handle();
+				vkSampler = samplerList.at(samplerIndex).handle();
 			}
 			else {
+				// create default sampler only if needed
 				if(!defaultSampler.handle()) {
 					defaultSampler.create(
 						vk::SamplerCreateInfo(
@@ -1159,8 +1147,8 @@ void App::init()
 			}
 
 			// create texture
-			textureDB.emplace_back(
-				imageDB.at(imageIndex), // imageAllocation
+			textureList.emplace_back(
+				imageList.at(imageIndex), // imageAllocation
 				vk::ImageViewCreateInfo(  // imageViewCreateInfo
 					vk::ImageViewCreateFlags(),  // flags
 					nullptr,  // image - will be filled in later
@@ -1186,6 +1174,145 @@ void App::init()
 		}
 	}
 
+	// create default material
+	struct PhongMaterialData {
+		glm::vec3 ambient;  // offset 0
+		glm::vec4 diffuseAndAlpha;  // offset 16
+		glm::vec3 specular;  // offset 32
+		float shininess;  // offset 44
+		glm::vec3 emission;  // offset 48
+		float pointSize;  // offset 60
+		glm::vec3 reflection;  // offset 64
+	};
+	struct StateSetMaterialData {
+		bool doubleSided;
+		unsigned baseColorTextureIndex;
+		unsigned baseColorTexCoordIndex;
+	};
+	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
+	PhongMaterialData* m = sd.data<PhongMaterialData>();
+	m->ambient = glm::vec3(1.f, 1.f, 1.f);
+	m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
+	m->specular = glm::vec3(0.f, 0.f, 0.f);
+	m->shininess = 0.f;
+	m->emission = glm::vec3(0.f, 0.f, 0.f);
+	m->pointSize = 0.f;
+	m->reflection = glm::vec3(0.f, 0.f, 0.f);
+	StateSetMaterialData defaultStateSetMaterialData {
+		.doubleSided = false,
+		.baseColorTextureIndex = ~unsigned(0),
+		.baseColorTexCoordIndex = ~unsigned(0),
+	};
+
+
+	// process materials
+	size_t numMaterials = materials.size();
+	materialList.reserve(numMaterials);
+	vector<StateSetMaterialData> stateSetMaterialDataList(numMaterials);
+	for(size_t materialIndex=0; materialIndex<numMaterials; materialIndex++)
+	{
+		auto& material = materials.at(materialIndex);
+
+		// values to be read from glTF
+		bool doubleSided;
+		glm::vec4 baseColorFactor;
+		unsigned baseColorTextureIndex;
+		unsigned baseColorTexCoordIndex;
+		float metallicFactor;
+		float roughnessFactor;
+		glm::vec3 emissiveFactor;
+
+		// material.doubleSided is optional with the default value of false
+		doubleSided = material.value<json::boolean_t>("doubleSided", false);
+
+		// read pbr material properties
+		if(auto pbrIt = material.find("pbrMetallicRoughness"); pbrIt != material.end()) {
+
+			// read baseColorFactor
+			if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
+				json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
+				if(a.size() != 4)
+					throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
+				baseColorFactor[0] = float(a[0].get<json::number_float_t>());
+				baseColorFactor[1] = float(a[1].get<json::number_float_t>());
+				baseColorFactor[2] = float(a[2].get<json::number_float_t>());
+				baseColorFactor[3] = float(a[3].get<json::number_float_t>());
+			}
+			else
+				baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+
+			// read properties
+			metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
+			roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
+
+			// not supported properties
+			if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
+				baseColorTextureIndex = unsigned(baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>());
+				if(baseColorTextureIndex >= textureList.size())
+					throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
+				baseColorTexCoordIndex = baseColorTextureIt->value("texCoord", 0);
+			}
+			else {
+				baseColorTextureIndex = ~unsigned(0);
+				baseColorTexCoordIndex = ~unsigned(0);
+			}
+			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
+				throw GltfError("Unsupported functionality: metallic-roughness texture.");
+
+		}
+		else
+		{
+			// default values when pbrMetallicRoughness is not present
+			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+			baseColorTextureIndex = ~unsigned(0);
+			baseColorTexCoordIndex = ~unsigned(0);
+			metallicFactor = 1.f;
+			roughnessFactor = 1.f;
+		}
+
+		// read emissiveFactor
+		if(auto emissiveFactorIt = material.find("emissiveFactor"); emissiveFactorIt != material.end()) {
+			json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
+			if(a.size() != 3)
+				throw GltfError("Material.emissiveFactor is not vector of three components.");
+			emissiveFactor[0] = float(a[0].get<json::number_float_t>());
+			emissiveFactor[1] = float(a[1].get<json::number_float_t>());
+			emissiveFactor[2] = float(a[2].get<json::number_float_t>());
+		}
+		else
+			emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
+
+		// not supported material properties
+		if(material.find("normalTexture") != material.end())
+			throw GltfError("Unsupported functionality: normal texture.");
+		if(material.find("occlusionTexture") != material.end())
+			throw GltfError("Unsupported functionality: occlusion texture.");
+		if(material.find("emissiveTexture") != material.end())
+			throw GltfError("Unsupported functionality: emissive texture.");
+		if(material.find("alphaMode") != material.end())
+			throw GltfError("Unsupported functionality: alpha mode.");
+		if(material.find("alphaCutoff") != material.end())
+			throw GltfError("Unsupported functionality: alpha cutoff.");
+
+		// material
+		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
+		CadR::StagingData sd = a.alloc(sizeof(PhongMaterialData));
+		PhongMaterialData* m = sd.data<PhongMaterialData>();
+		m->ambient = glm::vec3(baseColorFactor);
+		m->diffuseAndAlpha = baseColorFactor;
+		m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
+		m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+		m->emission = emissiveFactor;
+		m->pointSize = 0.f;
+		m->reflection = glm::vec3(0.f, 0.f, 0.f);
+
+		// StateSetMaterialData
+		auto& ssm = stateSetMaterialDataList[materialIndex];
+		ssm.doubleSided = doubleSided;
+		ssm.baseColorTextureIndex = baseColorTextureIndex;
+		ssm.baseColorTexCoordIndex = baseColorTexCoordIndex;
+	}
+
 	// process meshes
 	cout << "Processing meshes..." << endl;
 	size_t numMeshes = meshes.size();
@@ -1207,101 +1334,6 @@ void App::init()
 		primitiveSetBSList.clear();
 		primitiveSetBSList.reserve(primitives.size());
 		for(auto& primitive : primitives) {
-
-			// material
-			// (mesh.primitive.material is optional)
-			json* material;
-			bool doubleSided;
-			glm::vec4 baseColorFactor;
-			size_t baseColorTextureIndex;
-			//unsigned baseColorTextureCoord; <- not used yet
-			float metallicFactor;
-			float roughnessFactor;
-			glm::vec3 emissiveFactor;
-			auto it = primitive.find("material");
-			if(it == primitive.end()) {
-				material = nullptr;
-				doubleSided = false;
-				baseColorTextureIndex = ~size_t(0);
-				//baseColorTextureCoord = ~0; <- not used yet
-			}
-			else {
-				size_t materialIndex = it->get_ref<json::number_unsigned_t&>();
-				material = &materials.at(materialIndex);
-
-				// material.doubleSided is optional with the default value of false
-				doubleSided = material->value<json::boolean_t>("doubleSided", false);
-
-				// read pbr material properties
-				if(auto pbrIt = material->find("pbrMetallicRoughness"); pbrIt != material->end()) {
-
-					// read baseColorFactor
-					if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
-						json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
-						if(a.size() != 4)
-							throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
-						baseColorFactor[0] = float(a[0].get<json::number_float_t>());
-						baseColorFactor[1] = float(a[1].get<json::number_float_t>());
-						baseColorFactor[2] = float(a[2].get<json::number_float_t>());
-						baseColorFactor[3] = float(a[3].get<json::number_float_t>());
-					}
-					else
-						baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-
-					// read properties
-					metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
-					roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
-
-					// not supported properties
-					if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
-						baseColorTextureIndex = baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>();
-						if(baseColorTextureIndex >= textureDB.size())
-							throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
-						//baseColorTextureCoord = baseColorTextureIt->value("texCoord", 0); <- not used yet
-
-					}
-					else {
-						baseColorTextureIndex = ~size_t(0);
-						//baseColorTextureCoord = ~0; <- not used yet
-					}
-					if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-						throw GltfError("Unsupported functionality: metallic-roughness texture.");
-
-				}
-				else
-				{
-					// default values when pbrMetallicRoughness is not present
-					baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-					baseColorTextureIndex = ~size_t(0);
-					//baseColorTextureCoord = 0; <- not used yet
-					metallicFactor = 1.f;
-					roughnessFactor = 1.f;
-				}
-
-				// read emissiveFactor
-				if(auto emissiveFactorIt = material->find("emissiveFactor"); emissiveFactorIt != material->end()) {
-					json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
-					if(a.size() != 3)
-						throw GltfError("Material.emissiveFactor is not vector of three components.");
-					emissiveFactor[0] = float(a[0].get<json::number_float_t>());
-					emissiveFactor[1] = float(a[1].get<json::number_float_t>());
-					emissiveFactor[2] = float(a[2].get<json::number_float_t>());
-				}
-				else
-					emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
-
-				// not supported material properties
-				if(material->find("normalTexture") != material->end())
-					throw GltfError("Unsupported functionality: normal texture.");
-				if(material->find("occlusionTexture") != material->end())
-					throw GltfError("Unsupported functionality: occlusion texture.");
-				if(material->find("emissiveTexture") != material->end())
-					throw GltfError("Unsupported functionality: emissive texture.");
-				if(material->find("alphaMode") != material->end())
-					throw GltfError("Unsupported functionality: alpha mode.");
-				if(material->find("alphaCutoff") != material->end())
-					throw GltfError("Unsupported functionality: alpha cutoff.");
-			}
 
 			// mesh.primitive helper functions
 			auto getColorFromVec4f =
@@ -1603,7 +1635,7 @@ void App::init()
 						                        numVertices, elementSize);
 
 				}
-				else if(it.key() == "TEXCOORD_0" && baseColorTextureIndex != ~size_t(0)) {
+				else if(it.key() == "TEXCOORD_0") {
 
 					// vertex size
 					vertexSize += 16;
@@ -1712,7 +1744,7 @@ void App::init()
 
 			// create Geometry
 			cout << "Creating geometry" << endl;
-			CadR::Geometry& g = geometryDB.emplace_back(renderer);
+			CadR::Geometry& g = geometryList.emplace_back(renderer);
 
 			// update mesh bounds
 			meshBB.extendBy(primitiveSetBB);
@@ -2103,157 +2135,113 @@ void App::init()
 			primitiveSetBS.radius = sqrt(primitiveSetBS.radius);
 			primitiveSetBSList.emplace_back(primitiveSetBS);
 
-			// get pipeline index
-			size_t pipelineIndex;
-			switch(mode) {
-			case 0:  // POINTS
-				pipelineIndex =
-					PipelineLibrary::getPointPipelineIndex(
-						normalData   != nullptr,  // phong
-						texCoordData != nullptr,  // texturing
-						colorData    != nullptr   // perVertexColor
-					);
-				break;
-			case 1:  // LINES
-			case 2:  // LINE_LOOP
-			case 3:  // LINE_STRIP
-				pipelineIndex =
-					PipelineLibrary::getLinePipelineIndex(
-						normalData   != nullptr,  // phong
-						texCoordData != nullptr,  // texturing
-						colorData    != nullptr   // perVertexColor
-					);
-				break;
-			case 4:  // TRIANGLES
-			case 5:  // TRIANGLE_STRIP
-			case 6: {  // TRIANGLE_FAN
-				pipelineIndex =
-					PipelineLibrary::getTrianglePipelineIndex(
-						normalData   != nullptr,  // phong
-						texCoordData != nullptr,  // texturing
-						colorData    != nullptr,  // perVertexColor
-						!doubleSided,             // backFaceCulling
-						vk::FrontFace::eCounterClockwise  // frontFace
-					);
-				break;
-			}
-			default:
-				throw GltfError("Invalid value for mesh.primitive.mode.");
-			}
+			// material
+			auto materialIt = primitive.find("material");
+			size_t materialIndex =
+				(materialIt != primitive.end())
+					? materialIt->get_ref<json::number_unsigned_t&>()
+					: ~size_t(0);
+			StateSetMaterialData& ssMaterialData =
+				(materialIt != primitive.end())
+				? stateSetMaterialDataList.at(materialIndex)
+				: defaultStateSetMaterialData;
 
-			// get StateSet
-			PipelineStateSet& pipelineStateSet = pipelineStateSetList[pipelineIndex];
-			CadR::StateSet* ss;
-			if(baseColorTextureIndex == ~size_t(0))
-
-				// if no texture, use StateSet of the pipeline
-				ss = &pipelineStateSet.stateSet;
-
-			else {
-
-				// if texturing, each texture have its StateSet as child of the pipeline StateSet
-
-				// initialize textureIndexToStateSet
-				if(pipelineStateSet.textureIndexToStateSet.empty())
-					pipelineStateSet.textureIndexToStateSet.resize(textureDB.size(), nullptr);
-
-				// get or create TextureStateSet
-				TextureStateSet* textureStateSet = pipelineStateSet.textureIndexToStateSet[baseColorTextureIndex];
-				if(!textureStateSet) {
-
-					// create TextureStateSet
-					CadR::Texture& t = textureDB[baseColorTextureIndex];
-					textureStateSet = &pipelineStateSet.textureStateSetList.emplace_back(renderer, &t);
-					pipelineStateSet.textureIndexToStateSet[baseColorTextureIndex] = textureStateSet;
-
-					// alloc descriptor set
-					ss = &textureStateSet->stateSet;
-					pipelineStateSet.stateSet.childList.append(*ss);
-					ss->allocDescriptorSet(vk::DescriptorType::eCombinedImageSampler, pipelineLibrary.textureDescriptorSetLayout());
-
-					// attach StateSet for updating its descriptor
-					t.attachStateSet(
-						*ss,
-						ss->descriptorSets()[0],
-						[](CadR::StateSet& ss, vk::DescriptorSet descriptorSet, CadR::Texture& t) {
-							// update descriptor
-							ss.updateDescriptorSet(
-								vk::WriteDescriptorSet(
-									descriptorSet,  // dstSet
-									0,  // dstBinding
-									0,  // dstArrayElement
-									1,  // descriptorCount
-									vk::DescriptorType::eCombinedImageSampler,  // descriptorType
-									&(const vk::DescriptorImageInfo&)vk::DescriptorImageInfo{  // pImageInfo
-										t.sampler(),  // sampler
-										t.imageView(),  // imageView
-										vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
-									},
-									nullptr,  // pBufferInfo
-									nullptr  // pTexelBufferView
-								)
-							);
+			// pipeline
+			CadPL::ShaderState shaderState{
+				.idBuffer = false,
+				.primitiveTopology =
+					[](unsigned mode) -> vk::PrimitiveTopology
+					{
+						switch(mode) {
+						case 0:  // POINTS
+							return vk::PrimitiveTopology::ePointList;
+						case 1:  // LINES
+						case 2:  // LINE_LOOP
+						case 3:  // LINE_STRIP
+							return vk::PrimitiveTopology::eLineList;
+						case 4:  // TRIANGLES
+						case 5:  // TRIANGLE_STRIP
+						case 6:  // TRIANGLE_FAN
+							return vk::PrimitiveTopology::eTriangleList;
+						default:
+							throw GltfError("Invalid value for mesh.primitive.mode.");
 						}
-					);
-				}
-
-				// get StateSet of texture
-				ss = &textureStateSet->stateSet;
-			}
+					}(mode),
+				.projectionHandling =
+					CadPL::ShaderState::ProjectionHandling::PerspectivePushAndSpecializationConstants,
+				.attribAccessInfo =
+					{
+						0x2000,  // vertices: float3, alignment 16, offset 0
+						uint16_t(normalData ? 0x2010 : 0),  // normals: float3, alignment 16, offset 16
+						0,  // tangents
+						uint16_t(colorData ? 0x0120 : 0),  // colors: float4, alignment 16, offset 32
+						uint16_t(texCoordData ? 0x5030 : 0),  // texCoords: float2, alignment 8, offset 48
+					},
+				.attribSetup = 16u + (normalData ? 16 : 0) + (colorData ? 16 : 0) + (texCoordData ? 16 : 0),
+				.materialSetup =
+					0x0001u |  // Phong
+					0 |  // texture offset
+					(colorData ? 0x0100 : 0) |  // use color attribute for ambient and diffuse
+					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
+				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
+				.numLights = {},
+				.textureSetup = {},  // no textures
+				.numTextures = {},
+				.optimizeFlags = CadPL::ShaderState::OptimizeNone,
+			};
+			CadPL::PipelineState pipelineState{
+				.viewportAndScissorHandling = CadPL::PipelineState::ViewportAndScissorHandling::SetFunction,
+				.projectionIndex = 0,
+				.viewportIndex = 0,
+				.scissorIndex = 0,
+				.viewport = {},
+				.scissor = {},
+				.cullMode =
+					(ssMaterialData.doubleSided)
+						? vk::CullModeFlagBits::eNone   // eNone - nothing is discarded
+						: vk::CullModeFlagBits::eBack,  // eBack - back-facing triangles are discarded, eFront - front-facing triangles are discarded
+				.frontFace = vk::FrontFace::eCounterClockwise,
+				.depthBiasDynamicState = false,
+				.depthBiasEnable = false,
+				.depthBiasConstantFactor = 0.f,
+				.depthBiasClamp = 0.f,
+				.depthBiasSlopeFactor = 0.f,
+				.lineWidthDynamicState = false,
+				.lineWidth = 1.f,
+				.rasterizationSamples = vk::SampleCountFlagBits::e1,
+				.sampleShadingEnable = false,
+				.minSampleShading = 0.f,
+				.depthTestEnable = true,
+				.depthWriteEnable = true,
+				.blendState = { { .blendEnable = false } },
+				.renderPass = renderPass,
+				.subpass = 0,
+			};
+			CadR::StateSet& ss = pipelineSceneGraph.getOrCreateStateSet(shaderState, pipelineState);
 
 			// drawable
 			vector<glm::mat4>& matrixList = meshMatrixList[meshIndex];
 			uint32_t numInstances = uint32_t(matrixList.size());
-			drawableDB.emplace_back(
+			drawableList.emplace_back(
 				g,  // geometry
 				0,  // primitiveSetOffset
 				sd,  // shaderStagingData
 				64+(numInstances*64),  // shaderDataSize
 				numInstances,  // numInstances
-				*ss  // stateSet
+				ss  // stateSet
 			);
 
-			// material
-			struct MaterialData {
-				glm::vec3 ambient;  // offset 0
-				uint32_t settings;  // offset 12
-				glm::vec4 diffuseAndAlpha;  // offset 16
-				glm::vec3 specular;  // offset 32
-				float shininess;  // offset 44
-				glm::vec3 emission;  // offset 48
-				float pointSize;  // offset 60
-			};
-			MaterialData* m = sd.data<MaterialData>();
-			m->settings = (normalData) ? 0x04 : 0x02;  // choose between Phong and Unlit color
-			m->settings |= (texCoordData) ? 0x01 : 0x00;  // choose between textured and not textured
-			if(colorData == nullptr)
-				m->settings |= 0x30;  // ambient and diffuse color will be taken from material instead of attribute
-			if(material) {
-
-				// set material data
-				m->ambient = glm::vec3(baseColorFactor);
-				m->diffuseAndAlpha = baseColorFactor;
-				m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
-				m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
-				m->emission = emissiveFactor;
-				m->pointSize = 0.f;
-
-			}
-			else {
-
-				// set default material data
-				m->ambient = glm::vec3(1.f, 1.f, 1.f);
-				m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
-				m->specular = glm::vec3(0.f, 0.f, 0.f);
-				m->shininess = 0.f;
-				m->emission = glm::vec3(0.f, 0.f, 0.f);
-				m->pointSize = 0.f;
-
-			}
-
 			// copy transformation matrices
-			// (transformation matrices follow material data on offset 64)
-			glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(m) + 64);
+			// (transformation matrices follow material settings on offset 64)
+			uint8_t* drawableData = reinterpret_cast<uint8_t*>(sd.data());
+			uint32_t* drawableSettings = reinterpret_cast<uint32_t*>(drawableData);
+			*drawableSettings = 64;
+			vk::DeviceAddress* materialAddress = reinterpret_cast<vk::DeviceAddress*>(drawableData + 8);
+			*materialAddress =
+				materialIndex != ~size_t(0)
+					? materialList.at(materialIndex).deviceAddress()
+					: defaultMaterial.deviceAddress();
+			glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(sd.data()) + 64);
 			memcpy(modelMatrix, matrixList.data(), numInstances*64);
 
 			// mesh bounding sphere
@@ -2416,42 +2404,6 @@ void App::resize(VulkanWindow& window,
 	for(auto f : framebuffers)  device.destroy(f);
 	framebuffers.clear();
 
-	// perspective matrix given by FOV (Field Of View)
-	// FOV is given in vertical direction in radians
-	// The function perspectiveLH_ZO() produces exactly the matrix we need in Vulkan for right-handed, zero-to-one coordinate system.
-	// The coordinate system will have +x in the right direction, +y in down direction (as Vulkan does it), and +z forward into the scene.
-	// ZO - Zero to One is output depth range,
-	// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
-	// LH - LeftHand coordinate system, +Y is down, +Z points into the scene
-	constexpr float zNear = 0.5f;
-	constexpr float zFar = 100.f;
-	glm::mat4 projectionMatrix = glm::perspectiveLH_ZO(fovy, float(newSurfaceExtent.width)/newSurfaceExtent.height, zNear, zFar);
-
-	// pipeline specialization constants
-	const array<float,6> specializationConstants = {
-		projectionMatrix[2][0], projectionMatrix[2][1], projectionMatrix[2][3],
-		projectionMatrix[3][0], projectionMatrix[3][1], projectionMatrix[3][3],
-	};
-	const array specializationMap {
-		vk::SpecializationMapEntry{0,0,4},  // constantID, offset, size
-		vk::SpecializationMapEntry{1,4,4},
-		vk::SpecializationMapEntry{2,8,4},
-		vk::SpecializationMapEntry{3,12,4},
-		vk::SpecializationMapEntry{4,16,4},
-		vk::SpecializationMapEntry{5,20,4},
-	};
-	const vk::SpecializationInfo specializationInfo(  // pSpecializationInfo
-		6,  // mapEntryCount
-		specializationMap.data(),  // pMapEntries
-		6*sizeof(float),  // dataSize
-		specializationConstants.data()  // pData
-	);
-
-	// recreate pipelines
-	pipelineLibrary.create(device, newSurfaceExtent, specializationInfo, renderPass, renderer.pipelineCache());
-	for(size_t i=0; i<pipelineLibrary.numPipelines(); i++)
-		pipelineStateSetList[i].pipeline.set(pipelineLibrary.pipeline(i));
-
 	// print info
 	cout << "Recreating swapchain (extent: " << newSurfaceExtent.width << "x" << newSurfaceExtent.height
 	     << ", extent by surfaceCapabilities: " << surfaceCapabilities.currentExtent.width << "x"
@@ -2607,6 +2559,26 @@ void App::resize(VulkanWindow& window,
 			renderingFinishedSemaphores.emplace_back(
 				device.createSemaphore(semaphoreCreateInfo));
 	}
+
+	// perspective matrix given by FOV (Field Of View)
+	// FOV is given in vertical direction in radians
+	// The function perspectiveLH_ZO() produces exactly the matrix we need in Vulkan for right-handed, zero-to-one coordinate system.
+	// The coordinate system will have +x in the right direction, +y in down direction (as Vulkan does it), and +z forward into the scene.
+	// ZO - Zero to One is output depth range,
+	// RH - Right Hand coordinate system, +Y is down, +Z is towards camera
+	// LH - LeftHand coordinate system, +Y is down, +Z points into the scene
+	constexpr float zNear = 0.5f;
+	constexpr float zFar = 100.f;
+	glm::mat4 projectionMatrix = glm::perspectiveLH_ZO(fovy, float(newSurfaceExtent.width)/newSurfaceExtent.height, zNear, zFar);
+
+	// resize pipelines
+	pipelineSceneGraph.setProjectionViewportAndScissor(
+		projectionMatrix,
+		vk::Viewport(0.f, 0.f,
+		             float(newSurfaceExtent.width), float(newSurfaceExtent.height),
+		             0.f, 1.f),
+		vk::Rect2D(vk::Offset2D(0, 0), newSurfaceExtent)
+	);
 }
 
 
@@ -2649,6 +2621,7 @@ void App::frame(VulkanWindow&)
 	if(zNear < minZNear)
 		zNear = minZNear;
 	glm::mat4 projectionMatrix = glm::perspectiveLH_ZO(fovy, float(window.surfaceExtent().width)/window.surfaceExtent().height, zNear, zFar);
+	sceneData->projectionMatrix = projectionMatrix;
 	sceneData->p11 = projectionMatrix[0][0];
 	sceneData->p22 = projectionMatrix[1][1];
 	sceneData->p33 = projectionMatrix[2][2];
@@ -2696,19 +2669,9 @@ void App::frame(VulkanWindow&)
 	// record scene rendering
 	device.cmdPushConstants(
 		commandBuffer,  // commandBuffer
-		pipelineLibrary.pipelineLayout(),  // pipelineLayout
-		vk::ShaderStageFlagBits::eVertex,  // stageFlags
+		pipelineSceneGraph.pipelineLayout(),  // pipelineLayout
+		vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 		0,  // offset
-		sizeof(uint64_t),  // size
-		array<uint64_t,1>{  // pValues
-			renderer.drawablePointersBufferAddress(),  // payloadBufferPtr
-		}.data()
-	);
-	device.cmdPushConstants(
-		commandBuffer,  // commandBuffer
-		pipelineLibrary.pipelineLayout(),  // pipelineLayout
-		vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  // stageFlags
-		8,  // offset
 		sizeof(uint64_t),  // size
 		array<uint64_t,1>{  // pValues
 			sceneDataAllocation.deviceAddress(),  // sceneDataPtr

@@ -418,12 +418,10 @@ App::~App()
 	if(device) {
 
 		// wait for device idle state
-		// (to prevent errors during destruction of Vulkan resources)
-		try {
-			device.waitIdle();
-		} catch(vk::Error& e) {
-			cout << "Failed because of Vulkan exception: " << e.what() << endl;
-		}
+		// (to prevent errors during destruction of Vulkan resources);
+		// we ignore any returned error codes here
+		// because the device might be in the lost state already, etc.
+		device.vkDeviceWaitIdle(device.handle());
 
 		// delete scene
 		drawableList.clear();

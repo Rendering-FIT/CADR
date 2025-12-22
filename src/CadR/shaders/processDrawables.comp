@@ -10,12 +10,14 @@
 layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
 
 
-layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer PrimitiveSetRef {
+layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
+PrimitiveSetRef {
 	uint count;
 	uint first;
 };
 
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer DrawableGpuDataRef {
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
+DrawableGpuDataRef {
 	uint64_t vertexDataHandle;
 	uint64_t indexDataHandle;
 	uint64_t primitiveSetHandle;
@@ -25,7 +27,8 @@ layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buf
 };
 const uint DrawableGpuDataSize = 40;
 
-layout(buffer_reference, std430, buffer_reference_align=16) restrict writeonly buffer IndirectDataRef {
+layout(buffer_reference, std430, buffer_reference_align=16) restrict writeonly buffer
+IndirectDataRef {
 	uint vertexCount;
 	uint instanceCount;
 	uint firstVertex;
@@ -33,20 +36,23 @@ layout(buffer_reference, std430, buffer_reference_align=16) restrict writeonly b
 };
 const uint IndirectDataSize = 16;
 
-layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly buffer DrawablePointersRef {
+layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly buffer
+DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
 	uint64_t shaderDataPtr;
 };
 const uint DrawablePointersSize = 24;
 
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer HandleTableRef {
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
+HandleTableRef {
 	uint64_t pointers[4096];
 };
 
 
 // push constants
-layout(push_constant) uniform pushConstants {
+layout(push_constant) uniform
+pushConstants {
 	HandleTableRef handleTable;
 	uint64_t drawableListPtr;  // one buffer for the whole scene
 	uint64_t indirectDataPtr;  // one buffer for the whole scene

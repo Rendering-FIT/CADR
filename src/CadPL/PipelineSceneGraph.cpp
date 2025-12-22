@@ -12,5 +12,28 @@ CadR::StateSet& PipelineSceneGraph::createStateSet(const ShaderState& shaderStat
 	item->sharedPipeline = _pipelineLibrary->getOrCreatePipeline(shaderState, pipelineState);
 	item->stateSet.pipeline = item->sharedPipeline.cadrPipeline();
 	_root->childList.append(item->stateSet);
+
+	struct {
+		array<uint16_t,ShaderState::maxNumAttribs> attribAccessInfo;
+		uint32_t attribSetup;
+		uint32_t materialSetup;
+	} pushData = {
+		shaderState.attribAccessInfo,
+		shaderState.attribSetup,
+		shaderState.materialSetup,
+	};
+	item->stateSet.recordCallList.emplace_back(
+		[pushData](CadR::StateSet& ss, vk::CommandBuffer commandBuffer, vk::PipelineLayout currentPipelineLayout) {
+			ss.renderer().device().cmdPushConstants(
+				commandBuffer,  // commandBuffer
+				currentPipelineLayout,  // pipelineLayout
+				vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
+				16,  // offset
+				sizeof(pushData),  // size
+				&pushData  // pValues
+			);
+		}
+	);
+
 	return item->stateSet;
 }
