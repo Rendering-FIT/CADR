@@ -1207,6 +1207,7 @@ void App::init()
 	// create default material
 	struct PhongMaterialData {
 		glm::vec3 ambient;  // offset 0
+		uint32_t padding1;
 		glm::vec4 diffuseAndAlpha;  // offset 16
 		glm::vec3 specular;  // offset 32
 		float shininess;  // offset 44
@@ -1214,6 +1215,7 @@ void App::init()
 		float pointSize;  // offset 60
 		glm::vec3 reflection;  // offset 64
 	};
+	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure");
 	struct StateSetMaterialData {
 		bool doubleSided;
 		unsigned baseColorTextureIndex;
