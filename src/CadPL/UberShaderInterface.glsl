@@ -210,10 +210,10 @@ vec2 computeTextureCoordinates(TextureInfoRef textureInfo, uint64_t vertex0DataP
 
 struct OpenGLLightData {
 	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
 	float constantAttenuation;
+	vec3 diffuse;
 	float linearAttenuation;
+	vec3 specular;
 	float quadraticAttenuation;
 };
 
@@ -234,12 +234,17 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 LightRef {
 	layout(offset=0)  vec3 positionOrDirection;  // for point light and spotlight: position in eye coordinates,
 	                                             // for directional light: direction in eye coordinates, direction must be normalized
-	uint settings;  // switches between point light, directional light and spotlight
+	uint settings;  // docs provided bellow
 	layout(offset=16) OpenGLLightData opengl;
 	layout(offset=80) GltfLightData gltf;
 	layout(offset=112) SpotlightData spotlight;
 };
 uint getLightDataSize()  { return 192; }
+
+// LightRef.settings
+// all bits zero - no light, used as the last light in the light list
+// bits 0..1: 1 - directional light, 2 - point light, 3 - spotlight
+uint getLightType(uint lightSettings)  { return lightSettings & 0x3; }
 
 
 

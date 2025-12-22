@@ -466,7 +466,7 @@ void main()
 			// iterate over all lights
 			do{
 
-				uint lightType = lightSettings & 0x3;
+				uint lightType = getLightType(lightSettings);
 				if(lightType == 1)
 					OpenGLDirectionalLight(lightData, normal,
 						viewerToFragmentDirection, materialData.shininess,

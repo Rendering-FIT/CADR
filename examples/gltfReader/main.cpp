@@ -24,11 +24,13 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
 #include "../../3rdParty/stb/stb_image.h"
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #ifdef _WIN32
 # define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
@@ -44,15 +46,41 @@ typedef logic_error GltfError;
 
 
 // Shader data structures
-struct LightGpuData {
-	// we use vec4 instead of vec3 for the purpose of memory alignment; alpha component for light intensities is unused
-	glm::vec4 ambient;
-	glm::vec4 diffuse;
-	glm::vec4 specular;
-	glm::vec4 eyePosition;  ///< Light position in eye coordinates.
-	glm::vec3 eyePositionDir;  ///< Normalized eyePosition, e.g. direction to light source in eye coordinates.
-	uint32_t dummy;  ///< Alignment to 16 byte.
+struct OpenGLLightGpuData {
+	glm::vec3 ambient;
+	float constantAttenuation;
+	glm::vec3 diffuse;
+	float linearAttenuation;
+	glm::vec3 specular;
+	float quadraticAttenuation;
 };
+static_assert(sizeof(OpenGLLightGpuData) == 48, "Wrong OpenGLLightGpuData data size");
+struct GltfLightGpuData {
+	glm::vec3 color;
+	float intensity;  // in candelas (lm/sr) for point light and spotlight and in luxes (lm/m2) for directional light
+	float range;
+	array<uint32_t,3> padding;
+};
+static_assert(sizeof(GltfLightGpuData) == 32, "Wrong GltfLightGpuData data size");
+struct SpotlightGpuData {
+	glm::vec3 eyeDirection;  // spotlight direction in eye coordinates, it must be normalized
+	float cosOuterConeAngle;  // cosinus of outer spotlight cone; outside the cone, there is zero light intensity
+	float cosInnerConeAngle;  // cosinus of inner spotlight cone; if -1. is provided, OpenGL-style spotlight is used, ignoring inner cone and using spotExponent instead; if value is > -1., DirectX style spotlight is used, e.g. everything inside the inner cone receives full light intensity and light intensity between inner and outer cone is linearly interpolated starting from zero intensity on outer code to full intensity in inner cone
+	float spotExponent;  // if cosInnerConeAngle is -1, OpenGL style spotlight is used, using spotExponent
+	array<uint32_t,2> padding;
+};
+static_assert(sizeof(SpotlightGpuData) == 32, "Wrong SpotlightGpuData data size");
+struct LightGpuData {
+	glm::vec3 eyePositionOrDirection;  // for point light and spotlight: position in eye coordinates,
+	                                   // for directional light: direction in eye coordinates, direction must be normalized
+	uint32_t settings;  // switches between point light, directional light and spotlight
+	OpenGLLightGpuData opengl;
+	GltfLightGpuData gltf;
+	SpotlightGpuData spotlight;
+};
+static constexpr const size_t lightGpuDataSize = 128;
+static_assert(sizeof(LightGpuData) == lightGpuDataSize, "Wrong LightGpuData data size");
+
 constexpr const uint32_t maxLights = 1;
 struct SceneGpuData {
 	glm::mat4 viewMatrix;    // current camera view matrix
@@ -60,9 +88,10 @@ struct SceneGpuData {
 	float p11,p22,p33,p43;   // projectionMatrix - members that depend on zNear and zFar clipping planes
 	glm::vec3 ambientLight;  // we use vec4 instead of vec3 for the purpose of memory alignment; alpha component for light intensities is unused
 	uint32_t numLights;
+	array<uint32_t,8> padding;
 	LightGpuData lights[maxLights];
 };
-static_assert(sizeof(SceneGpuData) == 128+16+16+(80*maxLights), "Wrong SceneGpuData data size");
+static_assert(sizeof(SceneGpuData) == 192+(lightGpuDataSize*maxLights), "Wrong SceneGpuData data size");
 
 
 // application class
@@ -271,11 +300,12 @@ App::~App()
 		textureList.clear();
 		imageList.clear();
 		samplerList.clear();
+		materialList.clear();
 		defaultSampler.destroy();
+		defaultMaterial.free();
 		drawableList.clear();
 		geometryList.clear();
 		sceneDataAllocation.free();
-		defaultMaterial.free();
 		device.destroy(commandPool);
 		renderer.finalize();
 		device.destroy(renderingFinishedFence);
@@ -2602,7 +2632,7 @@ void App::frame(VulkanWindow&)
 	device.resetFences(renderingFinishedFence);
 
 	// _sceneDataAllocation
-	uint32_t sceneDataSize = uint32_t(sizeof(SceneGpuData));
+	uint32_t sceneDataSize = 192 + 2*lightGpuDataSize;  // 192 is for basic scene data plus light data while one additional light is used as terminating element
 	CadR::StagingData sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
 	SceneGpuData* sceneData = sceneStagingData.data<SceneGpuData>();
 	sceneData->viewMatrix =
@@ -2627,7 +2657,27 @@ void App::frame(VulkanWindow&)
 	sceneData->p33 = projectionMatrix[2][2];
 	sceneData->p43 = projectionMatrix[3][2];
 	sceneData->ambientLight = glm::vec3(0.2f, 0.2f, 0.2f);
-	sceneData->numLights = 0;
+	sceneData->numLights = 1;
+	sceneData->padding = {};
+	sceneData->lights[0].eyePositionOrDirection = glm::vec3(0.f, 0.f, 0.f);
+	sceneData->lights[0].settings = 2;  // bits 0..1: 1 - directional light, 2 - point light, 3 - spotlight
+	sceneData->lights[0].opengl = {
+		.ambient = glm::vec3(0.f, 0.f, 0.f),
+		.constantAttenuation = 1.f,
+		.diffuse = glm::vec3(0.6f, 0.6f, 0.6f),
+		.linearAttenuation = 0.f,
+		.specular = glm::vec3(0.6f, 0.6f, 0.6f),
+		.quadraticAttenuation = 0.f,
+	};
+	sceneData->lights[0].gltf = {
+		.color = glm::vec3(0.8f, 0.8f, 0.8f),
+		.intensity = 1.f,
+		.range = numeric_limits<float>::infinity(),
+	};
+	sceneData->lights[0].spotlight = {};
+	sceneData->lights[1] = {
+		.settings = 0,
+	};
 
 	// begin the frame
 	renderer.beginFrame();
