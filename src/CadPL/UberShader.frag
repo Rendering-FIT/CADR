@@ -236,8 +236,12 @@ void main()
 	// normal
 	vec3 normal;
 	uint materialModel = getMaterialModel();
-	if(materialModel >= 1)
-		normal = normalize(inFragmentNormal);
+	if(materialModel >= 1) {
+		if(getGenerateFlatNormals())
+			normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
+		else
+			normal = normalize(inFragmentNormal);
+	}
 
 	// init textureType and textureInfo
 	uint textureOffset = getMaterialFirstTextureOffset();

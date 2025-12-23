@@ -41,6 +41,7 @@ uint getTexCoordAccessInfo(uint attribIndex) { uint texCoordAccessInfo = attribA
 // pushConstants.attribSetup
 // bit 2..8: vertex data size (0, 4, 8,..., 508)
 uint getVertexDataSize()  { return attribSetup & 0x01fc; }
+bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 
 // pushConstants.materialSetup
 // bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness

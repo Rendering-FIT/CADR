@@ -2202,14 +2202,46 @@ void App::init()
 				.projectionHandling =
 					CadPL::ShaderState::ProjectionHandling::PerspectivePushAndSpecializationConstants,
 				.attribAccessInfo =
-					{
-						0x2000,  // vertices: float3, alignment 16, offset 0
-						uint16_t(normalData ? 0x2010 : 0),  // normals: float3, alignment 16, offset 16
-						0,  // tangents
-						uint16_t(colorData ? 0x0120 : 0),  // colors: float4, alignment 16, offset 32
-						uint16_t(texCoordData ? 0x5030 : 0),  // texCoords: float2, alignment 8, offset 48
-					},
-				.attribSetup = 16u + (normalData ? 16 : 0) + (colorData ? 16 : 0) + (texCoordData ? 16 : 0),
+					[=]() {
+						decltype(CadPL::ShaderState::attribAccessInfo) r;
+						uint16_t offset = 0x10;
+
+						// vertices: float3, alignment 16, offset 0
+						r[0] = 0x2000;
+
+						// normals: float3, alignment 16
+						if(normalData) {
+							r[1] = 0x2010;
+							offset += 0x10;
+						} else
+							r[1] = 0;
+
+						// tangents
+						r[2] = 0;
+
+						// colors: float4, alignment 16
+						if(colorData) {
+							r[3] = 0x0100 | offset;
+							offset += 0x10;
+						} else
+							r[3] = 0;
+
+						// texCoords: float2, alignment 8
+						if(texCoordData) {
+							r[4] = 0x5000 | offset;
+							offset += 0x10;
+						} else
+							r[4] = 0;
+
+						// fill the rest with zeros
+						for(size_t i=5; i<r.size(); i++)
+							r[i] = 0;
+
+						return r;
+					}(),
+				.attribSetup =
+					(normalData ? 0 : 1) |  // generateFlatNormals
+					(16u + (normalData ? 16 : 0) + (colorData ? 16 : 0) + (texCoordData ? 16 : 0)),  // vertexDataSize
 				.materialSetup =
 					0x0001u |  // Phong
 					0 |  // texture offset
