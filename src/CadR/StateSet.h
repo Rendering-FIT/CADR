@@ -43,8 +43,8 @@ protected:
 	std::vector<DrawableGpuData> _drawableDataList;  ///< List of Drawable data that is sent to GPU when Drawables are rendered.
 	std::vector<Drawable*> _drawablePtrList;  ///< List of Drawables attached to this StateSet.
 	vk::DescriptorPool _descriptorPool;
-	std::vector<vk::DescriptorSet> _descriptorSets;
-	uint32_t _descriptorSetNumber = 0;
+	std::vector<vk::DescriptorSet> _descriptorSetList;
+	uint32_t _firstDescriptorSetIndex = 0;
 	std::vector<uint32_t> _dynamicOffsets;
 
 	boost::intrusive::list<
@@ -91,8 +91,9 @@ public:
 	inline Renderer& renderer() const;
 	inline bool forceRecording() const;
 	inline vk::DescriptorPool descriptorPool() const;
-	inline const std::vector<vk::DescriptorSet> descriptorSets() const;
-	inline uint32_t descriptorSetNumber() const;
+	inline const std::vector<vk::DescriptorSet>& descriptorSetList() const;
+	inline vk::DescriptorSet descriptorSet(size_t index) const;
+	inline uint32_t firstDescriptorSetIndex() const;
 	inline const std::vector<uint32_t>& dynamicOffsets() const;
 
 	// descriptorSet functions
@@ -107,7 +108,7 @@ public:
 	void updateDescriptorSet(const vk::WriteDescriptorSet& w);  //< Perform single descriptor set update, as specified by the parameter w.
 	void updateDescriptorSet(uint32_t writeCount, vk::WriteDescriptorSet* writes);  //< Perform number of DescriptorSet updates, as described by writes parameter.
 	void updateDescriptorSet(uint32_t writeCount, vk::WriteDescriptorSet* writes, uint32_t copyCount, vk::CopyDescriptorSet* copies);  //< Perform DescriptorSet updates and copies.
-	inline void setDescriptorSetNumber(uint32_t value);
+	inline void setFirstDescriptorSetIndex(uint32_t value);
 	inline void setDynamicOffsets(const std::vector<uint32_t>& offsets);
 	inline void setDynamicOffsets(std::vector<uint32_t>&& offsets);
 	inline StateSetDescriptorUpdater& createDescriptorUpdater(
@@ -151,12 +152,13 @@ inline void StateSet::destroy() noexcept  { _descriptorUpdaterList.clear_and_dis
 inline Renderer& StateSet::renderer() const  { return *_renderer; }
 inline bool StateSet::forceRecording() const  { return _forceRecording; }
 inline vk::DescriptorPool StateSet::descriptorPool() const  { return _descriptorPool; }
-inline const std::vector<vk::DescriptorSet> StateSet::descriptorSets() const  { return _descriptorSets; }
-inline uint32_t StateSet::descriptorSetNumber() const  { return _descriptorSetNumber; }
+inline const std::vector<vk::DescriptorSet>& StateSet::descriptorSetList() const  { return _descriptorSetList; }
+inline vk::DescriptorSet StateSet::descriptorSet(size_t index) const  { return _descriptorSetList[index]; }
+inline uint32_t StateSet::firstDescriptorSetIndex() const  { return _firstDescriptorSetIndex; }
 inline const std::vector<uint32_t>& StateSet::dynamicOffsets() const  { return _dynamicOffsets; }
 inline void StateSet::allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descriptorPoolCreateInfo, const std::vector<vk::DescriptorSetLayout>& layoutList, const void* descriptorInfoPNext)  { allocDescriptorSets(descriptorPoolCreateInfo, uint32_t(layoutList.size()), layoutList.data(), descriptorInfoPNext); }
-inline void StateSet::setDescriptorSets(vk::DescriptorPool descriptorPool, std::vector<vk::DescriptorSet>&& descriptorSets)  { freeDescriptorSets(); _descriptorPool = descriptorPool; _descriptorSets = std::move(descriptorSets); }
-inline void StateSet::setDescriptorSetNumber(uint32_t value)  { _descriptorSetNumber = value; }
+inline void StateSet::setDescriptorSets(vk::DescriptorPool descriptorPool, std::vector<vk::DescriptorSet>&& descriptorSetList)  { freeDescriptorSets(); _descriptorPool = descriptorPool; _descriptorSetList = std::move(descriptorSetList); }
+inline void StateSet::setFirstDescriptorSetIndex(uint32_t value)  { _firstDescriptorSetIndex = value; }
 inline void StateSet::setDynamicOffsets(const std::vector<uint32_t>& offsets)  { _dynamicOffsets = offsets; }
 inline void StateSet::setDynamicOffsets(std::vector<uint32_t>&& offsets)  { _dynamicOffsets = std::move(offsets); }
 inline StateSetDescriptorUpdater& StateSet::createDescriptorUpdater(std::function<void(Texture& t)>&& updateFunc, vk::DescriptorSet descriptorSet)  { auto& updater=*new StateSetDescriptorUpdater{ std::move(updateFunc), descriptorSet }; _descriptorUpdaterList.push_back(updater); return updater; }

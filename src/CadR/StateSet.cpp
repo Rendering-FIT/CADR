@@ -72,7 +72,7 @@ void StateSet::allocDescriptorSet(vk::DescriptorType type, vk::DescriptorSetLayo
 			)
 		);
 
-	_descriptorSets =
+	_descriptorSetList =
 		d.allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				_descriptorPool,  // descriptorPool
@@ -98,7 +98,7 @@ void StateSet::allocDescriptorSet(uint32_t poolSizeCount, vk::DescriptorPoolSize
 			)
 		);
 
-	_descriptorSets =
+	_descriptorSetList =
 		d.allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				_descriptorPool,  // descriptorPool
@@ -117,7 +117,7 @@ void StateSet::allocDescriptorSets(const vk::DescriptorPoolCreateInfo& descripto
 	VulkanDevice& d = _renderer->device();
 	_descriptorPool = d.createDescriptorPool(descriptorPoolCreateInfo);
 
-	_descriptorSets =
+	_descriptorSetList =
 		d.allocateDescriptorSets(
 			vk::DescriptorSetAllocateInfo(
 				_descriptorPool,  // descriptorPool
@@ -135,7 +135,7 @@ void StateSet::freeDescriptorSets() noexcept
 	if(_descriptorPool) {
 		_renderer->device().destroy(_descriptorPool);
 		_descriptorPool = nullptr;
-		_descriptorSets.clear();
+		_descriptorSetList.clear();
 	}
 }
 
@@ -207,13 +207,13 @@ void StateSet::recordToCommandBuffer(vk::CommandBuffer commandBuffer, vk::Pipeli
 	}
 
 	// bind descriptor sets
-	if(!_descriptorSets.empty()) {
+	if(!_descriptorSetList.empty()) {
 		device.cmdBindDescriptorSets(
 			commandBuffer,  // commandBuffer
 			vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
 			currentPipelineLayout,  // layout
-			_descriptorSetNumber,  // firstSet
-			_descriptorSets,  // descriptorSets
+			_firstDescriptorSetIndex,  // firstSet
+			_descriptorSetList,  // descriptorSets
 			_dynamicOffsets  // dynamicOffsets
 		);
 	}

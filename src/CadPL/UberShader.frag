@@ -250,7 +250,7 @@ void main()
 	if(textureOffset == 0)
 		textureType = 0;
 	else {
-		textureInfo = TextureInfoRef(inVertexAndDrawableDataPtr.w + textureOffset);
+		textureInfo = TextureInfoRef(materialPtr + textureOffset);
 		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 	}
 

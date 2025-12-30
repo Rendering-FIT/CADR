@@ -1202,6 +1202,28 @@ void App::init()
 				device  // device
 			);
 		}
+
+		// update descriptor sets
+		vector<vk::DescriptorImageInfo> imageInfoList(numTextures);
+		for(size_t i=0; i<numTextures; i++) {
+			const CadR::Texture& t = textureList[i];
+			imageInfoList[i] = {
+				t.sampler(),  // sampler
+				t.imageView(), // imageView
+				vk::ImageLayout::eShaderReadOnlyOptimal  // imageLayout
+			};
+		}
+		vk::WriteDescriptorSet writeInfo(
+			stateSetRoot.descriptorSet(0),  // dstSet
+			0,  // dstBinding
+			0,  // dstArrayElement
+			uint32_t(numTextures),  // descriptorCount
+			vk::DescriptorType::eCombinedImageSampler,  // descriptorType
+			imageInfoList.data(),  // pImageInfo
+			nullptr,  // pBufferInfo
+			nullptr  // pTexelBufferView
+		);
+		stateSetRoot.updateDescriptorSet(1, &writeInfo);
 	}
 
 	// create default material
@@ -1216,6 +1238,17 @@ void App::init()
 		glm::vec3 reflection;  // offset 64
 	};
 	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure");
+	constexpr size_t aligned8PhongMaterialDataSize = 80;
+	struct TextureData {
+		uint8_t texCoordIndex;
+		uint8_t type;
+		uint16_t settings;
+		uint32_t textureIndex;
+		float strength;
+		float rs1,rs2,rs3,rs4,t1,t2;  // rotation and scale in 2x2 matrix, translation in vec2
+		float blendR,blendG,blendB;  // texture blend color used in blend texture environment
+	};
+	static_assert(sizeof(TextureData) == 48 && "Wrong size of TextureData structure");
 	struct StateSetMaterialData {
 		bool doubleSided;
 		unsigned baseColorTextureIndex;
@@ -1326,9 +1359,14 @@ void App::init()
 		if(material.find("alphaCutoff") != material.end())
 			throw GltfError("Unsupported functionality: alpha cutoff.");
 
+		// material size
+		size_t materialSize = aligned8PhongMaterialDataSize;
+		if(baseColorTextureIndex != ~unsigned(0))
+			materialSize += 16;
+
 		// material
 		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
-		CadR::StagingData sd = a.alloc(sizeof(PhongMaterialData));
+		CadR::StagingData sd = a.alloc(materialSize);
 		PhongMaterialData* m = sd.data<PhongMaterialData>();
 		m->ambient = glm::vec3(baseColorFactor);
 		m->diffuseAndAlpha = baseColorFactor;
@@ -1337,6 +1375,23 @@ void App::init()
 		m->emission = emissiveFactor;
 		m->pointSize = 0.f;
 		m->reflection = glm::vec3(0.f, 0.f, 0.f);
+
+		if(baseColorTextureIndex != ~unsigned(0))
+		{
+			// material base texture
+			TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + aligned8PhongMaterialDataSize);
+			t->texCoordIndex = 4 + baseColorTexCoordIndex;  // texture coordinates are placed on attribute 4 and following
+			t->type = 4;
+			t->settings = 0 | (8 << 10);  // no flags, structure size 8
+			t->textureIndex = baseColorTextureIndex;
+
+			// terminating record (all zeros)
+			t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
+			t->texCoordIndex = 0;
+			t->type = 0;
+			t->settings = 0;
+			t->textureIndex = 0;
+		}
 
 		// StateSetMaterialData
 		auto& ssm = stateSetMaterialDataList[materialIndex];
@@ -2244,7 +2299,8 @@ void App::init()
 					(16u + (normalData ? 16 : 0) + (colorData ? 16 : 0) + (texCoordData ? 16 : 0)),  // vertexDataSize
 				.materialSetup =
 					0x0001u |  // Phong
-					0 |  // texture offset
+					((ssMaterialData.baseColorTextureIndex == ~unsigned(0))  // texture offset
+						? 0 : aligned8PhongMaterialDataSize) |
 					(colorData ? 0x0100 : 0) |  // use color attribute for ambient and diffuse
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight

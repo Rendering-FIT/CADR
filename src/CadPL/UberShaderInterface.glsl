@@ -126,7 +126,7 @@ MetallicRoughnessMaterialRef {
 	vec3 attenuationColor;
 };
 
-layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
 TextureInfoRef {
 	// texCoordIndex - bits 0..7
 	// type - bits 8..15
@@ -149,6 +149,7 @@ TextureInfoRef {
 	//   bits 19..21 - for Phong and its base texture, texture environment:
 	//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add
 	//   bits 22..23 - first component index;
+	//   bits 26..31 - size of the structure (0..63 bytes), it must be multiple of 8
 	uint texCoordIndexTypeAndSettings;
 	uint textureIndex;
 	float strength;
@@ -165,14 +166,8 @@ uint getTexCoordAccessInfo(TextureInfoRef textureInfo) { return getTexCoordAcces
 
 TextureInfoRef getNextTextureInfo(TextureInfoRef textureInfo)
 {
-	if((textureInfo.texCoordIndexTypeAndSettings & 0x70000) == 0)
-		return TextureInfoRef(uint64_t(textureInfo) + 8);
-	else if((textureInfo.texCoordIndexTypeAndSettings & 0x60000) == 0)
-		return TextureInfoRef(uint64_t(textureInfo) + 12);
-	else if((textureInfo.texCoordIndexTypeAndSettings & 0x40000) == 0)
-		return TextureInfoRef(uint64_t(textureInfo) + 36);
-	else
-		return TextureInfoRef(uint64_t(textureInfo) + 48);
+	uint size = textureInfo.texCoordIndexTypeAndSettings >> 26;
+	return TextureInfoRef(uint64_t(textureInfo) + size);
 }
 
 vec2 transformTexCoord(vec2 tc, TextureInfoRef textureInfo)
