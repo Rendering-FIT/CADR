@@ -32,6 +32,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
 #ifdef _WIN32
 # define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
 # include <windows.h>  // needed for SetConsoleOutputCP()
@@ -159,6 +160,7 @@ public:
 	CadR::BoundingSphere sceneBoundingSphere;
 
 	filesystem::path filePath;
+	string utf8FilePath;  // File path stored as utf-8. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
 
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
@@ -179,9 +181,9 @@ public:
 class ExitWithMessage {
 protected:
 	int _exitCode;
-	std::string _what;
+	string _what;
 public:
-	ExitWithMessage(int exitCode, const std::string& msg) : _exitCode(exitCode), _what(msg) {}
+	ExitWithMessage(int exitCode, const string& msg) : _exitCode(exitCode), _what(msg) {}
 	ExitWithMessage(int exitCode, const char* msg) : _exitCode(exitCode), _what(msg) {}
 	const char* what() const noexcept  { return _what.c_str(); }
 	int exitCode() const noexcept  { return _exitCode; }
@@ -189,7 +191,12 @@ public:
 
 
 #ifdef _WIN32
-static string utf16toUtf8(const wchar_t* ws)
+// Do not perform utf16 to utf8 conversion on MSVC using STL.
+// std::path::string() throws exception on some characters (❤, ♻) telling us:
+// "No mapping for the Unicode character exists in the target multi-byte code page."
+// Seen on MSVC 2022 version 17.14.20.
+// Do the coversion using the following function:
+static string utf16ToUtf8(const wchar_t* ws)
 {
 	if(ws == nullptr)
 		return {};
@@ -277,8 +284,10 @@ App::App(int argc, char** argv)
 
 #ifdef _WIN32
 	filePath = wargv.get()[1];
+	utf8FilePath = utf16ToUtf8(filePath.c_str());
 #else
-	filePath = argv[1];
+	utf8FilePath = argv[1];
+	filePath = utf8FilePath;
 #endif
 }
 
@@ -344,7 +353,7 @@ void App::init()
 	ifstream f(filePath);
 	if(!f.is_open()) {
 		string msg("Cannot open file ");
-		msg.append(filePath.string());
+		msg.append(utf8FilePath);
 		msg.append(".");
 		throw ExitWithMessage(1, msg);
 	}
@@ -355,7 +364,8 @@ void App::init()
 	vulkanLib.load(CadR::VulkanLibrary::defaultName());
 	vulkanInstance.create(vulkanLib, "glTF reader", 0, "CADR", 0, VK_API_VERSION_1_2, nullptr,
 	                      VulkanWindow::requiredExtensions());
-	window.create(vulkanInstance.handle(), {1024,768}, "glTF reader", vulkanLib.vkGetInstanceProcAddr);
+	window.create(vulkanInstance.handle(), {1024,768}, "glTF reader - " + utf16ToUtf8(filePath.filename().c_str()),
+	              vulkanLib.vkGetInstanceProcAddr);
 
 	// init device and renderer
 	tuple<vk::PhysicalDevice, uint32_t, uint32_t> deviceAndQueueFamilies =
@@ -586,11 +596,7 @@ void App::init()
 		)[0];
 
 	// parse json
-#ifdef _WIN32
-	cout << "Processing file " << utf16toUtf8(filePath.c_str()) << "..." << endl;
-#else
-	cout << "Processing file " << filePath.native() << "..." << endl;
-#endif
+	cout << "Processing file " << utf8FilePath << "..." << endl;
 	json glTF, newGltfItems;
 	f >> glTF;
 	f.close();
