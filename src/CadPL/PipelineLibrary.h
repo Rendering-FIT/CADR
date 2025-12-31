@@ -24,16 +24,16 @@ class PipelineLibrary;
 struct PipelineState {
 
 	enum class ViewportAndScissorHandling {
-		Value,  // viewport and scissor is specified by PipelineState struct
-		DynamicState,  // viewport and scissor is specified by Vulkan dynamic state; values inside PipelineState struct is ignored
-		SetFunction,  // 
+		Value,  //< viewport and scissor is specified by the value of PipelineState::viewport and PipelineState::scissor
+		DynamicState,  //< viewport and scissor is specified by Vulkan dynamic state; values of PipelineState::viewport and PipelineState::scissor are ignored
+		SetFunction,  //< PipelineState::viewport and PipelineState::scissor values are set each time PipelineLibrary::setProjectionViewportAndScissor() is called
 	};
 	ViewportAndScissorHandling viewportAndScissorHandling = ViewportAndScissorHandling::SetFunction;
-	unsigned projectionIndex = 0;
-	unsigned viewportIndex = 0;
-	unsigned scissorIndex = 0;
-	vk::Viewport viewport;
-	vk::Rect2D scissor;
+	unsigned projectionIndex = 0;  //< When ShaderState::projectionHandling is set to ProjectionHandling::PerspectivePushAndSpecializationConstants, it is the index into projection matrix list passed as parameter into PipelineLibrary::setProjectionViewportAndScissor() function.
+	unsigned viewportIndex = 0;  //< When PipelineState::viewportAndScissorHandling is set to ViewportAndScissorHandling::SetFunction, it is the index into viewport list passed as parameter into PipelineLibrary::setProjectionViewportAndScissor() function.
+	unsigned scissorIndex = 0;  //< When PipelineState::viewportAndScissorHandling is set to ViewportAndScissorHandling::SetFunction, it is the index into scissor list passed as parameter into PipelineLibrary::setProjectionViewportAndScissor() function.
+	vk::Viewport viewport;  //< Viewport set by the user, or by PipelineLibrary::setProjectionViewportAndScissor() if PipelineState::viewportAndScissorHandling is set to ViewportAndScissorHandling::SetFunction.
+	vk::Rect2D scissor;  //< Scissor set by the user, or by PipelineLibrary::setProjectionViewportAndScissor() if PipelineState::viewportAndScissorHandling is set to ViewportAndScissorHandling::SetFunction.
 
 	vk::CullModeFlagBits cullMode = vk::CullModeFlagBits::eBack;
 	vk::FrontFace frontFace = vk::FrontFace::eCounterClockwise;
@@ -61,13 +61,15 @@ struct PipelineState {
 		vk::ColorComponentFlags colorWriteMask =
 			vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
 			vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+		bool operator<(const BlendAttachmentState& rhs) const;
 	};
 	std::vector<BlendAttachmentState> blendState;
 
 	vk::RenderPass renderPass = nullptr;
 	uint32_t subpass = 0;
 
-	bool operator<(const PipelineState& rhs) const  { return false; }  // FIXME: This is not complete
+	bool operator<(const PipelineState& rhs) const;
 
 };
 

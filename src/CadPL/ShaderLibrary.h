@@ -44,7 +44,7 @@ struct CADPL_EXPORT ShaderState {
 
 	std::bitset<numOptimizeFlags> optimizeFlags = OptimizeNone;
 
-	bool operator<(const ShaderState& rhs) const  { return idBuffer < rhs.idBuffer; }
+	bool operator<(const ShaderState& rhs) const;
 
 };
 

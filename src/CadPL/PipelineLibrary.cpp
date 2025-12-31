@@ -493,3 +493,106 @@ void PipelineLibrary::CreationDataSet::createPipelines(const PipelineLibrary& pi
 		batchList.pop_front();
 	}
 }
+
+
+bool PipelineState::operator<(const PipelineState& rhs) const
+{
+	if(cullMode < rhs.cullMode)  return true;
+	if(cullMode > rhs.cullMode)  return false;
+	if(frontFace < rhs.frontFace)  return true;
+	if(frontFace > rhs.frontFace)  return false;
+	if(depthBiasEnable < rhs.depthBiasEnable)  return true;
+	if(depthBiasEnable > rhs.depthBiasEnable)  return false;
+	if(depthBiasEnable) {
+		if(depthBiasDynamicState < rhs.depthBiasDynamicState)  return true;
+		if(depthBiasDynamicState > rhs.depthBiasDynamicState)  return false;
+		if(!depthBiasDynamicState) {
+			if(depthBiasConstantFactor < rhs.depthBiasConstantFactor)  return true;
+			if(depthBiasConstantFactor > rhs.depthBiasConstantFactor)  return false;
+			if(depthBiasClamp < rhs.depthBiasClamp)  return true;
+			if(depthBiasClamp > rhs.depthBiasClamp)  return false;
+			if(depthBiasSlopeFactor < rhs.depthBiasSlopeFactor)  return true;
+			if(depthBiasSlopeFactor > rhs.depthBiasSlopeFactor)  return false;
+		}
+	}
+	if(lineWidthDynamicState < rhs.lineWidthDynamicState)  return true;
+	if(lineWidthDynamicState > rhs.lineWidthDynamicState)  return false;
+	if(!lineWidthDynamicState) {
+		if(lineWidth < rhs.lineWidth)  return true;
+		if(lineWidth > rhs.lineWidth)  return false;
+	}
+	if(rasterizationSamples < rhs.rasterizationSamples)  return true;
+	if(rasterizationSamples > rhs.rasterizationSamples)  return false;
+	if(sampleShadingEnable < rhs.sampleShadingEnable)  return true;
+	if(sampleShadingEnable > rhs.sampleShadingEnable)  return false;
+	if(minSampleShading < rhs.minSampleShading)  return true;
+	if(minSampleShading > rhs.minSampleShading)  return false;
+	if(depthTestEnable < rhs.depthTestEnable)  return true;
+	if(depthTestEnable > rhs.depthTestEnable)  return false;
+	if(depthWriteEnable < rhs.depthWriteEnable)  return true;
+	if(depthWriteEnable > rhs.depthWriteEnable)  return false;
+
+	if(blendState < rhs.blendState)  return true;
+	if(blendState > rhs.blendState)  return false;
+	if(renderPass < rhs.renderPass)  return true;
+	if(renderPass > rhs.renderPass)  return false;
+	if(subpass < rhs.subpass)  return true;
+	if(subpass > rhs.subpass)  return false;
+
+	if(projectionIndex < rhs.projectionIndex)  return true;
+	if(projectionIndex > rhs.projectionIndex)  return false;
+	if(viewportAndScissorHandling < rhs.viewportAndScissorHandling)  return true;
+	if(viewportAndScissorHandling > rhs.viewportAndScissorHandling)  return false;
+	if(viewportAndScissorHandling == ViewportAndScissorHandling::SetFunction) {
+		if(viewportIndex < rhs.viewportIndex)  return true;
+		if(viewportIndex > rhs.viewportIndex)  return false;
+		return scissorIndex < rhs.scissorIndex;
+	}
+	else if(viewportAndScissorHandling == ViewportAndScissorHandling::Value) {
+		if(viewport.x < rhs.viewport.x)  return true;
+		if(viewport.x > rhs.viewport.x)  return false;
+		if(viewport.y < rhs.viewport.y)  return true;
+		if(viewport.y > rhs.viewport.y)  return false;
+		if(viewport.width < rhs.viewport.width)  return true;
+		if(viewport.width > rhs.viewport.width)  return false;
+		if(viewport.height < rhs.viewport.height)  return true;
+		if(viewport.height > rhs.viewport.height)  return false;
+		if(viewport.minDepth < rhs.viewport.minDepth)  return true;
+		if(viewport.minDepth > rhs.viewport.minDepth)  return false;
+		if(viewport.maxDepth < rhs.viewport.maxDepth)  return true;
+		if(viewport.maxDepth > rhs.viewport.maxDepth)  return false;
+		if(scissor.offset.x < rhs.scissor.offset.x)  return true;
+		if(scissor.offset.x > rhs.scissor.offset.x)  return false;
+		if(scissor.offset.y < rhs.scissor.offset.y)  return true;
+		if(scissor.offset.y > rhs.scissor.offset.y)  return false;
+		if(scissor.extent.width < rhs.scissor.extent.width)  return true;
+		if(scissor.extent.width > rhs.scissor.extent.width)  return false;
+		return scissor.extent.height < rhs.scissor.extent.height;
+	}
+	else
+		return false;
+}
+
+
+bool PipelineState::BlendAttachmentState::operator<(const BlendAttachmentState& rhs) const
+{
+	if(blendEnable < rhs.blendEnable)  return true;
+	if(blendEnable > rhs.blendEnable)  return false;
+	
+	if(blendEnable) {
+		if(srcColorBlendFactor < rhs.srcColorBlendFactor)  return true;
+		if(srcColorBlendFactor > rhs.srcColorBlendFactor)  return false;
+		if(dstColorBlendFactor < rhs.dstColorBlendFactor)  return true;
+		if(dstColorBlendFactor > rhs.dstColorBlendFactor)  return false;
+		if(colorBlendOp < rhs.colorBlendOp)  return true;
+		if(colorBlendOp > rhs.colorBlendOp)  return false;
+		if(srcAlphaBlendFactor < rhs.srcAlphaBlendFactor)  return true;
+		if(srcAlphaBlendFactor > rhs.srcAlphaBlendFactor)  return false;
+		if(dstAlphaBlendFactor < rhs.dstAlphaBlendFactor)  return true;
+		if(dstAlphaBlendFactor > rhs.dstAlphaBlendFactor)  return false;
+		if(alphaBlendOp < rhs.alphaBlendOp)  return true;
+		if(alphaBlendOp > rhs.alphaBlendOp)  return false;
+	}
+
+	return colorWriteMask < rhs.colorWriteMask;
+}

@@ -185,3 +185,19 @@ SharedShaderModule ShaderLibrary::getOrCreateFragmentShader(const ShaderState& s
 	}
 	return SharedShaderModule(&it->second);
 }
+
+
+bool ShaderState::operator<(const ShaderState& rhs) const
+{
+	if(attribAccessInfo < rhs.attribAccessInfo)  return true;
+	if(attribAccessInfo > rhs.attribAccessInfo)  return false;
+	if(attribSetup < rhs.attribSetup)  return true;
+	if(attribSetup > rhs.attribSetup)  return false;
+	if(materialSetup < rhs.materialSetup)  return true;
+	if(materialSetup > rhs.materialSetup)  return false;
+	if(idBuffer < rhs.idBuffer)  return true;
+	if(idBuffer > rhs.idBuffer)  return false;
+	if(primitiveTopology < rhs.primitiveTopology)  return true;
+	if(primitiveTopology > rhs.primitiveTopology)  return false;
+	return projectionHandling < rhs.projectionHandling;
+}
