@@ -241,6 +241,8 @@ void main()
 			normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
 		else
 			normal = normalize(inFragmentNormal);
+		if(getMaterialTwoSidedLighting() && !gl_FrontFacing)
+			normal = -normal;
 	}
 
 	// init textureType and textureInfo

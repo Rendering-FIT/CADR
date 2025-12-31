@@ -2307,7 +2307,8 @@ void App::init()
 					0x0001u |  // Phong
 					((ssMaterialData.baseColorTextureIndex == ~unsigned(0))  // texture offset
 						? 0 : aligned8PhongMaterialDataSize) |
-					(colorData ? 0x0100 : 0) |  // use color attribute for ambient and diffuse
+					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
+					(colorData ? 0x0200 : 0) |  // use color attribute for ambient and diffuse
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
 				.numLights = {},

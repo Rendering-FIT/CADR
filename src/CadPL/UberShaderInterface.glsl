@@ -46,19 +46,21 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 // pushConstants.materialSetup
 // bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness
 // bits 2..7: texture offset (0, 4, 8, 12, .....252)
-// bit 8: use color attribute for ambient and diffuse; material ambient and diffuse values are ignored
-// bit 9: use color attribute for diffuse; material diffuse value is ignored
-// bit 10: ignore color attribute alpha if color attribute is used (if bit 8 or 9 is set)
-// bit 11: ignore material alpha
-// bit 12: ignore base texture alpha if base texture is used
+// bit 8: two sided lighting
+// bit 9: use color attribute for ambient and diffuse; material ambient and diffuse values are ignored
+// bit 10: use color attribute for diffuse; material diffuse value is ignored
+// bit 11: ignore color attribute alpha if color attribute is used (if bit 8 or 9 is set)
+// bit 12: ignore material alpha
+// bit 13: ignore base texture alpha if base texture is used
 uint getMaterialModel()  { return materialSetup & 0x03; }
 uint getMaterialFirstTextureOffset()  { return materialSetup & 0xfc; }
-bool getMaterialUseColorAttribute()  { return (materialSetup & 0x0300) != 0; }
-bool getMaterialUseColorAttributeForAmbientAndDiffuse()  { return (materialSetup & 0x0100) != 0; }
-bool getMaterialUseColorAttributeForDiffuseOnly()  { return (materialSetup & 0x0200) != 0; }
-bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x0400) != 0; }
-bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x0800) != 0; }
-bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x1000) != 0; }
+bool getMaterialTwoSidedLighting()  { return (materialSetup & 0x0100) != 0; }
+bool getMaterialUseColorAttribute()  { return (materialSetup & 0x0600) != 0; }
+bool getMaterialUseColorAttributeForAmbientAndDiffuse()  { return (materialSetup & 0x0200) != 0; }
+bool getMaterialUseColorAttributeForDiffuseOnly()  { return (materialSetup & 0x0400) != 0; }
+bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x0800) != 0; }
+bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x1000) != 0; }
+bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x2000) != 0; }
 
 
 
