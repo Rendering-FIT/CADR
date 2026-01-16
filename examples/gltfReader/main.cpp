@@ -2307,9 +2307,9 @@ void App::init()
 					(normalData ? 0 : 1) |  // generateFlatNormals
 					(16u + (normalData ? 16 : 0) + (colorData ? 16 : 0) + (texCoordData ? 16 : 0)),  // vertexDataSize
 				.materialSetup =
-					0x0001u |  // Phong
+					0x0001 |  // Phong
 					((ssMaterialData.baseColorTextureIndex == ~unsigned(0))  // texture offset
-						? 0 : aligned8PhongMaterialDataSize) |
+						? 0 : uint32_t(aligned8PhongMaterialDataSize)) |
 					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
 					(colorData ? 0x0200 : 0) |  // use color attribute for ambient and diffuse
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
