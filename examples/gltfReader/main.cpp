@@ -161,6 +161,7 @@ public:
 
 	filesystem::path filePath;
 	string utf8FilePath;  // File path stored as utf-8. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
+	string utf8FileName;  // File name as utf-8. No parent directories and no file name suffix. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
 
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
@@ -285,9 +286,11 @@ App::App(int argc, char** argv)
 #ifdef _WIN32
 	filePath = wargv.get()[1];
 	utf8FilePath = utf16ToUtf8(filePath.c_str());
+	utf8FileName = utf16ToUtf8(filePath.filename().c_str());
 #else
 	utf8FilePath = argv[1];
 	filePath = utf8FilePath;
+	utf8FileName = filePath.filename();
 #endif
 }
 
@@ -364,7 +367,7 @@ void App::init()
 	vulkanLib.load(CadR::VulkanLibrary::defaultName());
 	vulkanInstance.create(vulkanLib, "glTF reader", 0, "CADR", 0, VK_API_VERSION_1_2, nullptr,
 	                      VulkanWindow::requiredExtensions());
-	window.create(vulkanInstance.handle(), {1024,768}, "glTF reader - " + utf16ToUtf8(filePath.filename().c_str()),
+	window.create(vulkanInstance.handle(), {1024,768}, "glTF reader - " + utf8FileName,
 	              vulkanLib.vkGetInstanceProcAddr);
 
 	// init device and renderer
