@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <list>
 #include <map>
 #include <tuple>
 #include <vector>
@@ -261,7 +262,7 @@ inline bool PipelineLibrary::CreationDataBatch::isFull() const  { return numShar
 inline void PipelineLibrary::CreationDataSet::append(SharedPipeline&& sharedPipeline, const PipelineState& pipelineState)  { if(batchList.empty() || batchList.back().isFull()) batchList.emplace_back(this); batchList.back().append(std::move(sharedPipeline), pipelineState); }
 
 inline PipelineLibrary::PipelineLibrary() noexcept  : _shaderLibrary(nullptr), _device(nullptr) {}
-inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  : _device(&shaderLibrary.device()), _shaderLibrary(&shaderLibrary), _pipelineCache(pipelineCache) {}
+inline PipelineLibrary::PipelineLibrary(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  : _shaderLibrary(&shaderLibrary), _device(&shaderLibrary.device()), _pipelineCache(pipelineCache) {}
 inline void PipelineLibrary::init(ShaderLibrary& shaderLibrary, vk::PipelineCache pipelineCache)  { _device=&shaderLibrary.device(); _shaderLibrary=&shaderLibrary; _pipelineCache=pipelineCache; }
 inline void PipelineLibrary::setProjectionViewportAndScissor(const glm::mat4x4& projectionMatrix, const vk::Viewport& viewport, const vk::Rect2D& scissor)  { setProjectionViewportAndScissor(std::vector{projectionMatrix}, std::vector{viewport}, std::vector{scissor}); }
 inline SharedPipeline PipelineLibrary::getPipeline(const ShaderState& shaderState, const PipelineState& pipelineState)  { auto it=_pipelineFamilyMap.find(shaderState); return (it!=_pipelineFamilyMap.end()) ? it->second.getPipeline(pipelineState) : SharedPipeline(); }

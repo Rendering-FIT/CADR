@@ -205,7 +205,7 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 			: nullptr;
 
 	// stageCount and pStages
-	auto& shaderStages = shaderStageList[numShaderStages];
+	vk::PipelineShaderStageCreateInfo* shaderStages = &shaderStageList[numShaderStages];
 	numShaderStages += 3;
 	shaderStages[0] =
 		vk::PipelineShaderStageCreateInfo{
@@ -236,7 +236,7 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 	}
 	else
 		createInfo.stageCount = 2;
-	createInfo.pStages = &shaderStages;
+	createInfo.pStages = shaderStages;
 
 	// pVertexInputState
 	createInfo.pVertexInputState = &pipelineVertexInputStateCreateInfo;
