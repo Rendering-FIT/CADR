@@ -1,8 +1,10 @@
 #include <vector>
 
 namespace CadR {
+class DataAllocation;
 class Drawable;
 class Geometry;
+class MatrixList;
 class Renderer;
 class StateSet;
 }
@@ -35,7 +37,9 @@ void createTestScene(
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	std::vector<CadR::Geometry>& geometryList,
-	std::vector<CadR::Drawable>& drawableList);
+	std::vector<CadR::Drawable>& drawableList,
+	std::vector<CadR::MatrixList>& matrixLists,
+	std::vector<CadR::DataAllocation>& materialList);
 void updateTestScene(
 	TestType testType,
 	int imageWidth,
@@ -43,4 +47,6 @@ void updateTestScene(
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	std::vector<CadR::Geometry>& geometryList,
-	std::vector<CadR::Drawable>& drawableList);
+	std::vector<CadR::Drawable>& drawableList,
+	std::vector<CadR::MatrixList>& matrixLists,
+	std::vector<CadR::DataAllocation>& materialList);

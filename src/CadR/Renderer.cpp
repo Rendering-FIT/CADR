@@ -449,7 +449,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 			n = 128;
 		_drawableBufferSize = n * sizeof(DrawableGpuData);
 		size_t drawIndirectBufferSize = n * sizeof(vk::DrawIndirectCommand);
-		size_t drawPayloadBufferSize = n * 3*sizeof(uint64_t);
+		size_t drawablePointersBufferSize = n * drawablePointersRecordSize;
 
 		// free previous buffers (if any)
 		// (null needs to be assigned to variables because createBuffer() calls might throw in the case of error)
@@ -553,7 +553,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 			_device->createBuffer(
 				vk::BufferCreateInfo(
 					vk::BufferCreateFlags(),      // flags
-					drawPayloadBufferSize,        // size
+					drawablePointersBufferSize,   // size
 					vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress,  // usage
 					vk::SharingMode::eExclusive,  // sharingMode
 					0,                            // queueFamilyIndexCount

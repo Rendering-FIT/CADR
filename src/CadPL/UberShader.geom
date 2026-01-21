@@ -55,7 +55,7 @@ void main()
 	vertexAndDrawableDataPtr.w = dp.drawableDataPtr;
 
 	// model matrix list
-	MatrixListRef modelMatrixList = getDrawableMatrixList(dp.drawableDataPtr);
+	MatrixListRef modelMatrixList = MatrixListRef(dp.matrixListPtr);
 
 	// vertex data
 	IndexDataRef indexData = IndexDataRef(dp.indexDataPtr);

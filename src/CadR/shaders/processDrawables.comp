@@ -10,22 +10,31 @@
 layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
 
 
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
+DrawableGpuDataRef {
+	uint64_t vertexDataHandle;
+	uint64_t indexDataHandle;
+	uint64_t matrixListHandle;
+	uint64_t drawableDataHandle;
+	uint64_t primitiveSetHandle;
+	uint primitiveSetOffset;
+	uint padding;
+};
+const uint DrawableGpuDataSize = 48;
+
 layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
 PrimitiveSetRef {
 	uint count;
 	uint first;
 };
 
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
-DrawableGpuDataRef {
-	uint64_t vertexDataHandle;
-	uint64_t indexDataHandle;
-	uint64_t primitiveSetHandle;
-	uint64_t shaderDataHandle;
-	uint primitiveSetOffset;
-	uint numInstances;
+layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
+MatrixListRef {
+	uint numMatrices;
+	uint capacity;
+	uint64_t padding[7];
+	mat4 matrices[];
 };
-const uint DrawableGpuDataSize = 40;
 
 layout(buffer_reference, std430, buffer_reference_align=16) restrict writeonly buffer
 IndirectDataRef {
@@ -40,9 +49,10 @@ layout(buffer_reference, std430, buffer_reference_align=8) restrict writeonly bu
 DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
-	uint64_t shaderDataPtr;
+	uint64_t matrixListPtr;
+	uint64_t drawableDataPtr;
 };
-const uint DrawablePointersSize = 24;
+const uint DrawablePointersSize = 32;
 
 layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
 HandleTableRef {
@@ -81,11 +91,12 @@ void main()
 	uint workGroupID = gl_WorkGroupID.y * 32768 + gl_WorkGroupID.x;
 	DrawableGpuDataRef d = DrawableGpuDataRef(drawableListPtr + (workGroupID * DrawableGpuDataSize));
 	PrimitiveSetRef ps = PrimitiveSetRef(lookupHandle(d.primitiveSetHandle) + d.primitiveSetOffset);
+	MatrixListRef ml = MatrixListRef(lookupHandle(d.matrixListHandle));
 
 	// write indirect data
 	IndirectDataRef indirectData = IndirectDataRef(indirectDataPtr + (workGroupID * IndirectDataSize));
 	indirectData.vertexCount = ps.count;
-	indirectData.instanceCount = d.numInstances;
+	indirectData.instanceCount = ml.numMatrices;
 	indirectData.firstVertex = ps.first;
 	indirectData.baseInstance = 0;
 
@@ -93,7 +104,8 @@ void main()
 	DrawablePointersRef dp = DrawablePointersRef(drawablePointersBufferPtr + (workGroupID * DrawablePointersSize));
 	dp.vertexDataPtr = lookupHandle(d.vertexDataHandle);
 	dp.indexDataPtr  = lookupHandle(d.indexDataHandle);
-	dp.shaderDataPtr = lookupHandle(d.shaderDataHandle);
+	dp.matrixListPtr = uint64_t(ml);
+	dp.drawableDataPtr = lookupHandle(d.drawableDataHandle);
 
 #if 0  // debug print; to enable it, you also need to (1) enable GL_EXT_debug_printf extension on the beginning of this shader,
        // you need to (2) enable VK_KHR_shader_non_semantic_info device extension (look for VK_KHR_shader_non_semantic_info

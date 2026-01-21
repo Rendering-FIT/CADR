@@ -32,6 +32,7 @@ set(CADR_PUBLIC_HEADERS
 	ImageAllocation.h
 	ImageMemory.h
 	ImageStorage.h
+	MatrixList.h
 	ParentChildList.h
 	Pipeline.h
 	PrimitiveSet.h
@@ -87,6 +88,7 @@ source_group("Code" FILES ${CADR_PUBLIC_HEADERS} ${CADR_PRIVATE_HEADERS} ${CADR_
 # dependencies
 find_package(Vulkan REQUIRED)
 find_package(Boost REQUIRED)
+find_package(glm REQUIRED)
 
 # shaders
 add_shader(shaders/processDrawables.comp -DHANDLE_LEVEL_1 shaders/processDrawables-l1.comp.spv CADR_SHADER_DEPS)
@@ -133,7 +135,7 @@ set_target_properties(${LIB_NAME} PROPERTIES
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # target libraries
-target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost)
+target_link_libraries(${LIB_NAME} Vulkan::Headers Boost::boost glm)
 if(UNIX)
 	target_link_libraries(${LIB_NAME} dl stdc++fs)
 endif()

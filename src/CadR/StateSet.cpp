@@ -13,7 +13,7 @@ const ParentChildListOffsets StateSet::parentChildListOffsets{
 };
 
 
-void StateSet::appendDrawableInternal(Drawable& d, DrawableGpuData gpuData)
+void StateSet::appendDrawableInternal(Drawable& d, const DrawableGpuData& gpuData)
 {
 	d._stateSet = this;
 	d._indexIntoStateSet = uint32_t(_drawableDataList.size());

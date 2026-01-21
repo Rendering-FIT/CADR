@@ -21,7 +21,7 @@ struct PrimitiveSetGpuData {
 };
 
 
-struct ShaderData {
+struct MaterialData {
 	glm::vec3 ambient;
 	uint32_t materialType;
 	glm::vec3 diffuse;
@@ -31,7 +31,7 @@ struct ShaderData {
 	glm::vec3 emission;
 	float pointSize;
 };
-static_assert(sizeof(ShaderData) == 64, "Size of ShaderData is not 64.");
+static_assert(sizeof(MaterialData) == 64, "Size of MaterialData is not 64.");
 
 
 #if 0
@@ -460,7 +460,9 @@ static void generateBoxesScene(
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	vector<CadR::Geometry>& geometryList,
-	vector<CadR::Drawable>& drawableList)
+	vector<CadR::Drawable>& drawableList,
+	vector<CadR::MatrixList>& matrixLists,
+	vector<CadR::DataAllocation>& materialList)
 {
 	// make sure valid parameters were passed in
 	if(instanced == true && singleGeometry == false)
@@ -469,7 +471,7 @@ static void generateBoxesScene(
 	if(numBoxes.x == 0 || numBoxes.y == 0 || numBoxes.z == 0)
 		return;
 
-	// generate Geometries
+	// generate geometries
 	size_t boxesCount = numBoxes.x * numBoxes.y * numBoxes.z;
 	size_t numGeometries = (singleGeometry) ? 1 : boxesCount;
 	size_t geometryBaseIndex = geometryList.size();
@@ -507,23 +509,53 @@ static void generateBoxesScene(
 		primitiveSet->first = 0;
 	}
 
-	if(doNotCreateDrawables)
-		return;
+	// create materials
+	size_t materialBaseIndex = materialList.size();
+	materialList.reserve(materialList.size() + numMaterials);
+	for(size_t i=0; i<numMaterials; i++) {
+		CadR::DataAllocation& a = materialList.emplace_back(renderer);
+		MaterialData& m = a.editNewContent<MaterialData>();
+		m.ambient = { 0.f, 0.f, 0.f };
+		m.materialType = 0;
+		float angle = float(i) / numMaterials;
+		m.diffuse = { cos(angle-glm::pi<float>()/3.f), cos(angle), cos(angle+glm::pi<float>()/3.f) };
+		m.alpha = 1.f;
+		m.specular = { 0.f, 0.f, 0.f };
+		m.shininess = 0.f;
+		m.emission = { 0.f, 0.f, 0.f };
+		m.pointSize = 0.f;
+	}
 
-	// create Drawables
-	CadR::StagingData shaderStagingData;
+	// create matrix lists
+	size_t baseMatrixListsIndex = matrixLists.size();
 	if(instanced)
 	{
-		drawableList.reserve(drawableList.size() + 1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
-		drawableList.emplace_back(geometryList.front(), 0, shaderStagingData, 64+(64*boxesCount), uint32_t(boxesCount), stateSetRoot);
+		// reserve space in vector
+		// (this ensures that no exception is thrown during emplacing which would result in memory leak)
+		matrixLists.reserve(matrixLists.size() + 1);
 
-		// shader staging data
-		uint8_t* b = shaderStagingData.data<uint8_t>();
-		ShaderData* d = reinterpret_cast<ShaderData*>(b);
-		memset(d, 0, sizeof(ShaderData));
-		d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-		d->alpha = 1.f;
-		b += 64;
+		// generate transformations
+		CadR::MatrixList& ml = matrixLists.emplace_back(renderer);
+		glm::mat4* m = ml.editNewContent(boxesCount);
+		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
+		for(uint32_t k=0; k<numBoxes.z; k++) {
+			auto planeZ = origin.z + (k * boxToBoxDistance.z);
+			for(uint32_t j=0; j<numBoxes.y; j++) {
+				auto lineY = origin.y + (j * boxToBoxDistance.y);
+				for(uint32_t i=0; i<numBoxes.x; i++)
+				{
+					*m = glm::translate(glm::mat4(1.f),
+						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
+					m++;
+				}
+			}
+		}
+	}
+	else
+	{
+		// reserve space in vector
+		// (this ensures that no exception is thrown during emplacing which would result in memory leak)
+		matrixLists.reserve(matrixLists.size() + boxesCount);
 
 		// generate transformations
 		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
@@ -533,37 +565,49 @@ static void generateBoxesScene(
 				auto lineY = origin.y + (j * boxToBoxDistance.y);
 				for(uint32_t i=0; i<numBoxes.x; i++)
 				{
-					*reinterpret_cast<glm::mat4*>(b) = glm::translate(glm::mat4(1.f),
+					// create transformation matrix list
+					CadR::MatrixList& ml = matrixLists.emplace_back(renderer);
+					glm::mat4* m = ml.editNewContent(1);
+					*m = glm::translate(glm::mat4(1.f),
 						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
-					b += 64;
 				}
 			}
 		}
 	}
-	else
-	{
-		drawableList.reserve(drawableList.size() + boxesCount);  // this ensures that exception cannot be thrown during emplacing which would result in memory leak
 
-		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
-		for(uint32_t k=0; k<numBoxes.z; k++) {
-			auto planeZ = origin.z + (k * boxToBoxDistance.z);
-			for(uint32_t j=0; j<numBoxes.y; j++) {
-				auto lineY = origin.y + (j * boxToBoxDistance.y);
-				for(uint32_t i=0; i<numBoxes.x; i++)
-				{
-					CadR::Geometry& g = (singleGeometry) ? geometryList.front() : geometryList[geometryBaseIndex++];
-					drawableList.emplace_back(g, 0, shaderStagingData, 128, 1, stateSetRoot);
+	if(doNotCreateDrawables)
+		return;
 
-					// shader staging data
-					uint8_t* b = shaderStagingData.data<uint8_t>();
-					ShaderData* d = reinterpret_cast<ShaderData*>(b);
-					memset(d, 0, sizeof(ShaderData));
-					d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-					d->alpha = 1.f;
-					*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
-						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
-				}
-			}
+	// create Drawables
+	if(instanced) {
+
+		// reserve space in vector
+		// (this ensures that no exception is thrown during emplacing which would result in memory leak)
+		drawableList.reserve(drawableList.size() + 1);
+
+		// append single MatrixList and single Drawable
+		CadR::MatrixList& ml = matrixLists[baseMatrixListsIndex];
+		drawableList.emplace_back(geometryList.front(), 0, ml, materialList[materialBaseIndex], stateSetRoot);
+
+	}
+	else {
+
+		// reserve space in vector
+		// (this ensures that no exception is thrown during emplacing which would result in memory leak)
+		drawableList.reserve(drawableList.size() + boxesCount);
+
+		size_t materialIndex = 0;
+		for(size_t i=baseMatrixListsIndex,e=matrixLists.size(); i<e; i++) {
+			
+			// create Drawable
+			CadR::MatrixList& ml = matrixLists[i];
+			CadR::Geometry& g = (singleGeometry) ? geometryList.front() : geometryList[geometryBaseIndex++];
+			drawableList.emplace_back(g, 0, ml, materialList[materialBaseIndex + materialIndex], stateSetRoot);
+
+			// update material index
+			materialIndex++;
+			if(materialIndex >= numMaterials)
+				materialIndex = 0;
 		}
 	}
 }
@@ -575,36 +619,55 @@ static void updateDrawablesForShowHideScene(
 	glm::vec3 center,
 	glm::vec3 boxToBoxDistance,
 	bool singleGeometry,
+	bool instanced,
 	CadR::StateSet& stateSetRoot,
-	size_t baseGeometry,
-	size_t baseDrawable,
+	size_t baseGeometryIndex,
+	size_t baseDrawableIndex,
+	size_t baseMatrixListIndex,
 	vector<CadR::Geometry>& geometryList,
-	vector<CadR::Drawable>& drawableList)
+	vector<CadR::Drawable>& drawableList,
+	vector<CadR::MatrixList>& matrixLists,
+	vector<CadR::DataAllocation>& materialList)
 {
-	drawableList.erase(drawableList.begin() + baseDrawable, drawableList.end());
+	if(instanced)
+	{
+		// change visibility between even and odd frames
+		uint32_t startI = frameNumber & 0x01;
 
-	uint32_t startI = frameNumber & 0x01;
+		// new matrix list content
+		CadR::MatrixList& ml = matrixLists[baseMatrixListIndex];
+		glm::mat4* m = ml.editNewContent(((numBoxes.x - startI) / 2) * numBoxes.y * numBoxes.z);
 
-	CadR::StagingData shaderStagingData;
-	glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
-	for(uint32_t k=0; k<numBoxes.z; k++) {
-		auto planeZ = origin.z + (k * boxToBoxDistance.z);
-		for(uint32_t j=0; j<numBoxes.y; j++) {
-			auto lineY = origin.y + (j * boxToBoxDistance.y);
-			for(uint32_t i=startI; i<numBoxes.x; i+=2)
-			{
-				CadR::Geometry& g = (singleGeometry) ? geometryList.front() : geometryList[baseGeometry++];
-				drawableList.emplace_back(g, 0, shaderStagingData, 128, 1, stateSetRoot);
-
-				// shader staging data
-				uint8_t* b = shaderStagingData.data<uint8_t>();
-				ShaderData* d = reinterpret_cast<ShaderData*>(b);
-				memset(d, 0, sizeof(ShaderData));
-				d->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-				d->alpha = 1.f;
-				*reinterpret_cast<glm::mat4*>(b+64) = glm::translate(glm::mat4(1.f),
-					glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
+		// update matrices
+		glm::vec3 origin = center - (boxToBoxDistance * glm::vec3(numBoxes.x-1, numBoxes.y-1, numBoxes.z-1) / 2.f);
+		for(uint32_t k=0; k<numBoxes.z; k++) {
+			auto planeZ = origin.z + (k * boxToBoxDistance.z);
+			for(uint32_t j=0; j<numBoxes.y; j++) {
+				auto lineY = origin.y + (j * boxToBoxDistance.y);
+				for(uint32_t i=startI; i<numBoxes.x; i+=2)
+				{
+					*m = glm::translate(glm::mat4(1.f),
+						glm::vec3(origin.x + (i*boxToBoxDistance.x), lineY, planeZ));
+					m++;
+				}
 			}
+		}
+	}
+	else
+	{
+		// delete old drawables
+		drawableList.erase(drawableList.begin() + baseDrawableIndex, drawableList.end());
+
+		// create new drawables
+		if(singleGeometry) {
+			CadR::Geometry& g = geometryList[baseGeometryIndex];
+			for(size_t i=baseMatrixListIndex+(frameNumber&0x01), c=matrixLists.size()-i; i<c; i+=2)
+				drawableList.emplace_back(g, 0, matrixLists[i], materialList.back(), stateSetRoot);
+		}
+		else {
+			size_t geometryIndex = baseGeometryIndex;
+			for(size_t i=baseMatrixListIndex+(frameNumber&0x01), c=matrixLists.size()-i; i<c; i+=2)
+				drawableList.emplace_back(geometryList[geometryIndex++], 0, matrixLists[i], materialList.back(), stateSetRoot);
 		}
 	}
 }
@@ -618,7 +681,9 @@ static void generateBakedBoxesScene(
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	vector<CadR::Geometry>& geometryList,
-	vector<CadR::Drawable>& drawableList)
+	vector<CadR::Drawable>& drawableList,
+	vector<CadR::MatrixList>& matrixLists,
+	vector<CadR::DataAllocation>& materialList)
 {
 	// make sure valid parameters were passed in
 	if(numBoxes.x == 0 || numBoxes.y == 0 || numBoxes.z == 0)
@@ -730,18 +795,27 @@ static void generateBakedBoxesScene(
 	primitiveSet->count = numIndices;
 	primitiveSet->first = 0;
 
-	// create Drawables
-	CadR::StagingData shaderStagingData;
-	drawableList.reserve(drawableList.size() + 1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
-	drawableList.emplace_back(geometry, 0, shaderStagingData, 128, 1, stateSetRoot);
+	// create matrix list
+	matrixLists.reserve(matrixLists.size() + 1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
+	CadR::MatrixList& ml = matrixLists.emplace_back(renderer);
+	*ml.editNewContent(1) = glm::mat4(1.f);
 
-	// shader staging data
-	uint8_t* b = shaderStagingData.data<uint8_t>();
-	ShaderData* sd = reinterpret_cast<ShaderData*>(b);
-	memset(sd, 0, sizeof(ShaderData));
-	sd->diffuse = glm::vec3(1.f, 0.5f, 1.f);
-	sd->alpha = 1.f;
-	*reinterpret_cast<glm::mat4*>(b+64) = glm::mat4(1.f);
+	// create material
+	materialList.reserve(materialList.size() + 1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
+	CadR::DataAllocation& materialData = materialList.emplace_back(renderer);
+	MaterialData& m = materialData.editNewContent<MaterialData>();
+	m.ambient = { 0.f, 0.f, 0.f };
+	m.materialType = 0;
+	m.diffuse = { 1.f, 0.5f, 1.f };
+	m.alpha = 1.f;
+	m.specular = { 0.f, 0.f, 0.f };
+	m.shininess = 0.f;
+	m.emission = { 0.f, 0.f, 0.f };
+	m.pointSize = 0.f;
+
+	// create Drawable
+	drawableList.reserve(drawableList.size() + 1);  // this ensures that no exception is thrown during emplacing which would result in memory leak
+	drawableList.emplace_back(geometry, 0, ml, materialData, stateSetRoot);
 }
 
 
@@ -752,7 +826,9 @@ void createTestScene(
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	vector<CadR::Geometry>& geometryList,
-	vector<CadR::Drawable>& drawableList)
+	vector<CadR::Drawable>& drawableList,
+	vector<CadR::MatrixList>& matrixLists,
+	vector<CadR::DataAllocation>& materialList)
 {
 	switch(testType) {
 	case TestType::TrianglePerformance:
@@ -774,7 +850,9 @@ void createTestScene(
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	case TestType::InstancedBoxesScene: {
@@ -791,7 +869,9 @@ void createTestScene(
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	case TestType::IndependentBoxesScene: {
@@ -808,7 +888,9 @@ void createTestScene(
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	case TestType::IndependentBoxes1000MaterialsScene: {
@@ -825,7 +907,9 @@ void createTestScene(
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	case TestType::IndependentBoxes1000000MaterialsScene: {
@@ -842,7 +926,9 @@ void createTestScene(
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	case TestType::IndependentBoxesShowHideScene: {
@@ -859,7 +945,9 @@ void createTestScene(
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	default: break;
@@ -874,7 +962,9 @@ void updateTestScene(
 	CadR::Renderer& renderer,
 	CadR::StateSet& stateSetRoot,
 	vector<CadR::Geometry>& geometryList,
-	vector<CadR::Drawable>& drawableList)
+	vector<CadR::Drawable>& drawableList,
+	vector<CadR::MatrixList>& matrixLists,
+	vector<CadR::DataAllocation>& materialList)
 {
 	switch(testType) {
 	case TestType::IndependentBoxesShowHideScene: {
@@ -885,11 +975,15 @@ void updateTestScene(
 			glm::vec3(0.f, 0.f, 0.f),  // center
 			glm::vec3(maxSize / 100.f),  // boxToBoxDistance
 			false,  // singleGeometry
+			false, // instanced
 			stateSetRoot,  // stateSetRoot
-			0,  // baseGeometry
-			0,  // baseDrawable
+			0,  // baseGeometryIndex
+			0,  // baseDrawableIndex
+			0,  // baseMatrisListIndex
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		break;
 	}
 	default:;

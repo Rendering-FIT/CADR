@@ -123,14 +123,14 @@ public:
 	void recordToCommandBuffer(vk::CommandBuffer cb, vk::PipelineLayout currentPipelineLayout, size_t& drawableCounter);
 
 	// drawable functions
-	inline void appendDrawable(Drawable& d, DrawableGpuData gpuData);
+	inline void appendDrawable(Drawable& d, const DrawableGpuData& gpuData);
 	static inline void removeDrawable(Drawable& d);
 	void removeAllDrawables() noexcept;
 	inline Drawable& getDrawable(size_t index) const;
 	inline size_t getNumDrawables() const;
 
 protected:
-	void appendDrawableInternal(Drawable& d, DrawableGpuData gpuData);
+	void appendDrawableInternal(Drawable& d, const DrawableGpuData& gpuData);
 	void removeDrawableInternal(Drawable& d) noexcept;
 	friend Drawable;
 };
@@ -164,7 +164,7 @@ inline void StateSet::setDynamicOffsets(std::vector<uint32_t>&& offsets)  { _dyn
 inline StateSetDescriptorUpdater& StateSet::createDescriptorUpdater(std::function<void(Texture& t)>&& updateFunc, vk::DescriptorSet descriptorSet)  { auto& updater=*new StateSetDescriptorUpdater{ std::move(updateFunc), descriptorSet }; _descriptorUpdaterList.push_back(updater); return updater; }
 inline void StateSet::setForceRecording(bool value)  { _forceRecording = value; }
 inline void StateSet::requestRecording()  { _skipRecording = false; }
-inline void StateSet::appendDrawable(Drawable& d, DrawableGpuData gpuData)  { if(d._indexIntoStateSet != ~0u) d._stateSet->removeDrawableInternal(d); appendDrawableInternal(d, gpuData); }
+inline void StateSet::appendDrawable(Drawable& d, const DrawableGpuData& gpuData)  { if(d._indexIntoStateSet != ~0u) d._stateSet->removeDrawableInternal(d); appendDrawableInternal(d, gpuData); }
 inline void StateSet::removeDrawable(Drawable& d)  { if(d._indexIntoStateSet == ~0u) return; d._stateSet->removeDrawableInternal(d); d._indexIntoStateSet=~0u; }
 inline Drawable& StateSet::getDrawable(size_t index) const  { return *_drawablePtrList[index]; }
 inline size_t StateSet::getNumDrawables() const  { return _drawablePtrList.size(); }

@@ -6,12 +6,14 @@
 #  include <CadR/DataStorage.h>
 #  include <CadR/FrameInfo.h>
 #  include <CadR/ImageStorage.h>
+#  include <CadR/MatrixList.h>
 #  include <CadR/StagingManager.h>
 #  undef CADR_NO_INLINE_FUNCTIONS
 # else
 #  include <CadR/DataStorage.h>
 #  include <CadR/FrameInfo.h>
 #  include <CadR/ImageStorage.h>
+#  include <CadR/MatrixList.h>
 #  include <CadR/StagingManager.h>
 # endif
 # include <vulkan/vulkan.hpp>
@@ -167,7 +169,7 @@ public:
 	inline vk::Buffer drawablePointersBuffer() const;
 	inline vk::DeviceAddress drawablePointersBufferAddress() const;
 
-	// pipelines and commandPools
+	// pipelines and command pools
 	inline vk::PipelineCache pipelineCache() const;
 	inline vk::Pipeline processDrawablesPipeline(size_t handleLevel) const;
 	inline vk::PipelineLayout processDrawablesPipelineLayout() const;
@@ -185,7 +187,7 @@ public:
 	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	void executeCopyOperations();
 
-	static constexpr uint32_t drawablePointersRecordSize = 24;
+	static constexpr uint32_t drawablePointersRecordSize = 4 * sizeof(uint64_t);
 
 };
 

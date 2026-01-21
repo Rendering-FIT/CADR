@@ -1,6 +1,7 @@
 #include <CadR/Drawable.h>
 #include <CadR/Exceptions.h>
 #include <CadR/Geometry.h>
+#include <CadR/MatrixList.h>
 #include <CadR/Pipeline.h>
 #include <CadR/PrimitiveSet.h>
 #include <CadR/StagingData.h>
@@ -143,6 +144,8 @@ public:
 	};
 	vector<Geometry> geometryList;
 	vector<Drawable> drawableList;
+	vector<MatrixList> matrixLists;
+	vector<DataAllocation> materialList;
 
 };
 
@@ -426,6 +429,8 @@ App::~App()
 		// delete scene
 		drawableList.clear();
 		geometryList.clear();
+		matrixLists.clear();
+		materialList.clear();
 
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
@@ -803,17 +808,12 @@ void App::init()
 				vk::PipelineLayoutCreateFlags(),  // flags
 				0,       // setLayoutCount
 				nullptr, // pSetLayouts
-				2,  // pushConstantRangeCount
+				1,  // pushConstantRangeCount
 				array{  // pPushConstantRanges
 					vk::PushConstantRange{
-						vk::ShaderStageFlagBits::eVertex,  // stageFlags
+						vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 						0,  // offset
-						2*sizeof(uint64_t)  // size
-					},
-					vk::PushConstantRange{
-						vk::ShaderStageFlagBits::eFragment,  // stageFlags
-						8,  // offset
-						sizeof(uint64_t) + sizeof(uint32_t)  // size
+						2*sizeof(uint64_t)+sizeof(uint32_t)  // size
 					},
 				}.data()
 			}
@@ -1319,7 +1319,7 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 	drawableList.clear();
 	geometryList.clear();
 	createTestScene(testType, int(newExtent.width), int(newExtent.height),
-		renderer, stateSetRoot, geometryList, drawableList);
+		renderer, stateSetRoot, geometryList, drawableList, matrixLists, materialList);
 
 	// update image size
 	imageExtent = newExtent;
@@ -1358,7 +1358,9 @@ void App::frame()
 			renderer,
 			stateSetRoot,
 			geometryList,
-			drawableList);
+			drawableList,
+			matrixLists,
+			materialList);
 		chrono::time_point finishTime = chrono::high_resolution_clock::now();
 		double updateTime = chrono::duration<double>(finishTime - startTime).count();
 		sceneUpdateTimeList.push_back(updateTime);
@@ -1438,21 +1440,12 @@ void App::frame()
 	device.cmdPushConstants(
 		commandBuffer,  // commandBuffer
 		pipeline.layout(),  // pipelineLayout
-		vk::ShaderStageFlagBits::eVertex,  // stageFlags
+		vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 		0,  // offset
-		sizeof(uint64_t),  // size
-		array<uint64_t,1>{  // pValues
-			renderer.drawablePointersBufferAddress(),  // payloadBufferPtr
-		}.data()
-	);
-	device.cmdPushConstants(
-		commandBuffer,  // commandBuffer
-		pipeline.layout(),  // pipelineLayout
-		vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  // stageFlags
-		8,  // offset
-		sizeof(uint64_t),  // size
-		array<uint64_t,1>{  // pValues
+		2*sizeof(uint64_t),  // size
+		array<uint64_t,2>{  // pValues
 			sceneDataAllocation.deviceAddress(),  // sceneDataPtr
+			renderer.drawablePointersBufferAddress(),  // drawablePointersBufferPtr
 		}.data()
 	);
 	renderer.recordSceneRendering(

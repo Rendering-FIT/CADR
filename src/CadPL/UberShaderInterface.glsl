@@ -20,7 +20,8 @@ uint getLightDataOffset()  { return 192; }
 // push constants
 //
 
-layout(push_constant) uniform pushConstants {
+layout(push_constant) uniform
+pushConstants {
 	layout(offset=0) uint64_t sceneDataPtr;  // pointer to SceneDataRef; usually updated per scene render pass or once per scene rendering
 	layout(offset=8) uint64_t drawablePointersBufferPtr;  // pointer to DrawablePointersRef array; there is one DrawablePointersRef array for each StateSet, so the pointer is updated before each StateSet rendering
 	layout(offset=16) uint attribAccessInfoList[8];  // per-stateSet attribAccessInfo for 16 attribs
@@ -252,6 +253,9 @@ uint getLightType(uint lightSettings)  { return lightSettings & 0x3; }
 
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
 MatrixListRef {
+	uint numMatrices;
+	uint capacity;
+	uint64_t padding[7];
 	mat4 matrices[];
 };
 
@@ -261,22 +265,12 @@ IndexDataRef {
 	uint indices[];
 };
 
-layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
-DrawableDataRef {
-	// bit 6..8: modelMatrix offset (0, 64, 128, 192,..., 448)
-	uint settings1;
-	uint dummy;
-	uint64_t materialPtr;
-	// [... model matrices ...]
-};
-
-MatrixListRef getDrawableMatrixList(uint64_t drawableDataPtr)  { return MatrixListRef(drawableDataPtr + (DrawableDataRef(drawableDataPtr).settings1 & 0x01c0)); }
-
 // drawable data pointers
 layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
 DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
+	uint64_t matrixListPtr;
 	uint64_t drawableDataPtr;
 };
-const uint DrawablePointersSize = 24;
+const uint DrawablePointersSize = 32;

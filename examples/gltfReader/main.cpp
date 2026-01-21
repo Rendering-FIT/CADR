@@ -169,6 +169,7 @@ public:
 	CadR::Pipeline layoutOnlyPipeline;
 	vector<CadR::Geometry> geometryList;
 	vector<CadR::Drawable> drawableList;
+	vector<CadR::MatrixList> matrixLists;
 	vector<CadR::DataAllocation> materialList;
 	vector<CadR::ImageAllocation> imageList;
 	vector<CadR::Sampler> samplerList;
@@ -313,6 +314,7 @@ App::~App()
 		imageList.clear();
 		samplerList.clear();
 		materialList.clear();
+		matrixLists.clear();
 		defaultSampler.destroy();
 		defaultMaterial.free();
 		drawableList.clear();
@@ -792,6 +794,7 @@ void App::init()
 	json& scene = scenes.at(defaultSceneIndex);
 
 	// iterate through root nodes
+	// and fill meshMatrixList
 	vector<vector<glm::mat4>> meshMatrixList(meshes.size());
 	if(auto rootNodesIt=scene.find("nodes"); rootNodesIt!=scene.end()) {
 		json& rootNodes = *rootNodesIt;
@@ -838,6 +841,13 @@ void App::init()
 				processNode(node.children[i], m, nodeList, meshMatrixList, processNode);
 
 		}
+	}
+
+	// matrixLists
+	matrixLists.reserve(meshes.size());
+	for(size_t i=0, c=meshes.size(); i<c; i++) {
+		CadR::MatrixList& ml = matrixLists.emplace_back(renderer);
+		ml.setMatrices(meshMatrixList[i]);
 	}
 
 	// process images
@@ -1247,7 +1257,7 @@ void App::init()
 		glm::vec3 reflection;  // offset 64
 	};
 	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure");
-	constexpr size_t aligned8PhongMaterialDataSize = 80;
+	constexpr size_t phongMaterialDataSizeAligned8 = 80;
 	struct TextureData {
 		uint8_t texCoordIndex;
 		uint8_t type;
@@ -1369,7 +1379,7 @@ void App::init()
 			throw GltfError("Unsupported functionality: alpha cutoff.");
 
 		// material size
-		size_t materialSize = aligned8PhongMaterialDataSize;
+		size_t materialSize = phongMaterialDataSizeAligned8;
 		if(baseColorTextureIndex != ~unsigned(0))
 			materialSize += 16;
 
@@ -1388,7 +1398,7 @@ void App::init()
 		if(baseColorTextureIndex != ~unsigned(0))
 		{
 			// material base texture
-			TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + aligned8PhongMaterialDataSize);
+			TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8);
 			t->texCoordIndex = 4 + baseColorTexCoordIndex;  // texture coordinates are placed on attribute 4 and following
 			t->type = 4;
 			t->settings = 0 | (8 << 10);  // no flags, structure size 8
@@ -1408,6 +1418,7 @@ void App::init()
 		ssm.baseColorTextureIndex = baseColorTextureIndex;
 		ssm.baseColorTexCoordIndex = baseColorTexCoordIndex;
 	}
+	assert(materialList.size() == numMaterials && "Not all materials were created.");
 
 	// process meshes
 	cout << "Processing meshes..." << endl;
@@ -2309,7 +2320,7 @@ void App::init()
 				.materialSetup =
 					0x0001 |  // Phong
 					((ssMaterialData.baseColorTextureIndex == ~unsigned(0))  // texture offset
-						? 0 : uint32_t(aligned8PhongMaterialDataSize)) |
+						? 0 : uint32_t(phongMaterialDataSizeAligned8)) |
 					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
 					(colorData ? 0x0200 : 0) |  // use color attribute for ambient and diffuse
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
@@ -2350,29 +2361,15 @@ void App::init()
 			CadR::StateSet& ss = pipelineSceneGraph.getOrCreateStateSet(shaderState, pipelineState);
 
 			// drawable
-			vector<glm::mat4>& matrixList = meshMatrixList[meshIndex];
-			uint32_t numInstances = uint32_t(matrixList.size());
 			drawableList.emplace_back(
 				g,  // geometry
 				0,  // primitiveSetOffset
-				sd,  // shaderStagingData
-				64+(numInstances*64),  // shaderDataSize
-				numInstances,  // numInstances
+				matrixLists[meshIndex],  // matrixList
+				(materialIndex==~size_t(0))  // drawableData
+					? defaultMaterial
+					: materialList[materialIndex],
 				ss  // stateSet
 			);
-
-			// copy transformation matrices
-			// (transformation matrices follow material settings on offset 64)
-			uint8_t* drawableData = reinterpret_cast<uint8_t*>(sd.data());
-			uint32_t* drawableSettings = reinterpret_cast<uint32_t*>(drawableData);
-			*drawableSettings = 64;
-			vk::DeviceAddress* materialAddress = reinterpret_cast<vk::DeviceAddress*>(drawableData + 8);
-			*materialAddress =
-				materialIndex != ~size_t(0)
-					? materialList.at(materialIndex).deviceAddress()
-					: defaultMaterial.deviceAddress();
-			glm::mat4* modelMatrix = reinterpret_cast<glm::mat4*>(reinterpret_cast<uint8_t*>(sd.data()) + 64);
-			memcpy(modelMatrix, matrixList.data(), numInstances*64);
 
 			// mesh bounding sphere
 			CadR::BoundingSphere meshBS{
@@ -2383,15 +2380,16 @@ void App::init()
 				meshBS.extendRadiusBy(primitiveSetBSList[i]);
 
 			// bounding box of all instances of particular mesh
+			const vector<glm::mat4>& matrices = meshMatrixList[meshIndex];
 			CadR::BoundingBox instancesBB =
 				CadR::BoundingBox::createByCenterAndHalfExtents(
-					glm::mat3(matrixList[0]) * meshBS.center + glm::vec3(matrixList[0][3]),  // center
-					glm::mat3(matrixList[0]) * glm::vec3(meshBS.radius)  // halfExtents
+					glm::mat3(matrices[0]) * meshBS.center + glm::vec3(matrices[0][3]),  // center
+					glm::mat3(matrices[0]) * glm::vec3(meshBS.radius)  // halfExtents
 				);
-			for(size_t instanceIndex=1, instanceCount=matrixList.size();
+			for(size_t instanceIndex=1, instanceCount=matrices.size();
 			    instanceIndex<instanceCount; instanceIndex++)
 			{
-				glm::mat4& m = matrixList[instanceIndex];
+				const glm::mat4& m = matrices[instanceIndex];
 				instancesBB.extendBy(
 					CadR::BoundingBox::createByCenterAndHalfExtents(
 						glm::mat3(m) * meshBS.center + glm::vec3(m[3]),  // center
@@ -2405,10 +2403,10 @@ void App::init()
 				.center = instancesBB.getCenter(),
 				.radius = 0.f,
 			};
-			for(size_t instanceIndex=0, instanceCount=matrixList.size();
+			for(size_t instanceIndex=0, instanceCount=matrices.size();
 			    instanceIndex<instanceCount; instanceIndex++)
 			{
-				instancesBS.extendRadiusBy(matrixList[instanceIndex] * meshBS);
+				instancesBS.extendRadiusBy(matrices[instanceIndex] * meshBS);
 			}
 			meshBoundingSphereList[meshIndex] = instancesBS;
 

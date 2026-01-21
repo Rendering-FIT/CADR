@@ -226,12 +226,11 @@ void main()
 {
 	// input data and structures
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
-	DrawableDataRef drawableData = DrawableDataRef(inVertexAndDrawableDataPtr.w);
-	uint64_t materialPtr = drawableData.materialPtr;
 	vec3 viewerToFragmentDirection = normalize(inFragmentPosition3);
 	uint64_t vertex0DataPtr = inVertexAndDrawableDataPtr.x;
 	uint64_t vertex1DataPtr = inVertexAndDrawableDataPtr.y;
 	uint64_t vertex2DataPtr = inVertexAndDrawableDataPtr.z;
+	uint64_t drawableDataPtr = inVertexAndDrawableDataPtr.w;
 
 	// normal
 	vec3 normal;
@@ -252,7 +251,7 @@ void main()
 	if(textureOffset == 0)
 		textureType = 0;
 	else {
-		textureInfo = TextureInfoRef(materialPtr + textureOffset);
+		textureInfo = TextureInfoRef(drawableDataPtr + textureOffset);
 		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 	}
 
@@ -287,7 +286,7 @@ void main()
 	if(materialModel == 0) {
 
 		// material data
-		UnlitMaterialRef materialData = UnlitMaterialRef(materialPtr);
+		UnlitMaterialRef unlitMaterial = UnlitMaterialRef(drawableDataPtr);
 
 		if(getMaterialUseColorAttribute()) {
 			uint colorAccessInfo = getColorAccessInfo();
@@ -300,7 +299,7 @@ void main()
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
 				else
-					outColor.a *= materialData.colorAndAlpha.a;
+					outColor.a *= unlitMaterial.colorAndAlpha.a;
 			} else {
 				vec4 c =
 					readVec4(vertex0DataPtr, colorAccessInfo) * inBarycentricCoords.x +
@@ -308,13 +307,13 @@ void main()
 					readVec4(vertex2DataPtr, colorAccessInfo) * inBarycentricCoords.z;
 				outColor = c;
 				if(!getMaterialIgnoreMaterialAlpha())
-					outColor.a *= materialData.colorAndAlpha.a;
+					outColor.a *= unlitMaterial.colorAndAlpha.a;
 			}
 		} else {
 			if(getMaterialIgnoreMaterialAlpha())
-				outColor = vec4(materialData.colorAndAlpha.rgb, 1);
+				outColor = vec4(unlitMaterial.colorAndAlpha.rgb, 1);
 			else
-				outColor = materialData.colorAndAlpha;
+				outColor = unlitMaterial.colorAndAlpha;
 		}
 
 		if(textureType == 0x0400) {
@@ -416,7 +415,7 @@ void main()
 		}
 
 		// material data
-		PhongMaterialRef materialData = PhongMaterialRef(materialPtr);
+		PhongMaterialRef phongMaterial = PhongMaterialRef(drawableDataPtr);
 
 		// ambientColor, diffuseColor and alpha
 		vec3 ambientColor;
@@ -432,7 +431,7 @@ void main()
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
 				else
-					outColor.a *= materialData.diffuseAndAlpha.a;
+					outColor.a *= phongMaterial.diffuseAndAlpha.a;
 			} else {
 				vec4 color =
 					readVec4(vertex0DataPtr, colorAccessInfo) * inBarycentricCoords.x +
@@ -441,19 +440,19 @@ void main()
 				diffuseColor = color.rgb;
 				outColor.a = color.a;
 				if(!getMaterialIgnoreMaterialAlpha())
-					outColor.a *= materialData.diffuseAndAlpha.a;
+					outColor.a *= phongMaterial.diffuseAndAlpha.a;
 			}
 			if(getMaterialUseColorAttributeForAmbientAndDiffuse())
 				ambientColor = diffuseColor;
 			else
-				ambientColor = materialData.ambient;
+				ambientColor = phongMaterial.ambient;
 		} else {
-			ambientColor = materialData.ambient;
-			diffuseColor = materialData.diffuseAndAlpha.rgb;
+			ambientColor = phongMaterial.ambient;
+			diffuseColor = phongMaterial.diffuseAndAlpha.rgb;
 			if(getMaterialIgnoreMaterialAlpha())
 				outColor.a = 1;
 			else
-				outColor.a = materialData.diffuseAndAlpha.a;
+				outColor.a = phongMaterial.diffuseAndAlpha.a;
 		}
 
 		// light data
@@ -475,15 +474,15 @@ void main()
 				uint lightType = getLightType(lightSettings);
 				if(lightType == 1)
 					OpenGLDirectionalLight(lightData, normal,
-						viewerToFragmentDirection, materialData.shininess,
+						viewerToFragmentDirection, phongMaterial.shininess,
 						ambientProduct, diffuseProduct, specularProduct);
 				else if(lightType == 2)
 					OpenGLPointLight(lightData, normal,
-						viewerToFragmentDirection, materialData.shininess,
+						viewerToFragmentDirection, phongMaterial.shininess,
 						ambientProduct, diffuseProduct, specularProduct);
 				else
 					OpenGLSpotlight(lightData, normal,
-						viewerToFragmentDirection, materialData.shininess,
+						viewerToFragmentDirection, phongMaterial.shininess,
 						ambientProduct, diffuseProduct, specularProduct);
 
 				lightDataPtr += getLightDataSize();
@@ -493,16 +492,16 @@ void main()
 			} while(lightSettings != 0);
 
 			// Phong equation
-			outColor.rgb = materialData.emission * emissiveTextureValue +
+			outColor.rgb = phongMaterial.emission * emissiveTextureValue +
 			               (ambientProduct + scene.ambientLight) * ambientColor * occlusionTextureValue +
 			               diffuseProduct * diffuseColor +
-			               specularProduct * materialData.specular;
+			               specularProduct * phongMaterial.specular;
 
 		}
 		else {
 
 			// Phong equation without light sources
-			outColor.rgb = materialData.emission * emissiveTextureValue +
+			outColor.rgb = phongMaterial.emission * emissiveTextureValue +
 			               scene.ambientLight * ambientColor * occlusionTextureValue;
 
 		}
@@ -568,7 +567,7 @@ void main()
 		if(lightSettings != 0) {
 
 			// material data
-			MetallicRoughnessMaterialRef materialData = MetallicRoughnessMaterialRef(materialPtr);
+			MetallicRoughnessMaterialRef metallicRoughnessMaterial = MetallicRoughnessMaterialRef(drawableDataPtr);
 
 			do{
 

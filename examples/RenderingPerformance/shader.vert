@@ -8,51 +8,66 @@
 
 
 // vertices
-layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer VertexDataRef {
+layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
+VertexDataRef {
 	vec3 position;
 };
 const uint VertexDataSize = 12;
 
 
 // indices
-layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer IndexDataRef {
+layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
+IndexDataRef {
 	uint indices[];
 };
 
 
-// per-drawable shader data
-layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer ShaderDataRef {
+// matrix list
+layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
+MatrixListRef {
+	uint numMatrices;
+	uint capacity;
+	uint64_t padding[7];
+	mat4 matrices[];
+};
+
+
+// per-drawable data
+layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
+DrawableDataRef {
 	layout(offset= 0) vec4 ambientAndMaterialType;
 	layout(offset=16) vec4 diffuseAndAlpha;
 	layout(offset=32) vec3 specular;
 	layout(offset=44) float shininess;
 	layout(offset=48) vec3 emission;
 	layout(offset=60) float pointSize;
-	layout(offset=64) mat4 modelMatrix[];
 };
 
 
-// payload data
-// holding per-drawable data pointers
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer PayloadDataRef {
+// drawable data pointers
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
+DrawablePointersRef {
 	uint64_t vertexDataPtr;
 	uint64_t indexDataPtr;
-	uint64_t shaderDataPtr;
+	uint64_t matrixListPtr;
+	uint64_t drawableDataPtr;
 };
-const uint PayloadDataSize = 24;
+const uint DrawablePointersSize = 32;
 
 
 // scene data
-layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer SceneDataRef {
+layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
+SceneDataRef {
 	mat4 viewMatrix;        // current camera view matrix
 	float p11,p22,p33,p43;  // projectionMatrix - members that depend on zNear and zFar clipping planes
 };
 
 
 // push constants
-layout(push_constant) uniform pushConstants {
-	uint64_t payloadBufferPtr;  // one buffer for the whole scene
-	uint64_t sceneDataPtr;  // one buffer for the whole scene
+layout(push_constant) uniform
+pushConstants {
+	layout(offset=0) uint64_t sceneDataPtr;  // pointer to SceneDataRef; usually updated per scene render pass or once per scene rendering
+	layout(offset=8) uint64_t drawablePointersBufferPtr;  // pointer to DrawablePointersRef array; there is one DrawablePointersRef array for each StateSet, so the pointer is updated before each StateSet rendering
 };
 
 
@@ -70,7 +85,7 @@ layout(constant_id = 5) const float p44 = 0.;
 out gl_PerVertex {
 	vec4 gl_Position;
 };
-layout(location = 0) flat out uint64_t outDataPtr;
+layout(location = 0) flat out uint64_t outDrawableDataPtr;
 layout(location = 1) smooth out vec3 outEyePosition3;
 #ifdef ID_BUFFER
 layout(location = 2) flat out uvec2 outId;
@@ -80,18 +95,22 @@ layout(location = 2) flat out uvec2 outId;
 
 void main()
 {
-	// memory pointers
-	PayloadDataRef pd = PayloadDataRef(payloadBufferPtr + (gl_DrawID * PayloadDataSize));
-	outDataPtr = pd.shaderDataPtr;
-	ShaderDataRef data = ShaderDataRef(pd.shaderDataPtr);
-	SceneDataRef scene = SceneDataRef(sceneDataPtr);
-	IndexDataRef indexData = IndexDataRef(pd.indexDataPtr);
+	// drawable pointers
+	DrawablePointersRef dp = DrawablePointersRef(drawablePointersBufferPtr + (gl_DrawID * DrawablePointersSize));
+	outDrawableDataPtr = dp.drawableDataPtr;
+
+	// model matrix list
+	MatrixListRef modelMatrixList = MatrixListRef(dp.matrixListPtr);
+
+	// vertex data
+	IndexDataRef indexData = IndexDataRef(dp.indexDataPtr);
 	uint index = indexData.indices[gl_VertexIndex];
-	VertexDataRef vertex = VertexDataRef(pd.vertexDataPtr + (index * VertexDataSize));
+	VertexDataRef vertex = VertexDataRef(dp.vertexDataPtr + (index * VertexDataSize));
 
 	// matrices and positions
-	mat4 modelViewMatrix = scene.viewMatrix * data.modelMatrix[gl_InstanceIndex];
-	vec4 eyePosition = modelViewMatrix * vec4(vertex.position,1);
+	SceneDataRef scene = SceneDataRef(sceneDataPtr);
+	mat4 modelViewMatrix = scene.viewMatrix * modelMatrixList.matrices[gl_InstanceIndex];
+	vec4 eyePosition = modelViewMatrix * vec4(vertex.position, 1);
 	outEyePosition3 = eyePosition.xyz / eyePosition.w;
 
 	// multiplication by projection "matrix"
@@ -113,5 +132,4 @@ void main()
 	debugPrintfEXT("BaseColor, DrawID: %u, Vertex: %u, Index: %u, Instance %u, dataPtr: %lx, VertexDataBase: 0x%lx, VertexDataPtr: 0x%lx, VertexDataSize: %u, position: %.2f,%.2f,%.2f.\n",
 	               gl_DrawID, gl_VertexIndex, index, gl_InstanceIndex, outDataPtr, pd.vertexDataPtr, uint64_t(vertex), VertexDataSize, vertex.position.x, vertex.position.y, vertex.position.z);
 #endif
-
 }
