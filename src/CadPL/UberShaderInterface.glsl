@@ -140,19 +140,16 @@ TextureInfoRef {
 	//   3 - emissive texture
 	//   4 - base texture
 	// settings - bits 16..31
-	//   bit 16 - multiply texture value by strength member; if neither bit 16 nor bit 17 is set,
-	//            the TextureInfoRef structure occupies only 8 bytes and following TextureInfo
-	//            structure is placed on the address incremented by 8 bytes only
-	//   bit 17 - transform texture coordinates by the transformation specified by t1..t6;
-	//            if bits 16 and 17 are not set, the structure occupies only 8 bytes;
-	//            if bit 16 is set and bit 17 not, the structure occupies 12 bytes; otherwise
-	//            it occupies 36 bytes; these sizes should be used to compute address
-	//            of the next TextureInfo structure
+	//   bit 16 - multiply texture value by strength member
+	//   bit 17 - transform texture coordinates by the transformation specified by t1..t6
 	//   bit 18 - blend color included in the structure
 	//   bits 19..21 - for Phong and its base texture, texture environment:
 	//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add
 	//   bits 22..23 - first component index;
-	//   bits 26..31 - size of the structure (0..63 bytes), it must be multiple of 8
+	//   bits 26..31 - size of the structure (0..63 bytes), it must be multiple of 8;
+	//                 structure size might be even 8 bytes if strength and the following
+	//                 members are not used; size of the structure is used for computing
+	//                 of the start address of the next TextureInfo structure
 	uint texCoordIndexTypeAndSettings;
 	uint textureIndex;
 	float strength;

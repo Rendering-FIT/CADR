@@ -12,6 +12,17 @@
 namespace CadR {
 
 
+/** Manages handles pointing to GPU memory.
+ *  Objects might move inside GPU memory and handles might be used
+ *  to lookup their addresses.
+ *
+ *  Handles are identified by 64-bit value starting from 1.
+ *  Zero value is reserved as invalid handle.
+ *  Once handle is created, its identification value does not change
+ *  until the handle is destroyed.
+ *  GPU can lookup the handle and get the 64-bit pointer pointing
+ *  to the address of particular data in GPU memory.
+ */
 class CADR_EXPORT HandleTable {
 public:
 

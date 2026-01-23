@@ -1270,8 +1270,7 @@ void App::init()
 	static_assert(sizeof(TextureData) == 48 && "Wrong size of TextureData structure");
 	struct StateSetMaterialData {
 		bool doubleSided;
-		unsigned baseColorTextureIndex;
-		unsigned baseColorTexCoordIndex;
+		unsigned textureInfoOffset;
 	};
 	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
 	PhongMaterialData* m = sd.data<PhongMaterialData>();
@@ -1284,8 +1283,7 @@ void App::init()
 	m->reflection = glm::vec3(0.f, 0.f, 0.f);
 	StateSetMaterialData defaultStateSetMaterialData {
 		.doubleSided = false,
-		.baseColorTextureIndex = ~unsigned(0),
-		.baseColorTexCoordIndex = ~unsigned(0),
+		.textureInfoOffset = 0,
 	};
 
 
@@ -1301,7 +1299,10 @@ void App::init()
 		bool doubleSided;
 		glm::vec4 baseColorFactor;
 		unsigned baseColorTextureIndex;
-		unsigned baseColorTexCoordIndex;
+		unsigned baseColorTextureCoordIndex;
+		unsigned normalTextureIndex;
+		unsigned normalTextureCoordIndex;
+		unsigned normalTextureScale;
 		float metallicFactor;
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
@@ -1329,17 +1330,19 @@ void App::init()
 			metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
 			roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
 
-			// not supported properties
+			// base color texture
 			if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
 				baseColorTextureIndex = unsigned(baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>());
 				if(baseColorTextureIndex >= textureList.size())
 					throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
-				baseColorTexCoordIndex = baseColorTextureIt->value("texCoord", 0);
+				baseColorTextureCoordIndex = baseColorTextureIt->value("texCoord", 0);
 			}
 			else {
 				baseColorTextureIndex = ~unsigned(0);
-				baseColorTexCoordIndex = ~unsigned(0);
+				baseColorTextureCoordIndex = ~unsigned(0);
 			}
+
+			// not supported properties
 			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
 				throw GltfError("Unsupported functionality: metallic-roughness texture.");
 
@@ -1349,7 +1352,7 @@ void App::init()
 			// default values when pbrMetallicRoughness is not present
 			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
 			baseColorTextureIndex = ~unsigned(0);
-			baseColorTexCoordIndex = ~unsigned(0);
+			baseColorTextureCoordIndex = ~unsigned(0);
 			metallicFactor = 1.f;
 			roughnessFactor = 1.f;
 		}
@@ -1366,9 +1369,21 @@ void App::init()
 		else
 			emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
 
+		// normal texture
+		if(auto normalTextureIt = material.find("normalTexture"); normalTextureIt != material.end()) {
+			normalTextureIndex = unsigned(normalTextureIt->at("index").get_ref<json::number_unsigned_t&>());
+			if(normalTextureIndex >= textureList.size())
+				throw GltfError("normalTexture.index is out of range. It is not index to a valid texture.");
+			normalTextureCoordIndex = normalTextureIt->value("texCoord", 0);
+			normalTextureScale = normalTextureIt->value("scale", 1);
+		}
+		else {
+			normalTextureIndex = ~unsigned(0);
+			normalTextureCoordIndex = ~unsigned(0);
+			normalTextureScale = 1;
+		}
+
 		// not supported material properties
-		if(material.find("normalTexture") != material.end())
-			throw GltfError("Unsupported functionality: normal texture.");
 		if(material.find("occlusionTexture") != material.end())
 			throw GltfError("Unsupported functionality: occlusion texture.");
 		if(material.find("emissiveTexture") != material.end())
@@ -1381,7 +1396,17 @@ void App::init()
 		// material size
 		size_t materialSize = phongMaterialDataSizeAligned8;
 		if(baseColorTextureIndex != ~unsigned(0))
-			materialSize += 16;
+			materialSize += 8;
+		if(normalTextureIndex != ~unsigned(0)) {
+			if(normalTextureScale == 1.f)
+				materialSize += 8;
+			else
+				materialSize += 12;
+		}
+
+		// if there are textures, let's put terminating texture record as well
+		if(materialSize != phongMaterialDataSizeAligned8)
+			materialSize += 8;
 
 		// material
 		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
@@ -1395,15 +1420,36 @@ void App::init()
 		m->pointSize = 0.f;
 		m->reflection = glm::vec3(0.f, 0.f, 0.f);
 
+		TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8);
+		if(normalTextureIndex != ~unsigned(0))
+		{
+			// normal texture
+			t->texCoordIndex = 4 + normalTextureCoordIndex;  // texture coordinates are placed on attribute 4 and following
+			t->type = 1;
+			t->textureIndex = normalTextureIndex;
+			if(normalTextureScale == 1.f) {
+				// no scale/strength used
+				t->settings = 0 | (8 << 10);  // no flags, structure size 8
+				t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
+			} else {
+				// scale/strength in use
+				t->settings = 1 | (12 << 10);  // use strength/scale, structure size 12
+				t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 12);
+			}
+		}
 		if(baseColorTextureIndex != ~unsigned(0))
 		{
-			// material base texture
-			TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8);
-			t->texCoordIndex = 4 + baseColorTexCoordIndex;  // texture coordinates are placed on attribute 4 and following
+			// base texture
+			t->texCoordIndex = 4 + baseColorTextureCoordIndex;  // texture coordinates are placed on attribute 4 and following
 			t->type = 4;
 			t->settings = 0 | (8 << 10);  // no flags, structure size 8
 			t->textureIndex = baseColorTextureIndex;
+			t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
+		}
 
+		// if at least one texture was written, put terminating record as well
+		if(t != reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8))
+		{
 			// terminating record (all zeros)
 			t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
 			t->texCoordIndex = 0;
@@ -1415,8 +1461,10 @@ void App::init()
 		// StateSetMaterialData
 		auto& ssm = stateSetMaterialDataList[materialIndex];
 		ssm.doubleSided = doubleSided;
-		ssm.baseColorTextureIndex = baseColorTextureIndex;
-		ssm.baseColorTexCoordIndex = baseColorTexCoordIndex;
+		ssm.textureInfoOffset =
+			(materialSize == phongMaterialDataSizeAligned8)
+				? 0  // no texture info
+				: phongMaterialDataSizeAligned8;  // texture info just after phong data
 	}
 	assert(materialList.size() == numMaterials && "Not all materials were created.");
 
@@ -1602,6 +1650,8 @@ void App::init()
 			glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
 			unsigned colorDataStride;
 			unsigned texCoordDataStride;
+			glm::vec4* tangentData = nullptr;
+			unsigned tangentDataStride;
 			CadR::BoundingBox primitiveSetBB;
 			for(auto it = attributes.begin(); it != attributes.end(); it++) {
 				if(it.key() == "POSITION") {
@@ -1756,7 +1806,7 @@ void App::init()
 						throw GltfError("TexCoord attribute is not of VEC2 type.");
 
 					// accessor.componentType is mandatory and it must be FLOAT (5126),
-					// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for color accessors
+					// UNSIGNED_BYTE (5121) or UNSIGNED_SHORT (5123) for texCoord accessors
 					const json::number_unsigned_t ct = accessor.at("componentType").get_ref<json::number_unsigned_t&>();
 					if(ct != 5126 && ct != 5121 && ct != 5123)
 						throw GltfError("TexCoord attribute componentType is not float, unsigned byte, or unsigned short.");
@@ -1789,6 +1839,36 @@ void App::init()
 					tie(reinterpret_cast<void*&>(texCoordData), texCoordDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
 						                        numVertices, elementSize);
+
+				}
+				else if(it.key() == "TANGENT") {
+
+					// vertex size
+					vertexSize += 16;
+
+					// accessor
+					json& accessor = accessors.at(it.value().get_ref<json::number_unsigned_t&>());
+
+					// accessor.type is mandatory and it must be VEC4 for tangent accessor
+					if(accessor.at("type").get_ref<json::string_t&>() != "VEC4")
+						throw GltfError("Tangent attribute is not of VEC4 type.");
+
+					// accessor.componentType is mandatory and it must be FLOAT (5126) for tangent accessor
+					if(accessor.at("componentType").get_ref<json::number_unsigned_t&>() != 5126)
+						throw GltfError("Tangent attribute componentType is not float.");
+
+					// accessor.normalized is optional with default value false; it must be false for float componentType
+					if(auto it=accessor.find("normalized"); it!=accessor.end())
+						if(it->get_ref<json::boolean_t&>() == true)
+							throw GltfError("Tangent attribute normalized flag is true.");
+
+					// update numVertices
+					updateNumVertices(accessor, numVertices);
+
+					// tangent data and stride
+					tie(reinterpret_cast<void*&>(tangentData), tangentDataStride) =
+						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
+						                        numVertices, sizeof(glm::vec4));
 
 				}
 				else
@@ -1884,6 +1964,11 @@ void App::init()
 					*reinterpret_cast<glm::vec4*>(p) = glm::vec4(normal.x, normal.y, normal.z, 0.f);
 					p += 16;
 					normalData = reinterpret_cast<glm::vec3*>(reinterpret_cast<uint8_t*>(normalData) + normalDataStride);
+				}
+				if(tangentData) {
+					*reinterpret_cast<glm::vec4*>(p) = *tangentData;
+					p += 16;
+					tangentData = reinterpret_cast<glm::vec4*>(reinterpret_cast<uint8_t*>(tangentData) + tangentDataStride);
 				}
 				if(colorData) {
 					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
@@ -2291,8 +2376,12 @@ void App::init()
 						} else
 							r[1] = 0;
 
-						// tangents
-						r[2] = 0;
+						// tangents: float4, alignment 16
+						if(tangentData) {
+							r[2] = 0x0100 | offset;
+							offset += 0x10;
+						} else
+							r[2] = 0;
 
 						// colors: float4, alignment 16
 						if(colorData) {
@@ -2316,11 +2405,11 @@ void App::init()
 					}(),
 				.attribSetup =
 					(normalData ? 0 : 1) |  // generateFlatNormals
-					(16u + (normalData ? 16 : 0) + (colorData ? 16 : 0) + (texCoordData ? 16 : 0)),  // vertexDataSize
+					(16u + (normalData ? 16 : 0) + (tangentData ? 16 : 0) +  // vertexDataSize
+						(colorData ? 16 : 0) + (texCoordData ? 16 : 0)),
 				.materialSetup =
 					0x0001 |  // Phong
-					((ssMaterialData.baseColorTextureIndex == ~unsigned(0))  // texture offset
-						? 0 : uint32_t(phongMaterialDataSizeAligned8)) |
+					ssMaterialData.textureInfoOffset |  // texture offset
 					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
 					(colorData ? 0x0200 : 0) |  // use color attribute for ambient and diffuse
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
