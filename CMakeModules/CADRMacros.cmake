@@ -127,8 +127,11 @@ macro(add_shaders nameList depsList)
 endmacro()
 
 
-# creates custom commands to convert GLSL shader to spir-v using preprocessor defines and output file name
-# and appends the shader and output file name to depsList; depsList contains name of files that should be included among the source files
+# Create custom command to convert GLSL shader to spir-v.
+# It uses preprocessor defines in the form \"-DDEFINE1 -DDEFINE2\".
+# It also takes output file name as parameter and appends
+# the shader and output file name to depsList;
+# depsList contains name of files that should be included among the source files.
 macro(add_shader name defines outputFileName depsList)
 	get_filename_component(directory ${outputFileName} DIRECTORY)
 	if(directory)
@@ -137,12 +140,18 @@ macro(add_shader name defines outputFileName depsList)
 	if("${defines}" STREQUAL "")
 		set(commentText "Converting ${name} (defines: none) to spir-v...")
 	else()
-		set(commentText "Converting ${name} (defines: ${defines}) to spir-v...")
+		string(REPLACE ";" " " definesText "${defines}")
+		set(commentText "Converting ${name} (defines: ${definesText}) to spir-v...")
 	endif()
 	add_custom_command(COMMENT "${commentText}"
 	                   MAIN_DEPENDENCY "${name}"
 	                   OUTPUT "${outputFileName}"
-	                   COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" --target-env vulkan1.2 -x ${defines} "${CMAKE_CURRENT_SOURCE_DIR}/${name}" -o "${outputFileName}")
+	                   COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}"
+	                               --target-env vulkan1.2  # Vulkan 1.2 is required for VK_EXT_buffer_device_address
+	                               -x  # save binary output as text-based hexadecimal numbers
+	                               ${defines}  # define pre-processor macros
+	                               "${CMAKE_CURRENT_SOURCE_DIR}/${name}"  # source file
+	                               -o "${outputFileName}")  # output file
 	source_group("Shaders" FILES "${name}")
 	source_group("Shaders/SPIR-V" FILES "${CMAKE_CURRENT_BINARY_DIR}/${outputFileName}")
 	list(APPEND ${depsList} "${name}" "${CMAKE_CURRENT_BINARY_DIR}/${outputFileName}")

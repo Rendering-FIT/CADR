@@ -5,26 +5,6 @@
 using namespace std;
 using namespace CadPL;
 
-// shader code in SPIR-V binary
-static const uint32_t vertexUberShaderSpirv[]={
-#include "shaders/UberShader.vert.spv"
-};
-static const uint32_t vertexIdBufferUberShaderSpirv[]={
-#include "shaders/UberShader-idBuffer.vert.spv"
-};
-static const uint32_t geometryUberShaderSpirv[]={
-#include "shaders/UberShader.geom.spv"
-};
-static const uint32_t geometryIdBufferUberShaderSpirv[]={
-#include "shaders/UberShader-idBuffer.geom.spv"
-};
-static const uint32_t fragmentUberShaderSpirv[]={
-#include "shaders/UberShader.frag.spv"
-};
-static const uint32_t fragmentIdBufferUberShaderSpirv[]={
-#include "shaders/UberShader-idBuffer.frag.spv"
-};
-
 
 
 void ShaderLibrary::destroy() noexcept
@@ -200,4 +180,40 @@ bool ShaderState::operator<(const ShaderState& rhs) const
 	if(primitiveTopology < rhs.primitiveTopology)  return true;
 	if(primitiveTopology > rhs.primitiveTopology)  return false;
 	return projectionHandling < rhs.projectionHandling;
+}
+
+
+ShaderLibrary::GeometryShaderMapKey::GeometryShaderMapKey(const ShaderState& shaderState)
+{
+	switch(shaderState.primitiveTopology) {
+	case vk::PrimitiveTopology::eTriangleList:
+	case vk::PrimitiveTopology::eTriangleStrip:
+	case vk::PrimitiveTopology::eTriangleFan:
+		type = shaderState.idBuffer ? Type::TrianglesIdBuffer : Type::Triangles;
+		break;
+	case vk::PrimitiveTopology::eLineList:
+	case vk::PrimitiveTopology::eLineStrip:
+		type = shaderState.idBuffer ? Type::LinesIdBuffer : Type::Lines;
+		break;
+	default:
+		type = Type::Invalid;
+	}
+}
+
+
+ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& shaderState)
+{
+	switch(shaderState.primitiveTopology) {
+	case vk::PrimitiveTopology::eTriangleList:
+	case vk::PrimitiveTopology::eTriangleStrip:
+	case vk::PrimitiveTopology::eTriangleFan:
+		type = shaderState.idBuffer ? Type::TrianglesIdBuffer : Type::Triangles;
+		break;
+	case vk::PrimitiveTopology::eLineList:
+	case vk::PrimitiveTopology::eLineStrip:
+		type = shaderState.idBuffer ? Type::LinesIdBuffer : Type::Lines;
+		break;
+	default:
+		type = Type::Invalid;
+	}
 }

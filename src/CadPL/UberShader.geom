@@ -9,21 +9,34 @@
 # extension GL_EXT_debug_printf : require
 #endif
 
+#ifdef TRIANGLES
 layout(triangles) in;
 layout(triangle_strip, max_vertices=3) out;
+const int numInputs = 3;
+#endif
+#ifdef LINES
+layout(lines) in;
+layout(line_strip, max_vertices=2) out;
+const int numInputs = 2;
+#endif
 
 
 // input from vertex shader
-layout(location = 0) in flat int inDrawIndex[3];
-layout(location = 1) in flat int inInstanceIndex[3];
-layout(location = 2) in flat int inVertexIndex[3];
+layout(location = 0) in flat int inDrawIndex[numInputs];
+layout(location = 1) in flat int inInstanceIndex[numInputs];
+layout(location = 2) in flat int inVertexIndex[numInputs];
 #ifdef ID_BUFFER
-layout(location = 3) in flat uvec2 inId[3];
+layout(location = 3) in flat uvec2 inId[numInputs];
 #endif
 
 // output to fragment shader
-layout(location = 0) out flat u64vec4 outVertexAndDrawableDataPtr;  // VertexData on indices 0..2 and DrawableData on index 3; it occupies locations 0 and 1
+layout(location = 0) out flat u64vec4 outVertexAndDrawableDataPtr;  // VertexData on indices 0..2 for triangles and 0..1 for lines. DrawableData on index 3. The vector occupies locations 0 and 1.
+#ifdef TRIANGLES
 layout(location = 2) out smooth vec3 outBarycentricCoords;  // barycentric coordinates using perspective correction
+#endif
+#ifdef LINES
+layout(location = 2) out smooth vec2 outBarycentricCoords;  // barycentric coordinates using perspective correction
+#endif
 layout(location = 3) out smooth vec3 outVertexPosition3;  // in eye coordinates
 layout(location = 4) out smooth vec3 outVertexNormal;  // in eye coordinates
 layout(location = 5) out smooth vec3 outVertexTangent;  // in eye coordinates
@@ -59,30 +72,36 @@ void main()
 
 	// vertex data
 	IndexDataRef indexData = IndexDataRef(dp.indexDataPtr);
-	uint index0 = indexData.indices[inVertexIndex[0]];
-	uint index1 = indexData.indices[inVertexIndex[1]];
-	uint index2 = indexData.indices[inVertexIndex[2]];
 	uint vertexDataSize = getVertexDataSize();
+	uint index0 = indexData.indices[inVertexIndex[0]];
 	uint64_t vertex0DataPtr = dp.vertexDataPtr + (index0 * vertexDataSize);
-	uint64_t vertex1DataPtr = dp.vertexDataPtr + (index1 * vertexDataSize);
-	uint64_t vertex2DataPtr = dp.vertexDataPtr + (index2 * vertexDataSize);
 	vertexAndDrawableDataPtr.x = vertex0DataPtr;
+	uint index1 = indexData.indices[inVertexIndex[1]];
+	uint64_t vertex1DataPtr = dp.vertexDataPtr + (index1 * vertexDataSize);
 	vertexAndDrawableDataPtr.y = vertex1DataPtr;
+#ifdef TRIANGLES
+	uint index2 = indexData.indices[inVertexIndex[2]];
+	uint64_t vertex2DataPtr = dp.vertexDataPtr + (index2 * vertexDataSize);
 	vertexAndDrawableDataPtr.z = vertex2DataPtr;
+#endif
 
 	// vertex positions
 	// (it is stored on offset 0 by convention)
 	uint positionAccessInfo = getPositionAccessInfo();
 	vec3 position0 = readVec3(vertex0DataPtr, positionAccessInfo);
 	vec3 position1 = readVec3(vertex1DataPtr, positionAccessInfo);
+#ifdef TRIANGLES
 	vec3 position2 = readVec3(vertex2DataPtr, positionAccessInfo);
+#endif
 
 	// matrices and positions
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
 	mat4 modelViewMatrix = scene.viewMatrix * modelMatrixList.matrices[instanceIndex];
 	vec4 eyePosition0 = modelViewMatrix * vec4(position0, 1);
 	vec4 eyePosition1 = modelViewMatrix * vec4(position1, 1);
+#ifdef TRIANGLES
 	vec4 eyePosition2 = modelViewMatrix * vec4(position2, 1);
+#endif
 #if 0  // debug print; to enable it, you also need to (1) enable GL_EXT_debug_printf extension on the beginning of this shader,
        // you need to (2) enable VK_KHR_shader_non_semantic_info device extension (look for VK_KHR_shader_non_semantic_info
        // text in InitAndFinalize.cpp) and you need to (3) have Vulkan Configurator (vkconfig) running and you need to
@@ -109,7 +128,12 @@ void main()
 
 	// set output variables
 	outVertexAndDrawableDataPtr = vertexAndDrawableDataPtr;
+#ifdef TRIANGLES
 	outBarycentricCoords = vec3(1,0,0);
+#endif
+#ifdef LINES
+	outBarycentricCoords = vec2(1,0);
+#endif
 	outVertexPosition3 = eyePosition0.xyz / eyePosition0.w;
 
 	// normal
@@ -148,7 +172,12 @@ void main()
 
 	// set output variables
 	outVertexAndDrawableDataPtr = vertexAndDrawableDataPtr;
+#ifdef TRIANGLES
 	outBarycentricCoords = vec3(0,1,0);
+#endif
+#ifdef LINES
+	outBarycentricCoords = vec2(0,1);
+#endif
 	outVertexPosition3 = eyePosition1.xyz / eyePosition1.w;
 
 	// normal
@@ -172,6 +201,8 @@ void main()
 
 
 	// third vertex
+
+#ifdef TRIANGLES
 
 	// multiplication by projection "matrix"
 #if 1
@@ -206,5 +237,7 @@ void main()
 
 	// finish first vertex
 	EmitVertex();
+
+#endif
 
 }

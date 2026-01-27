@@ -180,14 +180,14 @@ vec2 transformTexCoord(vec2 tc, TextureInfoRef textureInfo)
 	return rotationAndScale * tc + translation;
 }
 
-vec2 computeTextureCoordinates(TextureInfoRef textureInfo, uint64_t vertex0DataPtr,
-	uint64_t vertex1DataPtr, uint64_t vertex2DataPtr, vec3 barycentricCoords)
+vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
+	u64vec3 vertexDataPtrList, vec3 barycentricCoords)
 {
 	// get texture coordinates
 	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
-	vec2 uv0 = readVec2(vertex0DataPtr, texCoordAccessInfo);
-	vec2 uv1 = readVec2(vertex1DataPtr, texCoordAccessInfo);
-	vec2 uv2 = readVec2(vertex2DataPtr, texCoordAccessInfo);
+	vec2 uv0 = readVec2(vertexDataPtrList[0], texCoordAccessInfo);
+	vec2 uv1 = readVec2(vertexDataPtrList[1], texCoordAccessInfo);
+	vec2 uv2 = readVec2(vertexDataPtrList[2], texCoordAccessInfo);
 	vec2 uv = uv0 * barycentricCoords.x + uv1 * barycentricCoords.y +
 	          uv2 * barycentricCoords.z;
 
@@ -196,6 +196,52 @@ vec2 computeTextureCoordinates(TextureInfoRef textureInfo, uint64_t vertex0DataP
 		uv = transformTexCoord(uv, textureInfo);
 
 	return uv;
+}
+
+vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
+	u64vec2 vertexDataPtrList, vec2 barycentricCoords)
+{
+	// get texture coordinates
+	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
+	vec2 uv0 = readVec2(vertexDataPtrList[0], texCoordAccessInfo);
+	vec2 uv1 = readVec2(vertexDataPtrList[1], texCoordAccessInfo);
+	vec2 uv = uv0 * barycentricCoords.x + uv1 * barycentricCoords.y;
+
+	// transform texture coordinates
+	if(getTextureTranformFlag(textureInfo))
+		uv = transformTexCoord(uv, textureInfo);
+
+	return uv;
+}
+
+vec3 interpolateAttribute3(uint attribAccessInfo,
+	u64vec3 vertexDataPtrList, vec3 barycentricCoords)
+{
+	return readVec3(vertexDataPtrList[0], attribAccessInfo) * barycentricCoords.x +
+	       readVec3(vertexDataPtrList[1], attribAccessInfo) * barycentricCoords.y +
+	       readVec3(vertexDataPtrList[2], attribAccessInfo) * barycentricCoords.z;
+}
+
+vec4 interpolateAttribute4(uint attribAccessInfo,
+	u64vec3 vertexDataPtrList, vec3 barycentricCoords)
+{
+	return readVec4(vertexDataPtrList[0], attribAccessInfo) * barycentricCoords.x +
+	       readVec4(vertexDataPtrList[1], attribAccessInfo) * barycentricCoords.y +
+	       readVec4(vertexDataPtrList[2], attribAccessInfo) * barycentricCoords.z;
+}
+
+vec3 interpolateAttribute3(uint attribAccessInfo,
+	u64vec2 vertexDataPtrList, vec2 barycentricCoords)
+{
+	return readVec3(vertexDataPtrList[0], attribAccessInfo) * barycentricCoords.x +
+	       readVec3(vertexDataPtrList[1], attribAccessInfo) * barycentricCoords.y;
+}
+
+vec4 interpolateAttribute4(uint attribAccessInfo,
+	u64vec2 vertexDataPtrList, vec2 barycentricCoords)
+{
+	return readVec4(vertexDataPtrList[0], attribAccessInfo) * barycentricCoords.x +
+	       readVec4(vertexDataPtrList[1], attribAccessInfo) * barycentricCoords.y;
 }
 
 

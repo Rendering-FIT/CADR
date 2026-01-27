@@ -12,17 +12,29 @@ static const uint32_t vertexUberShaderSpirv[]={
 static const uint32_t vertexIdBufferUberShaderSpirv[]={
 #include "shaders/UberShader-idBuffer.vert.spv"
 };
-static const uint32_t geometryUberShaderSpirv[]={
-#include "shaders/UberShader.geom.spv"
+static const uint32_t geometryUberShaderTrianglesSpirv[]={
+#include "shaders/UberShaderTriangles.geom.spv"
 };
-static const uint32_t geometryIdBufferUberShaderSpirv[]={
-#include "shaders/UberShader-idBuffer.geom.spv"
+static const uint32_t geometryUberShaderLinesSpirv[]={
+#include "shaders/UberShaderLines.geom.spv"
 };
-static const uint32_t fragmentUberShaderSpirv[]={
-#include "shaders/UberShader.frag.spv"
+static const uint32_t geometryIdBufferUberShaderTrianglesSpirv[]={
+#include "shaders/UberShaderTriangles-idBuffer.geom.spv"
 };
-static const uint32_t fragmentIdBufferUberShaderSpirv[]={
-#include "shaders/UberShader-idBuffer.frag.spv"
+static const uint32_t geometryIdBufferUberShaderLinesSpirv[]={
+#include "shaders/UberShaderLines-idBuffer.geom.spv"
+};
+static const uint32_t fragmentUberShaderTrianglesSpirv[]={
+#include "shaders/UberShaderTriangles.frag.spv"
+};
+static const uint32_t fragmentUberShaderLinesSpirv[]={
+#include "shaders/UberShaderLines.frag.spv"
+};
+static const uint32_t fragmentIdBufferUberShaderTrianglesSpirv[]={
+#include "shaders/UberShaderTriangles-idBuffer.frag.spv"
+};
+static const uint32_t fragmentIdBufferUberShaderLinesSpirv[]={
+#include "shaders/UberShaderLines-idBuffer.frag.spv"
 };
 
 
@@ -55,13 +67,33 @@ vk::ShaderModule ShaderGenerator::createGeometryShader(const ShaderState& state,
 {
 	const uint32_t* code;
 	size_t size;
-	if(state.idBuffer) {
-		code = geometryIdBufferUberShaderSpirv;
-		size = sizeof(geometryIdBufferUberShaderSpirv);
-	}
-	else {
-		code = geometryUberShaderSpirv;
-		size = sizeof(geometryUberShaderSpirv);
+	switch(state.primitiveTopology) {
+	case vk::PrimitiveTopology::eTriangleList:
+	case vk::PrimitiveTopology::eTriangleStrip:
+	case vk::PrimitiveTopology::eTriangleFan:
+		if(state.idBuffer) {
+			code = geometryIdBufferUberShaderTrianglesSpirv;
+			size = sizeof(geometryIdBufferUberShaderTrianglesSpirv);
+		}
+		else {
+			code = geometryUberShaderTrianglesSpirv;
+			size = sizeof(geometryUberShaderTrianglesSpirv);
+		}
+		break;
+	case vk::PrimitiveTopology::eLineList:
+	case vk::PrimitiveTopology::eLineStrip:
+		if(state.idBuffer) {
+			code = geometryIdBufferUberShaderLinesSpirv;
+			size = sizeof(geometryIdBufferUberShaderLinesSpirv);
+		}
+		else {
+			code = geometryUberShaderLinesSpirv;
+			size = sizeof(geometryUberShaderLinesSpirv);
+		}
+		break;
+	default:
+		code = nullptr;
+		size = 0;
 	}
 
 	return
@@ -79,13 +111,33 @@ vk::ShaderModule ShaderGenerator::createFragmentShader(const ShaderState& state,
 {
 	const uint32_t* code;
 	size_t size;
-	if(state.idBuffer) {
-		code = fragmentIdBufferUberShaderSpirv;
-		size = sizeof(fragmentIdBufferUberShaderSpirv);
-	}
-	else {
-		code = fragmentUberShaderSpirv;
-		size = sizeof(fragmentUberShaderSpirv);
+	switch(state.primitiveTopology) {
+	case vk::PrimitiveTopology::eTriangleList:
+	case vk::PrimitiveTopology::eTriangleStrip:
+	case vk::PrimitiveTopology::eTriangleFan:
+		if(state.idBuffer) {
+			code = fragmentIdBufferUberShaderTrianglesSpirv;
+			size = sizeof(fragmentIdBufferUberShaderTrianglesSpirv);
+		}
+		else {
+			code = fragmentUberShaderTrianglesSpirv;
+			size = sizeof(fragmentUberShaderTrianglesSpirv);
+		}
+		break;
+	case vk::PrimitiveTopology::eLineList:
+	case vk::PrimitiveTopology::eLineStrip:
+		if(state.idBuffer) {
+			code = fragmentIdBufferUberShaderLinesSpirv;
+			size = sizeof(fragmentIdBufferUberShaderLinesSpirv);
+		}
+		else {
+			code = fragmentUberShaderLinesSpirv;
+			size = sizeof(fragmentUberShaderLinesSpirv);
+		}
+		break;
+	default:
+		code = nullptr;
+		size = 0;
 	}
 
 	return

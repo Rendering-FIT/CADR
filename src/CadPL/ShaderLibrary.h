@@ -97,14 +97,16 @@ protected:
 		bool operator<(const VertexShaderMapKey& rhs) const;
 	};
 	struct GeometryShaderMapKey {
-		bool idBuffer;
+		enum class Type { Invalid, Triangles, TrianglesIdBuffer, Lines, LinesIdBuffer };
+		Type type;
 		GeometryShaderMapKey(const ShaderState& shaderState);
-		bool operator<(const GeometryShaderMapKey& rhs) const  { return idBuffer < rhs.idBuffer; }
+		bool operator<(const GeometryShaderMapKey& rhs) const  { return type < rhs.type; }
 	};
 	struct FragmentShaderMapKey {
-		bool idBuffer;
+		enum class Type { Invalid, Triangles, TrianglesIdBuffer, Lines, LinesIdBuffer };
+		Type type;
 		FragmentShaderMapKey(const ShaderState& shaderState);
-		bool operator<(const FragmentShaderMapKey& rhs) const  { return idBuffer < rhs.idBuffer; }
+		bool operator<(const FragmentShaderMapKey& rhs) const  { return type < rhs.type; }
 	};
 
 	std::map<VertexShaderMapKey, ShaderModuleObject<VertexShaderMapKey>> _vertexShaderMap;
@@ -158,8 +160,6 @@ inline SharedShaderModule::operator bool() const  { return _smObject; }
 inline void SharedShaderModule::reset() noexcept  { if(!_smObject) return; ShaderLibrary::unrefShaderModule(_smObject); _smObject=nullptr; }
 
 inline ShaderLibrary::VertexShaderMapKey::VertexShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer), projectionHandling(shaderState.projectionHandling) {}
-inline ShaderLibrary::GeometryShaderMapKey::GeometryShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
-inline ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer) {}
 inline bool ShaderLibrary::VertexShaderMapKey::operator<(const ShaderLibrary::VertexShaderMapKey& rhs) const  { if(idBuffer < rhs.idBuffer) return true; if(idBuffer > rhs.idBuffer) return false; return projectionHandling < rhs.projectionHandling; }
 inline void ShaderLibrary::refShaderModule(void* shaderModuleObject) noexcept  { auto* smObject=static_cast<ShaderLibrary::AbstractShaderModuleObject*>(shaderModuleObject); smObject->referenceCounter++; }
 inline void ShaderLibrary::unrefShaderModule(void* shaderModuleObject) noexcept  { auto* smObject=static_cast<ShaderLibrary::AbstractShaderModuleObject*>(shaderModuleObject); if(smObject->referenceCounter==1) ShaderLibrary::destroyShaderModule(smObject); else smObject->referenceCounter--; }

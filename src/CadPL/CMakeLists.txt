@@ -43,12 +43,18 @@ find_package(Vulkan REQUIRED)
 find_package(glm REQUIRED)
 
 # shaders
+set(CADPL_SHADER_DEPS  UberShaderInterface.glsl UberShaderReadFuncs.glsl)
+source_group("Shaders" FILES ${CADPL_SHADER_DEPS})
 add_shader(UberShader.vert  ""  shaders/UberShader.vert.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.geom  ""  shaders/UberShader.geom.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.frag  ""  shaders/UberShader.frag.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.vert  -DID_BUFFER  shaders/UberShader-idBuffer.vert.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.geom  -DID_BUFFER  shaders/UberShader-idBuffer.geom.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.frag  -DID_BUFFER  shaders/UberShader-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.vert  "-DID_BUFFER"  shaders/UberShader-idBuffer.vert.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  "-DTRIANGLES"  shaders/UberShaderTriangles.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  "-DLINES"      shaders/UberShaderLines.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  "-DID_BUFFER;-DTRIANGLES"  shaders/UberShaderTriangles-idBuffer.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  "-DID_BUFFER;-DLINES"      shaders/UberShaderLines-idBuffer.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DTRIANGLES"  shaders/UberShaderTriangles.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DLINES"      shaders/UberShaderLines.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DID_BUFFER;-DTRIANGLES"  shaders/UberShaderTriangles-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DID_BUFFER;-DLINES"      shaders/UberShaderLines-idBuffer.frag.spv  CADPL_SHADER_DEPS)
 
 # CADR library
 add_library(${LIB_NAME}
