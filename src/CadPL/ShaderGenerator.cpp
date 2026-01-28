@@ -36,6 +36,18 @@ static const uint32_t fragmentIdBufferUberShaderTrianglesSpirv[]={
 static const uint32_t fragmentIdBufferUberShaderLinesSpirv[]={
 #include "shaders/UberShaderLines-idBuffer.frag.spv"
 };
+static const uint32_t vertexUberShaderPointsSpirv[]={
+#include "shaders/UberShaderPoints.vert.spv"
+};
+static const uint32_t vertexIdBufferUberShaderPointsSpirv[]={
+#include "shaders/UberShaderPoints-idBuffer.vert.spv"
+};
+static const uint32_t fragmentUberShaderPointsSpirv[]={
+#include "shaders/UberShaderPoints.frag.spv"
+};
+static const uint32_t fragmentIdBufferUberShaderPointsSpirv[]={
+#include "shaders/UberShaderPoints-idBuffer.frag.spv"
+};
 
 
 
@@ -43,13 +55,25 @@ vk::ShaderModule ShaderGenerator::createVertexShader(const ShaderState& state, C
 {
 	const uint32_t* code;
 	size_t size;
-	if(state.idBuffer) {
-		code = vertexIdBufferUberShaderSpirv;
-		size = sizeof(vertexIdBufferUberShaderSpirv);
+	if(state.primitiveTopology == vk::PrimitiveTopology::ePointList) {
+		if(state.idBuffer) {
+			code = vertexIdBufferUberShaderPointsSpirv;
+			size = sizeof(vertexIdBufferUberShaderPointsSpirv);
+		}
+		else {
+			code = vertexUberShaderPointsSpirv;
+			size = sizeof(vertexUberShaderPointsSpirv);
+		}
 	}
 	else {
-		code = vertexUberShaderSpirv;
-		size = sizeof(vertexUberShaderSpirv);
+		if(state.idBuffer) {
+			code = vertexIdBufferUberShaderSpirv;
+			size = sizeof(vertexIdBufferUberShaderSpirv);
+		}
+		else {
+			code = vertexUberShaderSpirv;
+			size = sizeof(vertexUberShaderSpirv);
+		}
 	}
 
 	return
@@ -92,8 +116,7 @@ vk::ShaderModule ShaderGenerator::createGeometryShader(const ShaderState& state,
 		}
 		break;
 	default:
-		code = nullptr;
-		size = 0;
+		return vk::ShaderModule(nullptr);
 	}
 
 	return
@@ -133,6 +156,16 @@ vk::ShaderModule ShaderGenerator::createFragmentShader(const ShaderState& state,
 		else {
 			code = fragmentUberShaderLinesSpirv;
 			size = sizeof(fragmentUberShaderLinesSpirv);
+		}
+		break;
+	case vk::PrimitiveTopology::ePointList:
+		if(state.idBuffer) {
+			code = fragmentIdBufferUberShaderPointsSpirv;
+			size = sizeof(fragmentIdBufferUberShaderPointsSpirv);
+		}
+		else {
+			code = fragmentUberShaderPointsSpirv;
+			size = sizeof(fragmentUberShaderPointsSpirv);
 		}
 		break;
 	default:

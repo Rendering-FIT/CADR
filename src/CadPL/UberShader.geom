@@ -9,6 +9,8 @@
 # extension GL_EXT_debug_printf : require
 #endif
 
+
+// input and output primitive
 #ifdef TRIANGLES
 layout(triangles) in;
 layout(triangle_strip, max_vertices=3) out;

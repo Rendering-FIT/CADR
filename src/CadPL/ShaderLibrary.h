@@ -91,8 +91,9 @@ protected:
 	};
 
 	struct VertexShaderMapKey {
-		bool idBuffer;
-		ShaderState::ProjectionHandling projectionHandling;
+		enum class Type { Invalid, TrianglesAndLines, TrianglesAndLinesIdBuffer,
+			Points, PointsIdBuffer };
+		Type type;
 		VertexShaderMapKey(const ShaderState& shaderState);
 		bool operator<(const VertexShaderMapKey& rhs) const;
 	};
@@ -100,13 +101,14 @@ protected:
 		enum class Type { Invalid, Triangles, TrianglesIdBuffer, Lines, LinesIdBuffer };
 		Type type;
 		GeometryShaderMapKey(const ShaderState& shaderState);
-		bool operator<(const GeometryShaderMapKey& rhs) const  { return type < rhs.type; }
+		bool operator<(const GeometryShaderMapKey& rhs) const;
 	};
 	struct FragmentShaderMapKey {
-		enum class Type { Invalid, Triangles, TrianglesIdBuffer, Lines, LinesIdBuffer };
+		enum class Type { Invalid, Triangles, TrianglesIdBuffer,
+			Lines, LinesIdBuffer, Points, PointsIdBuffer };
 		Type type;
 		FragmentShaderMapKey(const ShaderState& shaderState);
-		bool operator<(const FragmentShaderMapKey& rhs) const  { return type < rhs.type; }
+		bool operator<(const FragmentShaderMapKey& rhs) const;
 	};
 
 	std::map<VertexShaderMapKey, ShaderModuleObject<VertexShaderMapKey>> _vertexShaderMap;
@@ -159,8 +161,9 @@ inline SharedShaderModule::operator vk::ShaderModule() const  { return static_ca
 inline SharedShaderModule::operator bool() const  { return _smObject; }
 inline void SharedShaderModule::reset() noexcept  { if(!_smObject) return; ShaderLibrary::unrefShaderModule(_smObject); _smObject=nullptr; }
 
-inline ShaderLibrary::VertexShaderMapKey::VertexShaderMapKey(const ShaderState& shaderState)  : idBuffer(shaderState.idBuffer), projectionHandling(shaderState.projectionHandling) {}
-inline bool ShaderLibrary::VertexShaderMapKey::operator<(const ShaderLibrary::VertexShaderMapKey& rhs) const  { if(idBuffer < rhs.idBuffer) return true; if(idBuffer > rhs.idBuffer) return false; return projectionHandling < rhs.projectionHandling; }
+inline bool ShaderLibrary::VertexShaderMapKey::operator<(const ShaderLibrary::VertexShaderMapKey& rhs) const  { return type < rhs.type; }
+inline bool ShaderLibrary::GeometryShaderMapKey::operator<(const GeometryShaderMapKey& rhs) const  { return type < rhs.type; }
+inline bool ShaderLibrary::FragmentShaderMapKey::operator<(const FragmentShaderMapKey& rhs) const  { return type < rhs.type; }
 inline void ShaderLibrary::refShaderModule(void* shaderModuleObject) noexcept  { auto* smObject=static_cast<ShaderLibrary::AbstractShaderModuleObject*>(shaderModuleObject); smObject->referenceCounter++; }
 inline void ShaderLibrary::unrefShaderModule(void* shaderModuleObject) noexcept  { auto* smObject=static_cast<ShaderLibrary::AbstractShaderModuleObject*>(shaderModuleObject); if(smObject->referenceCounter==1) ShaderLibrary::destroyShaderModule(smObject); else smObject->referenceCounter--; }
 inline SharedShaderModule ShaderLibrary::getVertexShader(const ShaderState& state)  { auto it=_vertexShaderMap.find(state); return (it!=_vertexShaderMap.end()) ? SharedShaderModule(&it->second) : SharedShaderModule(); }

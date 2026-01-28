@@ -553,7 +553,7 @@ void main()
 		// light data
 		uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
 		LightRef lightData = LightRef(lightDataPtr);
-		
+
 		// iterate over all light sources
 		uint lightSettings = lightData.settings;
 		if(lightSettings != 0) {

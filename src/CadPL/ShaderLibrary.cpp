@@ -183,6 +183,25 @@ bool ShaderState::operator<(const ShaderState& rhs) const
 }
 
 
+ShaderLibrary::VertexShaderMapKey::VertexShaderMapKey(const ShaderState& shaderState)
+{
+	switch(shaderState.primitiveTopology) {
+	case vk::PrimitiveTopology::eTriangleList:
+	case vk::PrimitiveTopology::eTriangleStrip:
+	case vk::PrimitiveTopology::eTriangleFan:
+	case vk::PrimitiveTopology::eLineList:
+	case vk::PrimitiveTopology::eLineStrip:
+		type = shaderState.idBuffer ? Type::TrianglesAndLinesIdBuffer : Type::TrianglesAndLines;
+		break;
+	case vk::PrimitiveTopology::ePointList:
+		type = shaderState.idBuffer ? Type::PointsIdBuffer : Type::Points;
+		break;
+	default:
+		type = Type::Invalid;
+	}
+}
+
+
 ShaderLibrary::GeometryShaderMapKey::GeometryShaderMapKey(const ShaderState& shaderState)
 {
 	switch(shaderState.primitiveTopology) {
@@ -212,6 +231,9 @@ ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& sha
 	case vk::PrimitiveTopology::eLineList:
 	case vk::PrimitiveTopology::eLineStrip:
 		type = shaderState.idBuffer ? Type::LinesIdBuffer : Type::Lines;
+		break;
+	case vk::PrimitiveTopology::ePointList:
+		type = shaderState.idBuffer ? Type::PointsIdBuffer : Type::Points;
 		break;
 	default:
 		type = Type::Invalid;
