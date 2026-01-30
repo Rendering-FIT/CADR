@@ -57,8 +57,8 @@ add_shader(UberShader.frag  "-DID_BUFFER;-DTRIANGLES"  shaders/UberShaderTriangl
 add_shader(UberShader.frag  "-DID_BUFFER;-DLINES"      shaders/UberShaderLines-idBuffer.frag.spv  CADPL_SHADER_DEPS)
 add_shader(UberShaderPoints.vert  ""  shaders/UberShaderPoints.vert.spv  CADPL_SHADER_DEPS)
 add_shader(UberShaderPoints.vert  "-DID_BUFFER"  shaders/UberShaderPoints-idBuffer.vert.spv  CADPL_SHADER_DEPS)
-add_shader(UberShaderPoints.frag  ""  shaders/UberShaderPoints.frag.spv  CADPL_SHADER_DEPS)
-add_shader(UberShaderPoints.frag  "-DID_BUFFER"  shaders/UberShaderPoints-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DPOINTS"  shaders/UberShaderPoints.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DID_BUFFER;-DPOINTS"  shaders/UberShaderPoints-idBuffer.frag.spv  CADPL_SHADER_DEPS)
 
 # CADR library
 add_library(${LIB_NAME}

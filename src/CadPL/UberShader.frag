@@ -8,19 +8,33 @@
 
 
 // input and output
-layout(location = 0) in flat u64vec4 inVertexAndDrawableDataPtr;  // VertexData on indices 0..2 for triangles and 0..1 for lines. DrawableData on index 3. The vector occupies locations 0 and 1.
-#ifdef TRIANGLES
+#if defined(TRIANGLES) || defined(LINES)
+layout(location = 0) in flat u64vec4 inVertexAndDrawableDataPtrList;  // VertexData on indices 0..2 for triangles and 0..1 for lines. DrawableData on index 3. The vector occupies locations 0 and 1.
+# ifdef TRIANGLES
 layout(location = 2) in smooth vec3 inBarycentricCoords;  // barycentric coordinates using perspective correction
-#endif
-#ifdef LINES
+# endif
+# ifdef LINES
 layout(location = 2) in smooth vec2 inBarycentricCoords;  // barycentric coordinates using perspective correction
-#endif
+# endif
 layout(location = 3) in smooth vec3 inFragmentPosition3;  // in eye coordinates
 layout(location = 4) in smooth vec3 inFragmentNormal;  // in eye coordinates
 layout(location = 5) in smooth vec3 inFragmentTangent;  // in eye coordinates
-#ifdef ID_BUFFER
+# ifdef ID_BUFFER
 layout(location = 6) in flat uvec2 inId;
+# endif
 #endif
+
+#ifdef POINTS
+layout(location = 0, component = 0) in flat uint64_t inVertexDataPtr;
+layout(location = 0, component = 2) in flat uint64_t inDrawableDataPtr;
+layout(location = 1) in smooth vec3 inFragmentPosition3;  // in eye coordinates
+layout(location = 2) in smooth vec3 inFragmentNormal;  // in eye coordinates
+layout(location = 3) in smooth vec3 inFragmentTangent;  // in eye coordinates
+# ifdef ID_BUFFER
+layout(location = 4) in flat uvec2 inId;
+# endif
+#endif
+
 layout(location = 0) out vec4 outColor;
 #ifdef ID_BUFFER
 layout(location = 1) out uvec4 outId;
@@ -232,12 +246,17 @@ void main()
 	// input data and structures
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
 	vec3 viewerToFragmentDirection = normalize(inFragmentPosition3);
-	uint64_t drawableDataPtr = inVertexAndDrawableDataPtr.w;
 #ifdef TRIANGLES
-	u64vec3 vertexDataPtrList = inVertexAndDrawableDataPtr.xyz;
+	u64vec3 vertexDataPtrList = inVertexAndDrawableDataPtrList.xyz;
+	uint64_t drawableDataPtr = inVertexAndDrawableDataPtrList.w;
 #endif
 #ifdef LINES
-	u64vec2 vertexDataPtrList = inVertexAndDrawableDataPtr.xy;
+	u64vec2 vertexDataPtrList = inVertexAndDrawableDataPtrList.xy;
+	uint64_t drawableDataPtr = inVertexAndDrawableDataPtrList.w;
+#endif
+#ifdef POINTS
+	uint64_t vertexDataPtr = inVertexDataPtr;
+	uint64_t drawableDataPtr = inDrawableDataPtr;
 #endif
 
 	// normal
@@ -248,8 +267,10 @@ void main()
 			normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
 		else
 			normal = normalize(inFragmentNormal);
+#ifdef TRIANGLES
 		if(getMaterialTwoSidedLighting() && !gl_FrontFacing)
 			normal = -normal;
+#endif
 	}
 
 	// init textureType and textureInfo
@@ -268,7 +289,11 @@ void main()
 
 		// compute texture coordinates from relevant data,
 		// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
 		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+#else
+		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+#endif
 
 		// sample texture
 		vec3 tangentSpaceNormal = texture(textureList[textureInfo.textureIndex], uv).rgb;
@@ -298,15 +323,23 @@ void main()
 		if(getMaterialUseColorAttribute()) {
 			uint colorAccessInfo = getColorAccessInfo();
 			if(getMaterialIgnoreColorAttributeAlpha()) {
+#if defined(TRIANGLES) || defined(LINES)
 				outColor.rgb = interpolateAttribute3(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
+#else
+				outColor.rgb = readVec3(vertexDataPtr, colorAccessInfo);
+#endif
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
 				else
 					outColor.a *= unlitMaterial.colorAndAlpha.a;
 			} else {
+#if defined(TRIANGLES) || defined(LINES)
 				outColor = interpolateAttribute4(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
+#else
+				outColor = readVec4(vertexDataPtr, colorAccessInfo);
+#endif
 				if(!getMaterialIgnoreMaterialAlpha())
 					outColor.a *= unlitMaterial.colorAndAlpha.a;
 			}
@@ -321,7 +354,11 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
 			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+#else
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+#endif
 
 			// sample texture
 			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
@@ -375,7 +412,11 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
 			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+#else
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+#endif
 
 			// sample texture
 			uint componentIndex = getTextureFirstComponentIndex(textureInfo);  // glTF uses red component, so 0 should be provided for glTF
@@ -397,7 +438,11 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
 			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+#else
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+#endif
 
 			// sample texture
 			emissiveTextureValue = texture(textureList[textureInfo.textureIndex], uv).rgb;
@@ -421,15 +466,23 @@ void main()
 		if(getMaterialUseColorAttribute()) {
 			uint colorAccessInfo = getColorAccessInfo();
 			if(getMaterialIgnoreColorAttributeAlpha()) {
+#if defined(TRIANGLES) || defined(LINES)
 				diffuseColor = interpolateAttribute3(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
+#else
+				diffuseColor = readVec3(vertexDataPtr, colorAccessInfo);
+#endif
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
 				else
 					outColor.a *= phongMaterial.diffuseAndAlpha.a;
 			} else {
+#if defined(TRIANGLES) || defined(LINES)
 				vec4 color = interpolateAttribute4(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
+#else
+				vec4 color = readVec4(vertexDataPtr, colorAccessInfo);
+#endif
 				diffuseColor = color.rgb;
 				outColor.a = color.a;
 				if(!getMaterialIgnoreMaterialAlpha())
@@ -503,7 +556,11 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
 			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+#else
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+#endif
 
 			// sample texture
 			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);

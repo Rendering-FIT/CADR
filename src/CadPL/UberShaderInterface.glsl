@@ -214,6 +214,19 @@ vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
 	return uv;
 }
 
+vec2 computeTextureCoordinates(TextureInfoRef textureInfo, uint64_t vertexDataPtr)
+{
+	// get texture coordinates
+	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
+	vec2 uv = readVec2(vertexDataPtr, texCoordAccessInfo);
+
+	// transform texture coordinates
+	if(getTextureTranformFlag(textureInfo))
+		uv = transformTexCoord(uv, textureInfo);
+
+	return uv;
+}
+
 vec3 interpolateAttribute3(uint attribAccessInfo,
 	u64vec3 vertexDataPtrList, vec3 barycentricCoords)
 {
