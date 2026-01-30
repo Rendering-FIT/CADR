@@ -1,6 +1,7 @@
 #include "Tests.h"
 #include <CadR/Drawable.h>
 #include <CadR/Geometry.h>
+#include <CadR/MatrixList.h>
 #include <CadR/StagingData.h>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>

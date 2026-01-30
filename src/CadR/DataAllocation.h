@@ -149,6 +149,7 @@ public:
 # include <CadR/DataMemory.h>
 # include <CadR/DataStorage.h>
 # include <CadR/Renderer.h>
+# include <CadR/StagingData.h>
 namespace CadR {
 
 inline void DataAllocationRecord::init(vk::DeviceAddress addr, size_t size, DataMemory* m, DataAllocationRecord** recordPointer, void* stagingData, size_t stagingFrameNumber) noexcept  { deviceAddress = addr; this->size = size; dataMemory = m; this->recordPointer = recordPointer; this->stagingData = stagingData; this->stagingFrameNumber = stagingFrameNumber; }

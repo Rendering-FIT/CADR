@@ -223,7 +223,7 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 			"main",  // pName
 			nullptr,  // pSpecializationInfo
 		};
-	if(pipelineFamily._geometryShader && pipelineFamily._geometryShader.get() != nullptr) {
+	if(pipelineFamily._geometryShader && pipelineFamily._geometryShader.get()) {
 		shaderStages[2] =
 			vk::PipelineShaderStageCreateInfo{
 				vk::PipelineShaderStageCreateFlags(),  // flags

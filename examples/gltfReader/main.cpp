@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+// SPDX-FileCopyrightText: 2019-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
 //
 // SPDX-License-Identifier: MIT-0
 
@@ -7,6 +7,7 @@
 #include <CadR/Geometry.h>
 #include <CadR/Exceptions.h>
 #include <CadR/ImageAllocation.h>
+#include <CadR/MatrixList.h>
 #include <CadR/Pipeline.h>
 #include <CadR/Sampler.h>
 #include <CadR/StagingBuffer.h>
