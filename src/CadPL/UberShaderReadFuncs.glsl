@@ -98,7 +98,7 @@ AlignedIntRef {
 //
 //  read float
 //
-float readFloat(uint64_t vertexDataPtr, uint settings)
+float readFloat(uint attribAccessInfo, uint64_t vertexDataPtr)
 {
 	// settings:
 	// bits 0..7 - offset (0..255)
@@ -137,9 +137,9 @@ float readFloat(uint64_t vertexDataPtr, uint settings)
 	//   - 0x9d - byte, alignment 4, reads the values with additional offset +3, normalize
 	//   - 0x9e - byte, alignment 4, reads the values with additional offset +3
 
-	uint offset = settings & 0x00ff;  // max offset is 255
+	uint offset = attribAccessInfo & 0x00ff;  // max offset is 255
 	uint64_t addr = vertexDataPtr + offset;
-	uint type = settings & 0xff00;
+	uint type = attribAccessInfo & 0xff00;
 
 	// float
 	if(type == 0x8000)
@@ -322,7 +322,7 @@ float readFloat(uint64_t vertexDataPtr, uint settings)
 //
 //  read vec2
 //
-vec2 readVec2(uint64_t vertexDataPtr, uint settings)
+vec2 readVec2(uint attribAccessInfo, uint64_t vertexDataPtr)
 {
 	// settings:
 	// bits 0..7 - offset (0..255)
@@ -366,9 +366,9 @@ vec2 readVec2(uint64_t vertexDataPtr, uint settings)
 	//   - 0x72 - byte2, alignment 4, reads the values with additional offset +3, normalize
 	//   - 0x73 - byte2, alignment 4, reads the values with additional offset +3
 
-	uint offset = settings & 0x00ff;  // max offset is 255
+	uint offset = attribAccessInfo & 0x00ff;  // max offset is 255
 	uint64_t addr = vertexDataPtr + offset;
-	uint type = settings & 0xff00;
+	uint type = attribAccessInfo & 0xff00;
 
 	// float2
 	if(type == 0x5000)
@@ -575,7 +575,7 @@ vec2 readVec2(uint64_t vertexDataPtr, uint settings)
 //
 //  read vec3
 //
-vec3 readVec3(uint64_t vertexDataPtr, uint settings)
+vec3 readVec3(uint attribAccessInfo, uint64_t vertexDataPtr)
 {
 	// settings:
 	// bits 0..7 - offset (0..255)
@@ -619,9 +619,9 @@ vec3 readVec3(uint64_t vertexDataPtr, uint settings)
 	//   - 0x42 - byte3, alignment 4, on 4 bytes extracts last three bytes, reads the values with additional offset +2, normalize
 	//   - 0x43 - byte3, alignment 4, on 4 bytes extracts last three bytes, reads the values with additional offset +2
 
-	uint offset = settings & 0x00ff;  // max offset is 255
+	uint offset = attribAccessInfo & 0x00ff;  // max offset is 255
 	uint64_t addr = vertexDataPtr + offset;
-	uint type = settings & 0xff00;
+	uint type = attribAccessInfo & 0xff00;
 
 	// float3
 	if(type == 0x2000)
@@ -838,7 +838,7 @@ vec3 readVec3(uint64_t vertexDataPtr, uint settings)
 //
 //  read vec4
 //
-vec4 readVec4(uint64_t vertexDataPtr, uint settings)
+vec4 readVec4(uint attribAccessInfo, uint64_t vertexDataPtr)
 {
 	// settings:
 	// bits 0..7 - offset (0..255)
@@ -875,9 +875,9 @@ vec4 readVec4(uint64_t vertexDataPtr, uint settings)
 	//   - 0x1b - byte4 normalize, alignment 4, reads the values with additional offset +2
 	//   - 0x1c - byte4, alignment 4, reads the values with additional offset +2
 
-	uint offset = settings & 0x00ff;  // max offset is 255
+	uint offset = attribAccessInfo & 0x00ff;  // max offset is 255
 	uint64_t addr = vertexDataPtr + offset;
-	uint type = settings & 0xff00;
+	uint type = attribAccessInfo & 0xff00;
 
 	// float4
 	if(type == 0x0100)
@@ -1053,5 +1053,5 @@ vec4 readVec4(uint64_t vertexDataPtr, uint settings)
 	}
 
 	// try readVec3
-	return vec4(readVec3(vertexDataPtr, settings), 1);
+	return vec4(readVec3(attribAccessInfo, vertexDataPtr), 1);
 }

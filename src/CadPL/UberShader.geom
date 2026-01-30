@@ -90,10 +90,10 @@ void main()
 	// vertex positions
 	// (it is stored on offset 0 by convention)
 	uint positionAccessInfo = getPositionAccessInfo();
-	vec3 position0 = readVec3(vertex0DataPtr, positionAccessInfo);
-	vec3 position1 = readVec3(vertex1DataPtr, positionAccessInfo);
+	vec3 position0 = readVec3(positionAccessInfo, vertex0DataPtr);
+	vec3 position1 = readVec3(positionAccessInfo, vertex1DataPtr);
 #ifdef TRIANGLES
-	vec3 position2 = readVec3(vertex2DataPtr, positionAccessInfo);
+	vec3 position2 = readVec3(positionAccessInfo, vertex2DataPtr);
 #endif
 
 	// matrices and positions
@@ -141,14 +141,14 @@ void main()
 	// normal
 	uint normalAccessInfo = getNormalAccessInfo();
 	if(normalAccessInfo != 0)
-		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(vertex0DataPtr, normalAccessInfo));
+		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(normalAccessInfo, vertex0DataPtr));
 	else
 		outVertexNormal = vec3(0,0,-1);
 
 	// tangent
 	uint tangentAccessInfo = getTangentAccessInfo();
 	if(tangentAccessInfo != 0)
-		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(vertex0DataPtr, tangentAccessInfo));
+		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(tangentAccessInfo, vertex0DataPtr));
 	else
 		outVertexTangent = vec3(1,0,0);
 
@@ -184,13 +184,13 @@ void main()
 
 	// normal
 	if(normalAccessInfo != 0)
-		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(vertex1DataPtr, normalAccessInfo));
+		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(normalAccessInfo, vertex1DataPtr));
 	else
 		outVertexNormal = vec3(0,0,-1);
 
 	// tangent
 	if(tangentAccessInfo != 0)
-		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(vertex1DataPtr, tangentAccessInfo));
+		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(tangentAccessInfo, vertex1DataPtr));
 	else
 		outVertexTangent = vec3(1,0,0);
 
@@ -223,13 +223,13 @@ void main()
 
 	// normal
 	if(normalAccessInfo != 0)
-		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(vertex2DataPtr, normalAccessInfo));
+		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(normalAccessInfo, vertex2DataPtr));
 	else
 		outVertexNormal = vec3(0,0,-1);
 
 	// tangent
 	if(tangentAccessInfo != 0)
-		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(vertex2DataPtr, tangentAccessInfo));
+		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(tangentAccessInfo, vertex2DataPtr));
 	else
 		outVertexTangent = vec3(1,0,0);
 

@@ -47,7 +47,7 @@ void main()
 	// vertex positions
 	// (it is stored on offset 0 by convention)
 	uint positionAccessInfo = getPositionAccessInfo();
-	vec3 position = readVec3(vertexDataPtr, positionAccessInfo);
+	vec3 position = readVec3(positionAccessInfo, vertexDataPtr);
 
 	// matrices and positions
 	SceneDataRef scene = SceneDataRef(sceneDataPtr);
@@ -73,14 +73,14 @@ void main()
 	// normal
 	uint normalAccessInfo = getNormalAccessInfo();
 	if(normalAccessInfo != 0)
-		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(vertexDataPtr, normalAccessInfo));
+		outVertexNormal = normalize(mat3(modelViewMatrix) * readVec3(normalAccessInfo, vertexDataPtr));
 	else
 		outVertexNormal = vec3(0,0,-1);
 
 	// tangent
 	uint tangentAccessInfo = getTangentAccessInfo();
 	if(tangentAccessInfo != 0)
-		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(vertexDataPtr, tangentAccessInfo));
+		outVertexTangent = normalize(mat3(modelViewMatrix) * readVec3(tangentAccessInfo, vertexDataPtr));
 	else
 		outVertexTangent = vec3(1,0,0);
 

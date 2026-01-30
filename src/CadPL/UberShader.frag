@@ -327,7 +327,7 @@ void main()
 				outColor.rgb = interpolateAttribute3(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
 #else
-				outColor.rgb = readVec3(vertexDataPtr, colorAccessInfo);
+				outColor.rgb = readVec3(colorAccessInfo, vertexDataPtr);
 #endif
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
@@ -338,7 +338,7 @@ void main()
 				outColor = interpolateAttribute4(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
 #else
-				outColor = readVec4(vertexDataPtr, colorAccessInfo);
+				outColor = readVec4(colorAccessInfo, vertexDataPtr);
 #endif
 				if(!getMaterialIgnoreMaterialAlpha())
 					outColor.a *= unlitMaterial.colorAndAlpha.a;
@@ -470,7 +470,7 @@ void main()
 				diffuseColor = interpolateAttribute3(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
 #else
-				diffuseColor = readVec3(vertexDataPtr, colorAccessInfo);
+				diffuseColor = readVec3(colorAccessInfo, vertexDataPtr);
 #endif
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
@@ -481,7 +481,7 @@ void main()
 				vec4 color = interpolateAttribute4(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
 #else
-				vec4 color = readVec4(vertexDataPtr, colorAccessInfo);
+				vec4 color = readVec4(colorAccessInfo, vertexDataPtr);
 #endif
 				diffuseColor = color.rgb;
 				outColor.a = color.a;
@@ -504,7 +504,7 @@ void main()
 		// light data
 		uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
 		LightRef lightData = LightRef(lightDataPtr);
-		
+
 		// iterate over all light sources
 		uint lightSettings = lightData.settings;
 		if(lightSettings != 0) {
