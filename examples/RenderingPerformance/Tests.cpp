@@ -24,13 +24,13 @@ struct PrimitiveSetGpuData {
 
 struct MaterialData {
 	glm::vec3 ambient;
-	uint32_t materialType;
+	uint32_t padding1;
 	glm::vec3 diffuse;
 	float alpha;
 	glm::vec3 specular;
 	float shininess;
 	glm::vec3 emission;
-	float pointSize;
+	uint32_t padding2;
 };
 static_assert(sizeof(MaterialData) == 64, "Size of MaterialData is not 64.");
 
@@ -517,14 +517,14 @@ static void generateBoxesScene(
 		CadR::DataAllocation& a = materialList.emplace_back(renderer);
 		MaterialData& m = a.editNewContent<MaterialData>();
 		m.ambient = { 0.f, 0.f, 0.f };
-		m.materialType = 0;
+		m.padding1 = 0;
 		float angle = float(i) / numMaterials;
 		m.diffuse = { cos(angle-glm::pi<float>()/3.f), cos(angle), cos(angle+glm::pi<float>()/3.f) };
 		m.alpha = 1.f;
 		m.specular = { 0.f, 0.f, 0.f };
 		m.shininess = 0.f;
 		m.emission = { 0.f, 0.f, 0.f };
-		m.pointSize = 0.f;
+		m.padding2 = 0;
 	}
 
 	// create matrix lists
@@ -806,13 +806,13 @@ static void generateBakedBoxesScene(
 	CadR::DataAllocation& materialData = materialList.emplace_back(renderer);
 	MaterialData& m = materialData.editNewContent<MaterialData>();
 	m.ambient = { 0.f, 0.f, 0.f };
-	m.materialType = 0;
+	m.padding1 = 0;
 	m.diffuse = { 1.f, 0.5f, 1.f };
 	m.alpha = 1.f;
 	m.specular = { 0.f, 0.f, 0.f };
 	m.shininess = 0.f;
 	m.emission = { 0.f, 0.f, 0.f };
-	m.pointSize = 0.f;
+	m.padding2 = 0;
 
 	// create Drawable
 	drawableList.reserve(drawableList.size() + 1);  // this ensures that no exception is thrown during emplacing which would result in memory leak

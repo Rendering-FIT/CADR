@@ -17,10 +17,12 @@ CadR::StateSet& PipelineSceneGraph::createStateSet(const ShaderState& shaderStat
 		array<uint16_t,ShaderState::maxNumAttribs> attribAccessInfo;
 		uint32_t attribSetup;
 		uint32_t materialSetup;
+		float pointSize;
 	} pushData = {
 		shaderState.attribAccessInfo,
 		shaderState.attribSetup,
 		shaderState.materialSetup,
+		shaderState.pointSize,
 	};
 	item->stateSet.recordCallList.emplace_back(
 		[pushData](CadR::StateSet& ss, vk::CommandBuffer commandBuffer, vk::PipelineLayout currentPipelineLayout) {

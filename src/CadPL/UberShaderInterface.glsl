@@ -27,8 +27,11 @@ pushConstants {
 	layout(offset=16) uint attribAccessInfoList[8];  // per-stateSet attribAccessInfo for 16 attribs
 	layout(offset=48) uint attribSetup;  // doc is provided bellow with getVertexDataSize()
 	layout(offset=52) uint materialSetup;  // doc is provided with UnlitMaterialRef, PhongMaterialRef and MetallicRoughnessMaterialRef
+#ifdef POINTS
+	layout(offset=56) float pointSize;  // ignored unless rendering points; it specifies the size of the points that will be rendered
+#endif
 #ifdef ID_BUFFER
-	layout(offset=56) uint stateSetID;  // ID of the current StateSet
+	layout(offset=60) uint stateSetID;  // ID of the current StateSet
 #endif
 };
 
@@ -72,8 +75,7 @@ bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x2000) != 0
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
 UnlitMaterialRef {
 	layout(offset=0) vec4 colorAndAlpha;
-	layout(offset=16)  float pointSize;
-	// [... texture data starts at offset 20 ...]
+	// [... texture data starts at offset 16 ...]
 };
 
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
@@ -83,7 +85,6 @@ PhongMaterialRef {
 	layout(offset=32) vec3 specular;  //< Hoops uses specular color in MaterialKit
 	layout(offset=44) float shininess;  //< Hoops uses gloss (1x float) in MaterialKit
 	layout(offset=48) vec3 emission;  //< Hoops uses 4x float in MaterialKit
-	layout(offset=60) float pointSize;
 	layout(offset=64) vec3 reflection;  //< Hoops uses mirror in MaterialKit
 	// [... texture data starts at offset 76 ...]
 };
@@ -104,8 +105,7 @@ MetallicRoughnessMaterialRef {
 	layout(offset=40) float normalTextureScale;  //< Hoops uses NormalFactor (in PBRMaterialKit)
 	layout(offset=44) float occlusionTextureStrength;  //< Hoops uses OcclusionFactor (in PBRMaterialKit) with the same meaning
 	layout(offset=48) vec3 emissiveFactor;
-	layout(offset=60) float pointSize;
-	layout(offset=64) float alphaCutoff;
+	layout(offset=60) float alphaCutoff;
 
 	// 25 additional floats (100 bytes)
 	float anisotropyStrength;

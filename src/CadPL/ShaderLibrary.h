@@ -23,6 +23,7 @@ struct CADPL_EXPORT ShaderState {
 	std::array<uint16_t,maxNumAttribs> attribAccessInfo;
 	uint32_t attribSetup;
 	uint32_t materialSetup;
+	float pointSize;
 	uint16_t lightSetup[4];
 	uint16_t numLights;
 	uint32_t textureSetup[6];

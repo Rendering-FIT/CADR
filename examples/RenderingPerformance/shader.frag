@@ -11,7 +11,6 @@ PhongMaterialRef {
 	layout(offset=32) vec3 specular;  //< Hoops uses specular color in MaterialKit
 	layout(offset=44) float shininess;  //< Hoops uses gloss (1x float) in MaterialKit
 	layout(offset=48) vec3 emission;  //< Hoops uses 4x float in MaterialKit
-	layout(offset=60) float pointSize;
 };
 
 

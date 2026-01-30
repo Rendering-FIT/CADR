@@ -65,7 +65,7 @@ void main()
 #endif
 
 	// point size
-	gl_PointSize = 1.f;
+	gl_PointSize = pointSize;
 
 	// set vertex position in eye coordinates
 	outVertexPosition3 = eyePosition.xyz / eyePosition.w;

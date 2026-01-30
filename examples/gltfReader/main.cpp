@@ -1254,7 +1254,7 @@ void App::init()
 		glm::vec3 specular;  // offset 32
 		float shininess;  // offset 44
 		glm::vec3 emission;  // offset 48
-		float pointSize;  // offset 60
+		uint32_t padding2;
 		glm::vec3 reflection;  // offset 64
 	};
 	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure");
@@ -1276,11 +1276,12 @@ void App::init()
 	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
 	PhongMaterialData* m = sd.data<PhongMaterialData>();
 	m->ambient = glm::vec3(1.f, 1.f, 1.f);
+	m->padding1 = 0;
 	m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
 	m->specular = glm::vec3(0.f, 0.f, 0.f);
 	m->shininess = 0.f;
 	m->emission = glm::vec3(0.f, 0.f, 0.f);
-	m->pointSize = 0.f;
+	m->padding2 = 0;
 	m->reflection = glm::vec3(0.f, 0.f, 0.f);
 	StateSetMaterialData defaultStateSetMaterialData {
 		.doubleSided = false,
@@ -1414,11 +1415,12 @@ void App::init()
 		CadR::StagingData sd = a.alloc(materialSize);
 		PhongMaterialData* m = sd.data<PhongMaterialData>();
 		m->ambient = glm::vec3(baseColorFactor);
+		m->padding1 = 0;
 		m->diffuseAndAlpha = baseColorFactor;
 		m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
 		m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
 		m->emission = emissiveFactor;
-		m->pointSize = 0.f;
+		m->padding2 = 0;
 		m->reflection = glm::vec3(0.f, 0.f, 0.f);
 
 		TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8);
@@ -2414,6 +2416,7 @@ void App::init()
 					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
 					(colorData ? 0x0200 : 0) |  // use color attribute for ambient and diffuse
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
+				.pointSize = 1.f,
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
 				.numLights = {},
 				.textureSetup = {},  // no textures
@@ -2574,21 +2577,21 @@ void App::init()
 			// material
 			struct MaterialData {
 				glm::vec3 ambient;  // offset 0
-				uint32_t type;  // offset 12
+				uint32_t padding1;  // offset 12
 				glm::vec4 diffuseAndAlpha;  // offset 16
 				glm::vec3 specular;  // offset 32
 				float shininess;  // offset 44
 				glm::vec3 emission;  // offset 48
-				float pointSize;  // offset 60
+				uint32_t padding2;
 			};
 			MaterialData* m = sd.data<MaterialData>();
 			m->ambient = glm::vec3(1.f, 1.f, 1.f);
-			m->type = 0;
+			m->padding1 = 0;
 			m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
 			m->specular = glm::vec3(0.f, 0.f, 0.f);
 			m->shininess = 0.f;
 			m->emission = glm::vec3(0.f, 0.f, 0.f);
-			m->pointSize = 0.f;
+			m->padding2 = 0;
 
 			// transformation matrices
 			glm::mat4* matrices = sd.data<glm::mat4>() + 1;
