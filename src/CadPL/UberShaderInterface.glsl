@@ -51,17 +51,30 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 // bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness
 // bits 2..7: texture offset (0, 4, 8, 12, .....252)
 // bit 8: two sided lighting
-// bit 9: use color attribute for ambient and diffuse; material ambient and diffuse values are ignored
-// bit 10: use color attribute for diffuse; material diffuse value is ignored
+// unlit:
+//    bit  9: ignored
+//    bit 10: if set, multiplication is used to compute base color - color attribute
+//            is multiplied by material color;
+//            otherwise, base color is set to color attribute without considering material
+// phong:
+//    bit  9: if set, color attribute is applied just on diffuse component;
+//            otherwise, it is applied on ambient and diffuse
+//    bit 10: if set, multiplication is used instead of ignoring material;
+//            diffuse component is computed by multiplication of color attribute
+//            and material diffuse;
+//            otherwise, diffuse component is set to color attribute without
+//            considering material diffuse value;
+//            if bit 9 is set, the same applies for ambient component
+//            (final ambient = color attribute * material ambient);
 // bit 11: ignore color attribute alpha if color attribute is used (if bit 8 or 9 is set)
 // bit 12: ignore material alpha
 // bit 13: ignore base texture alpha if base texture is used
 uint getMaterialModel()  { return materialSetup & 0x03; }
 uint getMaterialFirstTextureOffset()  { return materialSetup & 0xfc; }
 bool getMaterialTwoSidedLighting()  { return (materialSetup & 0x0100) != 0; }
-bool getMaterialUseColorAttribute()  { return (materialSetup & 0x0600) != 0; }
-bool getMaterialUseColorAttributeForAmbientAndDiffuse()  { return (materialSetup & 0x0200) != 0; }
-bool getMaterialUseColorAttributeForDiffuseOnly()  { return (materialSetup & 0x0400) != 0; }
+bool getUnlitMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0400) != 0; }
+bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup & 0x0200) != 0; }
+bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0400) != 0; }
 bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x0800) != 0; }
 bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x1000) != 0; }
 bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x2000) != 0; }
@@ -80,13 +93,13 @@ UnlitMaterialRef {
 
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
 PhongMaterialRef {
-	layout(offset=0)  vec3 ambient;  //< ambient color might be ignored and replaced by diffuse color when specified by settings
-	layout(offset=16) vec4 diffuseAndAlpha;  //< Hoops uses four floats for diffuse and alpha in MaterialKit
-	layout(offset=32) vec3 specular;  //< Hoops uses specular color in MaterialKit
-	layout(offset=44) float shininess;  //< Hoops uses gloss (1x float) in MaterialKit
-	layout(offset=48) vec3 emission;  //< Hoops uses 4x float in MaterialKit
-	layout(offset=64) vec3 reflection;  //< Hoops uses mirror in MaterialKit
-	// [... texture data starts at offset 76 ...]
+	layout(offset=0)  vec3 ambient;  //< ambient color
+	layout(offset=16) vec4 diffuseAndAlpha;  //< diffuse color and alpha
+	layout(offset=32) vec3 specular;  //< specular color
+	layout(offset=44) float shininess;  //< shininess (or gloss)
+	layout(offset=48) vec3 emission;  //< emitted light
+	layout(offset=64) vec3 reflection;  //< amount of mirroring reflection
+	// [... texture data starts at offset 76 or at offset 64 if reflection is not used ...]
 };
 
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer

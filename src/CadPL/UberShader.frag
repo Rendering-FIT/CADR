@@ -320,8 +320,10 @@ void main()
 		// material data
 		UnlitMaterialRef unlitMaterial = UnlitMaterialRef(drawableDataPtr);
 
-		if(getMaterialUseColorAttribute()) {
-			uint colorAccessInfo = getColorAccessInfo();
+		uint colorAccessInfo = getColorAccessInfo();
+		if(colorAccessInfo != 0) {
+
+			// read attribute, processa alpha
 			if(getMaterialIgnoreColorAttributeAlpha()) {
 #if defined(TRIANGLES) || defined(LINES)
 				outColor.rgb = interpolateAttribute3(colorAccessInfo,
@@ -332,7 +334,7 @@ void main()
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
 				else
-					outColor.a *= unlitMaterial.colorAndAlpha.a;
+					outColor.a = unlitMaterial.colorAndAlpha.a;
 			} else {
 #if defined(TRIANGLES) || defined(LINES)
 				outColor = interpolateAttribute4(colorAccessInfo,
@@ -341,9 +343,17 @@ void main()
 				outColor = readVec4(colorAccessInfo, vertexDataPtr);
 #endif
 				if(!getMaterialIgnoreMaterialAlpha())
-					outColor.a *= unlitMaterial.colorAndAlpha.a;
+					outColor.a = unlitMaterial.colorAndAlpha.a;
 			}
-		} else {
+
+			// multiply color attribute with material
+			if(getUnlitMaterialMultiplyColorAttributeWithMaterial())
+				outColor.rgb *= unlitMaterial.colorAndAlpha.rgb;
+
+		}
+		else
+		{
+			// set color using material
 			if(getMaterialIgnoreMaterialAlpha())
 				outColor = vec4(unlitMaterial.colorAndAlpha.rgb, 1);
 			else
@@ -463,8 +473,10 @@ void main()
 		// ambientColor, diffuseColor and alpha
 		vec3 ambientColor;
 		vec3 diffuseColor;
-		if(getMaterialUseColorAttribute()) {
-			uint colorAccessInfo = getColorAccessInfo();
+		uint colorAccessInfo = getColorAccessInfo();
+		if(colorAccessInfo != 0) {
+
+			// get diffuseColor and initialize outColor.a
 			if(getMaterialIgnoreColorAttributeAlpha()) {
 #if defined(TRIANGLES) || defined(LINES)
 				diffuseColor = interpolateAttribute3(colorAccessInfo,
@@ -475,7 +487,7 @@ void main()
 				if(getMaterialIgnoreMaterialAlpha())
 					outColor.a = 1;
 				else
-					outColor.a *= phongMaterial.diffuseAndAlpha.a;
+					outColor.a = phongMaterial.diffuseAndAlpha.a;
 			} else {
 #if defined(TRIANGLES) || defined(LINES)
 				vec4 color = interpolateAttribute4(colorAccessInfo,
@@ -488,11 +500,25 @@ void main()
 				if(!getMaterialIgnoreMaterialAlpha())
 					outColor.a *= phongMaterial.diffuseAndAlpha.a;
 			}
-			if(getMaterialUseColorAttributeForAmbientAndDiffuse())
-				ambientColor = diffuseColor;
-			else
+
+			// multiply color attribute with material
+			if(getPhongMaterialApplyColorAttributeOnDiffuseOnly()) {
 				ambientColor = phongMaterial.ambient;
-		} else {
+				if(getPhongMaterialMultiplyColorAttributeWithMaterial())
+					diffuseColor *= phongMaterial.diffuseAndAlpha.rgb;
+			}
+			else {
+				ambientColor = diffuseColor;
+				if(getPhongMaterialMultiplyColorAttributeWithMaterial()) {
+					diffuseColor *= phongMaterial.diffuseAndAlpha.rgb;
+					ambientColor *= phongMaterial.ambient;
+				}
+			}
+
+		}
+		else
+		{
+			// set color using material
 			ambientColor = phongMaterial.ambient;
 			diffuseColor = phongMaterial.diffuseAndAlpha.rgb;
 			if(getMaterialIgnoreMaterialAlpha())

@@ -1247,6 +1247,10 @@ void App::init()
 	}
 
 	// create default material
+	struct UnlitMaterialData {
+		glm::vec4 colorAndAlpha;
+	};
+	constexpr size_t unlitMaterialDataSizeAligned8 = 16;
 	struct PhongMaterialData {
 		glm::vec3 ambient;  // offset 0
 		uint32_t padding1;
@@ -1270,6 +1274,7 @@ void App::init()
 	};
 	static_assert(sizeof(TextureData) == 48 && "Wrong size of TextureData structure");
 	struct StateSetMaterialData {
+		bool unlit;
 		bool doubleSided;
 		unsigned textureInfoOffset;
 	};
@@ -1284,6 +1289,7 @@ void App::init()
 	m->padding2 = 0;
 	m->reflection = glm::vec3(0.f, 0.f, 0.f);
 	StateSetMaterialData defaultStateSetMaterialData {
+		.unlit = false,
 		.doubleSided = false,
 		.textureInfoOffset = 0,
 	};
@@ -1298,6 +1304,7 @@ void App::init()
 		auto& material = materials.at(materialIndex);
 
 		// values to be read from glTF
+		bool unlit;
 		bool doubleSided;
 		glm::vec4 baseColorFactor;
 		unsigned baseColorTextureIndex;
@@ -1308,6 +1315,15 @@ void App::init()
 		float metallicFactor;
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
+
+		// unlit material extension
+		if(auto extIt = material.find("extensions"); extIt == material.end()) {
+			unlit = false;
+		}
+		else {
+			auto it = extIt->find("KHR_materials_unlit");
+			unlit = (it != extIt->end());
+		}
 
 		// material.doubleSided is optional with the default value of false
 		doubleSided = material.value<json::boolean_t>("doubleSided", false);
@@ -1395,8 +1411,10 @@ void App::init()
 		if(material.find("alphaCutoff") != material.end())
 			throw GltfError("Unsupported functionality: alpha cutoff.");
 
-		// material size
-		size_t materialSize = phongMaterialDataSizeAligned8;
+		// material struct base size
+		size_t materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
+
+		// append textures to material size
 		if(baseColorTextureIndex != ~unsigned(0))
 			materialSize += 8;
 		if(normalTextureIndex != ~unsigned(0)) {
@@ -1413,17 +1431,24 @@ void App::init()
 		// material
 		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
 		CadR::StagingData sd = a.alloc(materialSize);
-		PhongMaterialData* m = sd.data<PhongMaterialData>();
-		m->ambient = glm::vec3(baseColorFactor);
-		m->padding1 = 0;
-		m->diffuseAndAlpha = baseColorFactor;
-		m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
-		m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
-		m->emission = emissiveFactor;
-		m->padding2 = 0;
-		m->reflection = glm::vec3(0.f, 0.f, 0.f);
+		uint8_t* p = sd.data<uint8_t>();
+		if(unlit) {
+			UnlitMaterialData* m = reinterpret_cast<UnlitMaterialData*>(p);
+			m->colorAndAlpha = baseColorFactor;
+		}
+		else {
+			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
+			m->ambient = glm::vec3(baseColorFactor);
+			m->padding1 = 0;
+			m->diffuseAndAlpha = baseColorFactor;
+			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
+			m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+			m->emission = emissiveFactor;
+			m->padding2 = 0;
+			m->reflection = glm::vec3(0.f, 0.f, 0.f);
+		}
 
-		TextureData* t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8);
+		TextureData* t = reinterpret_cast<TextureData*>(p + phongMaterialDataSizeAligned8);
 		if(normalTextureIndex != ~unsigned(0))
 		{
 			// normal texture
@@ -1463,6 +1488,7 @@ void App::init()
 
 		// StateSetMaterialData
 		auto& ssm = stateSetMaterialDataList[materialIndex];
+		ssm.unlit = unlit;
 		ssm.doubleSided = doubleSided;
 		ssm.textureInfoOffset =
 			(materialSize == phongMaterialDataSizeAligned8)
@@ -2407,14 +2433,14 @@ void App::init()
 						return r;
 					}(),
 				.attribSetup =
-					(normalData ? 0 : 1) |  // generateFlatNormals
+					(ssMaterialData.unlit ? 0 : (normalData ? 0 : 1)) |  // generateFlatNormals
 					(16u + (normalData ? 16 : 0) + (tangentData ? 16 : 0) +  // vertexDataSize
 						(colorData ? 16 : 0) + (texCoordData ? 16 : 0)),
 				.materialSetup =
-					0x0001 |  // Phong
+					(ssMaterialData.unlit ? 0x0 : 0x1) |  // Unlit vs Phong
 					ssMaterialData.textureInfoOffset |  // texture offset
 					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
-					(colorData ? 0x0200 : 0) |  // use color attribute for ambient and diffuse
+					0x400 |  // color attribute (if present) does not replace material ambient and diffuse color, but multiplies them
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
 				.pointSize = 1.f,
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
