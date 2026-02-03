@@ -261,8 +261,7 @@ void main()
 
 	// normal
 	vec3 normal;
-	uint materialModel = getMaterialModel();
-	if(materialModel >= 1) {
+	if(!getMaterialDisableLighting()) {
 		if(getGenerateFlatNormals())
 			normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
 		else
@@ -315,6 +314,7 @@ void main()
 	}
 
 	// unlit material
+	uint materialModel = getMaterialModel();
 	if(materialModel == 0) {
 
 		// material data
@@ -527,54 +527,62 @@ void main()
 				outColor.a = phongMaterial.diffuseAndAlpha.a;
 		}
 
-		// light data
-		uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
-		LightRef lightData = LightRef(lightDataPtr);
-
-		// iterate over all light sources
-		uint lightSettings = lightData.settings;
-		if(lightSettings != 0) {
-
-			// Phong color products
-			vec3 ambientProduct  = vec3(0);
-			vec3 diffuseProduct  = vec3(0);
-			vec3 specularProduct = vec3(0);
-
-			// iterate over all lights
-			do{
-
-				uint lightType = getLightType(lightSettings);
-				if(lightType == 1)
-					OpenGLDirectionalLight(lightData, normal,
-						viewerToFragmentDirection, phongMaterial.shininess,
-						ambientProduct, diffuseProduct, specularProduct);
-				else if(lightType == 2)
-					OpenGLPointLight(lightData, normal,
-						viewerToFragmentDirection, phongMaterial.shininess,
-						ambientProduct, diffuseProduct, specularProduct);
-				else
-					OpenGLSpotlight(lightData, normal,
-						viewerToFragmentDirection, phongMaterial.shininess,
-						ambientProduct, diffuseProduct, specularProduct);
-
-				lightDataPtr += getLightDataSize();
-				lightData = LightRef(lightDataPtr);
-				lightSettings = lightData.settings;
-
-			} while(lightSettings != 0);
-
-			// Phong equation
-			outColor.rgb = phongMaterial.emission * emissiveTextureValue +
-			               (ambientProduct + scene.ambientLight) * ambientColor * occlusionTextureValue +
-			               diffuseProduct * diffuseColor +
-			               specularProduct * phongMaterial.specular;
-
+		if(getMaterialDisableLighting())
+		{
+			outColor.rgb = diffuseColor + (phongMaterial.emission * emissiveTextureValue);
 		}
 		else {
 
-			// Phong equation without light sources
-			outColor.rgb = phongMaterial.emission * emissiveTextureValue +
-			               scene.ambientLight * ambientColor * occlusionTextureValue;
+			// light data
+			uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
+			LightRef lightData = LightRef(lightDataPtr);
+
+			// iterate over all light sources
+			uint lightSettings = lightData.settings;
+			if(lightSettings != 0) {
+
+				// Phong color products
+				vec3 ambientProduct  = vec3(0);
+				vec3 diffuseProduct  = vec3(0);
+				vec3 specularProduct = vec3(0);
+
+				// iterate over all lights
+				do{
+
+					uint lightType = getLightType(lightSettings);
+					if(lightType == 1)
+						OpenGLDirectionalLight(lightData, normal,
+							viewerToFragmentDirection, phongMaterial.shininess,
+							ambientProduct, diffuseProduct, specularProduct);
+					else if(lightType == 2)
+						OpenGLPointLight(lightData, normal,
+							viewerToFragmentDirection, phongMaterial.shininess,
+							ambientProduct, diffuseProduct, specularProduct);
+					else
+						OpenGLSpotlight(lightData, normal,
+							viewerToFragmentDirection, phongMaterial.shininess,
+							ambientProduct, diffuseProduct, specularProduct);
+
+					lightDataPtr += getLightDataSize();
+					lightData = LightRef(lightDataPtr);
+					lightSettings = lightData.settings;
+
+				} while(lightSettings != 0);
+
+				// Phong equation
+				outColor.rgb = phongMaterial.emission * emissiveTextureValue +
+				               (ambientProduct + scene.ambientLight) * ambientColor * occlusionTextureValue +
+				               diffuseProduct * diffuseColor +
+				               specularProduct * phongMaterial.specular;
+
+			}
+			else {
+
+				// Phong equation without light sources
+				outColor.rgb = phongMaterial.emission * emissiveTextureValue +
+				               scene.ambientLight * ambientColor * occlusionTextureValue;
+
+			}
 
 		}
 

@@ -2433,14 +2433,15 @@ void App::init()
 						return r;
 					}(),
 				.attribSetup =
-					(ssMaterialData.unlit ? 0 : (normalData ? 0 : 1)) |  // generateFlatNormals
+					(normalData || ssMaterialData.unlit || (mode <= 3) ? 0 : 1) |  // generateFlatNormals if normals are missing, just skip unlit materials and points and lines
 					(16u + (normalData ? 16 : 0) + (tangentData ? 16 : 0) +  // vertexDataSize
 						(colorData ? 16 : 0) + (texCoordData ? 16 : 0)),
 				.materialSetup =
 					(ssMaterialData.unlit ? 0x0 : 0x1) |  // Unlit vs Phong
 					ssMaterialData.textureInfoOffset |  // texture offset
 					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
-					0x400 |  // color attribute (if present) does not replace material ambient and diffuse color, but multiplies them
+					((mode <= 3) && (normalData == nullptr) ? 0x200 : 0) |  // disable lighting for points and lines without normals
+					0x800 |  // color attribute (if present) does not replace material ambient and diffuse color, but multiplies them
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
 				.pointSize = 1.f,
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight

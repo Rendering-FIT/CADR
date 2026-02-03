@@ -51,33 +51,39 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 // bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness
 // bits 2..7: texture offset (0, 4, 8, 12, .....252)
 // bit 8: two sided lighting
+// bit 9: disable lighting; for phong model, use sum of diffuse and emission components;
+//        for metallicRoughness, sum of base color and emissive value is used;
+//        no effect for unlit model;
+//        textures can still be used, but only those that have a meaning without lighting;
 // unlit:
 //    bit  9: ignored
-//    bit 10: if set, multiplication is used to compute base color - color attribute
+//    bit 10: ignored
+//    bit 11: if set, multiplication is used to compute base color - color attribute
 //            is multiplied by material color;
 //            otherwise, base color is set to color attribute without considering material
 // phong:
-//    bit  9: if set, color attribute is applied just on diffuse component;
+//    bit 10: if set, color attribute is applied just on diffuse component;
 //            otherwise, it is applied on ambient and diffuse
-//    bit 10: if set, multiplication is used instead of ignoring material;
+//    bit 11: if set, multiplication is used instead of ignoring material;
 //            diffuse component is computed by multiplication of color attribute
 //            and material diffuse;
 //            otherwise, diffuse component is set to color attribute without
 //            considering material diffuse value;
 //            if bit 9 is set, the same applies for ambient component
 //            (final ambient = color attribute * material ambient);
-// bit 11: ignore color attribute alpha if color attribute is used (if bit 8 or 9 is set)
-// bit 12: ignore material alpha
-// bit 13: ignore base texture alpha if base texture is used
+// bit 12: ignore color attribute alpha if color attribute is used (if bit 8 or 9 is set)
+// bit 13: ignore material alpha
+// bit 14: ignore base texture alpha if base texture is used
 uint getMaterialModel()  { return materialSetup & 0x03; }
 uint getMaterialFirstTextureOffset()  { return materialSetup & 0xfc; }
 bool getMaterialTwoSidedLighting()  { return (materialSetup & 0x0100) != 0; }
-bool getUnlitMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0400) != 0; }
-bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup & 0x0200) != 0; }
-bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0400) != 0; }
-bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x0800) != 0; }
-bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x1000) != 0; }
-bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x2000) != 0; }
+bool getMaterialDisableLighting()  { return (materialSetup & 0x0200) != 0; }
+bool getUnlitMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0800) != 0; }
+bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup & 0x0400) != 0; }
+bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0800) != 0; }
+bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x1000) != 0; }
+bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x2000) != 0; }
+bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x4000) != 0; }
 
 
 
