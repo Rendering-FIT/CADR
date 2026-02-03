@@ -360,6 +360,7 @@ void main()
 				outColor = unlitMaterial.colorAndAlpha;
 		}
 
+		// base texture
 		if(textureType == 0x0400) {
 
 			// compute texture coordinates from relevant data,
@@ -434,7 +435,7 @@ void main()
 
 			// multiply by strength
 			if(getTextureUseStrengthFlag(textureInfo))
-				occlusionTextureValue *= textureInfo.strength;
+				occlusionTextureValue = 1. + textureInfo.strength * (occlusionTextureValue - 1.);
 
 			// update pointer to point to the next texture
 			textureInfo = getNextTextureInfo(textureInfo);
@@ -586,6 +587,7 @@ void main()
 
 		}
 
+		// base texture
 		if(textureType == 0x0400) {
 
 			// compute texture coordinates from relevant data,
