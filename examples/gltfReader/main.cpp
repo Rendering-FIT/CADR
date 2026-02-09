@@ -1250,7 +1250,7 @@ void App::init()
 	struct UnlitMaterialData {
 		glm::vec4 colorAndAlpha;
 	};
-	constexpr size_t unlitMaterialDataSizeAligned8 = 16;
+	constexpr unsigned unlitMaterialDataSizeAligned8 = 16;
 	struct PhongMaterialData {
 		glm::vec3 ambient;  // offset 0
 		uint32_t padding1;
@@ -1261,18 +1261,15 @@ void App::init()
 		uint32_t padding2;
 		glm::vec3 reflection;  // offset 64
 	};
-	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure");
-	constexpr size_t phongMaterialDataSizeAligned8 = 80;
-	struct TextureData {
+	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure.");
+	constexpr unsigned phongMaterialDataSizeAligned8 = 80;
+	struct TextureMaterialRecord {
 		uint8_t texCoordIndex;
 		uint8_t type;
 		uint16_t settings;
 		uint32_t textureIndex;
-		float strength;
-		float rs1,rs2,rs3,rs4,t1,t2;  // rotation and scale in 2x2 matrix, translation in vec2
-		float blendR,blendG,blendB;  // texture blend color used in blend texture environment
 	};
-	static_assert(sizeof(TextureData) == 48 && "Wrong size of TextureData structure");
+	static_assert(sizeof(TextureMaterialRecord) == 8 && "Wrong size of TextureMaterialRecord structure.");
 	struct StateSetMaterialData {
 		bool unlit;
 		bool doubleSided;
@@ -1303,15 +1300,23 @@ void App::init()
 	{
 		auto& material = materials.at(materialIndex);
 
+		struct TextureData {
+			unsigned index;
+			unsigned coordIndex;
+			float strength = 1.f;
+			bool transformEnabled = false;
+			glm::vec2 offset;
+			float rotation;
+			glm::vec2 scale;
+		};
+
 		// values to be read from glTF
 		bool unlit;
 		bool doubleSided;
 		glm::vec4 baseColorFactor;
-		unsigned baseColorTextureIndex;
-		unsigned baseColorTextureCoordIndex;
-		unsigned normalTextureIndex;
-		unsigned normalTextureCoordIndex;
-		unsigned normalTextureScale;
+		TextureData baseColorTexture;
+		TextureData normalTexture;
+
 		float metallicFactor;
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
@@ -1350,14 +1355,55 @@ void App::init()
 
 			// base color texture
 			if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
-				baseColorTextureIndex = unsigned(baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>());
-				if(baseColorTextureIndex >= textureList.size())
+				baseColorTexture.index = unsigned(baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>());
+				if(baseColorTexture.index >= textureList.size())
 					throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
-				baseColorTextureCoordIndex = baseColorTextureIt->value("texCoord", 0);
+				baseColorTexture.coordIndex = baseColorTextureIt->value("texCoord", 0);
+				if(auto extIt = baseColorTextureIt->find("extensions"); extIt != baseColorTextureIt->end()) {
+
+					// KHR_texture_transform
+					auto transformIt = extIt->find("KHR_texture_transform");
+					if(transformIt != extIt->end()) {
+						baseColorTexture.transformEnabled = true;
+
+						// KHR_texture_transform.offset
+						if(auto offsetIt = transformIt->find("offset"); offsetIt != transformIt->end()) {
+							json::array_t& a = offsetIt->get_ref<json::array_t&>();
+							if(a.size() != 2)
+								throw GltfError("Material.baseColorTexture.extensions.offset is not vector of two components.");
+							baseColorTexture.offset[0] = float(a[0].get<json::number_float_t>());
+							baseColorTexture.offset[1] = float(a[1].get<json::number_float_t>());
+						}
+						else {
+							baseColorTexture.offset[0] = 0.f;
+							baseColorTexture.offset[1] = 0.f;
+						}
+
+						// KHR_texture_transform.rotation
+						baseColorTexture.rotation = float(transformIt->value<json::number_float_t>("rotation", 0.f));
+
+						// KHR_texture_transform.scale
+						if(auto scaleIt = transformIt->find("scale"); scaleIt != transformIt->end()) {
+							json::array_t& a = scaleIt->get_ref<json::array_t&>();
+							if(a.size() != 2)
+								throw GltfError("Material.baseColorTexture.extensions.scale is not vector of two components.");
+							baseColorTexture.scale[0] = float(a[0].get<json::number_float_t>());
+							baseColorTexture.scale[1] = float(a[1].get<json::number_float_t>());
+						}
+						else {
+							baseColorTexture.scale[0] = 1.f;
+							baseColorTexture.scale[1] = 1.f;
+						}
+
+						// KHR_texture_transform.texCoord
+						if(auto texCoordIt = transformIt->find("texCoord"); texCoordIt != transformIt->end())
+							baseColorTexture.coordIndex = unsigned(texCoordIt->get_ref<json::number_integer_t&>());
+					}
+				}
 			}
 			else {
-				baseColorTextureIndex = ~unsigned(0);
-				baseColorTextureCoordIndex = ~unsigned(0);
+				baseColorTexture.index = ~unsigned(0);
+				baseColorTexture.coordIndex = ~unsigned(0);
 			}
 
 			// not supported properties
@@ -1369,8 +1415,8 @@ void App::init()
 		{
 			// default values when pbrMetallicRoughness is not present
 			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-			baseColorTextureIndex = ~unsigned(0);
-			baseColorTextureCoordIndex = ~unsigned(0);
+			baseColorTexture.index = ~unsigned(0);
+			baseColorTexture.coordIndex = ~unsigned(0);
 			metallicFactor = 1.f;
 			roughnessFactor = 1.f;
 		}
@@ -1389,16 +1435,16 @@ void App::init()
 
 		// normal texture
 		if(auto normalTextureIt = material.find("normalTexture"); normalTextureIt != material.end()) {
-			normalTextureIndex = unsigned(normalTextureIt->at("index").get_ref<json::number_unsigned_t&>());
-			if(normalTextureIndex >= textureList.size())
+			normalTexture.index = unsigned(normalTextureIt->at("index").get_ref<json::number_unsigned_t&>());
+			if(normalTexture.index >= textureList.size())
 				throw GltfError("normalTexture.index is out of range. It is not index to a valid texture.");
-			normalTextureCoordIndex = normalTextureIt->value("texCoord", 0);
-			normalTextureScale = normalTextureIt->value("scale", 1);
+			normalTexture.coordIndex = normalTextureIt->value("texCoord", 0);
+			normalTexture.strength = normalTextureIt->value("scale", 1.f);
 		}
 		else {
-			normalTextureIndex = ~unsigned(0);
-			normalTextureCoordIndex = ~unsigned(0);
-			normalTextureScale = 1;
+			normalTexture.index = ~unsigned(0);
+			normalTexture.coordIndex = ~unsigned(0);
+			normalTexture.strength = 1;
 		}
 
 		// not supported material properties
@@ -1412,20 +1458,42 @@ void App::init()
 			throw GltfError("Unsupported functionality: alpha cutoff.");
 
 		// material struct base size
-		size_t materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
+		unsigned materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
+		unsigned coreMaterialSize = materialSize;
+
+		// texture data size inside material
+		//
+		// each texture occupies at least 8 bytes in material structure;
+		// if strength is used, it needs additional 8 bytes (4 for float and 4 for padding to 8 bytes alignment),
+		// so texture with strength occupies 16 bytes in total;
+		// if texture coordinate transform is enabled, addition 6 floats are needed,
+		// so texture without strength takes 8+24=32 bytes and texture with strength takes 8+8+24=40 bytes
+		auto getTextureInfoSize =
+			[](const TextureData& t) -> unsigned
+			{
+				// texture not used
+				if(t.index == ~unsigned(0))
+					return 0;
+
+				if(t.strength == 1.f) {
+					if(!t.transformEnabled)
+						return 8;  // texture yes, strength no, transform no
+					else
+						return 8+24;  // texture yes, strength no, transform yes
+				} else {
+					if(!t.transformEnabled)
+						return 8+8;  // texture yes, strength yes, transform no
+					else
+						return 8+8+24;  // texture yes, strength yes, transform yes
+				}
+			};
 
 		// append textures to material size
-		if(baseColorTextureIndex != ~unsigned(0))
-			materialSize += 8;
-		if(normalTextureIndex != ~unsigned(0)) {
-			if(normalTextureScale == 1.f)
-				materialSize += 8;
-			else
-				materialSize += 12;
-		}
+		materialSize += getTextureInfoSize(baseColorTexture);
+		materialSize += getTextureInfoSize(normalTexture);
 
 		// if there are textures, let's put terminating texture record as well
-		if(materialSize != phongMaterialDataSizeAligned8)
+		if(materialSize != coreMaterialSize)
 			materialSize += 8;
 
 		// material
@@ -1435,6 +1503,7 @@ void App::init()
 		if(unlit) {
 			UnlitMaterialData* m = reinterpret_cast<UnlitMaterialData*>(p);
 			m->colorAndAlpha = baseColorFactor;
+			p += unlitMaterialDataSizeAligned8;
 		}
 		else {
 			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
@@ -1446,44 +1515,84 @@ void App::init()
 			m->emission = emissiveFactor;
 			m->padding2 = 0;
 			m->reflection = glm::vec3(0.f, 0.f, 0.f);
+			p += phongMaterialDataSizeAligned8;
 		}
 
-		TextureData* t = reinterpret_cast<TextureData*>(p + phongMaterialDataSizeAligned8);
-		if(normalTextureIndex != ~unsigned(0))
-		{
-			// normal texture
-			t->texCoordIndex = 4 + normalTextureCoordIndex;  // texture coordinates are placed on attribute 4 and following
-			t->type = 1;
-			t->textureIndex = normalTextureIndex;
-			if(normalTextureScale == 1.f) {
-				// no scale/strength used
-				t->settings = 0 | (8 << 10);  // no flags, structure size 8
-				t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
-			} else {
-				// scale/strength in use
-				t->settings = 1 | (12 << 10);  // use strength/scale, structure size 12
-				t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 12);
-			}
-		}
-		if(baseColorTextureIndex != ~unsigned(0))
-		{
-			// base texture
-			t->texCoordIndex = 4 + baseColorTextureCoordIndex;  // texture coordinates are placed on attribute 4 and following
-			t->type = 4;
-			t->settings = 0 | (8 << 10);  // no flags, structure size 8
-			t->textureIndex = baseColorTextureIndex;
-			t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
-		}
+		// write texture record into material
+		auto writeTexture =
+			[](const TextureData& t, uint8_t type, uint8_t*& p)
+			{
+				// write core texture data
+				TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
+				r->texCoordIndex = 4 + t.coordIndex;  // texture coordinates are placed on attribute 4 and following
+				r->type = type;
+				r->textureIndex = t.index;
+				p += 8;
+
+				uint16_t settings;
+				uint16_t size;
+				if(t.transformEnabled)
+				{
+					// write transform
+					settings = 0x1;
+					size = 32;
+					float* f = reinterpret_cast<float*>(p);
+					if(t.rotation == 0) {
+						f[0] = t.scale.x;
+						f[1] = 0.f;
+						f[2] = 0.f;
+						f[3] = t.scale.y;
+					} else {
+						float c = cos(t.rotation);
+						float s = sin(t.rotation);
+						f[0] = c * t.scale.x;
+						f[1] = -s * t.scale.x;
+						f[2] = s * t.scale.y;
+						f[3] = c * t.scale.y;
+					}
+					f[4] = t.offset.x;
+					f[5] = t.offset.y;
+					p += 24;
+				}
+				else
+				{
+					// skip transform
+					settings = 0;
+					size = 8;
+				}
+
+				if(t.strength != 1.f)
+				{
+					// write strength
+					settings |= 0x2;
+					size += 8;
+					float* f = reinterpret_cast<float*>(p);
+					f[0] = t.strength;
+					f[1] = 0.f;
+					p += 8;
+				}
+
+				// write settings
+				r->settings = settings | (size << 10);
+
+			};
+
+		// write textures
+		uint8_t* p2 = p;
+		if(normalTexture.index != ~unsigned(0))
+			writeTexture(normalTexture, 1, p);
+		if(baseColorTexture.index != ~unsigned(0))
+			writeTexture(baseColorTexture, 4, p);
 
 		// if at least one texture was written, put terminating record as well
-		if(t != reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(m) + phongMaterialDataSizeAligned8))
+		if(p != p2)
 		{
 			// terminating record (all zeros)
-			t = reinterpret_cast<TextureData*>(reinterpret_cast<uint8_t*>(t) + 8);
-			t->texCoordIndex = 0;
-			t->type = 0;
-			t->settings = 0;
-			t->textureIndex = 0;
+			TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
+			r->texCoordIndex = 0;
+			r->type = 0;
+			r->settings = 0;
+			r->textureIndex = 0;
 		}
 
 		// StateSetMaterialData
@@ -1491,9 +1600,9 @@ void App::init()
 		ssm.unlit = unlit;
 		ssm.doubleSided = doubleSided;
 		ssm.textureInfoOffset =
-			(materialSize == phongMaterialDataSizeAligned8)
+			(materialSize == coreMaterialSize)
 				? 0  // no texture info
-				: phongMaterialDataSizeAligned8;  // texture info just after phong data
+				: coreMaterialSize;  // texture info just material data
 	}
 	assert(materialList.size() == numMaterials && "Not all materials were created.");
 

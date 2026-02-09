@@ -159,28 +159,34 @@ TextureInfoRef {
 	//   3 - emissive texture
 	//   4 - base texture
 	// settings - bits 16..31
-	//   bit 16 - multiply texture value by strength member
-	//   bit 17 - transform texture coordinates by the transformation specified by t1..t6
-	//   bit 18 - blend color included in the structure
-	//   bits 19..21 - for Phong and its base texture, texture environment:
-	//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add
-	//   bits 22..23 - first component index;
+	//   bit 16 - transform texture coordinates by the transformation specified by t1..t6
+	//   bit 17 - multiply texture value by strength member
+	//   bits 18..20 - for Phong and its base texture, texture environment:
+	//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add;
+	//                 note: when blend texture environment is used (e.g. bits 18..20 are set to 3),
+	//                       blendColor is included in textureInfo and occupies extra 12 bytes
+	//   bits 21..22 - first component index
 	//   bits 26..31 - size of the structure (0..63 bytes), it must be multiple of 8;
 	//                 structure size might be even 8 bytes if strength and the following
 	//                 members are not used; size of the structure is used for computing
 	//                 of the start address of the next TextureInfo structure
 	uint texCoordIndexTypeAndSettings;
 	uint textureIndex;
-	float strength;
-	float rs1,rs2,rs3,rs4,t1,t2;  // rotation and scale in 2x2 matrix, translation in vec2
-	float blendR,blendG,blendB;  // texture blend color used in blend texture environment
+#if 0  // following members are optional;
+       // their offsets depends on which members are actually present;
+       // they are present in the specified order but those do not present does not occupy any space,
+       // e.g. their space is occupied by the following members
+	float rs1,rs2,rs3,rs4,t1,t2;  // optional: rotation and scale in 2x2 matrix (rs1..rs4), translation in vec2 (t1,t2); offset of rs1 is aligned to 8 bytes
+	float strength;  // optional: strength of the effect (of occlusion or emissive texture,..),
+	                 // or scale (of normals in normal texture)
+	vec3 blendColor;  // optional: texture blend color used in blend texture environment
+#endif
 };
 
-bool getTextureUseStrengthFlag(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x10000) != 0; }
-bool getTextureTranformFlag(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x20000) != 0; }
-uint getTextureEnvironment(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 19) & 0x7; }
-vec3 getTextureBlendColor(TextureInfoRef textureInfo)  { return vec3(textureInfo.blendR, textureInfo.blendG, textureInfo.blendB); }
-uint getTextureFirstComponentIndex(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 22) & 0x3; }
+bool getTextureUseCoordinateTranform(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x10000) != 0; }
+bool getTextureUseStrength(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x20000) != 0; }
+uint getTextureEnvironment(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 18) & 0x7; }
+uint getTextureFirstComponentIndex(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 21) & 0x3; }
 uint getTexCoordAccessInfo(TextureInfoRef textureInfo) { return getTexCoordAccessInfo(textureInfo.texCoordIndexTypeAndSettings & 0xff); }
 
 TextureInfoRef getNextTextureInfo(TextureInfoRef textureInfo)
@@ -189,59 +195,100 @@ TextureInfoRef getNextTextureInfo(TextureInfoRef textureInfo)
 	return TextureInfoRef(uint64_t(textureInfo) + size);
 }
 
-vec2 transformTexCoord(vec2 tc, TextureInfoRef textureInfo)
+layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
+TextureStrengthRef {
+	float value;
+};
+
+float getTextureStrength(uint64_t dataPointer)
 {
+	return TextureStrengthRef(dataPointer).value;
+}
+
+layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
+TextureBlendColorRef {
+	vec3 value;
+};
+
+vec3 getTextureBlendColor(uint64_t dataPointer)
+{
+	return TextureBlendColorRef(dataPointer).value;
+}
+
+layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
+TextureTransformDataRef {
+	vec4 rotationAndScale;
+	vec2 translation;
+};
+
+vec2 transformTexCoord(vec2 tc, uint64_t dataPointer)
+{
+	TextureTransformDataRef tt = TextureTransformDataRef(dataPointer);
 	mat2x2 rotationAndScale = {
-		{ textureInfo.rs1, textureInfo.rs2, },
-		{ textureInfo.rs3, textureInfo.rs4, },
+		{ tt.rotationAndScale[0], tt.rotationAndScale[1], },
+		{ tt.rotationAndScale[2], tt.rotationAndScale[3], },
 	};
-	vec2 translation = { textureInfo.t1, textureInfo.t2, };
+	vec2 translation = { tt.translation[0], tt.translation[1], };
 	return rotationAndScale * tc + translation;
 }
 
 vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
-	u64vec3 vertexDataPtrList, vec3 barycentricCoords)
+	u64vec3 vertexDataPtrList, vec3 barycentricCoords, out uint64_t nextDataPointer)
 {
 	// get texture coordinates
 	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
 	vec2 uv0 = readVec2(texCoordAccessInfo, vertexDataPtrList[0]);
 	vec2 uv1 = readVec2(texCoordAccessInfo, vertexDataPtrList[1]);
 	vec2 uv2 = readVec2(texCoordAccessInfo, vertexDataPtrList[2]);
+
+	// interpolate
 	vec2 uv = uv0 * barycentricCoords.x + uv1 * barycentricCoords.y +
 	          uv2 * barycentricCoords.z;
 
 	// transform texture coordinates
-	if(getTextureTranformFlag(textureInfo))
-		uv = transformTexCoord(uv, textureInfo);
+	if(getTextureUseCoordinateTranform(textureInfo)) {
+		uv = transformTexCoord(uv, uint64_t(textureInfo) + 8);
+		nextDataPointer = uint64_t(textureInfo) + 32;
+	} else
+		nextDataPointer = uint64_t(textureInfo) + 8;
 
 	return uv;
 }
 
 vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
-	u64vec2 vertexDataPtrList, vec2 barycentricCoords)
+	u64vec2 vertexDataPtrList, vec2 barycentricCoords, out uint64_t nextDataPointer)
 {
 	// get texture coordinates
 	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
 	vec2 uv0 = readVec2(texCoordAccessInfo, vertexDataPtrList[0]);
 	vec2 uv1 = readVec2(texCoordAccessInfo, vertexDataPtrList[1]);
+
+	// interpolate
 	vec2 uv = uv0 * barycentricCoords.x + uv1 * barycentricCoords.y;
 
 	// transform texture coordinates
-	if(getTextureTranformFlag(textureInfo))
-		uv = transformTexCoord(uv, textureInfo);
+	if(getTextureUseCoordinateTranform(textureInfo)) {
+		uv = transformTexCoord(uv, uint64_t(textureInfo) + 8);
+		nextDataPointer = uint64_t(textureInfo) + 32;
+	} else
+		nextDataPointer = uint64_t(textureInfo) + 8;
 
 	return uv;
 }
 
-vec2 computeTextureCoordinates(TextureInfoRef textureInfo, uint64_t vertexDataPtr)
+vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
+	uint64_t vertexDataPtr, out uint64_t nextDataPointer)
 {
 	// get texture coordinates
 	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
 	vec2 uv = readVec2(texCoordAccessInfo, vertexDataPtr);
 
 	// transform texture coordinates
-	if(getTextureTranformFlag(textureInfo))
-		uv = transformTexCoord(uv, textureInfo);
+	if(getTextureUseCoordinateTranform(textureInfo)) {
+		uv = transformTexCoord(uv, uint64_t(textureInfo) + 8);
+		nextDataPointer = uint64_t(textureInfo) + 32;
+	} else
+		nextDataPointer = uint64_t(textureInfo) + 8;
 
 	return uv;
 }

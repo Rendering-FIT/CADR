@@ -261,7 +261,8 @@ void main()
 
 	// normal
 	vec3 normal;
-	if(!getMaterialDisableLighting()) {
+	uint materialModel = getMaterialModel();
+	if(materialModel != 0 && !getMaterialDisableLighting()) {
 		if(getGenerateFlatNormals())
 			normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
 		else
@@ -288,10 +289,11 @@ void main()
 
 		// compute texture coordinates from relevant data,
 		// and transform them if requested
+		uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
 #else
-		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
 #endif
 
 		// sample texture
@@ -299,8 +301,10 @@ void main()
 
 		// transform in tangent space and normalize
 		tangentSpaceNormal = tangentSpaceNormal * 2 - 1;  // transform from 0..1 to -1..1
-		if(getTextureUseStrengthFlag(textureInfo))
-			tangentSpaceNormal.xy *= textureInfo.strength;
+		if(getTextureUseStrength(textureInfo)) {
+			tangentSpaceNormal.xy *= getTextureStrength(nextDataPointer);
+			nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
+		}
 		tangentSpaceNormal = normalize(tangentSpaceNormal);
 
 		// transform normal
@@ -309,12 +313,11 @@ void main()
 		normal = tbn * tangentSpaceNormal;
 
 		// update pointer to point to the next texture
-		textureInfo = getNextTextureInfo(textureInfo);
+		textureInfo = TextureInfoRef(nextDataPointer);
 		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 	}
 
 	// unlit material
-	uint materialModel = getMaterialModel();
 	if(materialModel == 0) {
 
 		// material data
@@ -365,31 +368,42 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
 #endif
 
 			// sample texture
 			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
 
 			// multiply by strength
-			if(getTextureUseStrengthFlag(textureInfo))
-				baseTextureValue *= textureInfo.strength;
+			uint texEnv = getTextureEnvironment(textureInfo);
+			if(getTextureUseStrength(textureInfo)) {
+				baseTextureValue *= getTextureStrength(nextDataPointer);
+				if(texEnv != 3)
+					nextDataPointer += 8;
+				else
+					nextDataPointer += 4;
+			}
 
 			// apply texture using texEnv
-			uint texEnv = getTextureEnvironment(textureInfo);
 			if(getMaterialIgnoreBaseTextureAlpha()) {
 				if(texEnv == 0)  // modulate
 					outColor.rgb *= baseTextureValue.rgb;
-				else if(texEnv == 1) // replace
+				else if(texEnv == 1)  // replace
 					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 2) // decal
+				else if(texEnv == 2)  // decal
 					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 3) // blend
-					outColor.rgb = outColor.rgb*(1-baseTextureValue.rgb) + getTextureBlendColor(textureInfo)*baseTextureValue.rgb;
-				else if(texEnv == 3) // add
+				else if(texEnv == 3)  // blend
+				{
+					outColor.rgb =
+						(outColor.rgb * (1-baseTextureValue.rgb)) +
+						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb);
+					nextDataPointer += 12;
+				}
+				else if(texEnv == 4) // add
 					outColor.rgb = outColor.rgb + baseTextureValue.rgb;
 			} else {
 				if(texEnv == 0)  // modulate
@@ -398,14 +412,20 @@ void main()
 					outColor = vec4(baseTextureValue.rgb, baseTextureValue.a * outColor.a);
 				else if(texEnv == 2) // decal
 					outColor = vec4(outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a, outColor.a);
-				else if(texEnv == 3) // blend
-					outColor = vec4(outColor.rgb*(1-baseTextureValue.rgb) + getTextureBlendColor(textureInfo)*baseTextureValue.rgb, outColor.a*baseTextureValue.a);
-				else if(texEnv == 3) // add
+				else if(texEnv == 3)  // blend
+				{
+					outColor = vec4(
+						(outColor.rgb * (1-baseTextureValue.rgb)) +
+						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb),
+						outColor.a * baseTextureValue.a);
+					nextDataPointer += 12;
+				}
+				else if(texEnv == 4) // add
 					outColor = vec4(outColor.rgb + baseTextureValue.rgb, outColor.a * baseTextureValue.a);
 			}
 
 			// update pointer to point to the next texture
-			textureInfo = getNextTextureInfo(textureInfo);
+			textureInfo = TextureInfoRef(nextDataPointer);
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
@@ -423,10 +443,11 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
 #endif
 
 			// sample texture
@@ -434,11 +455,13 @@ void main()
 			float occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv)[componentIndex];
 
 			// multiply by strength
-			if(getTextureUseStrengthFlag(textureInfo))
-				occlusionTextureValue = 1. + textureInfo.strength * (occlusionTextureValue - 1.);
+			if(getTextureUseStrength(textureInfo)) {
+				occlusionTextureValue = 1. + getTextureStrength(nextDataPointer) * (occlusionTextureValue - 1.);
+				nextDataPointer += 8;
+			}
 
 			// update pointer to point to the next texture
-			textureInfo = getNextTextureInfo(textureInfo);
+			textureInfo = TextureInfoRef(nextDataPointer);
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
@@ -449,21 +472,24 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
 #endif
 
 			// sample texture
 			emissiveTextureValue = texture(textureList[textureInfo.textureIndex], uv).rgb;
 
 			// multiply by strength
-			if(getTextureUseStrengthFlag(textureInfo))
-				emissiveTextureValue *= textureInfo.strength;
+			if(getTextureUseStrength(textureInfo)) {
+				emissiveTextureValue *= getTextureStrength(nextDataPointer);
+				nextDataPointer += 8;
+			}
 
 			// update pointer to point to the next texture
-			textureInfo = getNextTextureInfo(textureInfo);
+			textureInfo = TextureInfoRef(nextDataPointer);
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
@@ -592,47 +618,64 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
+			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr);
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
 #endif
 
 			// sample texture
 			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
 
 			// multiply by strength
-			if(getTextureUseStrengthFlag(textureInfo))
-				baseTextureValue *= textureInfo.strength;
+			uint texEnv = getTextureEnvironment(textureInfo);
+			if(getTextureUseStrength(textureInfo)) {
+				baseTextureValue *= getTextureStrength(nextDataPointer);
+				if(texEnv != 3)
+					nextDataPointer += 8;
+				else
+					nextDataPointer += 4;
+			}
 
 			// apply texture using texEnv
-			uint texEnv = getTextureEnvironment(textureInfo);
 			if(getMaterialIgnoreBaseTextureAlpha()) {
 				if(texEnv == 0)  // modulate
 					outColor.rgb *= baseTextureValue.rgb;
-				else if(texEnv == 1) // replace
+				else if(texEnv == 1)  // replace
 					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 2) // decal
+				else if(texEnv == 2)  // decal
 					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 3) // blend
-					outColor.rgb = outColor.rgb*(1-baseTextureValue.rgb) + getTextureBlendColor(textureInfo)*baseTextureValue.rgb;
-				else if(texEnv == 3) // add
+				else if(texEnv == 3)  // blend
+				{
+					outColor.rgb =
+						(outColor.rgb * (1-baseTextureValue.rgb)) +
+						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb);
+					nextDataPointer += 12;
+				}
+				else if(texEnv == 4) // add
 					outColor.rgb = outColor.rgb + baseTextureValue.rgb;
 			} else {
 				if(texEnv == 0)  // modulate
 					outColor *= baseTextureValue;
-				else if(texEnv == 1) // replace
+				else if(texEnv == 1)  // replace
 					outColor = vec4(baseTextureValue.rgb, baseTextureValue.a * outColor.a);
-				else if(texEnv == 2) // decal
+				else if(texEnv == 2)  // decal
 					outColor = vec4(outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a, outColor.a);
-				else if(texEnv == 3) // blend
-					outColor = vec4(outColor.rgb*(1-baseTextureValue.rgb) + getTextureBlendColor(textureInfo)*baseTextureValue.rgb, outColor.a*baseTextureValue.a);
-				else if(texEnv == 3) // add
+				else if(texEnv == 3)  // blend
+				{
+					outColor = vec4(
+						(outColor.rgb * (1-baseTextureValue.rgb)) +
+						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb),
+						outColor.a*baseTextureValue.a);
+					nextDataPointer += 12;
+				}
+				else if(texEnv == 4)  // add
 					outColor = vec4(outColor.rgb + baseTextureValue.rgb, outColor.a * baseTextureValue.a);
 			}
 
 			// update pointer to point to the next texture
-			textureInfo = getNextTextureInfo(textureInfo);
+			textureInfo = TextureInfoRef(nextDataPointer);
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
