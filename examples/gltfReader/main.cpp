@@ -1303,7 +1303,7 @@ void App::init()
 		struct TextureData {
 			unsigned index;
 			unsigned coordIndex;
-			float strength = 1.f;
+			float strength;
 			bool transformEnabled;
 			glm::vec2 offset;
 			float rotation;
@@ -1324,7 +1324,8 @@ void App::init()
 		float emissiveStrength = 1.f;
 
 		auto readTextureData =
-			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned textureListSize)
+			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned textureListSize,
+			   const char* strengthPropertyName = nullptr)
 			{
 				if(auto textureIt = jsonParent.find(jsonPropertyName); textureIt != jsonParent.end()) {
 
@@ -1332,6 +1333,13 @@ void App::init()
 					if(t.index >= textureListSize)
 						throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
 					t.coordIndex = textureIt->value("texCoord", 0);
+					if(strengthPropertyName)
+						if(auto it = textureIt->find(strengthPropertyName); it != textureIt->end())
+							t.strength = float(it->get<json::number_float_t>());
+						else
+							t.strength = 1.f;
+					else
+						t.strength = 1.f;
 					if(auto extIt = textureIt->find("extensions"); extIt != textureIt->end()) {
 
 						// KHR_texture_transform
@@ -1451,18 +1459,7 @@ void App::init()
 			emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
 
 		// normal texture
-		if(auto normalTextureIt = material.find("normalTexture"); normalTextureIt != material.end()) {
-			normalTexture.index = unsigned(normalTextureIt->at("index").get_ref<json::number_unsigned_t&>());
-			if(normalTexture.index >= textureList.size())
-				throw GltfError("normalTexture.index is out of range. It is not index to a valid texture.");
-			normalTexture.coordIndex = normalTextureIt->value("texCoord", 0);
-			normalTexture.strength = normalTextureIt->value("scale", 1.f);
-		}
-		else {
-			normalTexture.index = ~unsigned(0);
-			normalTexture.coordIndex = ~unsigned(0);
-			normalTexture.strength = 1;
-		}
+		readTextureData(normalTexture, "normalTexture", material, unsigned(textureList.size()), "scale");
 
 		// emissive texture
 		readTextureData(emissiveTexture, "emissiveTexture", material, unsigned(textureList.size()));
