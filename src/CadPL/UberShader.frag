@@ -466,34 +466,6 @@ void main()
 
 		}
 
-		// emissive texture
-		vec3 emissiveTextureValue = vec3(1);
-		if(textureType == 0x0300) {
-
-			// compute texture coordinates from relevant data,
-			// and transform them if requested
-			uint64_t nextDataPointer;
-#if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
-#else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
-#endif
-
-			// sample texture
-			emissiveTextureValue = texture(textureList[textureInfo.textureIndex], uv).rgb;
-
-			// multiply by strength
-			if(getTextureUseStrength(textureInfo)) {
-				emissiveTextureValue *= getTextureStrength(nextDataPointer);
-				nextDataPointer += 8;
-			}
-
-			// update pointer to point to the next texture
-			textureInfo = TextureInfoRef(nextDataPointer);
-			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
-
-		}
-
 		// material data
 		PhongMaterialRef phongMaterial = PhongMaterialRef(drawableDataPtr);
 
@@ -554,9 +526,12 @@ void main()
 				outColor.a = phongMaterial.diffuseAndAlpha.a;
 		}
 
+
 		if(getMaterialDisableLighting())
 		{
-			outColor.rgb = diffuseColor + (phongMaterial.emission * emissiveTextureValue);
+			outColor.rgb = diffuseColor;
+			if(getPhongMaterialOpenGLStyleEmission())
+				outColor.rgb += phongMaterial.emission;
 		}
 		else {
 
@@ -596,25 +571,27 @@ void main()
 
 				} while(lightSettings != 0);
 
-				// Phong equation
-				outColor.rgb = phongMaterial.emission * emissiveTextureValue +
-				               (ambientProduct + scene.ambientLight) * ambientColor * occlusionTextureValue +
-				               diffuseProduct * diffuseColor +
-				               specularProduct * phongMaterial.specular;
+				// Phong equation except emission color
+				outColor.rgb = ((ambientProduct + scene.ambientLight) * ambientColor * occlusionTextureValue) +
+				               (diffuseProduct * diffuseColor) +
+				               (specularProduct * phongMaterial.specular);
 
 			}
 			else {
 
-				// Phong equation without light sources
-				outColor.rgb = phongMaterial.emission * emissiveTextureValue +
-				               scene.ambientLight * ambientColor * occlusionTextureValue;
+				// Phong equation without light sources and without emission color
+				outColor.rgb = scene.ambientLight * ambientColor * occlusionTextureValue;
 
 			}
+
+			// emission color
+			if(getPhongMaterialOpenGLStyleEmission())
+				outColor.rgb += phongMaterial.emission;
 
 		}
 
 		// base texture
-		if(textureType == 0x0400) {
+		if(textureType == 0x0300) {
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
@@ -679,6 +656,43 @@ void main()
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
+
+		// emissive texture and material emission
+		if(textureType == 0x0400) {
+
+			// compute texture coordinates from relevant data,
+			// and transform them if requested
+			uint64_t nextDataPointer;
+#if defined(TRIANGLES) || defined(LINES)
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+#else
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+#endif
+
+			// sample texture
+			vec3 emission = texture(textureList[textureInfo.textureIndex], uv).rgb;
+
+			// multiply by strength
+			if(getTextureUseStrength(textureInfo)) {
+				emission *= getTextureStrength(nextDataPointer);
+				nextDataPointer += 8;
+			}
+
+			// multiply by material emission
+			if(getPhongMaterialSeparateEmission())
+				emission *= phongMaterial.emission;
+
+			// append it to the final color
+			outColor.rgb += emission;
+
+			// update pointer to point to the next texture
+			textureInfo = TextureInfoRef(nextDataPointer);
+			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+
+		}
+		else
+			if(getPhongMaterialSeparateEmission())
+				outColor.rgb += phongMaterial.emission;
 
 	}
 

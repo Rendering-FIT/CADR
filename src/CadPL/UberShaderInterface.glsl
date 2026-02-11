@@ -58,22 +58,38 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 // unlit:
 //    bit  9: ignored
 //    bit 10: ignored
-//    bit 11: if set, multiplication is used to compute base color - color attribute
-//            is multiplied by material color;
-//            otherwise, base color is set to color attribute without considering material
+//    bit 11: glTF or OpenGL handling of color attribute;
+//            if set, color attribute is multiplied with material color
+//            during base color computation; this follows glTF design;
+//            if not set, color attribute is used directly for base color,
+//            ignoring material color; this follows OpenGL fixed pipeline design;
+//            if color attribute is not present, material color is used and this bit has no effect
 // phong:
-//    bit 10: if set, color attribute is applied just on diffuse component;
+//    bit 10: apply color attribute on ambient and diffuse, or on diffuse only;
+//            if set, color attribute is applied just on diffuse component;
 //            otherwise, it is applied on ambient and diffuse
-//    bit 11: if set, multiplication is used instead of ignoring material;
-//            diffuse component is computed by multiplication of color attribute
-//            and material diffuse;
-//            otherwise, diffuse component is set to color attribute without
-//            considering material diffuse value;
-//            if bit 9 is set, the same applies for ambient component
+//    bit 11: glTF or OpenGL handling of color attribute with relation to diffuse and ambient material;
+//            if set, color attribute is multiplied with material diffuse (and ambient, see bellow) color
+//            when computing diffuse light contribution; this follows glTF design;
+//            if not set, only color attribute is used during diffuse (and ambient, see bellow) light computation,
+//            ignoring diffuse (and ambient) material color; this follows OpenGL fixed pipeline design;
+//            if bit 10 is set, the same applies for ambient component
 //            (final ambient = color attribute * material ambient);
-// bit 12: ignore color attribute alpha if color attribute is used (if bit 8 or 9 is set)
-// bit 13: ignore material alpha
-// bit 14: ignore base texture alpha if base texture is used
+//    bit 12 - for Phong: glTF or OpenGL style material emission color;
+//                        It switches material emission color application either
+//                        after base color texture or before base color texture.
+//                        If the bit 12 is set to zero, OpenGL style is used.
+//                        Material emission color is applied in the same way as in fixed OpenGL pipeline,
+//                        e.g. material emission color contributes to the final color computed
+//                        by the lighting equation while base color texture is applied on this final color.
+//                        If emissive texture is active, it is added at the end to the final fragment shader output.
+//                        If the bit 12 is set to one, glTF style is used.
+//                        Material emission color is not involved in any color calculations
+//                        except that it is multiplied by emissive texture, if used, and added
+//                        to the final fragment shader output.
+// bit 13: ignore color attribute alpha if color attribute is used
+// bit 14: ignore material alpha
+// bit 15: ignore base texture alpha if base texture is used
 uint getMaterialModel()  { return materialSetup & 0x03; }
 uint getMaterialFirstTextureOffset()  { return materialSetup & 0xfc; }
 bool getMaterialTwoSidedLighting()  { return (materialSetup & 0x0100) != 0; }
@@ -81,9 +97,11 @@ bool getMaterialDisableLighting()  { return (materialSetup & 0x0200) != 0; }
 bool getUnlitMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0800) != 0; }
 bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup & 0x0400) != 0; }
 bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0800) != 0; }
-bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x1000) != 0; }
-bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x2000) != 0; }
-bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x4000) != 0; }
+bool getPhongMaterialOpenGLStyleEmission()  { return (materialSetup & 0x1000) == 0; }
+bool getPhongMaterialSeparateEmission()  { return (materialSetup & 0x1000) != 0; }
+bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x2000) != 0; }
+bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x4000) != 0; }
+bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x8000) != 0; }
 
 
 

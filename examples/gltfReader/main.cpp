@@ -1304,7 +1304,7 @@ void App::init()
 			unsigned index;
 			unsigned coordIndex;
 			float strength = 1.f;
-			bool transformEnabled = false;
+			bool transformEnabled;
 			glm::vec2 offset;
 			float rotation;
 			glm::vec2 scale;
@@ -1316,10 +1316,73 @@ void App::init()
 		glm::vec4 baseColorFactor;
 		TextureData baseColorTexture;
 		TextureData normalTexture;
+		TextureData emissiveTexture;
 
 		float metallicFactor;
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
+
+		auto readTextureData =
+			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned textureListSize)
+			{
+				if(auto textureIt = jsonParent.find(jsonPropertyName); textureIt != jsonParent.end()) {
+
+					t.index = unsigned(textureIt->at("index").get_ref<json::number_unsigned_t&>());
+					if(t.index >= textureListSize)
+						throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
+					t.coordIndex = textureIt->value("texCoord", 0);
+					if(auto extIt = textureIt->find("extensions"); extIt != textureIt->end()) {
+
+						// KHR_texture_transform
+						auto transformIt = extIt->find("KHR_texture_transform");
+						if(transformIt != extIt->end())
+						{
+							t.transformEnabled = true;
+
+							// KHR_texture_transform.offset
+							if(auto offsetIt = transformIt->find("offset"); offsetIt != transformIt->end()) {
+								json::array_t& a = offsetIt->get_ref<json::array_t&>();
+								if(a.size() != 2)
+									throw GltfError("Material.baseColorTexture.extensions.offset is not vector of two components.");
+								t.offset[0] = float(a[0].get<json::number_float_t>());
+								t.offset[1] = float(a[1].get<json::number_float_t>());
+							}
+							else {
+								t.offset[0] = 0.f;
+								t.offset[1] = 0.f;
+							}
+
+							// KHR_texture_transform.rotation
+							t.rotation = float(transformIt->value<json::number_float_t>("rotation", 0.f));
+
+							// KHR_texture_transform.scale
+							if(auto scaleIt = transformIt->find("scale"); scaleIt != transformIt->end()) {
+								json::array_t& a = scaleIt->get_ref<json::array_t&>();
+								if(a.size() != 2)
+									throw GltfError("Material.baseColorTexture.extensions.scale is not vector of two components.");
+								t.scale[0] = float(a[0].get<json::number_float_t>());
+								t.scale[1] = float(a[1].get<json::number_float_t>());
+							}
+							else {
+								t.scale[0] = 1.f;
+								t.scale[1] = 1.f;
+							}
+
+							// KHR_texture_transform.texCoord
+							if(auto texCoordIt = transformIt->find("texCoord"); texCoordIt != transformIt->end())
+								t.coordIndex = unsigned(texCoordIt->get_ref<json::number_integer_t&>());
+						}
+						else
+							t.transformEnabled = false;
+					}
+					else
+						t.transformEnabled = false;
+				}
+				else {
+					t.index = ~unsigned(0);
+					t.coordIndex = ~unsigned(0);
+				}
+			};
 
 		// unlit material extension
 		if(auto extIt = material.find("extensions"); extIt == material.end()) {
@@ -1354,57 +1417,7 @@ void App::init()
 			roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
 
 			// base color texture
-			if(auto baseColorTextureIt = pbrIt->find("baseColorTexture"); baseColorTextureIt != pbrIt->end()) {
-				baseColorTexture.index = unsigned(baseColorTextureIt->at("index").get_ref<json::number_unsigned_t&>());
-				if(baseColorTexture.index >= textureList.size())
-					throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
-				baseColorTexture.coordIndex = baseColorTextureIt->value("texCoord", 0);
-				if(auto extIt = baseColorTextureIt->find("extensions"); extIt != baseColorTextureIt->end()) {
-
-					// KHR_texture_transform
-					auto transformIt = extIt->find("KHR_texture_transform");
-					if(transformIt != extIt->end()) {
-						baseColorTexture.transformEnabled = true;
-
-						// KHR_texture_transform.offset
-						if(auto offsetIt = transformIt->find("offset"); offsetIt != transformIt->end()) {
-							json::array_t& a = offsetIt->get_ref<json::array_t&>();
-							if(a.size() != 2)
-								throw GltfError("Material.baseColorTexture.extensions.offset is not vector of two components.");
-							baseColorTexture.offset[0] = float(a[0].get<json::number_float_t>());
-							baseColorTexture.offset[1] = float(a[1].get<json::number_float_t>());
-						}
-						else {
-							baseColorTexture.offset[0] = 0.f;
-							baseColorTexture.offset[1] = 0.f;
-						}
-
-						// KHR_texture_transform.rotation
-						baseColorTexture.rotation = float(transformIt->value<json::number_float_t>("rotation", 0.f));
-
-						// KHR_texture_transform.scale
-						if(auto scaleIt = transformIt->find("scale"); scaleIt != transformIt->end()) {
-							json::array_t& a = scaleIt->get_ref<json::array_t&>();
-							if(a.size() != 2)
-								throw GltfError("Material.baseColorTexture.extensions.scale is not vector of two components.");
-							baseColorTexture.scale[0] = float(a[0].get<json::number_float_t>());
-							baseColorTexture.scale[1] = float(a[1].get<json::number_float_t>());
-						}
-						else {
-							baseColorTexture.scale[0] = 1.f;
-							baseColorTexture.scale[1] = 1.f;
-						}
-
-						// KHR_texture_transform.texCoord
-						if(auto texCoordIt = transformIt->find("texCoord"); texCoordIt != transformIt->end())
-							baseColorTexture.coordIndex = unsigned(texCoordIt->get_ref<json::number_integer_t&>());
-					}
-				}
-			}
-			else {
-				baseColorTexture.index = ~unsigned(0);
-				baseColorTexture.coordIndex = ~unsigned(0);
-			}
+			readTextureData(baseColorTexture, "baseColorTexture", *pbrIt, unsigned(textureList.size()));
 
 			// not supported properties
 			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
@@ -1447,11 +1460,12 @@ void App::init()
 			normalTexture.strength = 1;
 		}
 
+		// emissive texture
+		readTextureData(emissiveTexture, "emissiveTexture", material, unsigned(textureList.size()));
+
 		// not supported material properties
 		if(material.find("occlusionTexture") != material.end())
 			throw GltfError("Unsupported functionality: occlusion texture.");
-		if(material.find("emissiveTexture") != material.end())
-			throw GltfError("Unsupported functionality: emissive texture.");
 		if(material.find("alphaMode") != material.end())
 			throw GltfError("Unsupported functionality: alpha mode.");
 		if(material.find("alphaCutoff") != material.end())
@@ -1489,8 +1503,9 @@ void App::init()
 			};
 
 		// append textures to material size
-		materialSize += getTextureInfoSize(baseColorTexture);
 		materialSize += getTextureInfoSize(normalTexture);
+		materialSize += getTextureInfoSize(baseColorTexture);
+		materialSize += getTextureInfoSize(emissiveTexture);
 
 		// if there are textures, let's put terminating texture record as well
 		if(materialSize != coreMaterialSize)
@@ -1582,7 +1597,9 @@ void App::init()
 		if(normalTexture.index != ~unsigned(0))
 			writeTexture(normalTexture, 1, p);
 		if(baseColorTexture.index != ~unsigned(0))
-			writeTexture(baseColorTexture, 4, p);
+			writeTexture(baseColorTexture, 3, p);
+		if(emissiveTexture.index != ~unsigned(0))
+			writeTexture(emissiveTexture, 4, p);
 
 		// if at least one texture was written, put terminating record as well
 		if(p != p2)
@@ -2548,9 +2565,10 @@ void App::init()
 				.materialSetup =
 					(ssMaterialData.unlit ? 0x0 : 0x1) |  // Unlit vs Phong
 					ssMaterialData.textureInfoOffset |  // texture offset
-					(ssMaterialData.doubleSided ? 0x100 : 0) |  // two sided lighting
-					((mode <= 3) && (normalData == nullptr) ? 0x200 : 0) |  // disable lighting for points and lines without normals
-					0x800 |  // color attribute (if present) does not replace material ambient and diffuse color, but multiplies them
+					(ssMaterialData.doubleSided ? 0x0100 : 0) |  // two sided lighting
+					((mode <= 3) && (normalData == nullptr) ? 0x0200 : 0) |  // disable lighting for points and lines without normals
+					0x0800 |  // color attribute (if present) does not replace material ambient and diffuse color, but multiplies them
+					0x1000 |  // set separate emission on Phong material
 					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
 				.pointSize = 1.f,
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
