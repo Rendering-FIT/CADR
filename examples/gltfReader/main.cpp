@@ -1321,6 +1321,7 @@ void App::init()
 		float metallicFactor;
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
+		float emissiveStrength = 1.f;
 
 		auto readTextureData =
 			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned textureListSize)
@@ -1391,6 +1392,9 @@ void App::init()
 		else {
 			auto it = extIt->find("KHR_materials_unlit");
 			unlit = (it != extIt->end());
+			it = extIt->find("KHR_materials_emissive_strength");
+			if(it != extIt->end())
+				emissiveStrength = float(it->value<json::number_float_t>("emissiveStrength", 1.0));
 		}
 
 		// material.doubleSided is optional with the default value of false
@@ -1527,7 +1531,7 @@ void App::init()
 			m->diffuseAndAlpha = baseColorFactor;
 			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
 			m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
-			m->emission = emissiveFactor;
+			m->emission = emissiveFactor * emissiveStrength;
 			m->padding2 = 0;
 			m->reflection = glm::vec3(0.f, 0.f, 0.f);
 			p += phongMaterialDataSizeAligned8;
