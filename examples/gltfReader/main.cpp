@@ -25,6 +25,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <nlohmann/json.hpp>
 #include "../../3rdParty/stb/stb_image.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -1802,10 +1803,8 @@ void App::init()
 			unsigned normalDataStride;
 			uint8_t* colorData = nullptr;
 			glm::vec4 (*getColorFunc)(uint8_t* srcPtr);
-			uint8_t* texCoordData = nullptr;
-			glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
 			unsigned colorDataStride;
-			unsigned texCoordDataStride;
+			vector<tuple<uint8_t*, glm::vec4 (*)(uint8_t* srcPtr), unsigned>> texCoordAttribInfoList;
 			glm::vec4* tangentData = nullptr;
 			unsigned tangentDataStride;
 			CadR::BoundingBox primitiveSetBB;
@@ -1948,7 +1947,13 @@ void App::init()
 						                        numVertices, elementSize);
 
 				}
-				else if(it.key() == "TEXCOORD_0") {
+				else if(it.key().starts_with("TEXCOORD_")) {
+
+					// get texCoordIndex from TEXCOORD_[texCoordIndex] string
+					char* endp;
+					unsigned texCoordIndex = strtoul(it.key().c_str()+9, &endp, 10);
+					if(endp-it.key().c_str() != it.key().size())
+						throw GltfError("TexCoord attribute name is invalid.");
 
 					// vertex size
 					vertexSize += 16;
@@ -1984,6 +1989,7 @@ void App::init()
 					updateNumVertices(accessor, numVertices);
 
 					// getTexCoordFunc and elementSize
+					glm::vec4 (*getTexCoordFunc)(uint8_t* srcPtr);
 					size_t elementSize;
 					switch(ct) {
 					case 5126: getTexCoordFunc = getTexCoordFromVec2f;  elementSize = 8; break;
@@ -1992,9 +1998,24 @@ void App::init()
 					}
 
 					// texCoord data and stride
+					uint8_t* texCoordData;
+					unsigned texCoordDataStride;
 					tie(reinterpret_cast<void*&>(texCoordData), texCoordDataStride) =
 						getDataPointerAndStride(accessor, bufferViews, buffers, bufferDataList,
 						                        numVertices, elementSize);
+
+					// insert data into texCoordAttribInfoList
+					if(texCoordAttribInfoList.size() == texCoordIndex)
+						texCoordAttribInfoList.emplace_back(texCoordData, getTexCoordFunc, texCoordDataStride);
+					else if(texCoordAttribInfoList.size() > texCoordIndex)
+						texCoordAttribInfoList[texCoordIndex] = make_tuple(texCoordData, getTexCoordFunc, texCoordDataStride);
+					else {
+						if(texCoordAttribInfoList.capacity() <= texCoordIndex)
+							texCoordAttribInfoList.reserve(max(size_t(texCoordIndex)+1, texCoordAttribInfoList.capacity()*2));
+						while(texCoordAttribInfoList.size() != texCoordIndex)
+							texCoordAttribInfoList.emplace_back(nullptr, nullptr, 0);
+						texCoordAttribInfoList.emplace_back(texCoordData, getTexCoordFunc, texCoordDataStride);
+					}
 
 				}
 				else if(it.key() == "TANGENT") {
@@ -2098,6 +2119,16 @@ void App::init()
 				.radius = 0.f,  // actually, radius^2 is stored here in the following loop as an performance optimization
 			};
 
+			// verify correct texture data
+			for(auto& t : texCoordAttribInfoList) {
+				uint8_t* texCoordData = get<0>(t);
+				auto getTexCoordFunc = get<1>(t);
+				if(texCoordData == nullptr || getTexCoordFunc == nullptr)
+					throw GltfError("Invalid texture coordinate attributes.");
+			}
+			if(texCoordAttribInfoList.size()+4 >= CadPL::ShaderState::maxNumAttribs)
+				throw GltfError("Too many texture coordinate attributes.");
+
 			// set vertex data
 			CadR::StagingData sd = g.createVertexStagingData(numVertices * vertexSize);
 			uint8_t* p = sd.data<uint8_t>();
@@ -2132,11 +2163,15 @@ void App::init()
 					p += 16;
 					colorData += colorDataStride;
 				}
-				if(texCoordData) {
+				for(auto& t : texCoordAttribInfoList) {
+					uint8_t* texCoordData = get<0>(t);
+					auto getTexCoordFunc = get<1>(t);
+					unsigned texCoordDataStride = get<2>(t);
 					glm::vec4* v = reinterpret_cast<glm::vec4*>(p);
 					*v = getTexCoordFunc(texCoordData);
 					p += 16;
 					texCoordData += texCoordDataStride;
+					get<0>(t) = texCoordData;
 				}
 			}
 
@@ -2547,14 +2582,13 @@ void App::init()
 							r[3] = 0;
 
 						// texCoords: float2, alignment 8
-						if(texCoordData) {
-							r[4] = 0x5000 | offset;
+						for(size_t i=0,c=texCoordAttribInfoList.size(); i<c; i++) {
+							r[4+i] = 0x5000 | offset;
 							offset += 0x10;
-						} else
-							r[4] = 0;
+						}
 
 						// fill the rest with zeros
-						for(size_t i=5; i<r.size(); i++)
+						for(size_t i=4+texCoordAttribInfoList.size(),c=r.size(); i<c; i++)
 							r[i] = 0;
 
 						return r;
@@ -2562,7 +2596,7 @@ void App::init()
 				.attribSetup =
 					(normalData || ssMaterialData.unlit || (mode <= 3) ? 0 : 1) |  // generateFlatNormals if normals are missing, just skip unlit materials and points and lines
 					(16u + (normalData ? 16 : 0) + (tangentData ? 16 : 0) +  // vertexDataSize
-						(colorData ? 16 : 0) + (texCoordData ? 16 : 0)),
+						(colorData ? 16 : 0) + (uint32_t(texCoordAttribInfoList.size()) * 16)),
 				.materialSetup =
 					(ssMaterialData.unlit ? 0x0 : 0x1) |  // Unlit vs Phong
 					ssMaterialData.textureInfoOffset |  // texture offset
