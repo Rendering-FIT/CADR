@@ -430,6 +430,11 @@ void main()
 
 		}
 
+		// alphaCutoff
+		if(getMaterialAlphaTest())
+			if(outColor.a < unlitMaterial.alphaCutoff)
+				discard;
+
 	}
 
 
@@ -489,13 +494,13 @@ void main()
 					outColor.a = phongMaterial.diffuseAndAlpha.a;
 			} else {
 #if defined(TRIANGLES) || defined(LINES)
-				vec4 color = interpolateAttribute4(colorAccessInfo,
+				vec4 c = interpolateAttribute4(colorAccessInfo,
 					vertexDataPtrList, inBarycentricCoords);
 #else
-				vec4 color = readVec4(colorAccessInfo, vertexDataPtr);
+				vec4 c = readVec4(colorAccessInfo, vertexDataPtr);
 #endif
-				diffuseColor = color.rgb;
-				outColor.a = color.a;
+				diffuseColor = c.rgb;
+				outColor.a = c.a;
 				if(!getMaterialIgnoreMaterialAlpha())
 					outColor.a *= phongMaterial.diffuseAndAlpha.a;
 			}
@@ -608,7 +613,7 @@ void main()
 			// multiply by strength
 			uint texEnv = getTextureEnvironment(textureInfo);
 			if(getTextureUseStrength(textureInfo)) {
-				baseTextureValue *= getTextureStrength(nextDataPointer);
+				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
 				if(texEnv != 3)
 					nextDataPointer += 8;
 				else
@@ -644,7 +649,7 @@ void main()
 					outColor = vec4(
 						(outColor.rgb * (1-baseTextureValue.rgb)) +
 						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb),
-						outColor.a*baseTextureValue.a);
+						outColor.a * baseTextureValue.a);
 					nextDataPointer += 12;
 				}
 				else if(texEnv == 4)  // add
@@ -656,6 +661,11 @@ void main()
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
+
+		// alphaCutoff
+		if(getMaterialAlphaTest())
+			if(outColor.a < phongMaterial.alphaCutoff)
+				discard;
 
 		// emissive texture and material emission
 		if(textureType == 0x0400) {

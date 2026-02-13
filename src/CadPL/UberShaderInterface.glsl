@@ -51,31 +51,39 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 // bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness
 // bits 2..7: texture offset (0, 4, 8, 12, .....252)
 // bit 8: two sided lighting
-// bit 9: disable lighting; for phong model, use sum of diffuse and emission components;
-//        for metallicRoughness, sum of base color and emissive value is used;
-//        no effect for unlit model;
-//        textures can still be used, but only those that have a meaning without lighting;
+// bit 9: disable lighting;
+//        for unlit model, no effect;
+//        for phong model, use sum of diffuse and emission components;
+//        for metallic-roughness model, sum of base color and emissive value is used;
+//        textures can still be used, but some might not have any visual effect;
+//        to optimize for performance, textures not affecting visual output shall be turned off
+// bit 10: use alpha test; alphaCutoff is specified in material; when computed alpha is greater
+//         than alphaCutoff, fragment is rendered as fully opaque; otherwise, it is rendered as
+//         fully transparent
+// bit 11: ignore color attribute alpha if color attribute is used
+// bit 12: ignore material alpha
+// bit 13: ignore base texture alpha if base texture is used
 // unlit:
-//    bit  9: ignored
-//    bit 10: ignored
-//    bit 11: glTF or OpenGL handling of color attribute;
+//    bit 14: ignored
+//    bit 15: glTF or OpenGL handling of color attribute;
 //            if set, color attribute is multiplied with material color
 //            during base color computation; this follows glTF design;
 //            if not set, color attribute is used directly for base color,
 //            ignoring material color; this follows OpenGL fixed pipeline design;
 //            if color attribute is not present, material color is used and this bit has no effect
+//    bit 16: ignored
 // phong:
-//    bit 10: apply color attribute on ambient and diffuse, or on diffuse only;
+//    bit 14: apply color attribute on ambient and diffuse, or on diffuse only;
 //            if set, color attribute is applied just on diffuse component;
 //            otherwise, it is applied on ambient and diffuse
-//    bit 11: glTF or OpenGL handling of color attribute with relation to diffuse and ambient material;
+//    bit 15: glTF or OpenGL handling of color attribute with relation to diffuse and ambient material;
 //            if set, color attribute is multiplied with material diffuse (and ambient, see bellow) color
 //            when computing diffuse light contribution; this follows glTF design;
 //            if not set, only color attribute is used during diffuse (and ambient, see bellow) light computation,
 //            ignoring diffuse (and ambient) material color; this follows OpenGL fixed pipeline design;
 //            if bit 10 is set, the same applies for ambient component
 //            (final ambient = color attribute * material ambient);
-//    bit 12 - for Phong: glTF or OpenGL style material emission color;
+//    bit 16 - for Phong: glTF or OpenGL style material emission color;
 //                        It switches material emission color application either
 //                        after base color texture or before base color texture.
 //                        If the bit 12 is set to zero, OpenGL style is used.
@@ -87,21 +95,19 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 //                        Material emission color is not involved in any color calculations
 //                        except that it is multiplied by emissive texture, if used, and added
 //                        to the final fragment shader output.
-// bit 13: ignore color attribute alpha if color attribute is used
-// bit 14: ignore material alpha
-// bit 15: ignore base texture alpha if base texture is used
 uint getMaterialModel()  { return materialSetup & 0x03; }
 uint getMaterialFirstTextureOffset()  { return materialSetup & 0xfc; }
 bool getMaterialTwoSidedLighting()  { return (materialSetup & 0x0100) != 0; }
 bool getMaterialDisableLighting()  { return (materialSetup & 0x0200) != 0; }
-bool getUnlitMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0800) != 0; }
-bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup & 0x0400) != 0; }
-bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x0800) != 0; }
-bool getPhongMaterialOpenGLStyleEmission()  { return (materialSetup & 0x1000) == 0; }
-bool getPhongMaterialSeparateEmission()  { return (materialSetup & 0x1000) != 0; }
-bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x2000) != 0; }
-bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x4000) != 0; }
-bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x8000) != 0; }
+bool getMaterialAlphaTest()  { return (materialSetup & 0x0400) != 0; }
+bool getMaterialIgnoreColorAttributeAlpha()  { return (materialSetup & 0x0800) != 0; }
+bool getMaterialIgnoreMaterialAlpha()  { return (materialSetup & 0x1000) != 0; }
+bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x2000) != 0; }
+bool getUnlitMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x8000) != 0; }
+bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup & 0x4000) != 0; }
+bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x8000) != 0; }
+bool getPhongMaterialOpenGLStyleEmission()  { return (materialSetup & 0x10000) == 0; }
+bool getPhongMaterialSeparateEmission()  { return (materialSetup & 0x10000) != 0; }
 
 
 
@@ -112,7 +118,9 @@ bool getMaterialIgnoreBaseTextureAlpha()  { return (materialSetup & 0x8000) != 0
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
 UnlitMaterialRef {
 	layout(offset=0) vec4 colorAndAlpha;
-	// [... texture data starts at offset 16 ...]
+	layout(offset=16) float alphaCutoff;  //< cutoff treshold when using mask alpha mode; alpha above this threshold is rendered as fully opaque and alpha bellow this threshold is rendered as fully transparent
+	// [... texture data usually starts at offset 16,
+	// just when alphaCutoff is included, it starts at offset 24 (8 byte alignment)...]
 };
 
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
@@ -122,6 +130,7 @@ PhongMaterialRef {
 	layout(offset=32) vec3 specular;  //< specular color
 	layout(offset=44) float shininess;  //< shininess (or gloss)
 	layout(offset=48) vec3 emission;  //< emitted light
+	layout(offset=60) float alphaCutoff;  //< cutoff treshold when using mask alpha mode; alpha above this threshold is rendered as fully opaque and alpha bellow this threshold is rendered as fully transparent
 	layout(offset=64) vec3 reflection;  //< amount of mirroring reflection
 	// [... texture data starts at offset 76 or at offset 64 if reflection is not used ...]
 };

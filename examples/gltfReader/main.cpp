@@ -1250,6 +1250,10 @@ void App::init()
 	// create default material
 	struct UnlitMaterialData {
 		glm::vec4 colorAndAlpha;
+	#if 1  // optional members
+		float alphaCutoff;  // offset 16
+		uint32_t padding;
+	#endif
 	};
 	constexpr unsigned unlitMaterialDataSizeAligned8 = 16;
 	struct PhongMaterialData {
@@ -1259,11 +1263,13 @@ void App::init()
 		glm::vec3 specular;  // offset 32
 		float shininess;  // offset 44
 		glm::vec3 emission;  // offset 48
-		uint32_t padding2;
+		float alphaCutoff;  // offset 60
+	#if 0  // optional members
 		glm::vec3 reflection;  // offset 64
+	#endif
 	};
-	static_assert(sizeof(PhongMaterialData) == 76 && "Wrong size of PhongMaterialData structure.");
-	constexpr unsigned phongMaterialDataSizeAligned8 = 80;
+	static_assert(sizeof(PhongMaterialData) == 64 && "Wrong size of PhongMaterialData structure.");
+	constexpr unsigned phongMaterialDataSizeAligned8 = 64;
 	struct TextureMaterialRecord {
 		uint8_t texCoordIndex;
 		uint8_t type;
@@ -1274,6 +1280,7 @@ void App::init()
 	struct StateSetMaterialData {
 		bool unlit;
 		bool doubleSided;
+		bool alphaTest;
 		unsigned textureInfoOffset;
 	};
 	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
@@ -1284,11 +1291,11 @@ void App::init()
 	m->specular = glm::vec3(0.f, 0.f, 0.f);
 	m->shininess = 0.f;
 	m->emission = glm::vec3(0.f, 0.f, 0.f);
-	m->padding2 = 0;
-	m->reflection = glm::vec3(0.f, 0.f, 0.f);
+	m->alphaCutoff = 0.f;
 	StateSetMaterialData defaultStateSetMaterialData {
 		.unlit = false,
 		.doubleSided = false,
+		.alphaTest = false,
 		.textureInfoOffset = 0,
 	};
 
@@ -1323,6 +1330,8 @@ void App::init()
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
 		float emissiveStrength = 1.f;
+		bool alphaTest;
+		float alphaCutoff;
 
 		auto readTextureData =
 			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned textureListSize,
@@ -1462,19 +1471,35 @@ void App::init()
 		// normal texture
 		readTextureData(normalTexture, "normalTexture", material, unsigned(textureList.size()), "scale");
 
-		// emissive texture
-		readTextureData(emissiveTexture, "emissiveTexture", material, unsigned(textureList.size()));
-
 		// not supported material properties
 		if(material.find("occlusionTexture") != material.end())
 			throw GltfError("Unsupported functionality: occlusion texture.");
-		if(material.find("alphaMode") != material.end())
-			throw GltfError("Unsupported functionality: alpha mode.");
-		if(material.find("alphaCutoff") != material.end())
-			throw GltfError("Unsupported functionality: alpha cutoff.");
+
+		// emissive texture
+		readTextureData(emissiveTexture, "emissiveTexture", material, unsigned(textureList.size()));
+
+		// alphaMode
+		if(auto it=material.find("alphaMode"); it != material.end()) {
+			string alphaMode = it->get_ref<json::string_t&>();
+			if(alphaMode == "OPAQUE")
+				alphaTest = false;
+			else if(alphaMode == "MASK")
+				alphaTest = true;
+			else if(alphaMode == "BLEND")
+				throw GltfError("Unsupported functionality: blend alpha mode.");
+			else
+				throw GltfError("Unknown alpha mode.");
+		}
+		else
+			alphaTest = false;
+
+		// alphaCutoff
+		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
 
 		// material struct base size
 		unsigned materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
+		if(unlit && alphaTest)
+			materialSize += 8;
 		unsigned coreMaterialSize = materialSize;
 
 		// texture data size inside material
@@ -1520,6 +1545,8 @@ void App::init()
 		if(unlit) {
 			UnlitMaterialData* m = reinterpret_cast<UnlitMaterialData*>(p);
 			m->colorAndAlpha = baseColorFactor;
+			if(alphaTest)
+				m->alphaCutoff = alphaCutoff;
 			p += unlitMaterialDataSizeAligned8;
 		}
 		else {
@@ -1530,8 +1557,7 @@ void App::init()
 			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
 			m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
 			m->emission = emissiveFactor * emissiveStrength;
-			m->padding2 = 0;
-			m->reflection = glm::vec3(0.f, 0.f, 0.f);
+			m->alphaCutoff = alphaCutoff;
 			p += phongMaterialDataSizeAligned8;
 		}
 
@@ -1618,6 +1644,7 @@ void App::init()
 		auto& ssm = stateSetMaterialDataList[materialIndex];
 		ssm.unlit = unlit;
 		ssm.doubleSided = doubleSided;
+		ssm.alphaTest = alphaTest;
 		ssm.textureInfoOffset =
 			(materialSize == coreMaterialSize)
 				? 0  // no texture info
@@ -2602,9 +2629,10 @@ void App::init()
 					ssMaterialData.textureInfoOffset |  // texture offset
 					(ssMaterialData.doubleSided ? 0x0100 : 0) |  // two sided lighting
 					((mode <= 3) && (normalData == nullptr) ? 0x0200 : 0) |  // disable lighting for points and lines without normals
-					0x0800 |  // color attribute (if present) does not replace material ambient and diffuse color, but multiplies them
-					0x1000 |  // set separate emission on Phong material
-					0,  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
+					(ssMaterialData.alphaTest ? 0x0400 : 0) |  // alphaTest
+					0x0 |  // do not ignore alpha anywhere (on color attribute, on material and on base texture)
+					0x8000 |  // color attribute (if present) multiplies material ambient and diffuse color instead of ignoring them when computing ambient and diffuse color contributions
+					0x10000,  // separate emission on Phong material
 				.pointSize = 1.f,
 				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
 				.numLights = {},
