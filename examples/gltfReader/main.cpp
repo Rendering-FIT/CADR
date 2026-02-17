@@ -1622,10 +1622,10 @@ void App::init()
 
 		// write textures
 		uint8_t* p2 = p;
-		if(normalTexture.index != ~unsigned(0))
-			writeTexture(normalTexture, 1, p);
 		if(baseColorTexture.index != ~unsigned(0))
-			writeTexture(baseColorTexture, 3, p);
+			writeTexture(baseColorTexture, 1, p);
+		if(normalTexture.index != ~unsigned(0))
+			writeTexture(normalTexture, 2, p);
 		if(emissiveTexture.index != ~unsigned(0))
 			writeTexture(emissiveTexture, 4, p);
 

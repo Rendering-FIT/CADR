@@ -259,20 +259,6 @@ void main()
 	uint64_t drawableDataPtr = inDrawableDataPtr;
 #endif
 
-	// normal
-	vec3 normal;
-	uint materialModel = getMaterialModel();
-	if(materialModel != 0 && !getMaterialDisableLighting()) {
-		if(getGenerateFlatNormals())
-			normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
-		else
-			normal = normalize(inFragmentNormal);
-#ifdef TRIANGLES
-		if(getMaterialTwoSidedLighting() && !gl_FrontFacing)
-			normal = -normal;
-#endif
-	}
-
 	// init textureType and textureInfo
 	uint textureOffset = getMaterialFirstTextureOffset();
 	uint textureType;
@@ -284,40 +270,9 @@ void main()
 		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 	}
 
-	// normal texture
-	if(textureType == 0x0100) {
-
-		// compute texture coordinates from relevant data,
-		// and transform them if requested
-		uint64_t nextDataPointer;
-#if defined(TRIANGLES) || defined(LINES)
-		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
-#else
-		vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
-#endif
-
-		// sample texture
-		vec3 tangentSpaceNormal = texture(textureList[textureInfo.textureIndex], uv).rgb;
-
-		// transform in tangent space and normalize
-		tangentSpaceNormal = tangentSpaceNormal * 2 - 1;  // transform from 0..1 to -1..1
-		if(getTextureUseStrength(textureInfo)) {
-			tangentSpaceNormal.xy *= getTextureStrength(nextDataPointer);
-			nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
-		}
-		tangentSpaceNormal = normalize(tangentSpaceNormal);
-
-		// transform normal
-		vec3 t = normalize(inFragmentTangent);
-		mat3 tbn = { t, cross(normal, t), normal };
-		normal = tbn * tangentSpaceNormal;
-
-		// update pointer to point to the next texture
-		textureInfo = TextureInfoRef(nextDataPointer);
-		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
-	}
 
 	// unlit material
+	uint materialModel = getMaterialModel();
 	if(materialModel == 0) {
 
 		// material data
@@ -364,7 +319,8 @@ void main()
 		}
 
 		// base texture
-		if(textureType == 0x0400) {
+		// (handle alphaCutoff as soon as possible in the code)
+		if(textureType == 0x0100) {
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
@@ -378,98 +334,63 @@ void main()
 			// sample texture
 			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
 
-			// multiply by strength
+			// apply texture alpha using texEnv
 			uint texEnv = getTextureEnvironment(textureInfo);
+			if(!getMaterialIgnoreBaseTextureAlpha())
+				if(texEnv != 2)  // decal
+					outColor.a *= baseTextureValue.a;
+
+			// alphaCutoff
+			if(getMaterialAlphaTest())
+				if(outColor.a < unlitMaterial.alphaCutoff)
+					discard;
+
+			// multiply by strength
 			if(getTextureUseStrength(textureInfo)) {
-				baseTextureValue *= getTextureStrength(nextDataPointer);
+				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
 				if(texEnv != 3)
 					nextDataPointer += 8;
 				else
 					nextDataPointer += 4;
 			}
 
-			// apply texture using texEnv
-			if(getMaterialIgnoreBaseTextureAlpha()) {
-				if(texEnv == 0)  // modulate
-					outColor.rgb *= baseTextureValue.rgb;
-				else if(texEnv == 1)  // replace
-					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 2)  // decal
-					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 3)  // blend
-				{
-					outColor.rgb =
-						(outColor.rgb * (1-baseTextureValue.rgb)) +
-						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb);
-					nextDataPointer += 12;
-				}
-				else if(texEnv == 4) // add
-					outColor.rgb = outColor.rgb + baseTextureValue.rgb;
-			} else {
-				if(texEnv == 0)  // modulate
-					outColor *= baseTextureValue;
-				else if(texEnv == 1) // replace
-					outColor = vec4(baseTextureValue.rgb, baseTextureValue.a * outColor.a);
-				else if(texEnv == 2) // decal
-					outColor = vec4(outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a, outColor.a);
-				else if(texEnv == 3)  // blend
-				{
-					outColor = vec4(
-						(outColor.rgb * (1-baseTextureValue.rgb)) +
-						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb),
-						outColor.a * baseTextureValue.a);
-					nextDataPointer += 12;
-				}
-				else if(texEnv == 4) // add
-					outColor = vec4(outColor.rgb + baseTextureValue.rgb, outColor.a * baseTextureValue.a);
+			// apply color of baseTexture
+			// (alpha was computed earlier because we needed it for alphaCutoff
+			if(texEnv == 0)  // modulate
+				outColor.rgb *= baseTextureValue.rgb;
+			else if(texEnv == 1)  // replace
+				outColor.rgb = baseTextureValue.rgb;
+			else if(texEnv == 2)  // decal
+				outColor.rgb = outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a;
+			else if(texEnv == 3) {  // blend
+				outColor.rgb =
+					(outColor.rgb * (1-baseTextureValue.rgb)) +
+					(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb);
+				nextDataPointer += 12;
 			}
+			else if(texEnv == 4) // add
+				outColor.rgb += baseTextureValue.rgb;
 
 			// update pointer to point to the next texture
 			textureInfo = TextureInfoRef(nextDataPointer);
 			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 
 		}
+		else {
 
-		// alphaCutoff
-		if(getMaterialAlphaTest())
-			if(outColor.a < unlitMaterial.alphaCutoff)
-				discard;
+			// alphaCutoff
+			if(getMaterialAlphaTest())
+				if(outColor.a < unlitMaterial.alphaCutoff)
+					discard;
+
+		}
 
 	}
 
 
 	// Blinn-Phong material model,
-	// implemented in the similar was as OpenGL does
+	// implemented in the similar way as OpenGL fixed pipeline
 	else if(materialModel == 1) {
-
-		// occlusion texture
-		float occlusionTextureValue = 1.;
-		if(textureType == 0x0200) {
-
-			// compute texture coordinates from relevant data,
-			// and transform them if requested
-			uint64_t nextDataPointer;
-#if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
-#else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
-#endif
-
-			// sample texture
-			uint componentIndex = getTextureFirstComponentIndex(textureInfo);  // glTF uses red component, so 0 should be provided for glTF
-			float occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv)[componentIndex];
-
-			// multiply by strength
-			if(getTextureUseStrength(textureInfo)) {
-				occlusionTextureValue = 1. + getTextureStrength(nextDataPointer) * (occlusionTextureValue - 1.);
-				nextDataPointer += 8;
-			}
-
-			// update pointer to point to the next texture
-			textureInfo = TextureInfoRef(nextDataPointer);
-			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
-
-		}
 
 		// material data
 		PhongMaterialRef phongMaterial = PhongMaterialRef(drawableDataPtr);
@@ -531,14 +452,141 @@ void main()
 				outColor.a = phongMaterial.diffuseAndAlpha.a;
 		}
 
+		// base texture
+		// (only quickly evaluate to get final fragment alpha for alphaCutoff)
+		vec4 baseTextureValue;
+		vec3 baseTextureBlendColor;
+		bool useBaseTexture;
+		if(textureType == 0x0100) {
+
+			// compute texture coordinates from relevant data,
+			// and transform them if requested
+			uint64_t nextDataPointer;
+#if defined(TRIANGLES) || defined(LINES)
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+#else
+			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+#endif
+
+			// sample texture
+			baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
+
+			// multiply by strength
+			uint texEnv = getTextureEnvironment(textureInfo);
+			if(getTextureUseStrength(textureInfo)) {
+				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
+				if(texEnv != 3)
+					nextDataPointer += 8;
+				else
+					nextDataPointer += 4;
+			}
+
+			// apply texture alpha using texEnv
+			if(!getMaterialIgnoreBaseTextureAlpha())
+				if(texEnv != 2)  // decal
+					outColor.a *= baseTextureValue.a;
+
+			// read blend color
+			if(texEnv == 3) {  // blend
+				baseTextureBlendColor = getTextureBlendColor(nextDataPointer);
+				nextDataPointer += 12;
+			}
+
+			// update pointer to point to the next texture
+			textureInfo = TextureInfoRef(nextDataPointer);
+			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+
+			useBaseTexture = true;
+
+		}
+		else
+			useBaseTexture = false;
+
+		// alphaCutoff
+		if(getMaterialAlphaTest())
+			if(outColor.a < phongMaterial.alphaCutoff)
+				discard;
 
 		if(getMaterialDisableLighting())
 		{
 			outColor.rgb = diffuseColor;
-			if(getPhongMaterialOpenGLStyleEmission())
-				outColor.rgb += phongMaterial.emission;
 		}
 		else {
+
+			// normal
+			vec3 normal;
+			if(getGenerateFlatNormals())
+				normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
+			else
+				normal = normalize(inFragmentNormal);
+		#ifdef TRIANGLES
+			if(getMaterialTwoSidedLighting() && !gl_FrontFacing)
+				normal = -normal;
+		#endif
+
+			// normal texture
+			if(textureType == 0x0200) {
+
+				// compute texture coordinates from relevant data,
+				// and transform them if requested
+				uint64_t nextDataPointer;
+			#if defined(TRIANGLES) || defined(LINES)
+				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+			#else
+				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+			#endif
+
+				// sample texture
+				vec3 tangentSpaceNormal = texture(textureList[textureInfo.textureIndex], uv).rgb;
+
+				// transform in tangent space and normalize
+				tangentSpaceNormal = tangentSpaceNormal * 2 - 1;  // transform from 0..1 to -1..1
+				if(getTextureUseStrength(textureInfo)) {
+					tangentSpaceNormal.xy *= getTextureStrength(nextDataPointer);
+					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
+				}
+				tangentSpaceNormal = normalize(tangentSpaceNormal);
+
+				// transform normal
+				vec3 t = normalize(inFragmentTangent);
+				mat3 tbn = { t, cross(normal, t), normal };
+				normal = tbn * tangentSpaceNormal;
+
+				// update pointer to point to the next texture
+				textureInfo = TextureInfoRef(nextDataPointer);
+				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+			}
+
+			// occlusion texture
+			float occlusionTextureValue;
+			if(textureType == 0x0300) {
+
+				// compute texture coordinates from relevant data,
+				// and transform them if requested
+				uint64_t nextDataPointer;
+	#if defined(TRIANGLES) || defined(LINES)
+				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+	#else
+				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+	#endif
+
+				// sample texture
+				uint componentIndex = getTextureFirstComponentIndex(textureInfo);  // glTF uses red component, so 0 should be provided for glTF
+				occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv)[componentIndex];
+
+				// multiply by strength
+				if(getTextureUseStrength(textureInfo)) {
+					occlusionTextureValue = 1. + getTextureStrength(nextDataPointer) * (occlusionTextureValue - 1.);
+					nextDataPointer += 8;
+				}
+
+				// update pointer to point to the next texture
+				textureInfo = TextureInfoRef(nextDataPointer);
+				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+
+			}
+			else
+				occlusionTextureValue = 1.;
 
 			// light data
 			uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
@@ -589,83 +637,30 @@ void main()
 
 			}
 
-			// emission color
-			if(getPhongMaterialOpenGLStyleEmission())
-				outColor.rgb += phongMaterial.emission;
-
 		}
 
-		// base texture
-		if(textureType == 0x0300) {
+		// emission color
+		if(getPhongMaterialOpenGLStyleEmission())
+			outColor.rgb += phongMaterial.emission;
 
-			// compute texture coordinates from relevant data,
-			// and transform them if requested
-			uint64_t nextDataPointer;
-#if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
-#else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
-#endif
-
-			// sample texture
-			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
-
-			// multiply by strength
+		// apply color of baseTexture
+		// (alpha was computed earlier because we needed it for alphaCutoff
+		if(useBaseTexture)
+		{
 			uint texEnv = getTextureEnvironment(textureInfo);
-			if(getTextureUseStrength(textureInfo)) {
-				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
-				if(texEnv != 3)
-					nextDataPointer += 8;
-				else
-					nextDataPointer += 4;
-			}
-
-			// apply texture using texEnv
-			if(getMaterialIgnoreBaseTextureAlpha()) {
-				if(texEnv == 0)  // modulate
-					outColor.rgb *= baseTextureValue.rgb;
-				else if(texEnv == 1)  // replace
-					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 2)  // decal
-					outColor.rgb = baseTextureValue.rgb;
-				else if(texEnv == 3)  // blend
-				{
-					outColor.rgb =
-						(outColor.rgb * (1-baseTextureValue.rgb)) +
-						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb);
-					nextDataPointer += 12;
-				}
-				else if(texEnv == 4) // add
-					outColor.rgb = outColor.rgb + baseTextureValue.rgb;
-			} else {
-				if(texEnv == 0)  // modulate
-					outColor *= baseTextureValue;
-				else if(texEnv == 1)  // replace
-					outColor = vec4(baseTextureValue.rgb, baseTextureValue.a * outColor.a);
-				else if(texEnv == 2)  // decal
-					outColor = vec4(outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a, outColor.a);
-				else if(texEnv == 3)  // blend
-				{
-					outColor = vec4(
-						(outColor.rgb * (1-baseTextureValue.rgb)) +
-						(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb),
-						outColor.a * baseTextureValue.a);
-					nextDataPointer += 12;
-				}
-				else if(texEnv == 4)  // add
-					outColor = vec4(outColor.rgb + baseTextureValue.rgb, outColor.a * baseTextureValue.a);
-			}
-
-			// update pointer to point to the next texture
-			textureInfo = TextureInfoRef(nextDataPointer);
-			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
-
+			if(texEnv == 0)  // modulate
+				outColor.rgb *= baseTextureValue.rgb;
+			else if(texEnv == 1)  // replace
+				outColor.rgb = baseTextureValue.rgb;
+			else if(texEnv == 2)  // decal
+				outColor.rgb = outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a;
+			else if(texEnv == 3)  // blend
+				outColor.rgb =
+					(outColor.rgb * (1-baseTextureValue.rgb)) +
+					(baseTextureBlendColor * baseTextureValue.rgb);
+			else if(texEnv == 4) // add
+				outColor.rgb += baseTextureValue.rgb;
 		}
-
-		// alphaCutoff
-		if(getMaterialAlphaTest())
-			if(outColor.a < phongMaterial.alphaCutoff)
-				discard;
 
 		// emissive texture and material emission
 		if(textureType == 0x0400) {
@@ -706,9 +701,20 @@ void main()
 
 	}
 
+
 	// Metallic-Roughness material model from PBR family,
 	// implemented in the similar way as glTF does
 	else if(materialModel == 2) {
+
+		// base color
+
+		// base texture
+
+		// alphaCutoff
+
+		// metallic-roughness texture
+
+		// normal vector
 
 		// light data
 		uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
