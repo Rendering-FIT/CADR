@@ -856,7 +856,7 @@ void App::init()
 	vector<vk::Format> imageFormats;
 	if(!images.empty()) {
 
-		// is R8G8B8Srgb format supported?
+		// R8G8B8Srgb+R8G8Srgb+R8Srgb format support
 		vk::FormatProperties fp = vulkanInstance.getPhysicalDeviceFormatProperties(
 			physicalDevice, vk::Format::eR8G8B8Srgb);
 		bool rgb8srgbSupported =
@@ -864,6 +864,10 @@ void App::init()
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
 		fp = vulkanInstance.getPhysicalDeviceFormatProperties(physicalDevice, vk::Format::eR8G8Srgb);
 		bool rg8srgbSupported =
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
+		fp = vulkanInstance.getPhysicalDeviceFormatProperties(physicalDevice, vk::Format::eR8Srgb);
+		bool r8srgbSupported =
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
 
@@ -931,7 +935,31 @@ void App::init()
 							alignment = 2;
 						}
 						else {
+							// fallback to expand grey into red+green+blue+alpha
+							format = vk::Format::eR8G8B8A8Srgb;
+							alignment = 4;
+							numComponents = 4;
+						}
+						break;
+					case 1: // grey
+						if(r8srgbSupported) {
+							format = vk::Format::eR8Srgb;
+							alignment = 1;
+						}
+						else if(rg8srgbSupported) {
+							// fallback to expand grey into grey+alpha
+							format = vk::Format::eR8G8Srgb;
+							alignment = 2;
+							numComponents = 2;
+						}
+						else if(rgb8srgbSupported) {
 							// fallback to expand grey into red+green+blue
+							format = vk::Format::eR8G8B8Srgb;
+							alignment = 3;
+							numComponents = 3;
+						}
+						else {
+							// fallback to expand grey into red+green+blue+alpha
 							format = vk::Format::eR8G8B8A8Srgb;
 							alignment = 4;
 							numComponents = 4;
@@ -1553,9 +1581,9 @@ void App::init()
 			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
 			m->ambient = glm::vec3(baseColorFactor);
 			m->padding1 = 0;
-			m->diffuseAndAlpha = baseColorFactor;
+			m->diffuseAndAlpha = glm::vec4(glm::vec3(baseColorFactor) * (1.f - metallicFactor), baseColorFactor.a);  // very vague and imprecise conversion
 			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
-			m->shininess = (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+			m->shininess = (1.f - roughnessFactor) * (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
 			m->emission = emissiveFactor * emissiveStrength;
 			m->alphaCutoff = alphaCutoff;
 			p += phongMaterialDataSizeAligned8;
