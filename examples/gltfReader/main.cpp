@@ -852,11 +852,497 @@ void App::init()
 		ml.setMatrices(meshMatrixList[i]);
 	}
 
+
+	// construct texture-glTF-index to image-glTF-index map
+	uint32_t numGltfTextures = uint32_t(textures.size());
+	uint32_t numGltfImages = uint32_t(images.size());
+	vector<size_t> gltfTextureToGltfImageMap(numGltfTextures, ~size_t(0));
+	for(uint32_t i=0; i<numGltfTextures; i++) {
+		auto& texture = textures[i];
+		auto sourceIt = texture.find("source");
+		if(sourceIt == texture.end())
+			throw GltfError("Unsupported functionality: Texture.source is not defined for the texture.");
+		size_t imageIndex = sourceIt->get_ref<json::number_unsigned_t&>();
+		if(imageIndex >= numGltfImages)
+			throw GltfError("Texture.source contains invalid value.");
+		gltfTextureToGltfImageMap[i] = imageIndex;
+	}
+
+
+	// create default material
+	struct UnlitMaterialData {
+		glm::vec4 colorAndAlpha;
+	#if 1  // optional members
+		float alphaCutoff;  // offset 16
+		uint32_t padding;
+	#endif
+	};
+	constexpr unsigned unlitMaterialDataSizeAligned8 = 16;
+	struct PhongMaterialData {
+		glm::vec3 ambient;  // offset 0
+		uint32_t padding1;
+		glm::vec4 diffuseAndAlpha;  // offset 16
+		glm::vec3 specular;  // offset 32
+		float shininess;  // offset 44
+		glm::vec3 emission;  // offset 48
+		float alphaCutoff;  // offset 60
+	#if 0  // optional members
+		glm::vec3 reflection;  // offset 64
+	#endif
+	};
+	static_assert(sizeof(PhongMaterialData) == 64 && "Wrong size of PhongMaterialData structure.");
+	constexpr unsigned phongMaterialDataSizeAligned8 = 64;
+	struct TextureMaterialRecord {
+		uint8_t texCoordIndex;
+		uint8_t type;
+		uint16_t settings;
+		uint32_t textureIndex;
+	};
+	static_assert(sizeof(TextureMaterialRecord) == 8 && "Wrong size of TextureMaterialRecord structure.");
+	struct StateSetMaterialData {
+		bool unlit;
+		bool doubleSided;
+		bool alphaTest;
+		unsigned textureInfoOffset;
+	};
+	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
+	PhongMaterialData* m = sd.data<PhongMaterialData>();
+	m->ambient = glm::vec3(1.f, 1.f, 1.f);
+	m->padding1 = 0;
+	m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
+	m->specular = glm::vec3(0.f, 0.f, 0.f);
+	m->shininess = 0.f;
+	m->emission = glm::vec3(0.f, 0.f, 0.f);
+	m->alphaCutoff = 0.f;
+	StateSetMaterialData defaultStateSetMaterialData {
+		.unlit = false,
+		.doubleSided = false,
+		.alphaTest = false,
+		.textureInfoOffset = 0,
+	};
+
+
+	// process materials
+	//
+	// (During the process, we mark textures whether we use them with sRGB opto-electronic
+	// transfer function, or if we use them with linear transfer function.
+	// We also construct mapping between texture and image indices inside glTF file
+	// and the indices into textureList and imageList used by the application.)
+	size_t numMaterials = materials.size();
+	materialList.reserve(numMaterials);
+	vector<StateSetMaterialData> stateSetMaterialDataList(numMaterials);
+	struct LinearAndSrgbIndices { unsigned linear; unsigned srgb; };
+	vector<LinearAndSrgbIndices> gltfImageToAppImageMap(numGltfImages, { ~unsigned(0), ~unsigned(0) });
+	vector<LinearAndSrgbIndices> gltfTextureToAppTextureMap(numGltfTextures, { ~unsigned(0), ~unsigned(0) });
+	unsigned numAppImages = 0;
+	unsigned numAppTextures = 0;
+	struct AppTextureInfo { unsigned gltfTextureIndex; bool srgb; };
+	vector<AppTextureInfo> appTextureInfoList;
+	appTextureInfoList.reserve(numGltfTextures);  // this will just fit the size if each texture is either linear or sRGB but not both
+	for(size_t materialIndex=0; materialIndex<numMaterials; materialIndex++)
+	{
+		auto& material = materials.at(materialIndex);
+
+		struct TextureData {
+			unsigned index;
+			unsigned coordIndex;
+			float strength;
+			bool transformEnabled;
+			glm::vec2 offset;
+			float rotation;
+			glm::vec2 scale;
+		};
+
+		// values to be read from glTF
+		bool unlit;
+		bool doubleSided;
+		glm::vec4 baseColorFactor;
+		TextureData baseColorTexture;
+		TextureData normalTexture;
+		TextureData emissiveTexture;
+
+		float metallicFactor;
+		float roughnessFactor;
+		glm::vec3 emissiveFactor;
+		float emissiveStrength = 1.f;
+		bool alphaTest;
+		float alphaCutoff;
+
+		auto readTextureData =
+			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned numTextures,
+			   const char* strengthPropertyName = nullptr)
+			{
+				if(auto textureIt = jsonParent.find(jsonPropertyName); textureIt != jsonParent.end()) {
+
+					t.index = unsigned(textureIt->at("index").get_ref<json::number_unsigned_t&>());
+					if(t.index >= numTextures)
+						throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
+					t.coordIndex = textureIt->value("texCoord", 0);
+					if(strengthPropertyName)
+						if(auto it = textureIt->find(strengthPropertyName); it != textureIt->end())
+							t.strength = float(it->get<json::number_float_t>());
+						else
+							t.strength = 1.f;
+					else
+						t.strength = 1.f;
+					if(auto extIt = textureIt->find("extensions"); extIt != textureIt->end()) {
+
+						// KHR_texture_transform
+						auto transformIt = extIt->find("KHR_texture_transform");
+						if(transformIt != extIt->end())
+						{
+							t.transformEnabled = true;
+
+							// KHR_texture_transform.offset
+							if(auto offsetIt = transformIt->find("offset"); offsetIt != transformIt->end()) {
+								json::array_t& a = offsetIt->get_ref<json::array_t&>();
+								if(a.size() != 2)
+									throw GltfError("Material.baseColorTexture.extensions.offset is not vector of two components.");
+								t.offset[0] = float(a[0].get<json::number_float_t>());
+								t.offset[1] = float(a[1].get<json::number_float_t>());
+							}
+							else {
+								t.offset[0] = 0.f;
+								t.offset[1] = 0.f;
+							}
+
+							// KHR_texture_transform.rotation
+							t.rotation = float(transformIt->value<json::number_float_t>("rotation", 0.f));
+
+							// KHR_texture_transform.scale
+							if(auto scaleIt = transformIt->find("scale"); scaleIt != transformIt->end()) {
+								json::array_t& a = scaleIt->get_ref<json::array_t&>();
+								if(a.size() != 2)
+									throw GltfError("Material.baseColorTexture.extensions.scale is not vector of two components.");
+								t.scale[0] = float(a[0].get<json::number_float_t>());
+								t.scale[1] = float(a[1].get<json::number_float_t>());
+							}
+							else {
+								t.scale[0] = 1.f;
+								t.scale[1] = 1.f;
+							}
+
+							// KHR_texture_transform.texCoord
+							if(auto texCoordIt = transformIt->find("texCoord"); texCoordIt != transformIt->end())
+								t.coordIndex = unsigned(texCoordIt->get_ref<json::number_integer_t&>());
+						}
+						else
+							t.transformEnabled = false;
+					}
+					else
+						t.transformEnabled = false;
+				}
+				else {
+					t.index = ~unsigned(0);
+					t.coordIndex = ~unsigned(0);
+				}
+			};
+
+		// unlit material extension
+		if(auto extIt = material.find("extensions"); extIt == material.end()) {
+			unlit = false;
+		}
+		else {
+			auto it = extIt->find("KHR_materials_unlit");
+			unlit = (it != extIt->end());
+			it = extIt->find("KHR_materials_emissive_strength");
+			if(it != extIt->end())
+				emissiveStrength = float(it->value<json::number_float_t>("emissiveStrength", 1.0));
+		}
+
+		// material.doubleSided is optional with the default value of false
+		doubleSided = material.value<json::boolean_t>("doubleSided", false);
+
+		// read pbr material properties
+		if(auto pbrIt = material.find("pbrMetallicRoughness"); pbrIt != material.end()) {
+
+			// read baseColorFactor
+			if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
+				json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
+				if(a.size() != 4)
+					throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
+				baseColorFactor[0] = float(a[0].get<json::number_float_t>());
+				baseColorFactor[1] = float(a[1].get<json::number_float_t>());
+				baseColorFactor[2] = float(a[2].get<json::number_float_t>());
+				baseColorFactor[3] = float(a[3].get<json::number_float_t>());
+			}
+			else
+				baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+
+			// read properties
+			metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
+			roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
+
+			// base color texture
+			readTextureData(baseColorTexture, "baseColorTexture", *pbrIt, numGltfTextures);
+
+			// not supported properties
+			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
+				throw GltfError("Unsupported functionality: metallic-roughness texture.");
+
+		}
+		else
+		{
+			// default values when pbrMetallicRoughness is not present
+			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+			baseColorTexture.index = ~unsigned(0);
+			baseColorTexture.coordIndex = ~unsigned(0);
+			metallicFactor = 1.f;
+			roughnessFactor = 1.f;
+		}
+
+		// read emissiveFactor
+		if(auto emissiveFactorIt = material.find("emissiveFactor"); emissiveFactorIt != material.end()) {
+			json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
+			if(a.size() != 3)
+				throw GltfError("Material.emissiveFactor is not vector of three components.");
+			emissiveFactor[0] = float(a[0].get<json::number_float_t>());
+			emissiveFactor[1] = float(a[1].get<json::number_float_t>());
+			emissiveFactor[2] = float(a[2].get<json::number_float_t>());
+		}
+		else
+			emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
+
+		// normal texture
+		readTextureData(normalTexture, "normalTexture", material, numGltfTextures, "scale");
+
+		// not supported material properties
+		if(material.find("occlusionTexture") != material.end())
+			throw GltfError("Unsupported functionality: occlusion texture.");
+
+		// emissive texture
+		readTextureData(emissiveTexture, "emissiveTexture", material, numGltfTextures);
+
+		// alphaMode
+		if(auto it=material.find("alphaMode"); it != material.end()) {
+			string alphaMode = it->get_ref<json::string_t&>();
+			if(alphaMode == "OPAQUE")
+				alphaTest = false;
+			else if(alphaMode == "MASK")
+				alphaTest = true;
+			else if(alphaMode == "BLEND")
+				throw GltfError("Unsupported functionality: blend alpha mode.");
+			else
+				throw GltfError("Unknown alpha mode.");
+		}
+		else
+			alphaTest = false;
+
+		// alphaCutoff
+		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
+
+		// material struct base size
+		unsigned materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
+		if(unlit && alphaTest)
+			materialSize += 8;
+		unsigned coreMaterialSize = materialSize;
+
+		// texture data size inside material
+		//
+		// each texture occupies at least 8 bytes in material structure;
+		// if strength is used, it needs additional 8 bytes (4 for float and 4 for padding to 8 bytes alignment),
+		// so texture with strength occupies 16 bytes in total;
+		// if texture coordinate transform is enabled, addition 6 floats are needed,
+		// so texture without strength takes 8+24=32 bytes and texture with strength takes 8+8+24=40 bytes
+		auto getTextureInfoSize =
+			[](const TextureData& t) -> unsigned
+			{
+				// texture not used
+				if(t.index == ~unsigned(0))
+					return 0;
+
+				if(t.strength == 1.f) {
+					if(!t.transformEnabled)
+						return 8;  // texture yes, strength no, transform no
+					else
+						return 8+24;  // texture yes, strength no, transform yes
+				} else {
+					if(!t.transformEnabled)
+						return 8+8;  // texture yes, strength yes, transform no
+					else
+						return 8+8+24;  // texture yes, strength yes, transform yes
+				}
+			};
+
+		// append textures to material size
+		materialSize += getTextureInfoSize(normalTexture);
+		materialSize += getTextureInfoSize(baseColorTexture);
+		materialSize += getTextureInfoSize(emissiveTexture);
+
+		// if there are textures, let's put terminating texture record as well
+		if(materialSize != coreMaterialSize)
+			materialSize += 8;
+
+		// material
+		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
+		CadR::StagingData sd = a.alloc(materialSize);
+		uint8_t* p = sd.data<uint8_t>();
+		if(unlit) {
+			UnlitMaterialData* m = reinterpret_cast<UnlitMaterialData*>(p);
+			m->colorAndAlpha = baseColorFactor;
+			if(alphaTest)
+				m->alphaCutoff = alphaCutoff;
+			p += unlitMaterialDataSizeAligned8;
+		}
+		else {
+			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
+			m->ambient = glm::vec3(baseColorFactor);
+			m->padding1 = 0;
+			m->diffuseAndAlpha = glm::vec4(glm::vec3(baseColorFactor) * (1.f - metallicFactor), baseColorFactor.a);  // very vague and imprecise conversion
+			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
+			m->shininess = (1.f - roughnessFactor) * (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+			m->emission = emissiveFactor * emissiveStrength;
+			m->alphaCutoff = alphaCutoff;
+			p += phongMaterialDataSizeAligned8;
+		}
+
+		// write texture record into material
+		auto writeTexture =
+			[](const TextureData& t, uint8_t type, uint8_t*& p)
+			{
+				// write core texture data
+				TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
+				r->texCoordIndex = 4 + t.coordIndex;  // texture coordinates are placed on attribute 4 and following
+				r->type = type;
+				r->textureIndex = t.index;
+				p += 8;
+
+				uint16_t settings;
+				uint16_t size;
+				if(t.transformEnabled)
+				{
+					// write transform
+					settings = 0x1;
+					size = 32;
+					float* f = reinterpret_cast<float*>(p);
+					if(t.rotation == 0) {
+						f[0] = t.scale.x;
+						f[1] = 0.f;
+						f[2] = 0.f;
+						f[3] = t.scale.y;
+					} else {
+						float c = cos(t.rotation);
+						float s = sin(t.rotation);
+						f[0] = c * t.scale.x;
+						f[1] = -s * t.scale.x;
+						f[2] = s * t.scale.y;
+						f[3] = c * t.scale.y;
+					}
+					f[4] = t.offset.x;
+					f[5] = t.offset.y;
+					p += 24;
+				}
+				else
+				{
+					// skip transform
+					settings = 0;
+					size = 8;
+				}
+
+				if(t.strength != 1.f)
+				{
+					// write strength
+					settings |= 0x2;
+					size += 8;
+					float* f = reinterpret_cast<float*>(p);
+					f[0] = t.strength;
+					f[1] = 0.f;
+					p += 8;
+				}
+
+				// write settings
+				r->settings = settings | (size << 10);
+
+			};
+
+		// replace image index used by the glTF file
+		// by the index into imageList used by the application;
+		// allocate the space in textureList and imageList and
+		// create related mapping in appTextureIndices and appImageIndices
+		auto remapByTransferFunction =
+			[&](TextureData& t, bool srgb) -> void
+			{
+				size_t gltfImageIndex = gltfTextureToGltfImageMap[t.index];
+				LinearAndSrgbIndices& appTextureIndices = gltfTextureToAppTextureMap[t.index];
+				LinearAndSrgbIndices& appImageIndices = gltfImageToAppImageMap[gltfImageIndex];
+				if(srgb) {
+					if(appTextureIndices.srgb == ~unsigned(0)) {
+						appTextureIndices.srgb = numAppTextures;
+						appTextureInfoList.emplace_back(t.index, true);
+						numAppTextures++;
+					}
+					t.index = numAppImages;
+					if(appImageIndices.srgb == ~unsigned(0)) {
+						appImageIndices.srgb = numAppImages;
+						numAppImages++;
+					}
+				}
+				else {
+					if(appTextureIndices.linear == ~unsigned(0)) {
+						appTextureIndices.linear = numAppTextures;
+						appTextureInfoList.emplace_back(t.index, false);
+						numAppTextures++;
+					}
+					t.index = numAppImages;
+					if(appImageIndices.linear == ~unsigned(0)) {
+						appImageIndices.linear = numAppImages;
+						numAppImages++;
+					}
+				}
+			};
+
+		// write textures
+		uint8_t* p2 = p;
+		if(baseColorTexture.index != ~unsigned(0)) {
+			remapByTransferFunction(baseColorTexture, true);  // base texture uses sRGB transfer function
+			writeTexture(baseColorTexture, 1, p);
+		}
+		if(normalTexture.index != ~unsigned(0)) {
+			remapByTransferFunction(normalTexture, false);  // normal texture uses linear transfer function
+			writeTexture(normalTexture, 2, p);
+		}
+		if(emissiveTexture.index != ~unsigned(0)) {
+			remapByTransferFunction(emissiveTexture, true);  // emissive texture uses sRGB transfer function
+			writeTexture(emissiveTexture, 4, p);
+		}
+
+		// if at least one texture was written, put terminating record as well
+		if(p != p2)
+		{
+			// terminating record (all zeros)
+			TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
+			r->texCoordIndex = 0;
+			r->type = 0;
+			r->settings = 0;
+			r->textureIndex = 0;
+		}
+
+		// StateSetMaterialData
+		auto& ssm = stateSetMaterialDataList[materialIndex];
+		ssm.unlit = unlit;
+		ssm.doubleSided = doubleSided;
+		ssm.alphaTest = alphaTest;
+		ssm.textureInfoOffset =
+			(materialSize == coreMaterialSize)
+				? 0  // no texture info
+				: coreMaterialSize;  // texture info just material data
+	}
+	gltfTextureToGltfImageMap.clear();  // no needed any more
+	gltfTextureToAppTextureMap.clear();  // no needed any more
+	assert(materialList.size() == numMaterials && "Not all materials were created.");
+
+
 	// process images
-	vector<vk::Format> imageFormats;
+	vector<vk::Format> imageFormatList(numAppImages, vk::Format::eUndefined);
 	if(!images.empty()) {
 
-		// R8G8B8Srgb+R8G8Srgb+R8Srgb format support
+		// get format support
+		// sRGB formats:
+		//    R8G8B8Srgb+R8G8Srgb+R8Srgb format support is optional in Vulkan 1.0
+		//    R8G8B8A8Srgb is mandatory in Vulkan 1.0
+		// UNorm formats:
+		//    R8G8B8Unorm format is optional in Vulkan 1.0
+		//    R8G8B8A8Unorm+R8G8Unorm+R8Unorm support is mandatory in Vulkan 1.0
 		vk::FormatProperties fp = vulkanInstance.getPhysicalDeviceFormatProperties(
 			physicalDevice, vk::Format::eR8G8B8Srgb);
 		bool rgb8srgbSupported =
@@ -870,13 +1356,24 @@ void App::init()
 		bool r8srgbSupported =
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
 			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
+		fp = vulkanInstance.getPhysicalDeviceFormatProperties(physicalDevice, vk::Format::eR8G8B8Unorm);
+		bool rgb8unormSupported =
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear) &&
+			(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eTransferDst);
 
 		// load images
-		size_t c = images.size();
-		cout << "Processing images (" << c << " in total)..." << endl;
-		imageList.reserve(c);
-		imageFormats.resize(c, vk::Format::eUndefined);
-		for(size_t i=0; i<c; i++) {
+		size_t numGltfImages = images.size();
+		cout << "Processing images (" << numGltfImages << " in total)..." << endl;
+		imageList.reserve(numAppImages);
+		for(unsigned i=0; i<numAppImages; i++)
+			imageList.emplace_back(renderer.imageStorage());
+		for(size_t i=0; i<numGltfImages; i++) {
+
+			// skip not used images
+			auto [ linearImageIndex, srgbImageIndex ] = gltfImageToAppImageMap[i];
+			if(linearImageIndex == ~unsigned(0) && srgbImageIndex == ~unsigned(0))
+				continue;
+
 			auto& image = images[i];
 			auto uriIt = image.find("uri");
 			if(uriIt != image.end()) {
@@ -907,115 +1404,208 @@ void App::init()
 					fs.close();
 
 					// image info
-					int width, height, numComponents;
-					if(!stbi_info_from_memory(imgBuffer.get(), int(fileSize), &width, &height, &numComponents))
+					int width, height, imgNumComponents;
+					if(!stbi_info_from_memory(imgBuffer.get(), int(fileSize), &width, &height, &imgNumComponents))
 						goto failed;
-					vk::Format format;
-					size_t alignment;
-					switch(numComponents) {
-					case 4: // red, green, blue, alpha
-						format = vk::Format::eR8G8B8A8Srgb;
-						alignment = 4;
-						break;
-					case 3: // red, green, blue
-						if(rgb8srgbSupported) {
-							format = vk::Format::eR8G8B8Srgb;
-							alignment = 3;
-						}
-						else {
-							// fallback to alpha always one
-							format = vk::Format::eR8G8B8A8Srgb;
-							alignment = 4;
-							numComponents = 4;
-						}
-						break;
-					case 2: // grey, alpha
-						if(rg8srgbSupported) {
-							format = vk::Format::eR8G8Srgb;
-							alignment = 2;
-						}
-						else {
-							// fallback to expand grey into red+green+blue+alpha
-							format = vk::Format::eR8G8B8A8Srgb;
-							alignment = 4;
-							numComponents = 4;
-						}
-						break;
-					case 1: // grey
-						if(r8srgbSupported) {
-							format = vk::Format::eR8Srgb;
-							alignment = 1;
-						}
-						else if(rg8srgbSupported) {
-							// fallback to expand grey into grey+alpha
-							format = vk::Format::eR8G8Srgb;
-							alignment = 2;
-							numComponents = 2;
-						}
-						else if(rgb8srgbSupported) {
-							// fallback to expand grey into red+green+blue
-							format = vk::Format::eR8G8B8Srgb;
-							alignment = 3;
-							numComponents = 3;
-						}
-						else {
-							// fallback to expand grey into red+green+blue+alpha
-							format = vk::Format::eR8G8B8A8Srgb;
-							alignment = 4;
-							numComponents = 4;
-						}
-						break;
-					default: goto failed;
-					}
+					int srgbNumComponents = imgNumComponents;
 
-					// load image
 					unique_ptr<stbi_uc[], void(*)(stbi_uc*)> data(
-						stbi_load_from_memory(imgBuffer.get(), int(fileSize),
-							&width, &height, nullptr, numComponents),
+						nullptr,
 						[](stbi_uc* ptr) { stbi_image_free(ptr); }
 					);
-					if(data == nullptr)
-						goto failed;
+					if(srgbImageIndex != ~unsigned(0))
+					{
+						vk::Format format;
+						size_t alignment;
+						switch(srgbNumComponents) {
+						case 4: // red, green, blue, alpha
+							format = vk::Format::eR8G8B8A8Srgb;
+							alignment = 4;
+							break;
+						case 3: // red, green, blue
+							if(rgb8srgbSupported) {
+								format = vk::Format::eR8G8B8Srgb;
+								alignment = 3;
+							}
+							else {
+								// fallback to alpha always one
+								format = vk::Format::eR8G8B8A8Srgb;
+								alignment = 4;
+								srgbNumComponents = 4;
+							}
+							break;
+						case 2: // grey, alpha
+							if(rg8srgbSupported) {
+								format = vk::Format::eR8G8Srgb;
+								alignment = 2;
+							}
+							else {
+								// fallback to expand grey into red+green+blue+alpha
+								format = vk::Format::eR8G8B8A8Srgb;
+								alignment = 4;
+								srgbNumComponents = 4;
+							}
+							break;
+						case 1: // grey
+							if(r8srgbSupported) {
+								format = vk::Format::eR8Srgb;
+								alignment = 1;
+							}
+							else if(rg8srgbSupported) {
+								// fallback to expand grey into grey+alpha
+								format = vk::Format::eR8G8Srgb;
+								alignment = 2;
+								srgbNumComponents = 2;
+							}
+							else if(rgb8srgbSupported) {
+								// fallback to expand grey into red+green+blue
+								format = vk::Format::eR8G8B8Srgb;
+								alignment = 3;
+								srgbNumComponents = 3;
+							}
+							else {
+								// fallback to expand grey into red+green+blue+alpha
+								format = vk::Format::eR8G8B8A8Srgb;
+								alignment = 4;
+								srgbNumComponents = 4;
+							}
+							break;
+						default: goto failed;
+						}
 
-					// copy data to staging buffer
-					size_t bufferSize = size_t(width) * height * numComponents;
-					CadR::StagingBuffer sb(renderer.imageStorage(), bufferSize, alignment);
-					memcpy(sb.data(), data.get(), bufferSize);
-					data.reset();
+						// load image
+						data.reset(
+							stbi_load_from_memory(imgBuffer.get(), int(fileSize),
+								&width, &height, nullptr, srgbNumComponents)
+						);
+						if(data == nullptr)
+							goto failed;
 
-					// create ImageAllocation
-					CadR::ImageAllocation& a = imageList.emplace_back(renderer.imageStorage());
-					imageFormats[imageList.size()-1] = format;
-					a.alloc(
-						vk::MemoryPropertyFlagBits::eDeviceLocal,  // requiredFlags
-						vk::ImageCreateInfo(  // imageCreateInfo
-							vk::ImageCreateFlags{},  // flags
-							vk::ImageType::e2D,  // imageType
-							format,  // format
-							vk::Extent3D(width, height, 1),  // extent
-							1,  // mipLevels
-							1,  // arrayLayers
-							vk::SampleCountFlagBits::e1,  // samples
-							vk::ImageTiling::eOptimal,  // tiling
-							vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,  // usage
-							vk::SharingMode::eExclusive,  // sharingMode
-							0,  // queueFamilyIndexCount
-							nullptr,  // pQueueFamilyIndices
-							vk::ImageLayout::eUndefined  // initialLayout
-						),
-						device  // vulkanDevice
-					);
-					sb.submit(
-						a,  // ImageAllocation
-						vk::ImageLayout::eUndefined,  // currentLayout,
-						vk::ImageLayout::eTransferDstOptimal,  // copyLayout,
-						vk::ImageLayout::eShaderReadOnlyOptimal,  // newLayout,
-						vk::PipelineStageFlagBits::eFragmentShader,  // newLayoutBarrierDstStages,
-						vk::AccessFlagBits::eShaderRead,  // newLayoutBarrierDstAccessFlags,
-						vk::Extent2D(width, height),  // imageExtent
-						bufferSize  // dataSize
-					);
+						// copy data to staging buffer
+						size_t bufferSize = size_t(width) * height * srgbNumComponents;
+						CadR::StagingBuffer sb(renderer.imageStorage(), bufferSize, alignment);
+						memcpy(sb.data(), data.get(), bufferSize);
+						data.reset();
 
+						// create ImageAllocation
+						imageFormatList[srgbImageIndex] = format;
+						CadR::ImageAllocation& a = imageList[srgbImageIndex];
+						a.alloc(
+							vk::MemoryPropertyFlagBits::eDeviceLocal,  // requiredFlags
+							vk::ImageCreateInfo(  // imageCreateInfo
+								vk::ImageCreateFlags{},  // flags
+								vk::ImageType::e2D,  // imageType
+								format,  // format
+								vk::Extent3D(width, height, 1),  // extent
+								1,  // mipLevels
+								1,  // arrayLayers
+								vk::SampleCountFlagBits::e1,  // samples
+								vk::ImageTiling::eOptimal,  // tiling
+								vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,  // usage
+								vk::SharingMode::eExclusive,  // sharingMode
+								0,  // queueFamilyIndexCount
+								nullptr,  // pQueueFamilyIndices
+								vk::ImageLayout::eUndefined  // initialLayout
+							),
+							device  // vulkanDevice
+						);
+						sb.submit(
+							a,  // ImageAllocation
+							vk::ImageLayout::eUndefined,  // currentLayout,
+							vk::ImageLayout::eTransferDstOptimal,  // copyLayout,
+							vk::ImageLayout::eShaderReadOnlyOptimal,  // newLayout,
+							vk::PipelineStageFlagBits::eFragmentShader,  // newLayoutBarrierDstStages,
+							vk::AccessFlagBits::eShaderRead,  // newLayoutBarrierDstAccessFlags,
+							vk::Extent2D(width, height),  // imageExtent
+							bufferSize  // dataSize
+						);
+					}
+
+					if(linearImageIndex != ~unsigned(0))
+					{
+						vk::Format format;
+						size_t alignment;
+						int linearNumComponents = imgNumComponents;
+						switch(linearNumComponents) {
+						case 4: // red, green, blue, alpha
+							format = vk::Format::eR8G8B8A8Unorm;
+							alignment = 4;
+							break;
+						case 3: // red, green, blue
+							if(rgb8unormSupported) {
+								format = vk::Format::eR8G8B8Unorm;
+								alignment = 3;
+							}
+							else {
+								// fallback to alpha always one
+								format = vk::Format::eR8G8B8A8Unorm;
+								alignment = 4;
+								linearNumComponents = 4;
+							}
+							break;
+						case 2: // grey, alpha
+							format = vk::Format::eR8G8Unorm;
+							alignment = 2;
+							break;
+						case 1: // grey
+							format = vk::Format::eR8Unorm;
+							alignment = 1;
+							break;
+						default: goto failed;
+						}
+
+						// reload image only if necessary
+						if(!data || srgbNumComponents != linearNumComponents)
+						{
+							// load image
+							data.reset(
+								stbi_load_from_memory(imgBuffer.get(), int(fileSize),
+									&width, &height, nullptr, linearNumComponents)
+							);
+							if(data == nullptr)
+								goto failed;
+						}
+
+						// copy data to staging buffer
+						size_t bufferSize = size_t(width) * height * linearNumComponents;
+						CadR::StagingBuffer sb(renderer.imageStorage(), bufferSize, alignment);
+						memcpy(sb.data(), data.get(), bufferSize);
+						data.reset();
+
+						// create ImageAllocation
+						imageFormatList[linearImageIndex] = format;
+						CadR::ImageAllocation& a = imageList[linearImageIndex];
+						a.alloc(
+							vk::MemoryPropertyFlagBits::eDeviceLocal,  // requiredFlags
+							vk::ImageCreateInfo(  // imageCreateInfo
+								vk::ImageCreateFlags{},  // flags
+								vk::ImageType::e2D,  // imageType
+								format,  // format
+								vk::Extent3D(width, height, 1),  // extent
+								1,  // mipLevels
+								1,  // arrayLayers
+								vk::SampleCountFlagBits::e1,  // samples
+								vk::ImageTiling::eOptimal,  // tiling
+								vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,  // usage
+								vk::SharingMode::eExclusive,  // sharingMode
+								0,  // queueFamilyIndexCount
+								nullptr,  // pQueueFamilyIndices
+								vk::ImageLayout::eUndefined  // initialLayout
+							),
+							device  // vulkanDevice
+						);
+						sb.submit(
+							a,  // ImageAllocation
+							vk::ImageLayout::eUndefined,  // currentLayout,
+							vk::ImageLayout::eTransferDstOptimal,  // copyLayout,
+							vk::ImageLayout::eShaderReadOnlyOptimal,  // newLayout,
+							vk::PipelineStageFlagBits::eFragmentShader,  // newLayoutBarrierDstStages,
+							vk::AccessFlagBits::eShaderRead,  // newLayoutBarrierDstAccessFlags,
+							vk::Extent2D(width, height),  // imageExtent
+							bufferSize  // dataSize
+						);
+					}
+				
 				}
 				goto succeed;
 			failed:
@@ -1160,8 +1750,7 @@ void App::init()
 	}
 
 	// texture descriptors
-	size_t numTextures = textures.size();
-	uint32_t numTextureDescriptors = numTextures>0 ? uint32_t(numTextures) : 1;
+	uint32_t numTextureDescriptors = numAppTextures>0 ? numAppTextures : 1;
 	layoutOnlyPipeline.init(nullptr, pipelineSceneGraph.pipelineLayout(), nullptr);
 	stateSetRoot.pipeline = &layoutOnlyPipeline;
 	stateSetRoot.allocDescriptorSets(
@@ -1184,14 +1773,23 @@ void App::init()
 	);
 
 	// process textures
-	if(numTextures > 0) {
-		textureList.reserve(numTextures);
-		for(size_t i=0; i<numTextures; i++) {
-			auto& texture = textures[i];
+	if(numAppTextures > 0) {
+		textureList.reserve(numAppTextures);
+		for(uint32_t i=0; i<numAppTextures; i++) {
+
+			// glTF texture
+			auto [ gltfTextureIndex, srgb ] = appTextureInfoList[i];
+			auto& texture = textures[gltfTextureIndex];
+
+			// source / glTF image index
 			auto sourceIt = texture.find("source");
 			if(sourceIt == texture.end())
 				throw GltfError("Unsupported functionality: Texture.source is not defined for the texture.");
-			size_t imageIndex = sourceIt->get_ref<json::number_unsigned_t&>();
+			size_t gltfImageIndex = sourceIt->get_ref<json::number_unsigned_t&>();
+			LinearAndSrgbIndices appImageIndices = gltfImageToAppImageMap[gltfImageIndex];
+			size_t appImageIndex = srgb ? appImageIndices.srgb : appImageIndices.linear;
+
+			// sampler
 			auto samplerIt = texture.find("sampler");
 			vk::Sampler vkSampler;
 			if(samplerIt != texture.end()) {
@@ -1227,12 +1825,12 @@ void App::init()
 
 			// create texture
 			textureList.emplace_back(
-				imageList.at(imageIndex), // imageAllocation
+				imageList[appImageIndex], // imageAllocation
 				vk::ImageViewCreateInfo(  // imageViewCreateInfo
 					vk::ImageViewCreateFlags(),  // flags
 					nullptr,  // image - will be filled in later
 					vk::ImageViewType::e2D,  // viewType
-					imageFormats.at(imageIndex),  // format
+					imageFormatList[appImageIndex],  // format
 					vk::ComponentMapping{  // components
 						vk::ComponentSwizzle::eR,
 						vk::ComponentSwizzle::eG,
@@ -1253,8 +1851,8 @@ void App::init()
 		}
 
 		// update descriptor sets
-		vector<vk::DescriptorImageInfo> imageInfoList(numTextures);
-		for(size_t i=0; i<numTextures; i++) {
+		vector<vk::DescriptorImageInfo> imageInfoList(numAppTextures);
+		for(uint32_t i=0; i<numAppTextures; i++) {
 			const CadR::Texture& t = textureList[i];
 			imageInfoList[i] = {
 				t.sampler(),  // sampler
@@ -1266,7 +1864,7 @@ void App::init()
 			stateSetRoot.descriptorSet(0),  // dstSet
 			0,  // dstBinding
 			0,  // dstArrayElement
-			uint32_t(numTextures),  // descriptorCount
+			numAppTextures,  // descriptorCount
 			vk::DescriptorType::eCombinedImageSampler,  // descriptorType
 			imageInfoList.data(),  // pImageInfo
 			nullptr,  // pBufferInfo
@@ -1274,411 +1872,10 @@ void App::init()
 		);
 		stateSetRoot.updateDescriptorSet(1, &writeInfo);
 	}
+	gltfImageToAppImageMap.clear();  // no needed any more
+	appTextureInfoList.clear();  // no needed any more
+	imageFormatList.clear();  // no needed any more
 
-	// create default material
-	struct UnlitMaterialData {
-		glm::vec4 colorAndAlpha;
-	#if 1  // optional members
-		float alphaCutoff;  // offset 16
-		uint32_t padding;
-	#endif
-	};
-	constexpr unsigned unlitMaterialDataSizeAligned8 = 16;
-	struct PhongMaterialData {
-		glm::vec3 ambient;  // offset 0
-		uint32_t padding1;
-		glm::vec4 diffuseAndAlpha;  // offset 16
-		glm::vec3 specular;  // offset 32
-		float shininess;  // offset 44
-		glm::vec3 emission;  // offset 48
-		float alphaCutoff;  // offset 60
-	#if 0  // optional members
-		glm::vec3 reflection;  // offset 64
-	#endif
-	};
-	static_assert(sizeof(PhongMaterialData) == 64 && "Wrong size of PhongMaterialData structure.");
-	constexpr unsigned phongMaterialDataSizeAligned8 = 64;
-	struct TextureMaterialRecord {
-		uint8_t texCoordIndex;
-		uint8_t type;
-		uint16_t settings;
-		uint32_t textureIndex;
-	};
-	static_assert(sizeof(TextureMaterialRecord) == 8 && "Wrong size of TextureMaterialRecord structure.");
-	struct StateSetMaterialData {
-		bool unlit;
-		bool doubleSided;
-		bool alphaTest;
-		unsigned textureInfoOffset;
-	};
-	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
-	PhongMaterialData* m = sd.data<PhongMaterialData>();
-	m->ambient = glm::vec3(1.f, 1.f, 1.f);
-	m->padding1 = 0;
-	m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
-	m->specular = glm::vec3(0.f, 0.f, 0.f);
-	m->shininess = 0.f;
-	m->emission = glm::vec3(0.f, 0.f, 0.f);
-	m->alphaCutoff = 0.f;
-	StateSetMaterialData defaultStateSetMaterialData {
-		.unlit = false,
-		.doubleSided = false,
-		.alphaTest = false,
-		.textureInfoOffset = 0,
-	};
-
-
-	// process materials
-	size_t numMaterials = materials.size();
-	materialList.reserve(numMaterials);
-	vector<StateSetMaterialData> stateSetMaterialDataList(numMaterials);
-	for(size_t materialIndex=0; materialIndex<numMaterials; materialIndex++)
-	{
-		auto& material = materials.at(materialIndex);
-
-		struct TextureData {
-			unsigned index;
-			unsigned coordIndex;
-			float strength;
-			bool transformEnabled;
-			glm::vec2 offset;
-			float rotation;
-			glm::vec2 scale;
-		};
-
-		// values to be read from glTF
-		bool unlit;
-		bool doubleSided;
-		glm::vec4 baseColorFactor;
-		TextureData baseColorTexture;
-		TextureData normalTexture;
-		TextureData emissiveTexture;
-
-		float metallicFactor;
-		float roughnessFactor;
-		glm::vec3 emissiveFactor;
-		float emissiveStrength = 1.f;
-		bool alphaTest;
-		float alphaCutoff;
-
-		auto readTextureData =
-			[](TextureData& t, const char* jsonPropertyName, json& jsonParent, const unsigned textureListSize,
-			   const char* strengthPropertyName = nullptr)
-			{
-				if(auto textureIt = jsonParent.find(jsonPropertyName); textureIt != jsonParent.end()) {
-
-					t.index = unsigned(textureIt->at("index").get_ref<json::number_unsigned_t&>());
-					if(t.index >= textureListSize)
-						throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
-					t.coordIndex = textureIt->value("texCoord", 0);
-					if(strengthPropertyName)
-						if(auto it = textureIt->find(strengthPropertyName); it != textureIt->end())
-							t.strength = float(it->get<json::number_float_t>());
-						else
-							t.strength = 1.f;
-					else
-						t.strength = 1.f;
-					if(auto extIt = textureIt->find("extensions"); extIt != textureIt->end()) {
-
-						// KHR_texture_transform
-						auto transformIt = extIt->find("KHR_texture_transform");
-						if(transformIt != extIt->end())
-						{
-							t.transformEnabled = true;
-
-							// KHR_texture_transform.offset
-							if(auto offsetIt = transformIt->find("offset"); offsetIt != transformIt->end()) {
-								json::array_t& a = offsetIt->get_ref<json::array_t&>();
-								if(a.size() != 2)
-									throw GltfError("Material.baseColorTexture.extensions.offset is not vector of two components.");
-								t.offset[0] = float(a[0].get<json::number_float_t>());
-								t.offset[1] = float(a[1].get<json::number_float_t>());
-							}
-							else {
-								t.offset[0] = 0.f;
-								t.offset[1] = 0.f;
-							}
-
-							// KHR_texture_transform.rotation
-							t.rotation = float(transformIt->value<json::number_float_t>("rotation", 0.f));
-
-							// KHR_texture_transform.scale
-							if(auto scaleIt = transformIt->find("scale"); scaleIt != transformIt->end()) {
-								json::array_t& a = scaleIt->get_ref<json::array_t&>();
-								if(a.size() != 2)
-									throw GltfError("Material.baseColorTexture.extensions.scale is not vector of two components.");
-								t.scale[0] = float(a[0].get<json::number_float_t>());
-								t.scale[1] = float(a[1].get<json::number_float_t>());
-							}
-							else {
-								t.scale[0] = 1.f;
-								t.scale[1] = 1.f;
-							}
-
-							// KHR_texture_transform.texCoord
-							if(auto texCoordIt = transformIt->find("texCoord"); texCoordIt != transformIt->end())
-								t.coordIndex = unsigned(texCoordIt->get_ref<json::number_integer_t&>());
-						}
-						else
-							t.transformEnabled = false;
-					}
-					else
-						t.transformEnabled = false;
-				}
-				else {
-					t.index = ~unsigned(0);
-					t.coordIndex = ~unsigned(0);
-				}
-			};
-
-		// unlit material extension
-		if(auto extIt = material.find("extensions"); extIt == material.end()) {
-			unlit = false;
-		}
-		else {
-			auto it = extIt->find("KHR_materials_unlit");
-			unlit = (it != extIt->end());
-			it = extIt->find("KHR_materials_emissive_strength");
-			if(it != extIt->end())
-				emissiveStrength = float(it->value<json::number_float_t>("emissiveStrength", 1.0));
-		}
-
-		// material.doubleSided is optional with the default value of false
-		doubleSided = material.value<json::boolean_t>("doubleSided", false);
-
-		// read pbr material properties
-		if(auto pbrIt = material.find("pbrMetallicRoughness"); pbrIt != material.end()) {
-
-			// read baseColorFactor
-			if(auto baseColorFactorIt = pbrIt->find("baseColorFactor"); baseColorFactorIt != pbrIt->end()) {
-				json::array_t& a = baseColorFactorIt->get_ref<json::array_t&>();
-				if(a.size() != 4)
-					throw GltfError("Material.pbrMetallicRoughness.baseColorFactor is not vector of four components.");
-				baseColorFactor[0] = float(a[0].get<json::number_float_t>());
-				baseColorFactor[1] = float(a[1].get<json::number_float_t>());
-				baseColorFactor[2] = float(a[2].get<json::number_float_t>());
-				baseColorFactor[3] = float(a[3].get<json::number_float_t>());
-			}
-			else
-				baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-
-			// read properties
-			metallicFactor = float(pbrIt->value<json::number_float_t>("metallicFactor", 1.0));
-			roughnessFactor = float(pbrIt->value<json::number_float_t>("roughnessFactor", 1.0));
-
-			// base color texture
-			readTextureData(baseColorTexture, "baseColorTexture", *pbrIt, unsigned(textureList.size()));
-
-			// not supported properties
-			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-				throw GltfError("Unsupported functionality: metallic-roughness texture.");
-
-		}
-		else
-		{
-			// default values when pbrMetallicRoughness is not present
-			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-			baseColorTexture.index = ~unsigned(0);
-			baseColorTexture.coordIndex = ~unsigned(0);
-			metallicFactor = 1.f;
-			roughnessFactor = 1.f;
-		}
-
-		// read emissiveFactor
-		if(auto emissiveFactorIt = material.find("emissiveFactor"); emissiveFactorIt != material.end()) {
-			json::array_t& a = emissiveFactorIt->get_ref<json::array_t&>();
-			if(a.size() != 3)
-				throw GltfError("Material.emissiveFactor is not vector of three components.");
-			emissiveFactor[0] = float(a[0].get<json::number_float_t>());
-			emissiveFactor[1] = float(a[1].get<json::number_float_t>());
-			emissiveFactor[2] = float(a[2].get<json::number_float_t>());
-		}
-		else
-			emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
-
-		// normal texture
-		readTextureData(normalTexture, "normalTexture", material, unsigned(textureList.size()), "scale");
-
-		// not supported material properties
-		if(material.find("occlusionTexture") != material.end())
-			throw GltfError("Unsupported functionality: occlusion texture.");
-
-		// emissive texture
-		readTextureData(emissiveTexture, "emissiveTexture", material, unsigned(textureList.size()));
-
-		// alphaMode
-		if(auto it=material.find("alphaMode"); it != material.end()) {
-			string alphaMode = it->get_ref<json::string_t&>();
-			if(alphaMode == "OPAQUE")
-				alphaTest = false;
-			else if(alphaMode == "MASK")
-				alphaTest = true;
-			else if(alphaMode == "BLEND")
-				throw GltfError("Unsupported functionality: blend alpha mode.");
-			else
-				throw GltfError("Unknown alpha mode.");
-		}
-		else
-			alphaTest = false;
-
-		// alphaCutoff
-		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
-
-		// material struct base size
-		unsigned materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
-		if(unlit && alphaTest)
-			materialSize += 8;
-		unsigned coreMaterialSize = materialSize;
-
-		// texture data size inside material
-		//
-		// each texture occupies at least 8 bytes in material structure;
-		// if strength is used, it needs additional 8 bytes (4 for float and 4 for padding to 8 bytes alignment),
-		// so texture with strength occupies 16 bytes in total;
-		// if texture coordinate transform is enabled, addition 6 floats are needed,
-		// so texture without strength takes 8+24=32 bytes and texture with strength takes 8+8+24=40 bytes
-		auto getTextureInfoSize =
-			[](const TextureData& t) -> unsigned
-			{
-				// texture not used
-				if(t.index == ~unsigned(0))
-					return 0;
-
-				if(t.strength == 1.f) {
-					if(!t.transformEnabled)
-						return 8;  // texture yes, strength no, transform no
-					else
-						return 8+24;  // texture yes, strength no, transform yes
-				} else {
-					if(!t.transformEnabled)
-						return 8+8;  // texture yes, strength yes, transform no
-					else
-						return 8+8+24;  // texture yes, strength yes, transform yes
-				}
-			};
-
-		// append textures to material size
-		materialSize += getTextureInfoSize(normalTexture);
-		materialSize += getTextureInfoSize(baseColorTexture);
-		materialSize += getTextureInfoSize(emissiveTexture);
-
-		// if there are textures, let's put terminating texture record as well
-		if(materialSize != coreMaterialSize)
-			materialSize += 8;
-
-		// material
-		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
-		CadR::StagingData sd = a.alloc(materialSize);
-		uint8_t* p = sd.data<uint8_t>();
-		if(unlit) {
-			UnlitMaterialData* m = reinterpret_cast<UnlitMaterialData*>(p);
-			m->colorAndAlpha = baseColorFactor;
-			if(alphaTest)
-				m->alphaCutoff = alphaCutoff;
-			p += unlitMaterialDataSizeAligned8;
-		}
-		else {
-			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
-			m->ambient = glm::vec3(baseColorFactor);
-			m->padding1 = 0;
-			m->diffuseAndAlpha = glm::vec4(glm::vec3(baseColorFactor) * (1.f - metallicFactor), baseColorFactor.a);  // very vague and imprecise conversion
-			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
-			m->shininess = (1.f - roughnessFactor) * (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
-			m->emission = emissiveFactor * emissiveStrength;
-			m->alphaCutoff = alphaCutoff;
-			p += phongMaterialDataSizeAligned8;
-		}
-
-		// write texture record into material
-		auto writeTexture =
-			[](const TextureData& t, uint8_t type, uint8_t*& p)
-			{
-				// write core texture data
-				TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
-				r->texCoordIndex = 4 + t.coordIndex;  // texture coordinates are placed on attribute 4 and following
-				r->type = type;
-				r->textureIndex = t.index;
-				p += 8;
-
-				uint16_t settings;
-				uint16_t size;
-				if(t.transformEnabled)
-				{
-					// write transform
-					settings = 0x1;
-					size = 32;
-					float* f = reinterpret_cast<float*>(p);
-					if(t.rotation == 0) {
-						f[0] = t.scale.x;
-						f[1] = 0.f;
-						f[2] = 0.f;
-						f[3] = t.scale.y;
-					} else {
-						float c = cos(t.rotation);
-						float s = sin(t.rotation);
-						f[0] = c * t.scale.x;
-						f[1] = -s * t.scale.x;
-						f[2] = s * t.scale.y;
-						f[3] = c * t.scale.y;
-					}
-					f[4] = t.offset.x;
-					f[5] = t.offset.y;
-					p += 24;
-				}
-				else
-				{
-					// skip transform
-					settings = 0;
-					size = 8;
-				}
-
-				if(t.strength != 1.f)
-				{
-					// write strength
-					settings |= 0x2;
-					size += 8;
-					float* f = reinterpret_cast<float*>(p);
-					f[0] = t.strength;
-					f[1] = 0.f;
-					p += 8;
-				}
-
-				// write settings
-				r->settings = settings | (size << 10);
-
-			};
-
-		// write textures
-		uint8_t* p2 = p;
-		if(baseColorTexture.index != ~unsigned(0))
-			writeTexture(baseColorTexture, 1, p);
-		if(normalTexture.index != ~unsigned(0))
-			writeTexture(normalTexture, 2, p);
-		if(emissiveTexture.index != ~unsigned(0))
-			writeTexture(emissiveTexture, 4, p);
-
-		// if at least one texture was written, put terminating record as well
-		if(p != p2)
-		{
-			// terminating record (all zeros)
-			TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
-			r->texCoordIndex = 0;
-			r->type = 0;
-			r->settings = 0;
-			r->textureIndex = 0;
-		}
-
-		// StateSetMaterialData
-		auto& ssm = stateSetMaterialDataList[materialIndex];
-		ssm.unlit = unlit;
-		ssm.doubleSided = doubleSided;
-		ssm.alphaTest = alphaTest;
-		ssm.textureInfoOffset =
-			(materialSize == coreMaterialSize)
-				? 0  // no texture info
-				: coreMaterialSize;  // texture info just material data
-	}
-	assert(materialList.size() == numMaterials && "Not all materials were created.");
 
 	// process meshes
 	cout << "Processing meshes..." << endl;
