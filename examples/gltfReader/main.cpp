@@ -958,6 +958,7 @@ void App::init()
 		bool doubleSided;
 		glm::vec4 baseColorFactor;
 		TextureData baseColorTexture;
+		TextureData metallicRoughnessTexture;
 		TextureData normalTexture;
 		TextureData emissiveTexture;
 
@@ -1076,10 +1077,15 @@ void App::init()
 			// base color texture
 			readTextureData(baseColorTexture, "baseColorTexture", *pbrIt, numGltfTextures);
 
-			// not supported properties
+			// metallic-roughness texture
+		#if 0  // do not enable metallic-roughness texture yet because it is not supported in the shader
+			readTextureData(metallicRoughnessTexture, "metallicRoughnessTexture", *pbrIt, numGltfTextures);
+		#else
 			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
 				throw GltfError("Unsupported functionality: metallic-roughness texture.");
-
+			metallicRoughnessTexture.index = ~unsigned(0);
+			metallicRoughnessTexture.coordIndex = ~unsigned(0);
+		#endif
 		}
 		else
 		{
@@ -1087,6 +1093,8 @@ void App::init()
 			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
 			baseColorTexture.index = ~unsigned(0);
 			baseColorTexture.coordIndex = ~unsigned(0);
+			metallicRoughnessTexture.index = ~unsigned(0);
+			metallicRoughnessTexture.coordIndex = ~unsigned(0);
 			metallicFactor = 1.f;
 			roughnessFactor = 1.f;
 		}
@@ -1165,8 +1173,9 @@ void App::init()
 			};
 
 		// append textures to material size
-		materialSize += getTextureInfoSize(normalTexture);
 		materialSize += getTextureInfoSize(baseColorTexture);
+		materialSize += getTextureInfoSize(metallicRoughnessTexture);
+		materialSize += getTextureInfoSize(normalTexture);
 		materialSize += getTextureInfoSize(emissiveTexture);
 
 		// if there are textures, let's put terminating texture record as well
@@ -1297,13 +1306,17 @@ void App::init()
 			remapByTransferFunction(baseColorTexture, true);  // base texture uses sRGB transfer function
 			writeTexture(baseColorTexture, 1, p);
 		}
+		if(metallicRoughnessTexture.index != ~unsigned(0)) {
+			remapByTransferFunction(metallicRoughnessTexture, false);  // metallic-roughness texture uses linear transfer function
+			writeTexture(metallicRoughnessTexture, 3, p);
+		}
 		if(normalTexture.index != ~unsigned(0)) {
 			remapByTransferFunction(normalTexture, false);  // normal texture uses linear transfer function
-			writeTexture(normalTexture, 2, p);
+			writeTexture(normalTexture, 5, p);
 		}
 		if(emissiveTexture.index != ~unsigned(0)) {
 			remapByTransferFunction(emissiveTexture, true);  // emissive texture uses sRGB transfer function
-			writeTexture(emissiveTexture, 4, p);
+			writeTexture(emissiveTexture, 6, p);
 		}
 
 		// if at least one texture was written, put terminating record as well

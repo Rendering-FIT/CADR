@@ -89,7 +89,7 @@ layout(set=0, binding=19) uniform sampler2D mirrorTexture;
 //
 //  All vectors are in eye coordinates.
 
-void OpenGLDirectionalLight(
+void openGLDirectionalLight(
 	in LightRef lightData,
 	in vec3 normal,
 	in vec3 viewerToFragmentDirection,
@@ -124,7 +124,7 @@ void OpenGLDirectionalLight(
 }
 
 
-void OpenGLPointLight(
+void openGLPointLight(
 	in LightRef lightData,
 	in vec3 normal,
 	in vec3 viewerToFragmentDirection,
@@ -167,7 +167,7 @@ void OpenGLPointLight(
 }
 
 
-void OpenGLSpotlight(
+void openGLSpotlight(
 	in LightRef lightData,
 	in vec3 normal,
 	in vec3 viewerToFragmentDirection,
@@ -349,9 +349,9 @@ void main()
 			if(getTextureUseStrength(textureInfo)) {
 				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
 				if(texEnv != 3)
-					nextDataPointer += 8;
+					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
 				else
-					nextDataPointer += 4;
+					nextDataPointer += 4;  // address is incremented by 4 because blend color (12 bytes) follows
 			}
 
 			// apply color of baseTexture
@@ -476,9 +476,9 @@ void main()
 			if(getTextureUseStrength(textureInfo)) {
 				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
 				if(texEnv != 3)
-					nextDataPointer += 8;
+					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
 				else
-					nextDataPointer += 4;
+					nextDataPointer += 4;  // address is incremented by 4 because blend color (12 bytes) follows
 			}
 
 			// apply texture alpha using texEnv
@@ -513,6 +513,36 @@ void main()
 		}
 		else {
 
+			// occlusion texture
+			float occlusionTextureValue;
+			if(textureType == 0x0400) {
+
+				// compute texture coordinates from relevant data,
+				// and transform them if requested
+				uint64_t nextDataPointer;
+			#if defined(TRIANGLES) || defined(LINES)
+				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+			#else
+				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+			#endif
+
+				// sample texture
+				occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv).r;
+
+				// multiply by strength
+				if(getTextureUseStrength(textureInfo)) {
+					occlusionTextureValue = 1. + getTextureStrength(nextDataPointer) * (occlusionTextureValue - 1.);
+					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
+				}
+
+				// update pointer to point to the next texture
+				textureInfo = TextureInfoRef(nextDataPointer);
+				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+
+			}
+			else
+				occlusionTextureValue = 1.;
+
 			// normal
 			vec3 normal;
 			if(getGenerateFlatNormals())
@@ -525,7 +555,7 @@ void main()
 		#endif
 
 			// normal texture
-			if(textureType == 0x0200) {
+			if(textureType == 0x0500) {
 
 				// compute texture coordinates from relevant data,
 				// and transform them if requested
@@ -557,37 +587,6 @@ void main()
 				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
 			}
 
-			// occlusion texture
-			float occlusionTextureValue;
-			if(textureType == 0x0300) {
-
-				// compute texture coordinates from relevant data,
-				// and transform them if requested
-				uint64_t nextDataPointer;
-	#if defined(TRIANGLES) || defined(LINES)
-				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
-	#else
-				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
-	#endif
-
-				// sample texture
-				uint componentIndex = getTextureFirstComponentIndex(textureInfo);  // glTF uses red component, so 0 should be provided for glTF
-				occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv)[componentIndex];
-
-				// multiply by strength
-				if(getTextureUseStrength(textureInfo)) {
-					occlusionTextureValue = 1. + getTextureStrength(nextDataPointer) * (occlusionTextureValue - 1.);
-					nextDataPointer += 8;
-				}
-
-				// update pointer to point to the next texture
-				textureInfo = TextureInfoRef(nextDataPointer);
-				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
-
-			}
-			else
-				occlusionTextureValue = 1.;
-
 			// light data
 			uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
 			LightRef lightData = LightRef(lightDataPtr);
@@ -606,15 +605,15 @@ void main()
 
 					uint lightType = getLightType(lightSettings);
 					if(lightType == 1)
-						OpenGLDirectionalLight(lightData, normal,
+						openGLDirectionalLight(lightData, normal,
 							viewerToFragmentDirection, phongMaterial.shininess,
 							ambientProduct, diffuseProduct, specularProduct);
 					else if(lightType == 2)
-						OpenGLPointLight(lightData, normal,
+						openGLPointLight(lightData, normal,
 							viewerToFragmentDirection, phongMaterial.shininess,
 							ambientProduct, diffuseProduct, specularProduct);
 					else
-						OpenGLSpotlight(lightData, normal,
+						openGLSpotlight(lightData, normal,
 							viewerToFragmentDirection, phongMaterial.shininess,
 							ambientProduct, diffuseProduct, specularProduct);
 
@@ -663,7 +662,7 @@ void main()
 		}
 
 		// emissive texture and material emission
-		if(textureType == 0x0400) {
+		if(textureType == 0x0600) {
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
@@ -680,7 +679,7 @@ void main()
 			// multiply by strength
 			if(getTextureUseStrength(textureInfo)) {
 				emission *= getTextureStrength(nextDataPointer);
-				nextDataPointer += 8;
+				nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
 			}
 
 			// multiply by material emission

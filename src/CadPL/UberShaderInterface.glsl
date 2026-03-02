@@ -192,7 +192,6 @@ TextureInfoRef {
 	//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add;
 	//                 note: when blend texture environment is used (e.g. bits 18..20 are set to 3),
 	//                       blendColor is included in textureInfo and occupies extra 12 bytes
-	//   bits 21..22 - first component index
 	//   bits 26..31 - size of the structure (0..63 bytes), it must be multiple of 8;
 	//                 structure size might be even 8 bytes if strength and the following
 	//                 members are not used; size of the structure is used for computing
@@ -213,7 +212,6 @@ TextureInfoRef {
 bool getTextureUseCoordinateTranform(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x10000) != 0; }
 bool getTextureUseStrength(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x20000) != 0; }
 uint getTextureEnvironment(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 18) & 0x7; }
-uint getTextureFirstComponentIndex(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 21) & 0x3; }
 uint getTexCoordAccessInfo(TextureInfoRef textureInfo) { return getTexCoordAccessInfo(textureInfo.texCoordIndexTypeAndSettings & 0xff); }
 
 TextureInfoRef getNextTextureInfo(TextureInfoRef textureInfo)
@@ -367,7 +365,7 @@ struct OpenGLLightData {
 
 struct GltfLightData {
 	vec3 color;
-	float intensity;  // in candelas (lm/sr) for point light and spotlight and in luxes (lm/m2) for directional light
+	float intensity;  // for point light and spotlight in candelas (lm/sr), and for directional light in luxes (lm/m2)
 	float range;
 };
 
