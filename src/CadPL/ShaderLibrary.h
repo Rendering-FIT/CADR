@@ -24,10 +24,8 @@ struct CADPL_EXPORT ShaderState {
 	uint32_t attribSetup;
 	uint32_t materialSetup;
 	float pointSize;
-	uint16_t lightSetup[4];
-	uint16_t numLights;
-	uint32_t textureSetup[6];
-	uint16_t numTextures;
+	std::array<uint32_t,10> textureSetup;  // the setup for each texture is stored in one uint32_t; textures must be in ascending order of their type; the list is terminated by zero item while all the following items must be zero as well
+	std::array<uint8_t,8> lightSetup;  // light type of the first eight lights can be stored in lightSetup; first zero light type marks the end of light list; all the following light types past the end of light list must be set to zero as well; if light type list (including terminating zero) does not fit into the eight bytes, e.g. there is more than seven lights, the full list of light types can be obtained from SceneDataRef::lightData array
 
 	static constexpr const unsigned numOptimizeFlags = 7;
 	static constexpr const std::bitset<numOptimizeFlags> OptimizeNone = 0x00;  //< No optimizations. Uber-shader will be used.

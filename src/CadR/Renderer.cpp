@@ -548,7 +548,7 @@ size_t Renderer::prepareSceneRendering(StateSet& stateSetRoot)
 				)
 			);
 
-		// payload buffer
+		// drawable pointers buffer
 		_drawablePointersBuffer =
 			_device->createBuffer(
 				vk::BufferCreateInfo(

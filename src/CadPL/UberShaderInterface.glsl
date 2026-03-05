@@ -33,6 +33,8 @@ pushConstants {
 #ifdef ID_BUFFER
 	layout(offset=60) uint stateSetID;  // ID of the current StateSet
 #endif
+	layout(offset=64) uint textureSetup[10];  // each uint holds texCoordIndex, type and settings of a texture
+	layout(offset=104) uint64_t lightSetup;  // 1 byte for each light; it holds lightType
 };
 
 // pushConstants.attribAccessInfoList
@@ -49,7 +51,7 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 
 // pushConstants.materialSetup
 // bits 0..1: material model; 0 - unlit, 1 - phong, 2 - metallicRoughness
-// bits 2..7: texture offset (0, 4, 8, 12, .....252)
+// bits 2..7: material texturing params offset (0, 4, 8, 12, .....252)
 // bit 8: two sided lighting
 // bit 9: disable lighting;
 //        for unlit model, no effect;
@@ -96,7 +98,7 @@ bool getGenerateFlatNormals()  { return (attribSetup & 0x0001) != 0; }
 //                        except that it is multiplied by emissive texture, if used, and added
 //                        to the final fragment shader output.
 uint getMaterialModel()  { return materialSetup & 0x03; }
-uint getMaterialFirstTextureOffset()  { return materialSetup & 0xfc; }
+uint getMaterialTexturingParamsOffset()  { return materialSetup & 0xfc; }
 bool getMaterialTwoSidedLighting()  { return (materialSetup & 0x0100) != 0; }
 bool getMaterialDisableLighting()  { return (materialSetup & 0x0200) != 0; }
 bool getMaterialAlphaTest()  { return (materialSetup & 0x0400) != 0; }
@@ -108,6 +110,28 @@ bool getPhongMaterialApplyColorAttributeOnDiffuseOnly()  { return (materialSetup
 bool getPhongMaterialMultiplyColorAttributeWithMaterial()  { return (materialSetup & 0x8000) != 0; }
 bool getPhongMaterialOpenGLStyleEmission()  { return (materialSetup & 0x10000) == 0; }
 bool getPhongMaterialSeparateEmission()  { return (materialSetup & 0x10000) != 0; }
+
+// pushConstants.textureSetup[10];
+// texCoordIndex - bits 0..7
+// type - bits 8..15
+//   0 - marks the end of TextureInfo array; TextureInfo array is ended by
+//       texCoordIndexTypeAndSettings set to zero
+//   1 - normal texture
+//   2 - occusion texture
+//   3 - emissive texture
+//   4 - base texture
+// settings - bits 16..31
+//   bit 16 - transform texture coordinates by the transformation specified by t1..t6
+//   bit 17 - multiply texture value by strength member
+//   bits 18..20 - for Phong's base texture only, texture environment:
+//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add;
+//                 note: when blend texture environment is used (e.g. bits 18..20 are set to 3),
+//                       blendColor is included in textureInfo and occupies extra 12 bytes
+uint getTextureCoordinateIndex(uint textureIndex)  { return textureSetup[textureIndex] & 0x00ff; }
+uint getTextureTypeShL8(uint textureIndex)  { return textureSetup[textureIndex] & 0xff00; }
+bool getTextureUseCoordinateTranform(uint textureIndex)  { return (textureSetup[textureIndex] & 0x10000) != 0; }
+bool getTextureUseStrength(uint textureIndex)  { return (textureSetup[textureIndex] & 0x20000) != 0; }
+uint getTextureEnvironment(uint textureIndex)  { return (textureSetup[textureIndex] >> 18) & 0x7; }
 
 
 
@@ -175,93 +199,49 @@ MetallicRoughnessMaterialRef {
 	vec3 attenuationColor;
 };
 
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
-TextureInfoRef {
-	// texCoordIndex - bits 0..7
-	// type - bits 8..15
-	//   0 - marks the end of TextureInfo array; TextureInfo array is ended by
-	//       texCoordIndexTypeAndSettings set to zero
-	//   1 - normal texture
-	//   2 - occusion texture
-	//   3 - emissive texture
-	//   4 - base texture
-	// settings - bits 16..31
-	//   bit 16 - transform texture coordinates by the transformation specified by t1..t6
-	//   bit 17 - multiply texture value by strength member
-	//   bits 18..20 - for Phong and its base texture, texture environment:
-	//                 0 - modulate, 1 - replace, 2 - decal, 3 - blend, 4 - add;
-	//                 note: when blend texture environment is used (e.g. bits 18..20 are set to 3),
-	//                       blendColor is included in textureInfo and occupies extra 12 bytes
-	//   bits 26..31 - size of the structure (0..63 bytes), it must be multiple of 8;
-	//                 structure size might be even 8 bytes if strength and the following
-	//                 members are not used; size of the structure is used for computing
-	//                 of the start address of the next TextureInfo structure
-	uint texCoordIndexTypeAndSettings;
-	uint textureIndex;
-#if 0  // following members are optional;
-       // their offsets depends on which members are actually present;
-       // they are present in the specified order but those do not present does not occupy any space,
-       // e.g. their space is occupied by the following members
-	float rs1,rs2,rs3,rs4,t1,t2;  // optional: rotation and scale in 2x2 matrix (rs1..rs4), translation in vec2 (t1,t2); offset of rs1 is aligned to 8 bytes
-	float strength;  // optional: strength of the effect (of occlusion or emissive texture,..),
-	                 // or scale (of normals in normal texture)
-	vec3 blendColor;  // optional: texture blend color used in blend texture environment
-#endif
-};
 
-bool getTextureUseCoordinateTranform(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x10000) != 0; }
-bool getTextureUseStrength(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings & 0x20000) != 0; }
-uint getTextureEnvironment(TextureInfoRef textureInfo)  { return (textureInfo.texCoordIndexTypeAndSettings >> 18) & 0x7; }
-uint getTexCoordAccessInfo(TextureInfoRef textureInfo) { return getTexCoordAccessInfo(textureInfo.texCoordIndexTypeAndSettings & 0xff); }
+// Material texturing params
+//
+// Data of each texture are shown bellow. Many of them are optional.
+// The presence of optional members can be determined by pushConstant.textureSetup.
+// The data items are sorted in the order as they are needed in the shader.
+//
+// optional: float rs1,rs2,rs3,rs4,t1,t2;  // rotation and scale in 2x2 matrix (rs1..rs4), translation in vec2 (t1,t2)
+// uint textureID;  // index of the texture in the descriptor array
+// optional: float strength;  // strength of the effect (of occlusion or emissive texture,...),
+//                            // or scale (of normals in normal texture)
+// optional: vec3 blendColor;  // blend color used in blend texture environment
+//
+// The offset of each member depends on the presence or absence of all optional members that precede this one;
+// those that are not present do not occupy any space, e.g. their space is occupied by the following members
 
-TextureInfoRef getNextTextureInfo(TextureInfoRef textureInfo)
-{
-	uint size = textureInfo.texCoordIndexTypeAndSettings >> 26;
-	return TextureInfoRef(uint64_t(textureInfo) + size);
-}
+uint getTextureIdAndUpdatePtr(inout uint64_t ptr)  { uint r=AlignedUIntRef(ptr).value; ptr+=4; return r; }
+float getTextureStrengthAndUpdatePtr(inout uint64_t ptr)  { float r=AlignedFloatRef(ptr).value; ptr+=4; return r; }
+vec3 getTextureBlendColorAndUpdatePtr(inout uint64_t ptr)  { vec3 r=UnalignedVec3Ref(ptr).value; ptr+=12; return r; }
 
 layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
-TextureStrengthRef {
-	float value;
-};
-
-float getTextureStrength(uint64_t dataPointer)
-{
-	return TextureStrengthRef(dataPointer).value;
-}
-
-layout(buffer_reference, std430, buffer_reference_align=4) restrict readonly buffer
-TextureBlendColorRef {
-	vec3 value;
-};
-
-vec3 getTextureBlendColor(uint64_t dataPointer)
-{
-	return TextureBlendColorRef(dataPointer).value;
-}
-
-layout(buffer_reference, std430, buffer_reference_align=8) restrict readonly buffer
 TextureTransformDataRef {
 	vec4 rotationAndScale;
 	vec2 translation;
 };
 
-vec2 transformTexCoord(vec2 tc, uint64_t dataPointer)
+vec2 transformTexCoordAndUpdatePtr(vec2 tc, inout uint64_t ptr)
 {
-	TextureTransformDataRef tt = TextureTransformDataRef(dataPointer);
+	TextureTransformDataRef tt = TextureTransformDataRef(ptr);
 	mat2x2 rotationAndScale = {
 		{ tt.rotationAndScale[0], tt.rotationAndScale[1], },
 		{ tt.rotationAndScale[2], tt.rotationAndScale[3], },
 	};
 	vec2 translation = { tt.translation[0], tt.translation[1], };
+	ptr += 24;
 	return rotationAndScale * tc + translation;
 }
 
-vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
-	u64vec3 vertexDataPtrList, vec3 barycentricCoords, out uint64_t nextDataPointer)
+vec2 computeTextureCoordinatesAndUpdatePtr(uint textureIndex,
+	u64vec3 vertexDataPtrList, vec3 barycentricCoords, inout uint64_t ptr)
 {
 	// get texture coordinates
-	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
+	uint texCoordAccessInfo = getTexCoordAccessInfo(getTextureCoordinateIndex(textureIndex));
 	vec2 uv0 = readVec2(texCoordAccessInfo, vertexDataPtrList[0]);
 	vec2 uv1 = readVec2(texCoordAccessInfo, vertexDataPtrList[1]);
 	vec2 uv2 = readVec2(texCoordAccessInfo, vertexDataPtrList[2]);
@@ -271,20 +251,17 @@ vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
 	          uv2 * barycentricCoords.z;
 
 	// transform texture coordinates
-	if(getTextureUseCoordinateTranform(textureInfo)) {
-		uv = transformTexCoord(uv, uint64_t(textureInfo) + 8);
-		nextDataPointer = uint64_t(textureInfo) + 32;
-	} else
-		nextDataPointer = uint64_t(textureInfo) + 8;
+	if(getTextureUseCoordinateTranform(textureIndex))
+		uv = transformTexCoordAndUpdatePtr(uv, ptr);
 
 	return uv;
 }
 
-vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
-	u64vec2 vertexDataPtrList, vec2 barycentricCoords, out uint64_t nextDataPointer)
+vec2 computeTextureCoordinatesAndUpdatePtr(uint textureIndex,
+	u64vec2 vertexDataPtrList, vec2 barycentricCoords, inout uint64_t ptr)
 {
 	// get texture coordinates
-	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
+	uint texCoordAccessInfo = getTexCoordAccessInfo(getTextureCoordinateIndex(textureIndex));
 	vec2 uv0 = readVec2(texCoordAccessInfo, vertexDataPtrList[0]);
 	vec2 uv1 = readVec2(texCoordAccessInfo, vertexDataPtrList[1]);
 
@@ -292,28 +269,22 @@ vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
 	vec2 uv = uv0 * barycentricCoords.x + uv1 * barycentricCoords.y;
 
 	// transform texture coordinates
-	if(getTextureUseCoordinateTranform(textureInfo)) {
-		uv = transformTexCoord(uv, uint64_t(textureInfo) + 8);
-		nextDataPointer = uint64_t(textureInfo) + 32;
-	} else
-		nextDataPointer = uint64_t(textureInfo) + 8;
+	if(getTextureUseCoordinateTranform(textureIndex))
+		uv = transformTexCoordAndUpdatePtr(uv, ptr);
 
 	return uv;
 }
 
-vec2 computeTextureCoordinates(TextureInfoRef textureInfo,
-	uint64_t vertexDataPtr, out uint64_t nextDataPointer)
+vec2 computeTextureCoordinatesAndUpdatePtr(uint textureIndex,
+	uint64_t vertexDataPtr, inout uint64_t ptr)
 {
 	// get texture coordinates
-	uint texCoordAccessInfo = getTexCoordAccessInfo(textureInfo);
+	uint texCoordAccessInfo = getTexCoordAccessInfo(getTextureCoordinateIndex(textureIndex));
 	vec2 uv = readVec2(texCoordAccessInfo, vertexDataPtr);
 
 	// transform texture coordinates
-	if(getTextureUseCoordinateTranform(textureInfo)) {
-		uv = transformTexCoord(uv, uint64_t(textureInfo) + 8);
-		nextDataPointer = uint64_t(textureInfo) + 32;
-	} else
-		nextDataPointer = uint64_t(textureInfo) + 8;
+	if(getTextureUseCoordinateTranform(textureIndex))
+		uv = transformTexCoordAndUpdatePtr(uv, ptr);
 
 	return uv;
 }

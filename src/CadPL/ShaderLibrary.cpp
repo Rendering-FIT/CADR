@@ -81,7 +81,7 @@ void ShaderLibrary::init(CadR::VulkanDevice& device, uint32_t maxTextures)
 					vk::PushConstantRange{  // pPushConstantRanges
 						vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 						0,  // offset
-						60  // size
+						112  // size
 					},
 				}.data()
 			)
@@ -175,6 +175,10 @@ bool ShaderState::operator<(const ShaderState& rhs) const
 	if(attribSetup > rhs.attribSetup)  return false;
 	if(materialSetup < rhs.materialSetup)  return true;
 	if(materialSetup > rhs.materialSetup)  return false;
+	if(textureSetup < rhs.textureSetup)  return true;
+	if(textureSetup > rhs.textureSetup)  return false;
+	if(lightSetup < rhs.lightSetup)  return true;
+	if(lightSetup > rhs.lightSetup)  return false;
 	if(idBuffer < rhs.idBuffer)  return true;
 	if(idBuffer > rhs.idBuffer)  return false;
 	if(primitiveTopology < rhs.primitiveTopology)  return true;

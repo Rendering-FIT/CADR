@@ -903,7 +903,8 @@ void App::init()
 		bool unlit;
 		bool doubleSided;
 		bool alphaTest;
-		unsigned textureInfoOffset;
+		unsigned materialTexturingParamsOffset;
+		array<uint32_t,10> shaderTextureSetup;
 	};
 	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
 	PhongMaterialData* m = sd.data<PhongMaterialData>();
@@ -918,7 +919,8 @@ void App::init()
 		.unlit = false,
 		.doubleSided = false,
 		.alphaTest = false,
-		.textureInfoOffset = 0,
+		.materialTexturingParamsOffset = 0,
+		.shaderTextureSetup = { 0 },  // no textures
 	};
 
 
@@ -939,12 +941,12 @@ void App::init()
 	struct AppTextureInfo { unsigned gltfTextureIndex; bool srgb; };
 	vector<AppTextureInfo> appTextureInfoList;
 	appTextureInfoList.reserve(numGltfTextures);  // this will just fit the size if each texture is either linear or sRGB but not both
-	for(size_t materialIndex=0; materialIndex<numMaterials; materialIndex++)
-	{
+	for(size_t materialIndex=0; materialIndex<numMaterials; materialIndex++) {
+
 		auto& material = materials.at(materialIndex);
 
 		struct TextureData {
-			unsigned index;
+			unsigned textureID;
 			unsigned coordIndex;
 			float strength;
 			bool transformEnabled;
@@ -975,8 +977,8 @@ void App::init()
 			{
 				if(auto textureIt = jsonParent.find(jsonPropertyName); textureIt != jsonParent.end()) {
 
-					t.index = unsigned(textureIt->at("index").get_ref<json::number_unsigned_t&>());
-					if(t.index >= numTextures)
+					t.textureID = unsigned(textureIt->at("index").get_ref<json::number_unsigned_t&>());
+					if(t.textureID >= numTextures)
 						throw GltfError("baseColorTexture.index is out of range. It is not index to a valid texture.");
 					t.coordIndex = textureIt->value("texCoord", 0);
 					if(strengthPropertyName)
@@ -1034,7 +1036,7 @@ void App::init()
 						t.transformEnabled = false;
 				}
 				else {
-					t.index = ~unsigned(0);
+					t.textureID = ~unsigned(0);
 					t.coordIndex = ~unsigned(0);
 				}
 			};
@@ -1083,7 +1085,7 @@ void App::init()
 		#else
 			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
 				throw GltfError("Unsupported functionality: metallic-roughness texture.");
-			metallicRoughnessTexture.index = ~unsigned(0);
+			metallicRoughnessTexture.textureID = ~unsigned(0);
 			metallicRoughnessTexture.coordIndex = ~unsigned(0);
 		#endif
 		}
@@ -1091,9 +1093,9 @@ void App::init()
 		{
 			// default values when pbrMetallicRoughness is not present
 			baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
-			baseColorTexture.index = ~unsigned(0);
+			baseColorTexture.textureID = ~unsigned(0);
 			baseColorTexture.coordIndex = ~unsigned(0);
-			metallicRoughnessTexture.index = ~unsigned(0);
+			metallicRoughnessTexture.textureID = ~unsigned(0);
 			metallicRoughnessTexture.coordIndex = ~unsigned(0);
 			metallicFactor = 1.f;
 			roughnessFactor = 1.f;
@@ -1139,48 +1141,39 @@ void App::init()
 		// alphaCutoff
 		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
 
-		// material struct base size
+		// core material size
 		unsigned materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
 		if(unlit && alphaTest)
-			materialSize += 8;
+			materialSize += 4;
 		unsigned coreMaterialSize = materialSize;
 
-		// texture data size inside material
+		// texturing params size that are stored inside material
 		//
-		// each texture occupies at least 8 bytes in material structure;
-		// if strength is used, it needs additional 8 bytes (4 for float and 4 for padding to 8 bytes alignment),
-		// so texture with strength occupies 16 bytes in total;
+		// each texture occupies at least 4 bytes inside material;
+		// if strength is used, it needs additional 4 bytes,
 		// if texture coordinate transform is enabled, addition 6 floats are needed,
-		// so texture without strength takes 8+24=32 bytes and texture with strength takes 8+8+24=40 bytes
-		auto getTextureInfoSize =
+		// if blend color is used, extra 3 float are stored;
+		// so texturing data size varies between 4 and 4+4+24+12=44 bytes per one texture
+		auto getMaterialTexturingParamsSize =
 			[](const TextureData& t) -> unsigned
 			{
 				// texture not used
-				if(t.index == ~unsigned(0))
+				if(t.textureID == ~unsigned(0))
 					return 0;
 
-				if(t.strength == 1.f) {
-					if(!t.transformEnabled)
-						return 8;  // texture yes, strength no, transform no
-					else
-						return 8+24;  // texture yes, strength no, transform yes
-				} else {
-					if(!t.transformEnabled)
-						return 8+8;  // texture yes, strength yes, transform no
-					else
-						return 8+8+24;  // texture yes, strength yes, transform yes
-				}
+				unsigned r = 4;
+				if(t.transformEnabled)
+					r += 6*4;
+				if(t.strength != 1.f)
+					r += 4;
+				return r;
 			};
 
-		// append textures to material size
-		materialSize += getTextureInfoSize(baseColorTexture);
-		materialSize += getTextureInfoSize(metallicRoughnessTexture);
-		materialSize += getTextureInfoSize(normalTexture);
-		materialSize += getTextureInfoSize(emissiveTexture);
-
-		// if there are textures, let's put terminating texture record as well
-		if(materialSize != coreMaterialSize)
-			materialSize += 8;
+		// append texturing params to material size
+		materialSize += getMaterialTexturingParamsSize(baseColorTexture);
+		materialSize += getMaterialTexturingParamsSize(metallicRoughnessTexture);
+		materialSize += getMaterialTexturingParamsSize(normalTexture);
+		materialSize += getMaterialTexturingParamsSize(emissiveTexture);
 
 		// material
 		CadR::DataAllocation& a = materialList.emplace_back(renderer.dataStorage());
@@ -1205,24 +1198,27 @@ void App::init()
 			p += phongMaterialDataSizeAligned8;
 		}
 
+		// StateSetMaterialData
+		auto& ssm = stateSetMaterialDataList[materialIndex];
+		ssm.unlit = unlit;
+		ssm.doubleSided = doubleSided;
+		ssm.alphaTest = alphaTest;
+		ssm.materialTexturingParamsOffset =
+			(materialSize == coreMaterialSize)
+				? 0  // no texture info
+				: coreMaterialSize;  // texture info just material data
+
 		// write texture record into material
 		auto writeTexture =
-			[](const TextureData& t, uint8_t type, uint8_t*& p)
+			[](const TextureData& t, uint8_t type, uint8_t*& p,
+			   decltype(StateSetMaterialData::shaderTextureSetup)& shaderTextureSetup,
+			   unsigned& textureIndex)
 			{
-				// write core texture data
-				TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
-				r->texCoordIndex = 4 + t.coordIndex;  // texture coordinates are placed on attribute 4 and following
-				r->type = type;
-				r->textureIndex = t.index;
-				p += 8;
-
+				// write texture transform
 				uint16_t settings;
-				uint16_t size;
 				if(t.transformEnabled)
 				{
-					// write transform
 					settings = 0x1;
-					size = 32;
 					float* f = reinterpret_cast<float*>(p);
 					if(t.rotation == 0) {
 						f[0] = t.scale.x;
@@ -1241,26 +1237,28 @@ void App::init()
 					f[5] = t.offset.y;
 					p += 24;
 				}
-				else
-				{
-					// skip transform
+				else {
 					settings = 0;
-					size = 8;
 				}
 
+				// write textureID
+				*reinterpret_cast<uint32_t*>(p) = t.textureID;
+				p += 4;
+
+				// write strength
 				if(t.strength != 1.f)
 				{
-					// write strength
 					settings |= 0x2;
-					size += 8;
-					float* f = reinterpret_cast<float*>(p);
-					f[0] = t.strength;
-					f[1] = 0.f;
-					p += 8;
+					*reinterpret_cast<float*>(p) = t.strength;
+					p += 4;
 				}
 
-				// write settings
-				r->settings = settings | (size << 10);
+				// write textureSetup
+				shaderTextureSetup[textureIndex] =
+					(4 + t.coordIndex) |  // texture coordinates are placed on attribute 4 and following
+					(type << 8) |  // texture type (base, normal, emission,...)
+					(settings << 16);
+				textureIndex++;
 
 			};
 
@@ -1271,74 +1269,63 @@ void App::init()
 		auto remapByTransferFunction =
 			[&](TextureData& t, bool srgb) -> void
 			{
-				size_t gltfImageIndex = gltfTextureToGltfImageMap[t.index];
-				LinearAndSrgbIndices& appTextureIndices = gltfTextureToAppTextureMap[t.index];
+				size_t gltfImageIndex = gltfTextureToGltfImageMap[t.textureID];
+				LinearAndSrgbIndices& appTextureIndices = gltfTextureToAppTextureMap[t.textureID];
 				LinearAndSrgbIndices& appImageIndices = gltfImageToAppImageMap[gltfImageIndex];
 				if(srgb) {
 					if(appTextureIndices.srgb == ~unsigned(0)) {
 						appTextureIndices.srgb = numAppTextures;
-						appTextureInfoList.emplace_back(t.index, true);
+						appTextureInfoList.emplace_back(t.textureID, true);
 						numAppTextures++;
 					}
-					t.index = numAppImages;
 					if(appImageIndices.srgb == ~unsigned(0)) {
 						appImageIndices.srgb = numAppImages;
+						t.textureID = numAppImages;
 						numAppImages++;
 					}
+					else
+						t.textureID = appImageIndices.srgb;
 				}
 				else {
 					if(appTextureIndices.linear == ~unsigned(0)) {
 						appTextureIndices.linear = numAppTextures;
-						appTextureInfoList.emplace_back(t.index, false);
+						appTextureInfoList.emplace_back(t.textureID, false);
 						numAppTextures++;
 					}
-					t.index = numAppImages;
 					if(appImageIndices.linear == ~unsigned(0)) {
 						appImageIndices.linear = numAppImages;
+						t.textureID = numAppImages;
 						numAppImages++;
 					}
+					else
+						t.textureID = appImageIndices.linear;
 				}
 			};
 
 		// write textures
 		uint8_t* p2 = p;
-		if(baseColorTexture.index != ~unsigned(0)) {
+		unsigned textureIndex = 0;
+		if(baseColorTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(baseColorTexture, true);  // base texture uses sRGB transfer function
-			writeTexture(baseColorTexture, 1, p);
+			writeTexture(baseColorTexture, 1, p, ssm.shaderTextureSetup, textureIndex);
 		}
-		if(metallicRoughnessTexture.index != ~unsigned(0)) {
+		if(metallicRoughnessTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(metallicRoughnessTexture, false);  // metallic-roughness texture uses linear transfer function
-			writeTexture(metallicRoughnessTexture, 3, p);
+			writeTexture(metallicRoughnessTexture, 3, p, ssm.shaderTextureSetup, textureIndex);
 		}
-		if(normalTexture.index != ~unsigned(0)) {
+		if(normalTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(normalTexture, false);  // normal texture uses linear transfer function
-			writeTexture(normalTexture, 5, p);
+			writeTexture(normalTexture, 5, p, ssm.shaderTextureSetup, textureIndex);
 		}
-		if(emissiveTexture.index != ~unsigned(0)) {
+		if(emissiveTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(emissiveTexture, true);  // emissive texture uses sRGB transfer function
-			writeTexture(emissiveTexture, 6, p);
+			writeTexture(emissiveTexture, 6, p, ssm.shaderTextureSetup, textureIndex);
 		}
 
-		// if at least one texture was written, put terminating record as well
-		if(p != p2)
-		{
-			// terminating record (all zeros)
-			TextureMaterialRecord* r = reinterpret_cast<TextureMaterialRecord*>(p);
-			r->texCoordIndex = 0;
-			r->type = 0;
-			r->settings = 0;
-			r->textureIndex = 0;
-		}
+		// fill remaining textureSetup items with zero
+		for(; textureIndex<ssm.shaderTextureSetup.size(); textureIndex++)
+			ssm.shaderTextureSetup[textureIndex] = 0;
 
-		// StateSetMaterialData
-		auto& ssm = stateSetMaterialDataList[materialIndex];
-		ssm.unlit = unlit;
-		ssm.doubleSided = doubleSided;
-		ssm.alphaTest = alphaTest;
-		ssm.textureInfoOffset =
-			(materialSize == coreMaterialSize)
-				? 0  // no texture info
-				: coreMaterialSize;  // texture info just material data
 	}
 	gltfTextureToGltfImageMap.clear();  // no needed any more
 	gltfTextureToAppTextureMap.clear();  // no needed any more
@@ -2864,7 +2851,7 @@ void App::init()
 						(colorData ? 16 : 0) + (uint32_t(texCoordAttribInfoList.size()) * 16)),
 				.materialSetup =
 					(ssMaterialData.unlit ? 0x0 : 0x1) |  // Unlit vs Phong
-					ssMaterialData.textureInfoOffset |  // texture offset
+					ssMaterialData.materialTexturingParamsOffset |  // texture params offset inside material
 					(ssMaterialData.doubleSided ? 0x0100 : 0) |  // two sided lighting
 					((mode <= 3) && (normalData == nullptr) ? 0x0200 : 0) |  // disable lighting for points and lines without normals
 					(ssMaterialData.alphaTest ? 0x0400 : 0) |  // alphaTest
@@ -2872,10 +2859,8 @@ void App::init()
 					0x8000 |  // color attribute (if present) multiplies material ambient and diffuse color instead of ignoring them when computing ambient and diffuse color contributions
 					0x10000,  // separate emission on Phong material
 				.pointSize = 1.f,
-				.lightSetup = {},  // no lights; switches between directional light, point light and spotlight
-				.numLights = {},
-				.textureSetup = {},  // no textures
-				.numTextures = {},
+				.textureSetup = ssMaterialData.shaderTextureSetup,  // no textures
+				.lightSetup = { 2 },  // one light; we use point light at the position of camera and call it headlight
 				.optimizeFlags = CadPL::ShaderState::OptimizeNone,
 			};
 			CadPL::PipelineState pipelineState{

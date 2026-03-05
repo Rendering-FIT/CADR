@@ -260,15 +260,9 @@ void main()
 #endif
 
 	// init textureType and textureInfo
-	uint textureOffset = getMaterialFirstTextureOffset();
-	uint textureType;
-	TextureInfoRef textureInfo;
-	if(textureOffset == 0)
-		textureType = 0;
-	else {
-		textureInfo = TextureInfoRef(drawableDataPtr + textureOffset);
-		textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
-	}
+	uint textureIndex = 0;
+	uint textureType = getTextureTypeShL8(0);
+	uint64_t textureParamsPtr = drawableDataPtr + getMaterialTexturingParamsOffset();
 
 
 	// unlit material
@@ -324,18 +318,17 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
-			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
 #endif
 
 			// sample texture
-			vec4 baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
+			vec4 baseTextureValue = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv);
 
 			// apply texture alpha using texEnv
-			uint texEnv = getTextureEnvironment(textureInfo);
+			uint texEnv = getTextureEnvironment(textureIndex);
 			if(!getMaterialIgnoreBaseTextureAlpha())
 				if(texEnv != 2)  // decal
 					outColor.a *= baseTextureValue.a;
@@ -346,13 +339,8 @@ void main()
 					discard;
 
 			// multiply by strength
-			if(getTextureUseStrength(textureInfo)) {
-				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
-				if(texEnv != 3)
-					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
-				else
-					nextDataPointer += 4;  // address is incremented by 4 because blend color (12 bytes) follows
-			}
+			if(getTextureUseStrength(textureIndex))
+				baseTextureValue.rgb *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
 
 			// apply color of baseTexture
 			// (alpha was computed earlier because we needed it for alphaCutoff
@@ -361,19 +349,19 @@ void main()
 			else if(texEnv == 1)  // replace
 				outColor.rgb = baseTextureValue.rgb;
 			else if(texEnv == 2)  // decal
-				outColor.rgb = outColor.rgb*(1-baseTextureValue.a) + baseTextureValue.rgb*baseTextureValue.a;
+				outColor.rgb = (outColor.rgb * (1-baseTextureValue.a)) +
+					(baseTextureValue.rgb * baseTextureValue.a);
 			else if(texEnv == 3) {  // blend
 				outColor.rgb =
 					(outColor.rgb * (1-baseTextureValue.rgb)) +
-					(getTextureBlendColor(nextDataPointer) * baseTextureValue.rgb);
-				nextDataPointer += 12;
+					(getTextureBlendColorAndUpdatePtr(textureParamsPtr) * baseTextureValue.rgb);
 			}
 			else if(texEnv == 4) // add
 				outColor.rgb += baseTextureValue.rgb;
 
-			// update pointer to point to the next texture
-			textureInfo = TextureInfoRef(nextDataPointer);
-			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+			// update variables to point to the next texture
+			textureIndex++;
+			textureType = getTextureTypeShL8(textureIndex);
 
 		}
 		else {
@@ -456,46 +444,40 @@ void main()
 		// (only quickly evaluate to get final fragment alpha for alphaCutoff)
 		vec4 baseTextureValue;
 		vec3 baseTextureBlendColor;
+		uint texEnv;
 		bool useBaseTexture;
 		if(textureType == 0x0100) {
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
-			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
 #endif
 
 			// sample texture
-			baseTextureValue = texture(textureList[textureInfo.textureIndex], uv);
+			baseTextureValue = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv);
 
 			// multiply by strength
-			uint texEnv = getTextureEnvironment(textureInfo);
-			if(getTextureUseStrength(textureInfo)) {
-				baseTextureValue.rgb *= getTextureStrength(nextDataPointer);
-				if(texEnv != 3)
-					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
-				else
-					nextDataPointer += 4;  // address is incremented by 4 because blend color (12 bytes) follows
-			}
+			if(getTextureUseStrength(textureIndex))
+				baseTextureValue.rgb *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
 
 			// apply texture alpha using texEnv
+			texEnv = getTextureEnvironment(textureIndex);
 			if(!getMaterialIgnoreBaseTextureAlpha())
 				if(texEnv != 2)  // decal
 					outColor.a *= baseTextureValue.a;
 
 			// read blend color
-			if(texEnv == 3) {  // blend
-				baseTextureBlendColor = getTextureBlendColor(nextDataPointer);
-				nextDataPointer += 12;
-			}
+			if(texEnv == 3)  // blend
+				baseTextureBlendColor = getTextureBlendColorAndUpdatePtr(textureParamsPtr);
 
-			// update pointer to point to the next texture
-			textureInfo = TextureInfoRef(nextDataPointer);
-			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+			// update variables to point to the next texture
+			textureIndex++;
+			textureType = getTextureTypeShL8(textureIndex);
 
+			// some base texture processing will be done after the lighting
 			useBaseTexture = true;
 
 		}
@@ -519,25 +501,22 @@ void main()
 
 				// compute texture coordinates from relevant data,
 				// and transform them if requested
-				uint64_t nextDataPointer;
 			#if defined(TRIANGLES) || defined(LINES)
-				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
 			#else
-				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
 			#endif
 
 				// sample texture
-				occlusionTextureValue = texture(textureList[textureInfo.textureIndex], uv).r;
+				occlusionTextureValue = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv).r;
 
 				// multiply by strength
-				if(getTextureUseStrength(textureInfo)) {
-					occlusionTextureValue = 1. + getTextureStrength(nextDataPointer) * (occlusionTextureValue - 1.);
-					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
-				}
+				if(getTextureUseStrength(textureIndex))
+					occlusionTextureValue = 1. + getTextureStrengthAndUpdatePtr(textureParamsPtr) * (occlusionTextureValue - 1.);
 
-				// update pointer to point to the next texture
-				textureInfo = TextureInfoRef(nextDataPointer);
-				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+				// update variables to point to the next texture
+				textureIndex++;
+				textureType = getTextureTypeShL8(textureIndex);
 
 			}
 			else
@@ -559,22 +538,19 @@ void main()
 
 				// compute texture coordinates from relevant data,
 				// and transform them if requested
-				uint64_t nextDataPointer;
 			#if defined(TRIANGLES) || defined(LINES)
-				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
 			#else
-				vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
 			#endif
 
 				// sample texture
-				vec3 tangentSpaceNormal = texture(textureList[textureInfo.textureIndex], uv).rgb;
+				vec3 tangentSpaceNormal = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv).rgb;
 
 				// transform in tangent space and normalize
 				tangentSpaceNormal = tangentSpaceNormal * 2 - 1;  // transform from 0..1 to -1..1
-				if(getTextureUseStrength(textureInfo)) {
-					tangentSpaceNormal.xy *= getTextureStrength(nextDataPointer);
-					nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
-				}
+				if(getTextureUseStrength(textureIndex))
+					tangentSpaceNormal.xy *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
 				tangentSpaceNormal = normalize(tangentSpaceNormal);
 
 				// transform normal
@@ -582,9 +558,10 @@ void main()
 				mat3 tbn = { t, cross(normal, t), normal };
 				normal = tbn * tangentSpaceNormal;
 
-				// update pointer to point to the next texture
-				textureInfo = TextureInfoRef(nextDataPointer);
-				textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+				// update variables to point to the next texture
+				textureIndex++;
+				textureType = getTextureTypeShL8(textureIndex);
+
 			}
 
 			// light data
@@ -646,7 +623,6 @@ void main()
 		// (alpha was computed earlier because we needed it for alphaCutoff
 		if(useBaseTexture)
 		{
-			uint texEnv = getTextureEnvironment(textureInfo);
 			if(texEnv == 0)  // modulate
 				outColor.rgb *= baseTextureValue.rgb;
 			else if(texEnv == 1)  // replace
@@ -666,21 +642,18 @@ void main()
 
 			// compute texture coordinates from relevant data,
 			// and transform them if requested
-			uint64_t nextDataPointer;
 #if defined(TRIANGLES) || defined(LINES)
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtrList, inBarycentricCoords, nextDataPointer);
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
 #else
-			vec2 uv = computeTextureCoordinates(textureInfo, vertexDataPtr, nextDataPointer);
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
 #endif
 
 			// sample texture
-			vec3 emission = texture(textureList[textureInfo.textureIndex], uv).rgb;
+			vec3 emission = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv).rgb;
 
 			// multiply by strength
-			if(getTextureUseStrength(textureInfo)) {
-				emission *= getTextureStrength(nextDataPointer);
-				nextDataPointer += 8;  // address is incremented by 8 and not by 4 to make next texture data aligned to 8 bytes
-			}
+			if(getTextureUseStrength(textureIndex))
+				emission *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
 
 			// multiply by material emission
 			if(getPhongMaterialSeparateEmission())
@@ -689,9 +662,9 @@ void main()
 			// append it to the final color
 			outColor.rgb += emission;
 
-			// update pointer to point to the next texture
-			textureInfo = TextureInfoRef(nextDataPointer);
-			textureType = textureInfo.texCoordIndexTypeAndSettings & 0xff00;
+			// update variables to point to the next texture
+			textureIndex++;
+			textureType = getTextureTypeShL8(textureIndex);
 
 		}
 		else

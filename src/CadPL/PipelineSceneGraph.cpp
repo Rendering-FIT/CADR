@@ -18,21 +18,37 @@ CadR::StateSet& PipelineSceneGraph::createStateSet(const ShaderState& shaderStat
 		uint32_t attribSetup;
 		uint32_t materialSetup;
 		float pointSize;
-	} pushData = {
+	} pushData1 = {
 		shaderState.attribAccessInfo,
 		shaderState.attribSetup,
 		shaderState.materialSetup,
 		shaderState.pointSize,
 	};
+	struct {
+		array<uint32_t,10> textureSetup;
+		array<uint8_t,8> lightSetup;
+	} pushData2 = {
+		shaderState.textureSetup,
+		shaderState.lightSetup,
+	};
 	item->stateSet.recordCallList.emplace_back(
-		[pushData](CadR::StateSet& ss, vk::CommandBuffer commandBuffer, vk::PipelineLayout currentPipelineLayout) {
-			ss.renderer().device().cmdPushConstants(
+		[pushData1,pushData2](CadR::StateSet& ss, vk::CommandBuffer commandBuffer, vk::PipelineLayout currentPipelineLayout) {
+			CadR::VulkanDevice& device = ss.renderer().device();
+			device.cmdPushConstants(
 				commandBuffer,  // commandBuffer
 				currentPipelineLayout,  // pipelineLayout
 				vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
 				16,  // offset
-				sizeof(pushData),  // size
-				&pushData  // pValues
+				sizeof(pushData1),  // size
+				&pushData1  // pValues
+			);
+			device.cmdPushConstants(
+				commandBuffer,  // commandBuffer
+				currentPipelineLayout,  // pipelineLayout
+				vk::ShaderStageFlagBits::eAllGraphics,  // stageFlags
+				64,  // offset
+				sizeof(pushData2),  // size
+				&pushData2  // pValues
 			);
 		}
 	);
