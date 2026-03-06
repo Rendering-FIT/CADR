@@ -342,9 +342,14 @@ struct GltfLightData {
 
 struct SpotlightData {
 	vec3 direction;  // spotlight direction in eye coordinates, it must be normalized
+#if 0  // linear interpolation or OpenGL style spotlight
 	float cosOuterConeAngle;  // cosinus of outer spotlight cone; outside the cone, there is zero light intensity
 	float cosInnerConeAngle;  // cosinus of inner spotlight cone; if -1. is provided, OpenGL-style spotlight is used, ignoring inner cone and using spotExponent instead; if value is > -1., DirectX style spotlight is used, e.g. everything inside the inner cone receives full light intensity and light intensity between inner and outer cone is linearly interpolated starting from zero intensity on outer code to full intensity in inner cone
 	float spotExponent;  // if cosInnerConeAngle is -1, OpenGL style spotlight is used, using spotExponent
+#else  // glTF recommended interpolation
+	float angleScale;  // angleScale = 1.0f / max(0.001f, cos(innerConeAngle) - cos(outerConeAngle));
+	float angleOffset;  // angleOffset = -cos(outerConeAngle) * lightAngleScale;
+#endif
 };
 
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer

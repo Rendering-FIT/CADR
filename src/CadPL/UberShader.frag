@@ -182,6 +182,8 @@ void openGLSpotlight(
 	float lLen = length(lPos);
 	vec3 lDir = lPos / lLen;  // direction from the fragment to the light source
 
+#if 0  // linear interpolation or OpenGL style spotlight
+
 	// skip everything outside of spotlight outer cone
 	float spotEffect = dot(-lDir, lightData.spotlight.direction);
 	if(spotEffect > lightData.spotlight.cosOuterConeAngle) {
@@ -209,6 +211,16 @@ void openGLSpotlight(
 			spotEffect = smoothstep(0., 1., spotEffect);
 
 		}
+
+#else  // glTF recommended interpolation
+
+	float cd = dot(lightData.spotlight.direction, -lDir);
+	float spotEffect = cd * lightData.spotlight.angleScale * lightData.spotlight.angleOffset;
+	if(spotEffect > 0) {
+		if(spotEffect > 1)
+			spotEffect = 1;
+
+#endif
 
 		// nDotL = normal . light direction
 		float nDotL = dot(normal, lDir);
