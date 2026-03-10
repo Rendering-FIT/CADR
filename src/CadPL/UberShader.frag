@@ -68,6 +68,9 @@ layout(set=0, binding=18) uniform samplerCube environmentTexture;
 layout(set=0, binding=19) uniform sampler2D mirrorTexture;
 #endif
 
+const float Pi = 3.1415926536;
+float sqr(float v)  { return v * v; }
+
 
 //               Viewer  Normal  Halfway vector
 //     Reflected     V      N      H           Light source
@@ -250,6 +253,42 @@ void openGLSpotlight(
 
 		ambient += lightData.opengl.ambient * att * spotEffect;
 	}
+}
+
+
+void gltfLight(
+	in vec3 fragmentToLightDirection,
+	in vec3 viewerToFragmentDirection,
+	in vec3 f0,
+	in vec3 baseColor,
+	in float metalness,
+	in vec3 normal,
+	in float a2,
+	out vec3 colorProduct)
+{
+	vec3 h = normalize(fragmentToLightDirection - viewerToFragmentDirection);
+	float tmp = 1 + dot(viewerToFragmentDirection, h);
+	vec3 f = f0 + ((1 - f0) * tmp * tmp * tmp * tmp * tmp);
+	vec3 diffuse = baseColor * (1 - metalness) * (1 - f) * (1 / Pi);
+	float nDotH = dot(normal, h);
+	float hDotL = dot(h, fragmentToLightDirection);
+	float hDotV = dot(h, -viewerToFragmentDirection);
+	if(nDotH > 0 && hDotL > 0 && hDotV > 0) {
+
+		float microfacetDistribution = a2 / (Pi * sqr(sqr(nDotH) * (a2 - 1) + 1));
+		float nDotL = dot(normal, fragmentToLightDirection);
+		float nDotV = dot(normal, -viewerToFragmentDirection);
+		float maskingAndShadowingFunction =
+			((2 * abs(nDotL) * hDotL) / (abs(nDotL) + sqrt(a2 + ((1 - a2) * sqr(nDotL))))) *
+			((2 * abs(nDotV) * hDotV) / (abs(nDotV) + sqrt(a2 + ((1 - a2) * sqr(nDotV)))));
+		vec3 specular = (f * microfacetDistribution * maskingAndShadowingFunction) /
+			(4 * abs(dot(-viewerToFragmentDirection, normal)) * abs(dot(fragmentToLightDirection, normal)));
+
+		colorProduct = diffuse + specular;
+
+	}
+	else
+		colorProduct = diffuse;
 }
 
 
@@ -690,38 +729,344 @@ void main()
 	// implemented in the similar way as glTF does
 	else if(materialModel == 2) {
 
-		// base color
+		// material data
+		MetallicRoughnessMaterialRef metallicRoughnessMaterial =
+			MetallicRoughnessMaterialRef(drawableDataPtr);
+
+		// baseColor and alpha
+		vec3 baseColor;
+		uint colorAccessInfo = getColorAccessInfo();
+		if(colorAccessInfo != 0) {
+
+			// get baseColor and initialize outColor.a
+			if(getMaterialIgnoreColorAttributeAlpha()) {
+#if defined(TRIANGLES) || defined(LINES)
+				baseColor = interpolateAttribute3(colorAccessInfo,
+					vertexDataPtrList, inBarycentricCoords);
+#else
+				baseColor = readVec3(colorAccessInfo, vertexDataPtr);
+#endif
+				if(getMaterialIgnoreMaterialAlpha())
+					outColor.a = 1;
+				else
+					outColor.a = metallicRoughnessMaterial.baseColorFactor.a;
+			} else {
+#if defined(TRIANGLES) || defined(LINES)
+				vec4 c = interpolateAttribute4(colorAccessInfo,
+					vertexDataPtrList, inBarycentricCoords);
+#else
+				vec4 c = readVec4(colorAccessInfo, vertexDataPtr);
+#endif
+				baseColor = c.rgb;
+				outColor.a = c.a;
+				if(!getMaterialIgnoreMaterialAlpha())
+					outColor.a *= metallicRoughnessMaterial.baseColorFactor.a;
+			}
+
+			// multiply color attribute with material
+			baseColor *= metallicRoughnessMaterial.baseColorFactor.rgb;
+
+		}
+		else
+		{
+			// set color using material
+			baseColor = metallicRoughnessMaterial.baseColorFactor.rgb;
+			if(getMaterialIgnoreMaterialAlpha())
+				outColor.a = 1;
+			else
+				outColor.a = metallicRoughnessMaterial.baseColorFactor.a;
+		}
 
 		// base texture
+		if(textureType == 0x0100) {
+
+			// compute texture coordinates from relevant data,
+			// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
+#else
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
+#endif
+
+			// sample texture
+			vec4 baseTextureValue = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv);
+
+			// multiply by strength
+			if(getTextureUseStrength(textureIndex))
+				baseTextureValue.rgb *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
+
+			// apply texture
+			baseColor *= baseTextureValue.rgb;
+			if(!getMaterialIgnoreBaseTextureAlpha())
+				outColor.a *= baseTextureValue.a;
+
+			// update variables to point to the next texture
+			textureIndex++;
+			textureType = getTextureTypeShL8(textureIndex);
+
+		}
 
 		// alphaCutoff
+		if(getMaterialAlphaTest())
+			if(outColor.a < metallicRoughnessMaterial.alphaCutoff)
+				discard;
 
-		// metallic-roughness texture
+		if(getMaterialDisableLighting())
+		{
+			outColor.rgb = baseColor;
+		}
+		else {
 
-		// normal vector
+			// metallic-roughness-occlusion texture
+			float occlusionTextureValue;
+			float roughnessTextureValue;
+			float metalnessTextureValue;
+			if(textureType == 0x0200) {
 
-		// light data
-		uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
-		LightRef lightData = LightRef(lightDataPtr);
+				// compute texture coordinates from relevant data,
+				// and transform them if requested
+			#if defined(TRIANGLES) || defined(LINES)
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
+			#else
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
+			#endif
 
-		// iterate over all light sources
-		uint lightSettings = lightData.settings;
-		if(lightSettings != 0) {
+				// sample texture
+				vec4 value = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv);
+				occlusionTextureValue = value.r;
+				roughnessTextureValue = value.g;
+				metalnessTextureValue = value.b;
 
-			// material data
-			MetallicRoughnessMaterialRef metallicRoughnessMaterial = MetallicRoughnessMaterialRef(drawableDataPtr);
+				// multiply by strength
+				if(getTextureUseStrength(textureIndex))
+					occlusionTextureValue = 1. + getTextureStrengthAndUpdatePtr(textureParamsPtr) * (occlusionTextureValue - 1.);
 
-			do{
+				// update variables to point to the next texture
+				textureIndex++;
+				textureType = getTextureTypeShL8(textureIndex);
+
+			}
+			else {
+
+				// metallic-roughness texture (no occlusion component)
+				if(textureType == 0x0300) {
+
+					// compute texture coordinates from relevant data,
+					// and transform them if requested
+				#if defined(TRIANGLES) || defined(LINES)
+					vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
+				#else
+					vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
+				#endif
+
+					// sample texture
+					vec4 value = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv);
+					roughnessTextureValue = value.g;
+					metalnessTextureValue = value.b;
+
+					// update variables to point to the next texture
+					textureIndex++;
+					textureType = getTextureTypeShL8(textureIndex);
+
+				}
+				else {
+					roughnessTextureValue = 1.;
+					metalnessTextureValue = 1.;
+				}
+
+				// occlusion texture
+				if(textureType == 0x0400) {
+
+					// compute texture coordinates from relevant data,
+					// and transform them if requested
+				#if defined(TRIANGLES) || defined(LINES)
+					vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
+				#else
+					vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
+				#endif
+
+					// sample texture
+					occlusionTextureValue = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv).r;
+
+					// multiply by strength
+					if(getTextureUseStrength(textureIndex))
+						occlusionTextureValue = 1. + getTextureStrengthAndUpdatePtr(textureParamsPtr) * (occlusionTextureValue - 1.);
+
+					// update variables to point to the next texture
+					textureIndex++;
+					textureType = getTextureTypeShL8(textureIndex);
+
+				}
+				else
+					occlusionTextureValue = 1.;
+
+			}
+
+			// normal
+			vec3 normal;
+			if(getGenerateFlatNormals())
+				normal = -normalize(cross(dFdx(inFragmentPosition3), dFdy(inFragmentPosition3)));
+			else
+				normal = normalize(inFragmentNormal);
+		#ifdef TRIANGLES
+			if(getMaterialTwoSidedLighting() && !gl_FrontFacing)
+				normal = -normal;
+		#endif
+
+			// normal texture
+			if(textureType == 0x0500) {
+
+				// compute texture coordinates from relevant data,
+				// and transform them if requested
+			#if defined(TRIANGLES) || defined(LINES)
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
+			#else
+				vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
+			#endif
+
+				// sample texture
+				vec3 tangentSpaceNormal = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv).rgb;
+
+				// transform in tangent space and normalize
+				tangentSpaceNormal = tangentSpaceNormal * 2 - 1;  // transform from 0..1 to -1..1
+				if(getTextureUseStrength(textureIndex))
+					tangentSpaceNormal.xy *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
+				tangentSpaceNormal = normalize(tangentSpaceNormal);
+
+				// transform normal
+				vec3 t = normalize(inFragmentTangent);
+				mat3 tbn = { t, cross(normal, t), normal };
+				normal = tbn * tangentSpaceNormal;
+
+				// update variables to point to the next texture
+				textureIndex++;
+				textureType = getTextureTypeShL8(textureIndex);
+
+			}
+
+			// light independent constants
+			float metalness = metallicRoughnessMaterial.metallicFactor * metalnessTextureValue;
+			float roughness = metallicRoughnessMaterial.roughnessFactor * roughnessTextureValue;
+			vec3 f0 = mix(vec3(0.04), baseColor, metalness);
+			float a = sqr(roughness);
+			float a2 = sqr(a);
+
+			// light data
+			uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
+			LightRef lightData = LightRef(lightDataPtr);
+
+			// iterate over all light sources
+			outColor.rgb = vec3(0);
+			uint lightSettings = lightData.settings;
+			while(lightSettings != 0) {
+
+				vec3 colorProduct;
+				uint lightType = getLightType(lightSettings);
+				if(lightType == 1) {
+
+					// directional light
+					// (lightData.positionOrDirection contains direction towards the incoming light in eye coordinates)
+					vec3 fragmentToLightDirection = lightData.positionOrDirection;
+					gltfLight(lightData.positionOrDirection, viewerToFragmentDirection,
+						f0, baseColor, metalness, normal, a2, colorProduct);
+
+					// accumulate output color product over all lights
+					outColor.rgb += colorProduct * lightData.gltf.color * lightData.gltf.intensity;
+
+				}
+				else {
+
+					// point and spot lights
+					// lightData.positionOrDirection contains position of the light source in eye coordinates
+					vec3 l = lightData.positionOrDirection;
+					l -= inFragmentPosition3;  // make l vector from fragment to light
+					float sqrFragmentToLightDistance = dot(l, l);
+					float fragmentToLightDistance = sqrt(sqrFragmentToLightDistance);
+					vec3 fragmentToLightDirection = l / fragmentToLightDistance;  // direction from the fragment to the light source
+
+					// light range
+					if(fragmentToLightDistance <= lightData.gltf.range) {
+
+						// attenuation
+						float attenuation =
+							isinf(lightData.gltf.range)
+								? 1 : clamp(1 - sqr(sqr(fragmentToLightDistance / lightData.gltf.range)), 0, 1);
+
+						if(attenuation > 0)
+						{
+							// attenuation
+							attenuation /= lightData.gltf.constantAttenuation +
+								(lightData.gltf.linearAttenuation * fragmentToLightDistance) +
+								(lightData.gltf.quadraticAttenuation * sqrFragmentToLightDistance);
+
+							if(lightType == 2) {
+
+								// point light
+								gltfLight(fragmentToLightDirection, viewerToFragmentDirection,
+									f0, baseColor, metalness, normal, a2, colorProduct);
+								colorProduct *= attenuation;
+
+							}
+							else {
+
+								// spot light
+								float cd = dot(lightData.spotlight.direction, -l);
+								float spotEffect = cd * lightData.spotlight.angleScale * lightData.spotlight.angleOffset;
+								if(spotEffect > 0) {
+									if(spotEffect > 1)
+										spotEffect = 1;
+									gltfLight(fragmentToLightDirection, viewerToFragmentDirection,
+										f0, baseColor, metalness, normal, a2, colorProduct);
+									colorProduct *= attenuation * spotEffect;
+								}
+
+							}
+
+							// accumulate output color product over all lights
+							outColor.rgb += colorProduct * lightData.gltf.color * lightData.gltf.intensity;
+						}
+					}
+				}
 
 				lightDataPtr += getLightDataSize();
 				lightData = LightRef(lightDataPtr);
 				lightSettings = lightData.settings;
 
-			} while(lightSettings != 0);
+			}
 
 		}
-		else {
+
+		// emissive texture and emissive factor
+		if(textureType == 0x0600) {
+
+			// compute texture coordinates from relevant data,
+			// and transform them if requested
+#if defined(TRIANGLES) || defined(LINES)
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtrList, inBarycentricCoords, textureParamsPtr);
+#else
+			vec2 uv = computeTextureCoordinatesAndUpdatePtr(textureIndex, vertexDataPtr, textureParamsPtr);
+#endif
+
+			// sample texture
+			vec3 emission = texture(textureList[getTextureIdAndUpdatePtr(textureParamsPtr)], uv).rgb;
+
+			// multiply by strength
+			if(getTextureUseStrength(textureIndex))
+				emission *= getTextureStrengthAndUpdatePtr(textureParamsPtr);
+
+			// multiply by material emission
+			emission *= metallicRoughnessMaterial.emissiveFactor;
+
+			// append it to the final color
+			outColor.rgb += emission;
+
+			// update variables to point to the next texture
+			textureIndex++;
+			textureType = getTextureTypeShL8(textureIndex);
+
 		}
+		else
+			outColor.rgb += metallicRoughnessMaterial.emissiveFactor;
 
 	}
 

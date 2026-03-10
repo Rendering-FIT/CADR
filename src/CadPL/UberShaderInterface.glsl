@@ -142,9 +142,9 @@ uint getTextureEnvironment(uint textureIndex)  { return (textureSetup[textureInd
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
 UnlitMaterialRef {
 	layout(offset=0) vec4 colorAndAlpha;
-	layout(offset=16) float alphaCutoff;  //< cutoff treshold when using mask alpha mode; alpha above this threshold is rendered as fully opaque and alpha bellow this threshold is rendered as fully transparent
-	// [... texture data usually starts at offset 16,
-	// just when alphaCutoff is included, it starts at offset 24 (8 byte alignment)...]
+	layout(offset=16) float alphaCutoff;  //< optional alphaCutoff member; cutoff treshold when using mask alpha mode; alpha above this threshold is rendered as fully opaque and alpha bellow this threshold is rendered as fully transparent
+	// [... texturing params usually start at offset 16,
+	// just when alphaCutoff is included, it starts at offset 20 ...]
 };
 
 layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
@@ -155,27 +155,19 @@ PhongMaterialRef {
 	layout(offset=44) float shininess;  //< shininess (or gloss)
 	layout(offset=48) vec3 emission;  //< emitted light
 	layout(offset=60) float alphaCutoff;  //< cutoff treshold when using mask alpha mode; alpha above this threshold is rendered as fully opaque and alpha bellow this threshold is rendered as fully transparent
+#if 0
 	layout(offset=64) vec3 reflection;  //< amount of mirroring reflection
-	// [... texture data starts at offset 76 or at offset 64 if reflection is not used ...]
+#endif
+	// [... texturing params start at offset 64 or at offset 76 if reflection is used ...]
 };
 
 layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
 MetallicRoughnessMaterialRef {
-	// settings
-	// bits 0..1: unlit, phong, metallicRoughness
-	// bit 6..8: modelMatrix offset (0, 64, 128, 192,..., 448)
-	// bit 9: use baseTexture
-	layout(offset=0)  uvec4 settings;  // includes baseTextureCoordIndex, metallicRoughnessTextureCoordIndex,
-	                                   // normalTextureCoordIndex, occlusionTextureCoordIndex,
-	                                   // emissiveTextureCoordIndex, alphaMode, doubleSided, unlit,
-	                                   // from extensions: anisotropyTextureCoordIndex
-	layout(offset=16) vec4 baseColorFactor;  //< Hoops uses alpha and baseColor (in PBRMaterialKit)
-	layout(offset=32) float metallicFactor;  //< Hoops uses metalnessFactor (in PBRMaterialKit)
-	layout(offset=36) float roughnessFactor;  //< Hoops uses RoughnessFactor (in PBRMaterialKit)
-	layout(offset=40) float normalTextureScale;  //< Hoops uses NormalFactor (in PBRMaterialKit)
-	layout(offset=44) float occlusionTextureStrength;  //< Hoops uses OcclusionFactor (in PBRMaterialKit) with the same meaning
-	layout(offset=48) vec3 emissiveFactor;
-	layout(offset=60) float alphaCutoff;
+	layout(offset=0) vec4 baseColorFactor;
+	layout(offset=16) float alphaCutoff;
+	layout(offset=20) float metallicFactor;
+	layout(offset=24) float roughnessFactor;
+	layout(offset=32) vec3 emissiveFactor;
 
 	// 25 additional floats (100 bytes)
 	float anisotropyStrength;
@@ -338,6 +330,9 @@ struct GltfLightData {
 	vec3 color;
 	float intensity;  // for point light and spotlight in candelas (lm/sr), and for directional light in luxes (lm/m2)
 	float range;
+	float constantAttenuation;
+	float linearAttenuation;
+	float quadraticAttenuation;
 };
 
 struct SpotlightData {
@@ -346,9 +341,11 @@ struct SpotlightData {
 	float cosOuterConeAngle;  // cosinus of outer spotlight cone; outside the cone, there is zero light intensity
 	float cosInnerConeAngle;  // cosinus of inner spotlight cone; if -1. is provided, OpenGL-style spotlight is used, ignoring inner cone and using spotExponent instead; if value is > -1., DirectX style spotlight is used, e.g. everything inside the inner cone receives full light intensity and light intensity between inner and outer cone is linearly interpolated starting from zero intensity on outer code to full intensity in inner cone
 	float spotExponent;  // if cosInnerConeAngle is -1, OpenGL style spotlight is used, using spotExponent
+	uint padding[2];
 #else  // glTF recommended interpolation
 	float angleScale;  // angleScale = 1.0f / max(0.001f, cos(innerConeAngle) - cos(outerConeAngle));
 	float angleOffset;  // angleOffset = -cos(outerConeAngle) * lightAngleScale;
+	uint padding[3];
 #endif
 };
 
@@ -356,12 +353,12 @@ layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly bu
 LightRef {
 	layout(offset=0)  vec3 positionOrDirection;  // for point light and spotlight: position in eye coordinates,
 	                                             // for directional light: direction in eye coordinates, direction must be normalized
-	uint settings;  // docs provided bellow
+	layout(offset=12) uint settings;  // docs provided bellow
 	layout(offset=16) OpenGLLightData opengl;
-	layout(offset=80) GltfLightData gltf;
-	layout(offset=112) SpotlightData spotlight;
+	layout(offset=64) GltfLightData gltf;
+	layout(offset=96) SpotlightData spotlight;
 };
-uint getLightDataSize()  { return 192; }
+uint getLightDataSize()  { return 128; }
 
 // LightRef.settings
 // all bits zero - no light, used as the last light in the light list

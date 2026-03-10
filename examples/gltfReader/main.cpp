@@ -48,6 +48,10 @@ using json = nlohmann::json;
 typedef logic_error GltfError;
 
 
+// constants
+static constexpr const unsigned defaultMaterialModel = 0x1;  // 0x1 for Blin-Phong and 0x2 for Metallic-roughness model
+
+
 // Shader data structures
 struct OpenGLLightGpuData {
 	glm::vec3 ambient;
@@ -62,7 +66,9 @@ struct GltfLightGpuData {
 	glm::vec3 color;
 	float intensity;  // in candelas (lm/sr) for point light and spotlight and in luxes (lm/m2) for directional light
 	float range;
-	array<uint32_t,3> padding;
+	float constantAttenuation;
+	float linearAttenuation;
+	float quadraticAttenuation;
 };
 static_assert(sizeof(GltfLightGpuData) == 32, "Wrong GltfLightGpuData data size");
 struct SpotlightGpuData {
@@ -90,7 +96,7 @@ struct LightGpuData {
 static constexpr const size_t lightGpuDataSize = 128;
 static_assert(sizeof(LightGpuData) == lightGpuDataSize, "Wrong LightGpuData data size");
 
-constexpr const uint32_t maxLights = 1;
+constexpr const uint32_t maxLights = 2;
 struct SceneGpuData {
 	glm::mat4 viewMatrix;    // current camera view matrix
 	glm::mat4 projectionMatrix;  // current camera view matrix
@@ -880,10 +886,9 @@ void App::init()
 		glm::vec4 colorAndAlpha;
 	#if 1  // optional members
 		float alphaCutoff;  // offset 16
-		uint32_t padding;
 	#endif
 	};
-	constexpr unsigned unlitMaterialDataSizeAligned8 = 16;
+	constexpr unsigned unlitMaterialDataSize = 16;  // size without optional members
 	struct PhongMaterialData {
 		glm::vec3 ambient;  // offset 0
 		uint32_t padding1;
@@ -897,14 +902,18 @@ void App::init()
 	#endif
 	};
 	static_assert(sizeof(PhongMaterialData) == 64 && "Wrong size of PhongMaterialData structure.");
-	constexpr unsigned phongMaterialDataSizeAligned8 = 64;
-	struct TextureMaterialRecord {
-		uint8_t texCoordIndex;
-		uint8_t type;
-		uint16_t settings;
-		uint32_t textureIndex;
+	constexpr unsigned phongMaterialDataSize = 64;  // size without optional members
+	struct MetallicRoughnessMaterialData {
+		glm::vec4 baseColorFactor;
+		float alphaCutoff;
+		float metallicFactor;
+		float roughnessFactor;
+		uint32_t padding1;
+		glm::vec3 emissiveFactor;
+		uint32_t padding2;
 	};
-	static_assert(sizeof(TextureMaterialRecord) == 8 && "Wrong size of TextureMaterialRecord structure.");
+	static_assert(sizeof(MetallicRoughnessMaterialData) == 48 && "Wrong size of MetallicRoughnessMaterialData structure.");
+	constexpr unsigned metallicRoughnessMaterialDataSize = 48;
 	struct StateSetMaterialData {
 		bool unlit;
 		bool doubleSided;
@@ -912,15 +921,27 @@ void App::init()
 		unsigned materialTexturingParamsOffset;
 		array<uint32_t,10> shaderTextureSetup;
 	};
-	CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
-	PhongMaterialData* m = sd.data<PhongMaterialData>();
-	m->ambient = glm::vec3(1.f, 1.f, 1.f);
-	m->padding1 = 0;
-	m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
-	m->specular = glm::vec3(0.f, 0.f, 0.f);
-	m->shininess = 0.f;
-	m->emission = glm::vec3(0.f, 0.f, 0.f);
-	m->alphaCutoff = 0.f;
+	if(defaultMaterialModel == 1) {
+		// Phong material
+		CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
+		PhongMaterialData* m = sd.data<PhongMaterialData>();
+		m->ambient = glm::vec3(1.f, 1.f, 1.f);
+		m->padding1 = 0;
+		m->diffuseAndAlpha = glm::vec4(1.f, 1.f, 1.f, 1.f);
+		m->specular = glm::vec3(0.f, 0.f, 0.f);
+		m->shininess = 0.f;
+		m->emission = glm::vec3(0.f, 0.f, 0.f);
+		m->alphaCutoff = 0.5f;
+	} else {
+		// Metallic-roughness material
+		CadR::StagingData sd = defaultMaterial.alloc(sizeof(MetallicRoughnessMaterialData));
+		MetallicRoughnessMaterialData* m = sd.data<MetallicRoughnessMaterialData>();
+		m->baseColorFactor = glm::vec4(1.f, 1.f, 1.f, 1.f);
+		m->alphaCutoff = 0.5f;
+		m->metallicFactor = 1.f;
+		m->roughnessFactor = 1.f;
+		m->emissiveFactor = glm::vec3(0.f, 0.f, 0.f);
+	}
 	StateSetMaterialData defaultStateSetMaterialData {
 		.unlit = false,
 		.doubleSided = false,
@@ -1148,7 +1169,8 @@ void App::init()
 		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
 
 		// core material size
-		unsigned materialSize = unlit ? unlitMaterialDataSizeAligned8 : phongMaterialDataSizeAligned8;
+		unsigned materialSize = unlit ? unlitMaterialDataSize :
+			(defaultMaterialModel==1) ? phongMaterialDataSize : metallicRoughnessMaterialDataSize;
 		if(unlit && alphaTest)
 			materialSize += 4;
 		unsigned coreMaterialSize = materialSize;
@@ -1190,9 +1212,8 @@ void App::init()
 			m->colorAndAlpha = baseColorFactor;
 			if(alphaTest)
 				m->alphaCutoff = alphaCutoff;
-			p += unlitMaterialDataSizeAligned8;
 		}
-		else {
+		else if(defaultMaterialModel == 1) {
 			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
 			m->ambient = glm::vec3(baseColorFactor);
 			m->padding1 = 0;
@@ -1201,8 +1222,18 @@ void App::init()
 			m->shininess = (1.f - roughnessFactor) * (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
 			m->emission = emissiveFactor * emissiveStrength;
 			m->alphaCutoff = alphaCutoff;
-			p += phongMaterialDataSizeAligned8;
 		}
+		else {
+			MetallicRoughnessMaterialData* m = reinterpret_cast<MetallicRoughnessMaterialData*>(p);
+			m->baseColorFactor = baseColorFactor;
+			m->alphaCutoff = alphaCutoff;
+			m->metallicFactor = metallicFactor;
+			m->roughnessFactor = roughnessFactor;
+			m->padding1 = 0;
+			m->emissiveFactor =emissiveFactor * emissiveStrength;
+			m->padding2 = 0;
+		}
+		p += coreMaterialSize;
 
 		// StateSetMaterialData
 		auto& ssm = stateSetMaterialDataList[materialIndex];
@@ -2856,7 +2887,7 @@ void App::init()
 					(16u + (normalData ? 16 : 0) + (tangentData ? 16 : 0) +  // vertexDataSize
 						(colorData ? 16 : 0) + (uint32_t(texCoordAttribInfoList.size()) * 16)),
 				.materialSetup =
-					(ssMaterialData.unlit ? 0x0 : 0x1) |  // Unlit vs Phong
+					(ssMaterialData.unlit ? 0x0 : defaultMaterialModel) |  // Unlit vs Blin-Phong or Metallic-roughness
 					ssMaterialData.materialTexturingParamsOffset |  // texture params offset inside material
 					(ssMaterialData.doubleSided ? 0x0100 : 0) |  // two sided lighting
 					((mode <= 3) && (normalData == nullptr) ? 0x0200 : 0) |  // disable lighting for points and lines without normals
@@ -2865,7 +2896,7 @@ void App::init()
 					0x8000 |  // color attribute (if present) multiplies material ambient and diffuse color instead of ignoring them when computing ambient and diffuse color contributions
 					0x10000,  // separate emission on Phong material
 				.pointSize = 1.f,
-				.textureSetup = ssMaterialData.shaderTextureSetup,  // no textures
+				.textureSetup = ssMaterialData.shaderTextureSetup,
 				.lightSetup = { 2 },  // one light; we use point light at the position of camera and call it headlight
 				.optimizeFlags = CadPL::ShaderState::OptimizeNone,
 			};
@@ -3307,9 +3338,12 @@ void App::frame(VulkanWindow&)
 		.quadraticAttenuation = 0.f,
 	};
 	sceneData->lights[0].gltf = {
-		.color = glm::vec3(0.8f, 0.8f, 0.8f),
+		.color = glm::vec3(1.f, 1.f, 1.f),
 		.intensity = 1.f,
 		.range = numeric_limits<float>::infinity(),
+		.constantAttenuation = 1.f,
+		.linearAttenuation = 0.f,
+		.quadraticAttenuation = 0.f,
 	};
 	sceneData->lights[0].spotlight = {};
 	sceneData->lights[1] = {
