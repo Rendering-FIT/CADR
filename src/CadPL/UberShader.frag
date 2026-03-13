@@ -266,29 +266,83 @@ void gltfLight(
 	in float a2,
 	out vec3 colorProduct)
 {
+	// Fresnel reflectance using Schlick approximation
 	vec3 h = normalize(fragmentToLightDirection - viewerToFragmentDirection);
-	float tmp = 1 + dot(viewerToFragmentDirection, h);
-	vec3 f = f0 + ((1 - f0) * tmp * tmp * tmp * tmp * tmp);
-	vec3 diffuse = baseColor * (1 - metalness) * (1 - f) * (1 / Pi);
-	float nDotH = dot(normal, h);
-	float hDotL = dot(h, fragmentToLightDirection);
 	float hDotV = dot(h, -viewerToFragmentDirection);
-	if(nDotH > 0 && hDotL > 0 && hDotV > 0) {
+#if 0
+	float tmp = 1 - hDotV;
+	vec3 f = f0 + ((1 - f0) * tmp * tmp * tmp * tmp * tmp);
+#else
+	vec3 f;
+	if(hDotV > 0) {
+		float tmp = 1 - hDotV;
+		f = f0 + ((1 - f0) * tmp * tmp * tmp * tmp * tmp);
+	} else
+		f = vec3(1);
+#endif
 
-		float microfacetDistribution = a2 / (Pi * sqr(sqr(nDotH) * (a2 - 1) + 1));
-		float nDotL = dot(normal, fragmentToLightDirection);
-		float nDotV = dot(normal, -viewerToFragmentDirection);
-		float maskingAndShadowingFunction =
-			((2 * abs(nDotL) * hDotL) / (abs(nDotL) + sqrt(a2 + ((1 - a2) * sqr(nDotL))))) *
-			((2 * abs(nDotV) * hDotV) / (abs(nDotV) + sqrt(a2 + ((1 - a2) * sqr(nDotV)))));
-		vec3 specular = (f * microfacetDistribution * maskingAndShadowingFunction) /
-			(4 * abs(dot(-viewerToFragmentDirection, normal)) * abs(dot(fragmentToLightDirection, normal)));
+	// diffuse reflection using Lambert's BRDF
+	vec3 diffuse = (1 - metalness) * baseColor * ((1 - f) / Pi);
 
-		colorProduct = diffuse + specular;
+	float nDotL = dot(normal, fragmentToLightDirection);
+	if(nDotL > 0)
+	{
+		// specular BRDF
 
+		// nDotH, hDotV, and hDotL must be positive for specular BRDF
+		float nDotH = dot(normal, h);
+		float hDotL = dot(h, fragmentToLightDirection);
+		if(nDotH > 0 && hDotL > 0 && hDotV > 0) {
+
+			// GGX/Trowbridge-Reitz microfacet orientation distribution
+			float microfacetNormalDistribution = a2 / (Pi * sqr(sqr(nDotH) * (a2 - 1) + 1));
+
+			float nDotV = dot(normal, -viewerToFragmentDirection);
+
+		#if 0
+
+			// Smith joint masking-shadowing function between microfacets based on GGX
+			// (masking models obstruction from view direction
+			// and self-shadowing obstruction from light direction)
+			float maskingDenom = nDotV + sqrt(a2 + ((1 - a2) * sqr(nDotV)));
+			float shadowingDenom = nDotL + sqrt(a2 + ((1 - a2) * sqr(nDotL)));
+			float visibilityFunction = 1. / (maskingDenom * shadowingDenom);
+
+			// specular = F * D * V
+			// where F is Fresnel term, D is microfacet orientation distribution,
+			// and V is visibility function
+			vec3 specular = f * microfacetNormalDistribution * visibilityFunction;
+
+		#else
+
+			// Smith joint masking-shadowing function between microfacets based on Schlick-Beckmann
+			// (masking models obstruction from view direction
+			// and self-shadowing obstruction from light direction)
+		#if 0
+			float r = sqrt(a2) + 1;
+			float k = (r * r) / 8;
+		#else
+			float k = sqrt(a2) / 2;
+		#endif
+			float ggx1 = nDotV / (nDotV * (1 - k) + k);
+			float ggx2 = nDotL / (nDotL * (1 - k) + k);
+			float visibilityFunction = (ggx1 * ggx2) / (4 * nDotV * nDotL);
+
+			// specular = F * D * V
+			// where F is Fresnel term, D is microfacet orientation distribution,
+			// and V is visibility function
+			vec3 specular = f * microfacetNormalDistribution * visibilityFunction;
+	
+		#endif
+
+			colorProduct = (diffuse + specular) * nDotL;
+
+		}
+		else
+			colorProduct = diffuse * nDotL;
 	}
 	else
-		colorProduct = diffuse;
+		colorProduct = vec3(0);
 }
 
 
@@ -967,7 +1021,7 @@ void main()
 					// directional light
 					// (lightData.positionOrDirection contains direction towards the incoming light in eye coordinates)
 					vec3 fragmentToLightDirection = lightData.positionOrDirection;
-					gltfLight(lightData.positionOrDirection, viewerToFragmentDirection,
+					gltfLight(fragmentToLightDirection, viewerToFragmentDirection,
 						f0, baseColor, metalness, normal, a2, colorProduct);
 
 					// accumulate output color product over all lights
