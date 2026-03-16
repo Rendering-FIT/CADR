@@ -278,6 +278,57 @@ static string utf16ToUtf8(const wchar_t* ws)
 #endif
 
 
+// decode URI
+// replacing percent-encoded octets (f.ex. %20)
+// by their corresponding character (f.ex. ' ')
+static string decodeURI(const string& s)
+{
+	// count number of '%'
+	size_t n = 0;
+	size_t i = 0;
+	string::value_type c = s[0];
+	while(c != 0) {
+		if(c == '%')
+			n += 2;
+		i++;
+		c = s[i];
+	}
+
+	// no decoding needed
+	if(n == 0)
+		return s;
+
+	// reserve memory
+	string r(s.length() - n, 0);
+
+	// decode string from s to r
+	i = 0;
+	size_t j = 0;
+	c = s[0];
+	while(c != 0) {
+		if(c == '%') {
+			c = s[++i];
+			if(c == 0)
+				throw GltfError("URI error. Wrong % encoding.");
+			string::value_type a = (c <= '9') ? c - '0' : (c <= 'Z') ? c - 'A' + 10 : c - 'a' + 10;
+			c = s[++i];
+			if(c == 0)
+				throw GltfError("URI error. Wrong % encoding.");
+			string::value_type b = (c <= '9') ? c - '0' : (c <= 'Z') ? c - 'A' + 10 : c - 'a' + 10;
+			if(uint8_t(a) > 15 || uint8_t(b) > 15)
+				throw GltfError("URI error. Wrong % encoding.");
+			r[j] = (a<<4) | b;
+		}
+		else
+			r[j] = c;
+		i++;
+		j++;
+		c = s[i];
+	}
+	return r;
+}
+
+
 /// Construct application object
 App::App(int argc, char** argv)
 	: sceneDataAllocation(renderer.dataStorage())
@@ -680,7 +731,8 @@ void App::init()
 		auto uriIt = b.find("uri");
 		if(uriIt == b.end())
 			throw GltfError("Unsupported functionality: Undefined buffer.uri.");
-		const string& s = uriIt->get_ref<json::string_t&>();
+		const string& bufferURI = uriIt->get_ref<json::string_t&>();
+		string s = decodeURI(bufferURI);
 		filesystem::path p = u8string_view(reinterpret_cast<const char8_t*>(s.data()), s.size());
 		if(p.is_relative())
 			p = filePath.parent_path() / p;
@@ -1416,9 +1468,10 @@ void App::init()
 			if(uriIt != image.end()) {
 
 				// image file name
-				const string& imageFileName = uriIt->get_ref<json::string_t&>();
-				cout << "   " << imageFileName;
-				filesystem::path p = u8string_view(reinterpret_cast<const char8_t*>(imageFileName.data()), imageFileName.size());
+				const string& imageURI = uriIt->get_ref<json::string_t&>();
+				cout << "   " << imageURI;
+				string s = decodeURI(imageURI);
+				filesystem::path p = u8string_view(reinterpret_cast<const char8_t*>(s.data()), s.size());
 				if(p.is_relative())
 					p = filePath.parent_path() / p;
 
@@ -1642,12 +1695,12 @@ void App::init()
 							bufferSize  // dataSize
 						);
 					}
-				
+
 				}
 				goto succeed;
 			failed:
 				cout << " - failed" << endl;
-				throw GltfError("Failed to load texture " + imageFileName + ".");
+				throw GltfError("Failed to load texture " + imageURI + ".");
 			succeed:
 				cout << endl;
 			}
