@@ -1159,14 +1159,14 @@ void App::init()
 			readTextureData(baseColorTexture, "baseColorTexture", *pbrIt, numGltfTextures);
 
 			// metallic-roughness texture
-		#if 0  // do not enable metallic-roughness texture yet because it is not supported in the shader
-			readTextureData(metallicRoughnessTexture, "metallicRoughnessTexture", *pbrIt, numGltfTextures);
-		#else
-			if(pbrIt->find("metallicRoughnessTexture") != pbrIt->end())
-				throw GltfError("Unsupported functionality: metallic-roughness texture.");
-			metallicRoughnessTexture.textureID = ~unsigned(0);
-			metallicRoughnessTexture.coordIndex = ~unsigned(0);
-		#endif
+			if(defaultMaterialModel == 0x1) {
+				// for Phong model, ignore metallic-roughness texture because it is not supported in the shader
+				metallicRoughnessTexture.textureID = ~unsigned(0);
+				metallicRoughnessTexture.coordIndex = ~unsigned(0);
+			}
+			else
+				readTextureData(metallicRoughnessTexture, "metallicRoughnessTexture", *pbrIt, numGltfTextures);
+
 		}
 		else
 		{
