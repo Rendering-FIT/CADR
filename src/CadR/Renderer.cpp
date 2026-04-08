@@ -113,7 +113,7 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 			).get())
 		.alignment;
 	if((_standardBufferAlignment&(_standardBufferAlignment-1)) != 0)  // is it power of two? -> this is guaranteed to be true by Vulkan spec since somewhere between 1.0.20 and 1.0.36
-		throw std::runtime_error("Platform problem: standardBufferAlignment is not power of two.");
+		throw LogicError("Platform problem: standardBufferAlignment is not power of two.");
 
 	// nonCoherentAtomSize
 	vk::PhysicalDeviceProperties p = instance.getPhysicalDeviceProperties(physicalDevice);
@@ -121,7 +121,7 @@ void Renderer::init(VulkanDevice& device, VulkanInstance& instance, vk::Physical
 	_nonCoherentAtom_addition = nonCoherentAtomSize-1;
 	_nonCoherentAtom_mask = ~_nonCoherentAtom_addition;
 	if((nonCoherentAtomSize & _nonCoherentAtom_addition) != 0)  // is it power of two?
-		throw std::runtime_error("Platform problem: nonCoherentAtomSize is not power of two.");
+		throw LogicError("Platform problem: nonCoherentAtomSize is not power of two.");
 
 	// timestamp periods
 	_gpuTimestampPeriod = p.limits.timestampPeriod * 1e-9f;
@@ -816,7 +816,8 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(size_t size, uint32_t
 				if(r == VK_SUCCESS)
 					return {m, i};
 			}
-	throw std::runtime_error("No suitable memory type found for the buffer.");
+	throw OutOfResources("Failed to allocate memory for the buffer. "
+		"No suitable memory type found or not enough available memory.");
 }
 
 
@@ -846,7 +847,8 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(size_t s
 				if(r == VK_SUCCESS)
 					return {m, i};
 			}
-	throw std::runtime_error("No suitable memory type found for the buffer.");
+	throw OutOfResources("Failed to allocate memory for the buffer. "
+		"No suitable memory type found or not enough available memory.");
 }
 
 
@@ -918,17 +920,18 @@ void Renderer::executeCopyOperations()
 	);
 
 	// wait for work to complete
-	vk::Result r=_device->waitForFences(
-		_fence,        // fences (vk::ArrayProxy)
-		VK_TRUE,       // waitAll
-		uint64_t(3e9)  // timeout (3s)
-	);
+	vk::Result r =
+		_device->waitForFences(
+			_fence,          // fences (vk::ArrayProxy)
+			VK_TRUE,         // waitAll
+			uint64_t(1.5e9)  // timeout (1.5s)
+		);
 	_device->resetFences(_fence);
-	if(r!=vk::Result::eSuccess) {
-		if(r==vk::Result::eTimeout)
-			throw std::runtime_error("GPU timeout. Task is probably hanging.");
-		throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
-		}
+	if(r != vk::Result::eSuccess) {
+		if(r == vk::Result::eTimeout)
+			throw Timeout("GPU timeout. Task is probably hanging.");
+		throw LogicError("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
+	}
 
 	// dispose transfer resources
 	// (it must be done only after the transfer is completed)
@@ -1077,15 +1080,15 @@ uint64_t Renderer::getGpuTimestamp() const
 
 		// wait for work to complete
 		vk::Result r = _device->waitForFences(
-			_fence,        // fences (vk::ArrayProxy)
-			VK_TRUE,       // waitAll
-			uint64_t(3e9)  // timeout (3s)
+			_fence,          // fences (vk::ArrayProxy)
+			VK_TRUE,         // waitAll
+			uint64_t(1.5e9)  // timeout (1.5s)
 		);
 		_device->resetFences(_fence);
 		if(r != vk::Result::eSuccess) {
 			if(r == vk::Result::eTimeout)
-				throw std::runtime_error("GPU timeout. Task is probably hanging.");
-			throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
+				throw Timeout("GPU timeout. Task is probably hanging.");
+			throw LogicError("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
 		}
 
 		// read timestamp 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2021 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <stdexcept>
@@ -25,6 +29,14 @@ public:
 	virtual const char* what() const noexcept override  { return std::runtime_error::what(); }
 	OutOfResources(const char* what) : Error(), std::runtime_error(what)  {}
 	OutOfResources(const std::string& what) : Error(), std::runtime_error(what)  {}
+};
+
+
+class Timeout : public Error, public std::runtime_error {
+public:
+	virtual const char* what() const noexcept override  { return std::runtime_error::what(); }
+	Timeout(const char* what) : Error(), std::runtime_error(what)  {}
+	Timeout(const std::string& what) : Error(), std::runtime_error(what)  {}
 };
 
 

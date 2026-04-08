@@ -45,7 +45,7 @@ using namespace std;
 
 using json = nlohmann::json;
 
-typedef logic_error GltfError;
+typedef CadR::LogicError GltfError;
 
 
 // constants
@@ -524,7 +524,7 @@ void App::init()
 						return *it;
 				}
 				if(availableFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
-					throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
+					throw CadR::LogicError("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
 				return availableFormats[0];
 			}
 		}(physicalDevice, vulkanInstance, window.surface());
@@ -543,7 +543,7 @@ void App::init()
 				if(p.optimalTilingFeatures & vk::FormatFeatureFlagBits::eDepthStencilAttachment)
 					return f;
 			}
-			throw std::runtime_error("No suitable depth buffer format.");
+			throw CadR::LogicError("No suitable depth buffer format.");
 		}(physicalDevice, vulkanInstance);
 
 	// maxSamplerAnisotropy
@@ -3343,11 +3343,11 @@ void App::frame(VulkanWindow&)
 		device.waitForFences(
 			renderingFinishedFence,  // fences
 			VK_TRUE,  // waitAll
-			uint64_t(3e9)  // timeout
+			uint64_t(1.5e9)  // timeout
 		);
 	if(r != vk::Result::eSuccess) {
 		if(r == vk::Result::eTimeout)
-			throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+			throw CadR::Timeout("GPU timeout. Task is probably hanging on GPU.");
 		throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
 	}
 	device.resetFences(renderingFinishedFence);
