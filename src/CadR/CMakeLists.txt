@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2018-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 # project name
 set(LIB_NAME CadR)
 set(LIB_NAME_UPPER)
@@ -37,7 +41,6 @@ set(CADR_PUBLIC_HEADERS
 	Pipeline.h
 	PrimitiveSet.h
 	Renderer.h
-	RenderPass.h
 	Sampler.h
 	StagingBuffer.h
 	StagingData.h
@@ -69,7 +72,6 @@ set(CADR_SOURCES
 	Pipeline.cpp
 	PrimitiveSet.cpp
 	Renderer.cpp
-	RenderPass.cpp
 	Sampler.cpp
 	StagingBuffer.cpp
 	StagingData.cpp
@@ -142,30 +144,3 @@ endif()
 
 # other target settings
 set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD 17)
-
-# headers installation
-install(FILES
-	${CADR_PUBLIC_HEADERS}
-	DESTINATION include/${LIB_NAME}
-	)
-
-# libraries installation
-install(TARGETS ${LIB_NAME}
-	LIBRARY DESTINATION lib
-	ARCHIVE DESTINATION lib
-	RUNTIME DESTINATION bin
-	)
-
-# cmake configuration file
-# FIXME: is this working or broken?
-#configure_file(
-#	CADRConfig.cmake.in
-#	CADRConfig.cmake
-#	@ONLY
-#	)
-
-# install cmake configuration file
-# FIXME: is this working or broken?
-#install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CADRConfig.cmake"
-#        DESTINATION "${INSTALL_CMAKE_CONFIG_DIR}" # INSTALL_CMAKE_CONFIG_DIR is defined in master CMakeLists file
-#        )

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2020-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <boost/intrusive/list.hpp>

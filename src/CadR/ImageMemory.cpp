@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #include <CadR/ImageMemory.h>
 #include <CadR/ImageStorage.h>
 #include <CadR/Renderer.h>

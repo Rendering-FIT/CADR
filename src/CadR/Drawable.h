@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2018-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_DRAWABLE_HEADER
 # define CADR_DRAWABLE_HEADER
 

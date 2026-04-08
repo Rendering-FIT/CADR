@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2023-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_DATA_ALLOCATION_HEADER
 # define CADR_DATA_ALLOCATION_HEADER
 

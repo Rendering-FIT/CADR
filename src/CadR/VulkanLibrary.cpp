@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-2020 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #include <CadR/VulkanLibrary.h>
 #ifdef _WIN32
 # define WIN32_LEAN_AND_MEAN  // this reduces win32 headers default namespace pollution

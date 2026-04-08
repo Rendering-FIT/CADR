@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2020-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #include <CadR/StagingManager.h>
 #include <CadR/StagingMemory.h>
 

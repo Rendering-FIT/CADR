@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_STAGING_BUFFER_HEADER
 # define CADR_STAGING_BUFFER_HEADER
 

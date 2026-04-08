@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_TEXTURE_HEADER
 # define CADR_TEXTURE_HEADER
 

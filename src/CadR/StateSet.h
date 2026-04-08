@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_STATE_SET_HEADER
 # define CADR_STATE_SET_HEADER
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #include <CadR/CallbackList.h>

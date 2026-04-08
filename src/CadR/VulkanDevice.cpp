@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #include <CadR/VulkanDevice.h>
 #include <CadR/VulkanInstance.h>
 #include <functional>

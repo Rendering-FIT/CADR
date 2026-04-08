@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_HANDLE_TABLE_HEADER
 # define CADR_HANDLE_TABLE_HEADER
 

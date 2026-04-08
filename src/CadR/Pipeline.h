@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2020-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_PIPELINE_HEADER
 # define CADR_PIPELINE_HEADER
 

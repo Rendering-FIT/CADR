@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2018-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #include <CadR/Renderer.h>
 #include <CadR/DataStorage.h>
 #include <CadR/Exceptions.h>

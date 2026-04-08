@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_TRANSFER_RESOURCES_HEADER
 # define CADR_TRANSFER_RESOURCES_HEADER
 

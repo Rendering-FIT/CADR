@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #ifndef CADR_MATRIX_LIST_HEADER
 # define CADR_MATRIX_LIST_HEADER
 
