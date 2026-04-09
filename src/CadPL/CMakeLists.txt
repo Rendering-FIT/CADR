@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 # project name
 set(LIB_NAME CadPL)
 set(LIB_NAME_UPPER)
@@ -117,17 +121,3 @@ install(TARGETS ${LIB_NAME}
 	ARCHIVE DESTINATION lib
 	RUNTIME DESTINATION bin
 	)
-
-# cmake configuration file
-# FIXME: is this working or broken?
-#configure_file(
-#	CADRConfig.cmake.in
-#	CADRConfig.cmake
-#	@ONLY
-#	)
-
-# install cmake configuration file
-# FIXME: is this working or broken?
-#install(FILES "${CMAKE_CURRENT_BINARY_DIR}/CADRConfig.cmake"
-#        DESTINATION "${INSTALL_CMAKE_CONFIG_DIR}" # INSTALL_CMAKE_CONFIG_DIR is defined in master CMakeLists file
-#        )
