@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2018 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #include <QGuiApplication>
 #include <QScreen>
 #include "VulkanWindow.h"

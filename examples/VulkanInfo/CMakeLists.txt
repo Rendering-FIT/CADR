@@ -1,13 +1,17 @@
+# SPDX-FileCopyrightText: 2023-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT-0
+
 set(APP_NAME vulkanInfo)
 
 project(${APP_NAME})
 
 set(APP_SOURCES
-    main.cpp
-   )
+	main.cpp
+	)
 
 set(APP_INCLUDES
-   )
+	)
 
 add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
 

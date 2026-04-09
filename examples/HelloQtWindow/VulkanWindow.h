@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2018-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #pragma once
 
 #if QT_VERSION>=0x050a00 // include QVulkanInstance for Qt 5.10 and newer or provide alternative

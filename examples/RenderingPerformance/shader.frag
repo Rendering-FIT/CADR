@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #version 460
 #extension GL_EXT_buffer_reference : require
 #extension GL_ARB_gpu_shader_int64 : require

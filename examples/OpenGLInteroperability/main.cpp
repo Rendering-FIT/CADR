@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2018-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #ifdef _WIN32
 # define VK_USE_PLATFORM_WIN32_KHR
 # define WIN32_LEAN_AND_MEAN  // this reduces the pollution of default namespace by windows.h

@@ -4,7 +4,6 @@ set(examples_folder_name "Examples")
 set(PACKAGES
 	OpenGLInteroperability
 	RenderingPerformance
-	VulkanComputeShader
 	VulkanInfo
 	gltfReader
 	)

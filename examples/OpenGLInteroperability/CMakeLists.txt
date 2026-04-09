@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2018-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT-0
+
+
 # find OpenGL
 include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)
 if(WIN32)

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2018-2019 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT-0
+
 include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)
 find_package_with_message(Qt5Gui Qt5::Gui)
 

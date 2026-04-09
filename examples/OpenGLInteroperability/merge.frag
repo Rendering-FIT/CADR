@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2018-2019 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 

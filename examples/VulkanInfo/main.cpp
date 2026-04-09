@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2023-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #include <vulkan/vulkan.hpp>
 #include <iostream>
 
