@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 # folder name in IDE (Visual C++,...) where all examples will go
 set(tests_folder_name "Tests")
 

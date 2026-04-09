@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2018-2020 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 #
 # Module for finding GLM
 #

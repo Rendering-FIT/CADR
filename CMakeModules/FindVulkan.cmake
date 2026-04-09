@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2018-2021 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 #
 # Module for finding Vulkan
 #

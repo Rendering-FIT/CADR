@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2018-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 # returns target's path
 # (used generally as info to console during configuration process)
 macro(cadr_get_package_path path PACKAGE_NAME TARGET_NAME)

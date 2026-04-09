@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT-0
+
+
 # find package nlohmann_json
 # if not found, do not include this example in build
 include(${CMAKE_SOURCE_DIR}/CMakeModules/CADRMacros.cmake)

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2020-2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT-0
+
 #include <CadR/ParentChildList.h>
 #include <CadR/Renderer.h>
 #include <CadR/StateSet.h>
