@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -1392,7 +1393,6 @@ void App::init()
 			};
 
 		// write textures
-		uint8_t* p2 = p;
 		unsigned textureIndex = 0;
 		if(baseColorTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(baseColorTexture, true);  // base texture uses sRGB transfer function
@@ -2293,8 +2293,9 @@ void App::init()
 
 					// get texCoordIndex from TEXCOORD_[texCoordIndex] string
 					char* endp;
-					unsigned texCoordIndex = strtoul(it.key().c_str()+9, &endp, 10);
-					if(endp-it.key().c_str() != it.key().size())
+					const char* startp = it.key().c_str();
+					unsigned texCoordIndex = strtoul(startp+9, &endp, 10);
+					if(endp-startp != std::ptrdiff_t(it.key().size()))
 						throw GltfError("TexCoord attribute name is invalid.");
 
 					// vertex size
