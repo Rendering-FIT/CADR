@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2018-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+#
+# SPDX-License-Identifier: MIT
+
 cmake_minimum_required(VERSION 3.21.0) # arguments for discussion about minimal cmake version:
                                        # CXX_STANDARD 20 is available since 3.12,
                                        # INTERFACE_LINK_OPTIONS needs at least 3.13,
