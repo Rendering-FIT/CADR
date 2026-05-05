@@ -19,6 +19,7 @@
 # include <vulkan/vulkan.hpp>
 # include <boost/intrusive/list.hpp>
 # include <list>
+# include <memory>
 
 namespace CadR {
 
