@@ -1455,15 +1455,17 @@ void App::frame()
 	renderer.recordSceneRendering(
 		commandBuffer,  // commandBuffer
 		stateSetRoot,  // stateSetRoot
-		renderPassList[uint32_t(renderingSetup)],  // renderPass
-		framebuffers[imageIndex],  // framebuffer
-		vk::Rect2D(vk::Offset2D(0, 0), imageExtent),  // renderArea
-		(renderingSetup == RenderingSetup::Picking) ? 3u : 2u,  // clearValueCount
-		array<vk::ClearValue, 3>{  // pClearValues
-			vk::ClearColorValue(*reinterpret_cast<const array<float, 4>*>(glm::value_ptr(backgroundColor))),
-			vk::ClearDepthStencilValue(1.f, 0),
-			vk::ClearColorValue(array<uint32_t,4>{ 0, 0, 0, 0 }),
-		}.data()
+		vk::RenderPassBeginInfo{
+			renderPassList[uint32_t(renderingSetup)],  // renderPass
+			framebuffers[imageIndex],  // framebuffer
+			vk::Rect2D(vk::Offset2D(0, 0), imageExtent),  // renderArea
+			(renderingSetup == RenderingSetup::Picking) ? 3u : 2u,  // clearValueCount
+			array<vk::ClearValue, 3>{  // pClearValues
+				vk::ClearColorValue(*reinterpret_cast<const array<float, 4>*>(glm::value_ptr(backgroundColor))),
+				vk::ClearDepthStencilValue(1.f, 0),
+				vk::ClearColorValue(array<uint32_t,4>{ 0, 0, 0, 0 }),
+			}.data()
+		}
 	);
 
 	// end command buffer recording

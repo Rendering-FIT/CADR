@@ -708,20 +708,13 @@ void Renderer::recordDrawableProcessing(vk::CommandBuffer commandBuffer,size_t n
 }
 
 
-void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& stateSetRoot,vk::RenderPass renderPass,
-                                    vk::Framebuffer framebuffer,const vk::Rect2D& renderArea,
-                                    uint32_t clearValueCount,const vk::ClearValue* clearValues)
+void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer, StateSet& stateSetRoot,
+                                    const vk::RenderPassBeginInfo& renderPassBegin)
 {
 	// start render pass
 	_device->cmdBeginRenderPass(
 		commandBuffer,  // commandBuffer
-		vk::RenderPassBeginInfo(
-			renderPass,   // renderPass
-			framebuffer,  // framebuffer
-			renderArea,   // renderArea
-			clearValueCount,  // clearValueCount
-			clearValues   // pClearValues
-		),
+		renderPassBegin,  // renderPassBegin
 		vk::SubpassContents::eInline  // contents
 	);
 
@@ -738,6 +731,31 @@ void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer,StateSet& st
 
 	// end render pass
 	_device->cmdEndRenderPass(commandBuffer);
+}
+
+
+void Renderer::recordSceneRendering(vk::CommandBuffer commandBuffer, StateSet& stateSetRoot,
+                                    const vk::RenderingInfo& renderingInfo)
+{
+	// start render pass
+	_device->cmdBeginRendering(
+		commandBuffer,  // commandBuffer
+		renderingInfo  // renderingInfo
+	);
+
+	// execute all StateSets
+	size_t drawableCounter = 0;
+	if(_collectFrameInfo == false)
+		stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
+	else {
+		_inProgressFrameInfo.cpuRecordStateSetsBegin = getCpuTimestamp();
+		stateSetRoot.recordToCommandBuffer(commandBuffer, vk::PipelineLayout(), drawableCounter);
+		_inProgressFrameInfo.cpuRecordStateSetsEnd = getCpuTimestamp();
+	}
+	assert(drawableCounter <= _drawableBufferSize/sizeof(DrawableGpuData) && "Buffer overflow. This should not happen.");
+
+	// end render pass
+	_device->cmdEndRendering(commandBuffer);
 }
 
 
@@ -822,6 +840,31 @@ tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(size_t size, uint32_t
 			}
 	throw OutOfResources("Failed to allocate memory for the buffer. "
 		"No suitable memory type found or not enough available memory.");
+}
+
+
+tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept
+{
+	vk::DeviceMemory m;
+	vk::MemoryAllocateInfo allocateInfo(
+		size,  // allocationSize
+		0      // memoryTypeIndex
+	);
+	for(uint32_t i=0, c=_memoryProperties.memoryTypeCount; i<c; i++)
+		if(memoryTypeBits & (1<<i))
+			if((_memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags) {
+				allocateInfo.memoryTypeIndex = i;
+				VkResult r =
+					_device->vkAllocateMemory(
+						_device->handle(),  // device
+						reinterpret_cast<VkMemoryAllocateInfo*>(&allocateInfo),  // pAllocateInfo
+						nullptr,  // pAllocator
+						reinterpret_cast<VkDeviceMemory*>(&m)  // pMemory
+					);
+				if(r == VK_SUCCESS)
+					return {m, i};
+			}
+	return {nullptr, 0xffffffff};
 }
 
 

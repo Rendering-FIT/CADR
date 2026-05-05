@@ -2978,7 +2978,9 @@ void App::init()
 				.minSampleShading = 0.f,
 				.depthTestEnable = true,
 				.depthWriteEnable = true,
-				.blendState = { { .blendEnable = false } },
+				.numColorAttachments = 1,
+				.blendState = { CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false }, { .blendEnable = false },
+					{ .blendEnable = false }, { .blendEnable = false }, { .blendEnable = false }, },
 				.renderPass = renderPass,
 				.subpass = 0,
 			};
@@ -3455,14 +3457,16 @@ void App::frame(VulkanWindow&)
 	renderer.recordSceneRendering(
 		commandBuffer,  // commandBuffer
 		stateSetRoot,  // stateSetRoot
-		renderPass,  // renderPass
-		framebuffers[imageIndex],  // framebuffer
-		vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
-		2,  // clearValueCount
-		array<vk::ClearValue,2>{  // pClearValues
-			vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
-			vk::ClearDepthStencilValue(1.f, 0),
-		}.data()
+		vk::RenderPassBeginInfo{
+			renderPass,  // renderPass
+			framebuffers[imageIndex],  // framebuffer
+			vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+			2,  // clearValueCount
+			array<vk::ClearValue,2>{  // pClearValues
+				vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
+				vk::ClearDepthStencilValue(1.f, 0),
+			}.data()
+		}
 	);
 
 	// end command buffer recording

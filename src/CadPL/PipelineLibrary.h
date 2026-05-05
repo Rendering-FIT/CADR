@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <tuple>
@@ -69,10 +70,15 @@ struct PipelineState {
 
 		bool operator<(const BlendAttachmentState& rhs) const;
 	};
-	std::vector<BlendAttachmentState> blendState;
+	static constexpr const unsigned maxColorAttachments = 5;
+	uint32_t numColorAttachments;
+	std::array<BlendAttachmentState, maxColorAttachments> blendState;
 
-	vk::RenderPass renderPass = nullptr;
+	vk::RenderPass renderPass = nullptr;  //< If set to nullptr, generated pipelines will use dynamic rendering. Otherwise, they will use specified render pass.
 	uint32_t subpass = 0;
+	std::array<vk::Format, maxColorAttachments> colorAttachmentFormats;
+	vk::Format depthAttachmentFormat;
+	vk::Format stencilAttachmentFormat;
 
 	bool operator<(const PipelineState& rhs) const;
 
@@ -170,28 +176,32 @@ protected:
 	struct CreationDataBatch
 	{
 		static const size_t numPipelines = 16;
-		static const size_t numAttachmentsPerPipeline = 3;
 		CreationDataSet* creationDataSet;
 		std::array<SharedPipeline,numPipelines> sharedPipelineList;  //< Pipelines that are going to be created.
-		unsigned numSharedPipelines = 0;
+		uint32_t numSharedPipelines = 0;
 		std::array<vk::PipelineShaderStageCreateInfo,numPipelines*3> shaderStageList;
-		unsigned numShaderStages = 0;
+		uint32_t numShaderStages = 0;
 		std::array<vk::PipelineInputAssemblyStateCreateInfo,numPipelines> inputAssemblyStateList;
-		unsigned numInputAssemblyStates = 0;
+		uint32_t numInputAssemblyStates = 0;
 		std::array<std::tuple<vk::PipelineViewportStateCreateInfo,vk::Viewport,vk::Rect2D>,numPipelines> viewportStateList;
-		unsigned numViewportStates = 0;
+		uint32_t numViewportStates = 0;
 		std::array<vk::PipelineRasterizationStateCreateInfo,numPipelines> rasterizationStateList;
-		unsigned numRasterizationStates = 0;
+		uint32_t numRasterizationStates = 0;
 		std::array<vk::PipelineMultisampleStateCreateInfo,numPipelines> multisampleStateList;
-		unsigned numMultisampleStates = 0;
+		uint32_t numMultisampleStates = 0;
 		std::array<vk::PipelineDepthStencilStateCreateInfo,numPipelines> depthStencilStateList;
-		unsigned numDepthStencilStates = 0;
-		std::array<vk::PipelineColorBlendAttachmentState,numPipelines> colorBlendAttachmentStateList;
-		unsigned numColorBlendAttachmentStates = 0;
+		uint32_t numDepthStencilStates = 0;
+		std::array<vk::PipelineColorBlendAttachmentState,numPipelines*PipelineState::maxColorAttachments> colorBlendAttachmentStateList;
+		uint32_t numColorBlendAttachmentStates = 0;
 		std::array<vk::PipelineColorBlendStateCreateInfo,numPipelines> colorBlendStateList;
-		unsigned numColorBlendStates = 0;
+		uint32_t numColorBlendStates = 0;
 		std::array<vk::GraphicsPipelineCreateInfo,numPipelines> createInfoList;
-		unsigned numCreateInfos = 0;
+		uint32_t numCreateInfos = 0;
+		std::array<std::array<vk::Format,PipelineState::maxColorAttachments>,numPipelines> colorAttachmentFormatList;
+		uint32_t numColorAttachmentFormats = 0;
+		std::array<vk::PipelineRenderingCreateInfo,numPipelines> pipelineRenderingInfoList;
+		uint32_t numPipelineRenderingInfos = 0;
+
 		CreationDataBatch(CreationDataSet* creationDataSet);
 		bool isFull() const;
 		void append(SharedPipeline&& sharedPipeline, const PipelineState& pipelineState);

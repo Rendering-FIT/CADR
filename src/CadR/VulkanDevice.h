@@ -186,6 +186,8 @@ public:
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo* pRenderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(pRenderPassBegin,contents,*this); }
 	inline void cmdNextSubpass(vk::CommandBuffer commandBuffer,vk::SubpassContents contents) const  { commandBuffer.nextSubpass(contents,*this); }
 	inline void cmdEndRenderPass(vk::CommandBuffer commandBuffer) const  { commandBuffer.endRenderPass(*this); }
+	inline void cmdBeginRendering(vk::CommandBuffer commandBuffer,const vk::RenderingInfo* pRenderingInfo) const  { commandBuffer.beginRendering(pRenderingInfo,*this); }
+	inline void cmdEndRendering(vk::CommandBuffer commandBuffer) const  { commandBuffer.endRendering(*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,uint32_t secondaryCommandBufferCount,const vk::CommandBuffer* pSecondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBufferCount,pSecondaryCommandBuffers,*this); }
 	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,uint32_t regionCount,const vk::BufferCopy* pRegions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regionCount,pRegions,*this); }
 	inline void cmdCopyBufferToImage(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Image dstImage,vk::ImageLayout dstImageLayout,uint32_t regionCount,const vk::BufferImageCopy* pRegions) const  { commandBuffer.copyBufferToImage(srcBuffer,dstImage,dstImageLayout,regionCount,pRegions,*this); }
@@ -372,6 +374,7 @@ public:
 	inline vk::ResultValueType<void>::type resetCommandPool(vk::CommandPool commandPool,vk::CommandPoolResetFlags flags) const  { return _device.resetCommandPool(commandPool,flags,*this); }
 	template<typename T> inline void cmdPushConstants(vk::CommandBuffer commandBuffer,vk::PipelineLayout layout,vk::ShaderStageFlags stageFlags,uint32_t offset,vk::ArrayProxy<const T> values) const  { commandBuffer.pushConstants<T,VulkanDevice>(layout,stageFlags,offset,values,*this); }
 	inline void cmdBeginRenderPass(vk::CommandBuffer commandBuffer,const vk::RenderPassBeginInfo& renderPassBegin,vk::SubpassContents contents) const  { commandBuffer.beginRenderPass(renderPassBegin,contents,*this); }
+	inline void cmdBeginRendering(vk::CommandBuffer commandBuffer,const vk::RenderingInfo& renderingInfo) const  { commandBuffer.beginRendering(renderingInfo,*this); }
 	inline void cmdExecuteCommands(vk::CommandBuffer primaryCommandBuffer,vk::ArrayProxy<const vk::CommandBuffer> secondaryCommandBuffers) const  { primaryCommandBuffer.executeCommands(secondaryCommandBuffers,*this); }
 	inline void cmdCopyBuffer(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Buffer dstBuffer,const vk::ArrayProxy<const vk::BufferCopy> regions) const  { commandBuffer.copyBuffer(srcBuffer,dstBuffer,regions,*this); }
 	inline void cmdCopyBufferToImage(vk::CommandBuffer commandBuffer,vk::Buffer srcBuffer,vk::Image dstImage,vk::ImageLayout dstImageLayout,const vk::ArrayProxy<const vk::BufferImageCopy>& regions) const  { commandBuffer.copyBufferToImage(srcBuffer,dstImage,dstImageLayout,regions,*this); }
@@ -574,6 +577,8 @@ public:
 	PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
 	PFN_vkCmdNextSubpass vkCmdNextSubpass;
 	PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
+	PFN_vkCmdBeginRendering vkCmdBeginRendering;
+	PFN_vkCmdEndRendering vkCmdEndRendering;
 	PFN_vkCmdExecuteCommands vkCmdExecuteCommands;
 	PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
 	PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage;

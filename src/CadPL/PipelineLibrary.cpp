@@ -388,8 +388,8 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 			       s1.dstAlphaBlendFactor != s2.dstAlphaBlendFactor ||
 			       s1.alphaBlendOp        != s2.alphaBlendOp;
 		};
-	for(size_t i=0,c=numColorBlendAttachmentStates; i<c; i+=numAttachmentsPerPipeline) {
-		for(size_t j=0,d=pipelineState.blendState.size(); j<d; j++)
+	for(uint32_t i=0,c=numColorBlendAttachmentStates; i<c; i+=PipelineState::maxColorAttachments) {
+		for(uint32_t j=0,d=pipelineState.numColorAttachments; j<d; j++)
 			if(!isBlendAttachmentStateEqual(colorBlendAttachmentStateList[i+j], pipelineState.blendState[j]))
 				goto colorBlendAttachmentsDiffer;
 		colorBlendAttachmentsPtr = &colorBlendAttachmentStateList[i];
@@ -397,7 +397,7 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 		colorBlendAttachmentsDiffer:;
 	}
 	colorBlendAttachmentsPtr = &colorBlendAttachmentStateList[numColorBlendAttachmentStates];
-	for(size_t i=0,c=pipelineState.blendState.size(); i<c; i++) {
+	for(uint32_t i=0,c=pipelineState.numColorAttachments; i<c; i++) {
 		const auto& src = pipelineState.blendState[i];
 		colorBlendAttachmentStateList[numColorBlendAttachmentStates+i] =
 			vk::PipelineColorBlendAttachmentState(
@@ -411,13 +411,13 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 				src.colorWriteMask
 			);
 	}
-	numColorBlendAttachmentStates += numAttachmentsPerPipeline;
+	numColorBlendAttachmentStates += PipelineState::maxColorAttachments;
 	colorBlendAttachmentsFound:;
 
 	// pColorBlendState
 	for(size_t i=0; i<numColorBlendStates; i++) {
 		const auto& colorBlendState = colorBlendStateList[i];
-		if(colorBlendState.attachmentCount != pipelineState.blendState.size())
+		if(colorBlendState.attachmentCount != pipelineState.numColorAttachments)
 			continue;
 		if(colorBlendState.pAttachments != colorBlendAttachmentsPtr)
 			continue;
@@ -429,13 +429,56 @@ void PipelineLibrary::CreationDataBatch::append(SharedPipeline&& sharedPipeline,
 			vk::PipelineColorBlendStateCreateFlags(),  // flags
 			VK_FALSE,  // logicOpEnable
 			vk::LogicOp::eClear,  // logicOp
-			uint32_t(pipelineState.blendState.size()),  // attachmentCount
+			pipelineState.numColorAttachments,  // attachmentCount
 			colorBlendAttachmentsPtr,  // pAttachments
 			array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
 		);
 	createInfo.pColorBlendState = &colorBlendStateList[numColorBlendStates];
 	numColorBlendStates++;
 	foundColorBlendState:;
+
+	// info for dynamic rendering
+	if(pipelineState.renderPass == nullptr) {
+
+		// colorAttachmentFormats
+		const vk::Format* colorAttachmentFormatsPtr;
+		for(size_t i=0; i<numColorAttachmentFormats; i++) {
+			const auto& colorAttachments = colorAttachmentFormatList[i];
+			if(colorAttachments == pipelineState.colorAttachmentFormats)
+			{
+				colorAttachmentFormatsPtr = &colorAttachments[0];
+				goto foundColorAttachmentFormats;
+			}
+		}
+		colorAttachmentFormatList[numColorAttachmentFormats] = pipelineState.colorAttachmentFormats;
+		colorAttachmentFormatsPtr = &colorAttachmentFormatList[numColorAttachmentFormats][0];
+		numColorAttachmentFormats++;
+	foundColorAttachmentFormats:;
+
+		// pipelineRenderingInfo
+		for(size_t i=0; i<numPipelineRenderingInfos; i++) {
+			const auto& pipelineRendering = pipelineRenderingInfoList[i];
+			if(pipelineRendering.pColorAttachmentFormats == colorAttachmentFormatsPtr &&
+			   pipelineRendering.depthAttachmentFormat == pipelineState.depthAttachmentFormat &&
+			   pipelineRendering.stencilAttachmentFormat == pipelineState.stencilAttachmentFormat)
+			{
+				createInfo.pNext = &pipelineRendering;
+				goto foundPipelineRenderingInfo;
+			}
+		}
+		pipelineRenderingInfoList[numPipelineRenderingInfos] =
+			vk::PipelineRenderingCreateInfo{
+				0,  // viewMask
+				uint32_t(pipelineState.colorAttachmentFormats.size()),  // colorAttachmentCount
+				colorAttachmentFormatsPtr,  // pColorAttachmentFormats
+				pipelineState.depthAttachmentFormat,  // depthAttachmentFormat
+				pipelineState.stencilAttachmentFormat,  // stencilAttachmentFormat
+			};
+		createInfo.pNext = &pipelineRenderingInfoList[numPipelineRenderingInfos];
+		numPipelineRenderingInfos++;
+	foundPipelineRenderingInfo:;
+
+	}
 
 	// pDynamicState
 	createInfo.pDynamicState = nullptr;
@@ -536,12 +579,26 @@ bool PipelineState::operator<(const PipelineState& rhs) const
 	if(depthWriteEnable < rhs.depthWriteEnable)  return true;
 	if(depthWriteEnable > rhs.depthWriteEnable)  return false;
 
-	if(blendState < rhs.blendState)  return true;
-	if(blendState > rhs.blendState)  return false;
+	if(numColorAttachments < rhs.numColorAttachments)  return true;
+	if(numColorAttachments > rhs.numColorAttachments)  return false;
+	for(uint32_t i=0,c=numColorAttachments; i<c; i++) {
+		if(blendState[i] < rhs.blendState[i])  return true;
+		if(rhs.blendState[i] < blendState[i])  return false;
+	}
 	if(renderPass < rhs.renderPass)  return true;
 	if(renderPass > rhs.renderPass)  return false;
-	if(subpass < rhs.subpass)  return true;
-	if(subpass > rhs.subpass)  return false;
+	if(renderPass) {
+		if(subpass < rhs.subpass)  return true;
+		if(subpass > rhs.subpass)  return false;
+	}
+	else {
+		if(colorAttachmentFormats < rhs.colorAttachmentFormats)  return true;
+		if(colorAttachmentFormats > rhs.colorAttachmentFormats)  return false;
+		if(depthAttachmentFormat < rhs.depthAttachmentFormat)  return true;
+		if(depthAttachmentFormat > rhs.depthAttachmentFormat)  return false;
+		if(stencilAttachmentFormat < rhs.stencilAttachmentFormat)  return true;
+		if(stencilAttachmentFormat > rhs.stencilAttachmentFormat)  return false;
+	}
 
 	if(projectionIndex < rhs.projectionIndex)  return true;
 	if(projectionIndex > rhs.projectionIndex)  return false;

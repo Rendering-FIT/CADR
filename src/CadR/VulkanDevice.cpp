@@ -78,6 +78,8 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkCmdBeginRenderPass =getProcAddr<PFN_vkCmdBeginRenderPass >("vkCmdBeginRenderPass");
 	vkCmdNextSubpass     =getProcAddr<PFN_vkCmdNextSubpass     >("vkCmdNextSubpass");
 	vkCmdEndRenderPass   =getProcAddr<PFN_vkCmdEndRenderPass   >("vkCmdEndRenderPass");
+	vkCmdBeginRendering  =getProcAddr<PFN_vkCmdBeginRendering  >("vkCmdBeginRendering");
+	vkCmdEndRendering    =getProcAddr<PFN_vkCmdEndRendering    >("vkCmdEndRendering");
 	vkCmdExecuteCommands =getProcAddr<PFN_vkCmdExecuteCommands >("vkCmdExecuteCommands");
 	vkCmdCopyBuffer      =getProcAddr<PFN_vkCmdCopyBuffer      >("vkCmdCopyBuffer");
 	vkCmdCopyBufferToImage=getProcAddr<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");

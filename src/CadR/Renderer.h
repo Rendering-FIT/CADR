@@ -35,7 +35,8 @@ struct DrawableGpuData;
 class CADR_EXPORT Renderer {
 public:
 	using RequiredFeaturesStructChain = vk::StructureChain<vk::PhysicalDeviceFeatures2,
-		vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan12Features>;
+		vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan12Features,
+		vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceVulkan14Features>;
 protected:
 
 	VulkanDevice* _device = nullptr;
@@ -131,9 +132,10 @@ public:
 	void beginRecording(vk::CommandBuffer commandBuffer);  ///< Start recording of the command buffer.
 	size_t prepareSceneRendering(StateSet& stateSetRoot);
 	void recordDrawableProcessing(vk::CommandBuffer commandBuffer, size_t numDrawables);
-	void recordSceneRendering(vk::CommandBuffer commandBuffer, StateSet& stateSetRoot, vk::RenderPass renderPass,
-	                          vk::Framebuffer framebuffer, const vk::Rect2D& renderArea,
-	                          uint32_t clearValueCount, const vk::ClearValue* clearValues);
+	void recordSceneRendering(vk::CommandBuffer commandBuffer, StateSet& stateSetRoot,
+	                          const vk::RenderPassBeginInfo& renderPassBegin);
+	void recordSceneRendering(vk::CommandBuffer commandBuffer, StateSet& stateSetRoot,
+	                          const vk::RenderingInfo& renderingInfo);
 	void endRecording(vk::CommandBuffer commandBuffer);  ///< Finish recording of the command buffer.
 	void endFrame();  ///< Mark the end of frame recording. This is usually called after the command buffer is submitted to gpu for execution.
 
@@ -184,7 +186,10 @@ public:
 	inline vk::DeviceMemory allocateMemoryType(size_t size, uint32_t memoryTypeIndex);
 	vk::DeviceMemory allocateMemoryTypeNoThrow(size_t size, uint32_t memoryTypeIndex) noexcept;
 	inline std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
+	inline std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(vk::Image image, vk::MemoryPropertyFlags requiredFlags);
+	inline std::tuple<vk::DeviceMemory, uint32_t> allocatePossiblyLazyMemory(vk::Image image, vk::MemoryPropertyFlags requiredFlags);
 	std::tuple<vk::DeviceMemory, uint32_t> allocateMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
+	std::tuple<vk::DeviceMemory, uint32_t> allocateMemoryNoThrow(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags) noexcept;
 	inline std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags);
 	std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemory(size_t size, uint32_t memoryTypeBits, vk::MemoryPropertyFlags requiredFlags);
 	inline std::tuple<vk::DeviceMemory, uint32_t> allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept;
@@ -243,6 +248,8 @@ inline vk::CommandPool Renderer::transientCommandPool() const  { return _transie
 inline vk::CommandPool Renderer::precompiledCommandPool() const  { return _precompiledCommandPool; }
 inline vk::DeviceMemory Renderer::allocateMemoryType(size_t size, uint32_t memoryTypeIndex)  { vk::DeviceMemory m = allocateMemoryTypeNoThrow(size, memoryTypeIndex); if(!m) throw std::runtime_error("Cannot allocate memory of specified memory type."); return m; }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocateMemory(r.size, r.memoryTypeBits, requiredFlags); }
+inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocateMemory(vk::Image image, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getImageMemoryRequirements(image); return allocateMemory(r.size, r.memoryTypeBits, requiredFlags); }
+inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePossiblyLazyMemory(vk::Image image, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getImageMemoryRequirements(image); auto [m,i] = allocateMemoryNoThrow(r.size, r.memoryTypeBits, requiredFlags | vk::MemoryPropertyFlagBits::eLazilyAllocated); if(m) return {m, i}; return allocateMemory(r.size, r.memoryTypeBits, requiredFlags); }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemory(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags)  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemory(r.size, r.memoryTypeBits, requiredFlags); }
 inline std::tuple<vk::DeviceMemory, uint32_t> Renderer::allocatePointerAccessMemoryNoThrow(vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags) noexcept  { vk::MemoryRequirements r = _device->getBufferMemoryRequirements(buffer); return allocatePointerAccessMemoryNoThrow(r.size, r.memoryTypeBits, requiredFlags); }
 
