@@ -1,6 +1,6 @@
 Header files and libraries:
 Downloaded from https://vulkan.lunarg.com/sdk/home .
-Version 1.2.154.1, release date: 2020-10-07.
+Version 1.4.341.1, release date: 2026-02-04.
 License: Apache License version 2.0
 
 Exceptions:
