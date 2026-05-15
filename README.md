@@ -11,17 +11,23 @@ Prerequisities:
 * Linux: gcc
 * cmake
 * development libraries (included in 3rdParty folder):
-** Vulkan development files (ubuntu package name libvulkan-dev, Vulkan-SDK on Windows)
-** glm 0.9.7.0 or newer
-** boost
-** glslang-tools
+  * Vulkan development files (ubuntu package name libvulkan-dev, Vulkan-SDK on Windows)
+  * glm 0.9.7.0 or newer
+  * boost
+  * glslang-tools
 * to compile examples on Linux (depends of choosen GUI_TYPE):
-** X11: libx11-dev package
-** Wayland:
-*** libwayland-dev
-*** wayland-protocols
-*** libdecor-0-0 (on systems where server-side decorations are not supported)
-** SDL3:
-*** libsdl3?
-** SDL2:
-*** libsdl2-2.0-0
+  * X11: libx11-dev package
+  * Wayland:
+    * libwayland-dev
+    * wayland-protocols
+    * libdecor-0-0 (on systems where server-side decorations are not supported)
+  * SDL3:
+    * libsdl3-dev
+  * SDL2:
+    * libsdl2-dev
+  * GLFW:
+    * libglfw3-dev
+  * Qt6
+    * qt6-base-dev
+  * Qt5
+    * qtbase5-dev
