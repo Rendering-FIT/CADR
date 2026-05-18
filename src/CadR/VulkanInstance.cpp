@@ -110,45 +110,33 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		vk::QueueFlags queueOperations,
 		vk::SurfaceKHR presentationSurface,
-		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback,
 		const std::string& nameFilter,
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback,
 		int index)
 {
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
-	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
-	if(!presentationSurface)
+	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, int>> compatibleDevices;
+	compatibleDevices.reserve(deviceList.size());
+	vk::PhysicalDeviceProperties deviceProperties;
+	vector<tuple<uint32_t,uint32_t>> compatibleQueues;
+	for(vk::PhysicalDevice pd : deviceList)
 	{
-		// filter devices by supported operations
-		for(vk::PhysicalDevice pd : deviceList)
+		if(!presentationSurface)
 		{
-			// callback to filter out devices
-			if(filterCallback)
-				if(filterCallback(*this, pd) == false)
-					continue;
-
 			// iterate queue families
 			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
 				// test for queue operations support (graphics, compute, etc.)
 				if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
-					compatibleDevices.emplace_back(pd, i, i, pd.getProperties(*this));
+					compatibleQueues.emplace_back(i, i);
 					break;
 				}
 			}
 		}
-	}
-	else
-	{
-		// filter devices by supported operations and presentation support
-		for(vk::PhysicalDevice pd : deviceList)
+		else
 		{
-			// callback to filter out devices
-			if(filterCallback)
-				if(filterCallback(*this, pd) == false)
-					continue;
-
 			// skip devices without VK_KHR_swapchain
 			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
 			for(vk::ExtensionProperties& e : extensionList)
@@ -170,7 +158,7 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
 						// if operations and presentation are supported on the same queue,
 						// we will use single queue
-						compatibleDevices.emplace_back(pd, i, i, pd.getProperties(*this));
+						compatibleQueues.emplace_back(i, i);
 						goto nextDevice;
 					}
 					else
@@ -189,57 +177,65 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 
 			if(operationsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
 				// presentation and operations are supported on the different queues
-				compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily, pd.getProperties(*this));
+				compatibleQueues.emplace_back(operationsQueueFamily, presentationQueueFamily);
 		nextDevice:;
 		}
+
+		// get device properties
+		deviceProperties = pd.getProperties(*this);
+
+		// filter by device name
+		if(!nameFilter.empty())
+			if(string_view(deviceProperties.deviceName).find(nameFilter) == string::npos)
+				continue;
+
+		// filter by callback
+		if(filterCallback)
+			if(filterCallback(*this, pd) == false)
+				continue;
+
+		// evaluate score callback
+		int score;
+		constexpr const array deviceTypeScore = {
+			10, // vk::PhysicalDeviceType::eOther         - lowest score
+			40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
+			50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
+			30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
+			20, // vk::PhysicalDeviceType::eCpu           - low score
+		};
+		int deviceType = int(deviceProperties.deviceType);
+		if(deviceType >= 0 || deviceType < int(deviceTypeScore.size()))
+			score = deviceTypeScore[deviceType];
+		else
+			score = 0;
+
+		// append all compatible queue combinations
+		// to compatible device list
+		for(size_t i=0,c=compatibleQueues.size(); i<c; i++)
+		{
+			//  improve final score when operations and presentation queue families are the same
+			auto [operationsQueueFamily, presentationQueueFamily] = compatibleQueues[i];
+			int finalScore = score;
+			if(operationsQueueFamily == presentationQueueFamily)
+				finalScore++;
+
+			compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily, finalScore);
+		}
+		compatibleQueues.clear();
 	}
 
-	// filter physical devices
-	if(!nameFilter.empty())
-	{
-		decltype(compatibleDevices) filteredDevices;
-		for(auto& d : compatibleDevices)
-			if(string_view(std::get<3>(d).deviceName).find(nameFilter) != string::npos)
-				filteredDevices.push_back(d);
-
-		compatibleDevices.swap(filteredDevices);
-	}
+	// sort devices
+	sort(compatibleDevices.begin(), compatibleDevices.end(),
+	     [](const decltype(compatibleDevices)::value_type& lhs, const decltype(compatibleDevices)::value_type& rhs)
+		     { return get<3>(lhs) < get<3>(rhs); });
 
 	// choose by index
-	if(index >= 0) {
-		if(index < decltype(index)(compatibleDevices.size())) {
-			auto& d = compatibleDevices[index];
-			return make_tuple(std::get<0>(d), std::get<1>(d), std::get<2>(d)); 
-		}
-		else
-			return make_tuple(vk::PhysicalDevice(), 0, 0);
+	if(index >= 0 && index < decltype(index)(compatibleDevices.size())) {
+		auto& d = compatibleDevices[index];
+		return make_tuple(std::get<0>(d), std::get<1>(d), std::get<2>(d)); 
 	}
-
-	// choose the best device
-	auto bestDevice = compatibleDevices.begin();
-	if(bestDevice == compatibleDevices.end())
+	else
 		return make_tuple(vk::PhysicalDevice(), 0, 0);
-	constexpr const array deviceTypeScore = {
-		10, // vk::PhysicalDeviceType::eOther         - lowest score
-		40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
-		50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
-		30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
-		20, // vk::PhysicalDeviceType::eCpu           - low score
-		10, // unknown vk::PhysicalDeviceType
-	};
-	int bestScore = deviceTypeScore[clamp(int(std::get<3>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
-	if(std::get<1>(*bestDevice) == std::get<2>(*bestDevice))
-		bestScore++;
-	for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
-		int score = deviceTypeScore[clamp(int(std::get<3>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
-		if(std::get<1>(*it) == std::get<2>(*it))
-			score++;
-		if(score > bestScore) {
-			bestDevice = it;
-			bestScore = score;
-		}
-	}
-	return make_tuple(std::get<0>(*bestDevice), std::get<1>(*bestDevice), std::get<2>(*bestDevice)); 
 }
 
 

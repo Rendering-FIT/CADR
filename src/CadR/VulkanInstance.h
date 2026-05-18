@@ -22,11 +22,11 @@ public:
 	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlags queueOperations,
 		vk::SurfaceKHR presentationSurface, const std::string& nameFilter, int index);
 	std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> chooseDevice(vk::QueueFlags queueOperations,
-		vk::SurfaceKHR presentationSurface = {},
-		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {},
-		const std::string& nameFilter = "", int index = -1);
-	std::vector<std::string> getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
 		vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "",
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {},
+		int index = 0);
+	std::vector<std::string> getPhysicalDeviceNames(
+		vk::QueueFlagBits queueOperations, vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "",
 		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {});
 
 	// constructors and destructor
@@ -87,6 +87,7 @@ public:
 	inline void getPhysicalDeviceFormatProperties(vk::PhysicalDevice physicalDevice,vk::Format format,vk::FormatProperties* pFormatProperties) const noexcept  { physicalDevice.getFormatProperties(format,pFormatProperties,*this); }
 	inline void getPhysicalDeviceMemoryProperties(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceMemoryProperties* pMemoryProperties) const noexcept  { physicalDevice.getMemoryProperties(pMemoryProperties,*this); }
 	inline void getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,uint32_t* pQueueFamilyPropertyCount,vk::QueueFamilyProperties* pQueueFamilyProperties) const noexcept  { physicalDevice.getQueueFamilyProperties(pQueueFamilyPropertyCount,pQueueFamilyProperties,*this); }
+	inline vk::Result getPhysicalDeviceSurfaceSupportKHR(vk::PhysicalDevice physicalDevice, uint32_t queueFamilyIndex, VkSurfaceKHR surface, vk::Bool32* pSupported)  { return physicalDevice.getSurfaceSupportKHR(queueFamilyIndex, surface, pSupported, *this); }
 	inline void getPhysicalDeviceFeatures(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceFeatures* pFeatures) const  { physicalDevice.getFeatures(pFeatures,*this); }
 	inline void getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice,vk::PhysicalDeviceFeatures2* pFeatures) const  { physicalDevice.getFeatures2(pFeatures,*this); }
 	inline vk::Result getPhysicalDeviceCalibrateableTimeDomainsEXT(vk::PhysicalDevice physicalDevice,uint32_t* pTimeDomainCount,vk::TimeDomainEXT* pTimeDomains) const  { return physicalDevice.getCalibrateableTimeDomainsEXT(pTimeDomainCount,pTimeDomains,*this); }
@@ -129,6 +130,7 @@ public:
 	template<typename Allocator=std::allocator<vk::QueueFamilyProperties>>
 	std::vector<vk::QueueFamilyProperties,Allocator> getPhysicalDeviceQueueFamilyProperties(vk::PhysicalDevice physicalDevice,Allocator const& vectorAllocator) const  { return physicalDevice.getQueueFamilyProperties(vectorAllocator,*this); }
 # endif
+	inline bool getPhysicalDeviceSurfaceSupportKHR(vk::PhysicalDevice physicalDevice, uint32_t queueFamilyIndex, VkSurfaceKHR surface)  { return physicalDevice.getSurfaceSupportKHR(queueFamilyIndex, surface, *this); }
 	inline vk::PhysicalDeviceFeatures getPhysicalDeviceFeatures(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures(*this); }
 	inline vk::PhysicalDeviceFeatures2 getPhysicalDeviceFeatures2(vk::PhysicalDevice physicalDevice) const  { return physicalDevice.getFeatures2(*this); }
 	template<typename X,typename Y,typename ...Z>
@@ -215,7 +217,7 @@ private:
 
 
 // inline and template methods
-inline std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(vk::QueueFlags queueOperations, vk::SurfaceKHR presentationSurface, const std::string& nameFilter, int index)  { return chooseDevice(queueOperations, presentationSurface, {}, nameFilter, index); }
+inline std::tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(vk::QueueFlags queueOperations, vk::SurfaceKHR presentationSurface, const std::string& nameFilter, int index)  { return chooseDevice(queueOperations, presentationSurface, nameFilter, {}, index); }
 inline VulkanInstance::VulkanInstance() : _version(0)  { vkDestroyInstance=nullptr; vkCreateDevice=nullptr; vkGetDeviceProcAddr=nullptr; }
 inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, const vk::InstanceCreateInfo& createInfo)  { create(lib, createInfo); }
 inline VulkanInstance::VulkanInstance(VulkanLibrary& lib, vk::Instance instance)  { init(lib, instance); }

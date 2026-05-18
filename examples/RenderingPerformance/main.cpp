@@ -527,6 +527,7 @@ void App::init()
 		instance.chooseDevice(
 			vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,
 			useWindow ? window.surface() : nullptr,
+			"",  // nameFilter
 			[](CadR::VulkanInstance& instance, vk::PhysicalDevice pd) -> bool  // filterCallback
 			{
 				if(instance.getPhysicalDeviceProperties(pd).apiVersion < VK_API_VERSION_1_2)
@@ -541,7 +542,6 @@ void App::init()
 				       features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
 				       features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
 			},
-			"",  // nameFilter
 			deviceIndex  // index
 		);
 	cout << "Device:" << endl;
