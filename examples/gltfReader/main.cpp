@@ -40,6 +40,9 @@
 # define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
 # include <windows.h>  // needed for SetConsoleOutputCP()
 # include <shellapi.h>  // needed for CommandLineToArgvW()
+# ifdef MemoryBarrier  // came through windows.h and collides with vk::MemoryBarrier
+#  undef MemoryBarrier
+# endif
 #endif
 
 using namespace std;
@@ -51,6 +54,16 @@ typedef CadR::LogicError GltfError;
 
 // constants
 static constexpr const unsigned defaultMaterialModel = 0x1;  // 0x1 for Blin-Phong and 0x2 for Metallic-roughness model
+static constexpr const vk::SampleCountFlagBits defaultNumSamples = vk::SampleCountFlagBits::e4;
+
+
+// shader code in SPIR-V binary
+static const uint32_t fullScreenTriangleVertexShaderSpirv[]={
+#include "shaders/fullScreenTriangle.vert.spv"
+};
+static const uint32_t composeFragmentShaderSpirv[]={
+#include "shaders/compose.frag.spv"
+};
 
 
 // Shader data structures
@@ -147,14 +160,34 @@ public:
 	vk::Queue presentationQueue;
 	vk::SurfaceFormatKHR surfaceFormat;
 	vk::Format depthFormat;
+	array<vk::Format, 5> colorAttachmentFormatList;
+	bool dynamicRendering;
+	vk::SampleCountFlagBits numSamples;
 	float maxSamplerAnisotropy;
-	vk::RenderPass renderPass;
-	vk::SwapchainKHR swapchain;
-	vk::Image depthImage;
+
+	vk::Image depthImage;  //< Depth image, multisampled when using dynamic rendering, single sampled when using render pass.
+	vk::Image hdrColorImage;  //< R16G16B16A16_SFLOAT multisampled image.
+	vk::Image finalMultisampledColorImage;  //< Image of the same format as swapchain image but multisampled. Not even written to. Just for the purpose to provide valid handle into colorRenderingAttachmentInfoList[2].imageView, as required by Vulkan spec 1.4.
+	vk::Image transparencyColorImage;  //< Transparency accumulation image. Multisampled R16G16B16A16_SFLOAT or R32G32B32A32_SFLOAT.
+	vk::Image transparencyCountImage;  //< Transparency number of values. Multisampled R16_SFLOAT.
 	vk::DeviceMemory depthImageMemory;
+	vk::DeviceMemory hdrColorImageMemory;
+	vk::DeviceMemory finalMultisampledColorImageMemory;
+	vk::DeviceMemory transparencyColorImageMemory;
+	vk::DeviceMemory transparencyCountImageMemory;
 	vk::ImageView depthImageView;
+	vk::ImageView hdrColorImageView;
+	vk::ImageView finalMultisampledColorImageView;
+	vk::ImageView transparencyColorImageView;
+	vk::ImageView transparencyCountImageView;
+	vector<vk::Image> swapchainImages;
 	vector<vk::ImageView> swapchainImageViews;
+	vk::SwapchainKHR swapchain;
+	vk::RenderPass renderPass;
 	vector<vk::Framebuffer> framebuffers;
+	array<vk::RenderingAttachmentInfo, 5> colorRenderingAttachmentInfoList;
+	vk::RenderingAttachmentInfo depthRenderingAttachmentInfo;
+	vk::RenderingAttachmentInfo stencilRenderingAttachmentInfo;
 	vector<vk::Semaphore> renderingFinishedSemaphores;
 	vk::Semaphore imageAvailableSemaphore;
 	vk::Fence renderingFinishedFence;
@@ -180,8 +213,17 @@ public:
 
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
+	CadR::StateSet sceneStateSet;
+	CadR::StateSet composeStateSet;
 	CadPL::PipelineSceneGraph pipelineSceneGraph;
 	CadR::Pipeline layoutOnlyPipeline;
+	vk::ShaderModule fullScreenTriangleVertexShader;
+	vk::ShaderModule composeFragmentShader;
+	vk::Pipeline composePipeline;
+	vk::PipelineLayout composePipelineLayout;
+	vk::DescriptorSetLayout composeDescriptorSetLayout;
+	vk::DescriptorPool composeDescriptorPool;
+	vk::DescriptorSet composeDescriptorSet;
 	vector<CadR::Geometry> geometryList;
 	vector<CadR::Drawable> drawableList;
 	vector<CadR::MatrixList> matrixLists;
@@ -334,6 +376,8 @@ static string decodeURI(const string& s)
 App::App(int argc, char** argv)
 	: sceneDataAllocation(renderer.dataStorage())
 	, stateSetRoot(renderer)
+	, sceneStateSet(renderer)
+	, composeStateSet(renderer)
 	, defaultSampler(renderer)
 	, defaultMaterial(renderer.dataStorage(), CadR::DataAllocation::noHandle)
 {
@@ -375,6 +419,14 @@ App::~App()
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
 		pipelineSceneGraph.destroy();
+		composeStateSet.destroy();
+		device.destroy(composePipeline);
+		device.destroy(fullScreenTriangleVertexShader);
+		device.destroy(composeFragmentShader);
+		device.destroy(composePipelineLayout);
+		device.destroy(composeDescriptorSetLayout);
+		device.destroy(composeDescriptorPool);
+		sceneStateSet.destroy();
 		stateSetRoot.destroy();
 		textureList.clear();
 		imageList.clear();
@@ -394,8 +446,20 @@ App::~App()
 		for(auto v : swapchainImageViews)  device.destroy(v);
 		for(auto s : renderingFinishedSemaphores)  device.destroy(s);
 		device.destroy(depthImage);
-		device.freeMemory(depthImageMemory);
+		device.destroy(hdrColorImage);
+		device.destroy(finalMultisampledColorImage);
+		device.destroy(transparencyColorImage);
+		device.destroy(transparencyCountImage);
+		device.free(depthImageMemory);
+		device.free(hdrColorImageMemory);
+		device.free(finalMultisampledColorImageMemory);
+		device.free(transparencyColorImageMemory);
+		device.free(transparencyCountImageMemory);
 		device.destroy(depthImageView);
+		device.destroy(hdrColorImageView);
+		device.destroy(finalMultisampledColorImageView);
+		device.destroy(transparencyColorImageView);
+		device.destroy(transparencyCountImageView);
 		device.destroy(swapchain);
 		device.destroy(renderPass);
 		device.destroy();
@@ -433,70 +497,259 @@ void App::init()
 	// init Vulkan and window
 	VulkanWindow::init();
 	vulkanLib.load(CadR::VulkanLibrary::defaultName());
-	vulkanInstance.create(vulkanLib, "glTF reader", 0, "CADR", 0, VK_API_VERSION_1_2, nullptr,
-	                      VulkanWindow::requiredExtensions());
+	vulkanInstance.create(
+		vulkanLib,
+		"glTF reader",  // applicationName
+		0,  // applicationVersion
+		"CADR",  // engineName
+		0,  // engineVersion
+		VK_API_VERSION_1_4,  // apiVersion - maximum version that gltfReader might use
+		nullptr,  // enabledLayers
+		VulkanWindow::requiredExtensions()  // enabledExtensions
+	);
 	window.create(vulkanInstance.handle(), {1024,768}, "glTF reader - " + utf8FileName,
 	              vulkanLib.vkGetInstanceProcAddr);
 
+	// choose device
+	tie(physicalDevice, graphicsQueueFamily, presentationQueueFamily, dynamicRendering) =
+		[&]() {
+
+			vk::SurfaceKHR presentationSurface = window.surface();
+			constexpr const vk::QueueFlags queueOperations = vk::QueueFlagBits::eGraphics |
+				vk::QueueFlagBits::eCompute;  // eTransfer functionality is automatically included
+
+			// find compatible devices
+			vector<vk::PhysicalDevice> deviceList = vulkanInstance.enumeratePhysicalDevices();
+			vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, bool, int>> compatibleDevices;
+			compatibleDevices.reserve(deviceList.size());
+			vk::PhysicalDeviceProperties deviceProperties;
+			vector<tuple<uint32_t,uint32_t>> compatibleQueues;
+			for(vk::PhysicalDevice pd : deviceList)
+			{
+				// skip devices without VK_KHR_swapchain
+				vector<vk::ExtensionProperties> extensionList = vulkanInstance.enumerateDeviceExtensionProperties(pd);
+				for(vk::ExtensionProperties& e : extensionList)
+					if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
+						goto swapchainSupported;
+				continue;
+			swapchainSupported:;
+
+				// select queues for submitting operations and for presentation
+				uint32_t operationsQueueFamily = UINT32_MAX;
+				uint32_t presentationQueueFamily = UINT32_MAX;
+				compatibleQueues.clear();
+				vector<vk::QueueFamilyProperties> queueFamilyList = vulkanInstance.getPhysicalDeviceQueueFamilyProperties(pd);
+				for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+					// test for presentation support
+					if(vulkanInstance.getPhysicalDeviceSurfaceSupportKHR(pd, i, presentationSurface)) {
+
+						// test for queue operations support (graphics, compute, etc.)
+						if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
+							// if operations and presentation are supported on the same queue,
+							// we will use single queue
+							compatibleQueues.emplace_back(i, i);
+							goto nextDevice;
+						}
+						else
+							// if only presentation is supported, we store the first such queue
+							if(presentationQueueFamily == UINT32_MAX)
+								presentationQueueFamily = i;
+					}
+					else {
+						if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations)
+							// if only operations are supported on the queue,
+							// we store the first such queue
+							if(operationsQueueFamily == UINT32_MAX)
+								operationsQueueFamily = i;
+					}
+				}
+
+				if(operationsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
+					// presentation and operations are supported on the different queues
+					compatibleQueues.emplace_back(operationsQueueFamily, presentationQueueFamily);
+			nextDevice:;
+
+				// Vulkan 1.2 is hard requirement
+				deviceProperties = vulkanInstance.getPhysicalDeviceProperties(pd);
+				if(deviceProperties.apiVersion < VK_API_VERSION_1_2)
+					continue;
+
+				// get supported features
+				CadR::Renderer::RequiredFeaturesStructChain features;
+				if(deviceProperties.apiVersion == VK_API_VERSION_1_3)
+					features.unlink<vk::PhysicalDeviceVulkan14Features>();
+				else if(deviceProperties.apiVersion == VK_API_VERSION_1_2)
+					features.unlink<vk::PhysicalDeviceVulkan13Features>();
+				vulkanInstance.getPhysicalDeviceFeatures2(pd, &features.get<vk::PhysicalDeviceFeatures2>());
+
+				// gltfReader mandatory features
+				bool hasRequiredFeatures =
+					CadR::Renderer::areRequiredFeaturesSupported(features) &&
+					features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&  // required by gltfRader samplers; alternatively, consider disableing it in samplers it in samplers if the feature is not available
+					features.get<vk::PhysicalDeviceFeatures2>().features.geometryShader &&  // required by CadPL
+					features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&  // required by CadPL for texturing
+					features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&  // required by CadPL for texturing
+					features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending &&  // required by CadPL for texturing
+					features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound &&  // required by CadPL for texturing
+					features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount;  // required by CadPL for texturing
+				if(!hasRequiredFeatures)
+					continue;
+
+				// additional features needed for CADR to use dynamic rendering
+				bool dynamicRenderingCapable;
+				if(deviceProperties.apiVersion < VK_API_VERSION_1_4)  // Vulkan 1.4 is here since 2024-12-03, supported by Nvidia since Maxwell (GTX 9xx), by AMD since Radeon RX 5000 series on Windows and GCN3 (many cards of RX 3xx series) on Linux, on Intel since Gen11 (on desktop since Rocket Lake, e.g. Core 11xxx) and since Skylake on Linux
+					dynamicRenderingCapable = false;
+				else {
+					dynamicRenderingCapable =
+						features.get<vk::PhysicalDeviceFeatures2>().features.sampleRateShading &&
+						features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+						features.get<vk::PhysicalDeviceVulkan14Features>().dynamicRenderingLocalRead &&
+						deviceProperties.limits.maxColorAttachments >= 5;  // Vulkan 1.4 guarantees 8, Vulkan 1.0 only 4; this test is superfluous for 1.4
+				}
+
+				// evaluate score while considering:
+				// - device type
+				// - capability to use dynamic rendering in the context of CADR
+				// - having operations queue the same as present queue
+				int score;
+				constexpr const array deviceTypeScore = {
+					 10, // vk::PhysicalDeviceType::eOther         - lowest score
+					140, // vk::PhysicalDeviceType::eIntegratedGpu - high score
+					150, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
+					130, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
+					 20, // vk::PhysicalDeviceType::eCpu           - low score
+				};
+				int deviceType = int(deviceProperties.deviceType);
+				if(deviceType >= 0 || deviceType < int(deviceTypeScore.size()))
+					score = deviceTypeScore[deviceType];
+				else
+					score = 0;
+				if(dynamicRenderingCapable)
+					score += 100;
+				for(auto [operationsQueueFamily, presentationQueueFamily] : compatibleQueues) {
+					if(operationsQueueFamily == presentationQueueFamily)
+						score++;
+					compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily,
+					                               dynamicRenderingCapable, score);
+				}
+			}
+
+			// handle no compatible devices
+			if(compatibleDevices.empty())
+				throw ExitWithMessage(2, "No compatible Vulkan device found.");
+
+			// get item with the best score
+			auto it =
+				max_element(compatibleDevices.begin(), compatibleDevices.end(),
+				            [](const decltype(compatibleDevices)::value_type& lhs,
+				               const decltype(compatibleDevices)::value_type& rhs)
+				            { return get<4>(lhs) < get<4>(rhs); });
+
+			// return results
+			return tuple<vk::PhysicalDevice, uint32_t, uint32_t, bool>{ 
+				get<0>(*it), get<1>(*it), get<2>(*it), get<3>(*it)
+			};
+
+		}();
+
+	// num samples for multisampling
+	vk::PhysicalDeviceProperties deviceProperties = vulkanInstance.getPhysicalDeviceProperties(physicalDevice);
+	if(dynamicRendering) {
+		do {
+			vk::SampleCountFlagBits numSamplesBit = defaultNumSamples;
+			if((deviceProperties.limits.framebufferColorSampleCounts & numSamplesBit) &&
+			   (deviceProperties.limits.framebufferDepthSampleCounts & numSamplesBit) &&
+			   (deviceProperties.limits.framebufferStencilSampleCounts & numSamplesBit) &&
+			   (deviceProperties.limits.sampledImageColorSampleCounts & numSamplesBit) &&
+			   (deviceProperties.limits.sampledImageIntegerSampleCounts & numSamplesBit))
+			{
+				numSamples = numSamplesBit;
+				break;
+			}
+			if(numSamplesBit == vk::SampleCountFlagBits::e1)
+				throw runtime_error("Multisampling setup error: Even one sample is not supported.");
+			numSamplesBit = vk::SampleCountFlagBits(uint32_t(numSamplesBit) >> 1);
+		} while(true);
+	} else
+		numSamples = vk::SampleCountFlagBits::e1;
+
+	// print used device
+	cout << "Using device: " << deviceProperties.deviceName;
+	if(dynamicRendering)
+		cout << ", dynamic (modern) rendering, antialiasing samples: " << unsigned(numSamples) << ".\n" << endl;
+	else
+		cout << ", render pass (legacy) rendering, no antialiasing.\n" << endl;
+
 	// init device and renderer
-	tuple<vk::PhysicalDevice, uint32_t, uint32_t> deviceAndQueueFamilies =
-			vulkanInstance.chooseDevice(
-				vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,  // queueOperations
-				window.surface(),  // presentationSurface
-				[](CadR::VulkanInstance& instance, vk::PhysicalDevice pd) -> bool {  // filterCallback
-					if(instance.getPhysicalDeviceProperties(pd).apiVersion < VK_API_VERSION_1_2)
-						return false;
-					auto features =
-						instance.getPhysicalDeviceFeatures2<
-							vk::PhysicalDeviceFeatures2,
-							vk::PhysicalDeviceVulkan11Features,
-							vk::PhysicalDeviceVulkan12Features>(pd);
-					return
-						features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
-						features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 &&
-						features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
-						features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
-				});
-	physicalDevice = std::get<0>(deviceAndQueueFamilies);
-	if(!physicalDevice)
-		throw ExitWithMessage(2, "No compatible Vulkan device found.");
 	device.create(
-		vulkanInstance, deviceAndQueueFamilies,
-#if 1 // enable or disable validation extensions
-      // (0 enables validation extensions and features for debugging purposes)
-		"VK_KHR_swapchain",
-		[]() {
-			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
-			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;  // required by samplers, or disable it in samplers when the feature is not available
-			f.get<vk::PhysicalDeviceFeatures2>().features.geometryShader = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount = true;  // required by CadPL
-			return f;
-		}().get<vk::PhysicalDeviceFeatures2>()
-#else
+		vulkanInstance, physicalDevice, graphicsQueueFamily, presentationQueueFamily,
+#if 0 // enable validation extensions and features
 		{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"},
-		[]() {
-			CadR::Renderer::RequiredFeaturesStructChain f = CadR::Renderer::requiredFeaturesStructChain();
-			f.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;  // required by samplers, or disable it in samplers when the feature is not available
-			f.get<vk::PhysicalDeviceFeatures2>().features.geometryShader = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount = true;  // required by CadPL
-			f.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess = true;
-			return f;
-		}().get<vk::PhysicalDeviceFeatures2>()
+		[&]() {
+			CadR::Renderer::RequiredFeaturesStructChain features;
+			features.get<vk::PhysicalDeviceVulkan12Features>().uniformAndStorageBuffer8BitAccess = true;
+#else
+		"VK_KHR_swapchain",
+		[&]() {
+			CadR::Renderer::RequiredFeaturesStructChain features;
 #endif
+			CadR::Renderer::setRequiredFeatures(features);
+			features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;  // required by samplers, or disable it in samplers when the feature is not available
+			features.get<vk::PhysicalDeviceFeatures2>().features.geometryShader = true;  // required by CadPL
+			features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = true;  // required by CadPL
+			features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
+			features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
+			features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingPartiallyBound = true;  // required by CadPL
+			features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingVariableDescriptorCount = true;  // required by CadPL
+			if(dynamicRendering) {
+				features.get<vk::PhysicalDeviceFeatures2>().features.sampleRateShading = true;  // required by gltfReader
+				features.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering = true;
+				features.get<vk::PhysicalDeviceVulkan14Features>().dynamicRenderingLocalRead = true;
+			}
+			return features;
+		}().get<vk::PhysicalDeviceFeatures2>()
 	);
-	graphicsQueueFamily = std::get<1>(deviceAndQueueFamilies);
-	presentationQueueFamily = std::get<2>(deviceAndQueueFamilies);
 	window.setDevice(device.handle(), physicalDevice);
 	renderer.init(device, vulkanInstance, physicalDevice, graphicsQueueFamily);
-	pipelineSceneGraph.init(stateSetRoot);
+	stateSetRoot.childList.append(sceneStateSet);
+	pipelineSceneGraph.init(sceneStateSet);
+	if(dynamicRendering) {
+		stateSetRoot.childList.append(composeStateSet);
+		composeStateSet.setForceRecording(true);
+		composeStateSet.recordCallList.emplace_back(
+			[this](CadR::StateSet& ss, vk::CommandBuffer commandBuffer, vk::PipelineLayout currentPipelineLayout){
+				device.cmdPipelineBarrier(
+					commandBuffer,
+					vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStageMask
+					vk::PipelineStageFlagBits::eFragmentShader,  // dstStageMask
+					vk::DependencyFlagBits::eByRegion,  // dependencyFlags
+					1,  // memoryBarrierCount
+					array{  // pMemoryBarriers
+						vk::MemoryBarrier{
+							vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
+							vk::AccessFlagBits::eInputAttachmentRead,  // dstAccessMask
+						},
+					}.data(),
+					0,  // bufferMemoryBarrierCount
+					nullptr,  // pBufferMemoryBarriers,
+					0,  // imageMemoryBarrierCount
+					nullptr  // pImageMemoryBarriers
+				);
+				device.cmdBindPipeline(commandBuffer, vk::PipelineBindPoint::eGraphics, composePipeline);
+				device.cmdBindDescriptorSets(
+					commandBuffer,
+					vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+					composePipelineLayout,  // layout
+					0,  // firstSet
+					1,  // descriptorSetCount
+					&composeDescriptorSet,  // pDescriptorSets
+					0,  // dynamicOffsetCount
+					nullptr  // pDynamicOffsets
+				);
+				device.cmdDraw(commandBuffer, 3, 1, 0, 0);
+			});
+	}
 
 	// get queues
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
@@ -548,91 +801,193 @@ void App::init()
 		}(physicalDevice, vulkanInstance);
 
 	// maxSamplerAnisotropy
-	maxSamplerAnisotropy = vulkanInstance.getPhysicalDeviceProperties(physicalDevice).limits.maxSamplerAnisotropy;
+	maxSamplerAnisotropy = deviceProperties.limits.maxSamplerAnisotropy;
 
-	// render pass
-	renderPass =
-		device.createRenderPass(
-			vk::RenderPassCreateInfo(
-				vk::RenderPassCreateFlags(),  // flags
-				2,                            // attachmentCount
-				array<const vk::AttachmentDescription, 2>{  // pAttachments
-					vk::AttachmentDescription{  // color attachment
-						vk::AttachmentDescriptionFlags(),  // flags
-						surfaceFormat.format,              // format
-						vk::SampleCountFlagBits::e1,       // samples
-						vk::AttachmentLoadOp::eClear,      // loadOp
-						vk::AttachmentStoreOp::eStore,     // storeOp
-						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
-						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
-						vk::ImageLayout::eUndefined,       // initialLayout
-						vk::ImageLayout::ePresentSrcKHR    // finalLayout
-					},
-					vk::AttachmentDescription{  // depth attachment
-						vk::AttachmentDescriptionFlags(),  // flags
-						depthFormat,                       // format
-						vk::SampleCountFlagBits::e1,       // samples
-						vk::AttachmentLoadOp::eClear,      // loadOp
-						vk::AttachmentStoreOp::eDontCare,  // storeOp
-						vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
-						vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
-						vk::ImageLayout::eUndefined,       // initialLayout
-						vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
-					},
-				}.data(),
-				1,  // subpassCount
-				&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
-					vk::SubpassDescriptionFlags(),     // flags
-					vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
-					0,        // inputAttachmentCount
-					nullptr,  // pInputAttachments
-					1,        // colorAttachmentCount
-					&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
-						0,  // attachment
-						vk::ImageLayout::eColorAttachmentOptimal  // layout
-					),
-					nullptr,  // pResolveAttachments
-					&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
-						1,  // attachment
-						vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
-					),
-					0,        // preserveAttachmentCount
-					nullptr   // pPreserveAttachments
-				),
-				2,  // dependencyCount
-				array{  // pDependencies
-					vk::SubpassDependency(
-						VK_SUBPASS_EXTERNAL,   // srcSubpass
-						0,                     // dstSubpass
-						vk::PipelineStageFlags(  // srcStageMask
-							vk::PipelineStageFlagBits::eColorAttachmentOutput |
-							vk::PipelineStageFlagBits::eComputeShader |
-							vk::PipelineStageFlagBits::eTransfer),
-						vk::PipelineStageFlags(  // dstStageMask
-							vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eVertexInput |
-							vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader |
-							vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests |
-							vk::PipelineStageFlagBits::eColorAttachmentOutput),
-						vk::AccessFlags(vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eTransferWrite),  // srcAccessMask
-						vk::AccessFlags(  // dstAccessMask
-							vk::AccessFlagBits::eIndirectCommandRead | vk::AccessFlagBits::eIndexRead |
-							vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eColorAttachmentWrite |
-							vk::AccessFlagBits::eDepthStencilAttachmentWrite),
-						vk::DependencyFlags()  // dependencyFlags
-					),
-					vk::SubpassDependency(
-						0,                    // srcSubpass
-						VK_SUBPASS_EXTERNAL,  // dstSubpass
-						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),
-						vk::PipelineStageFlags(vk::PipelineStageFlagBits::eBottomOfPipe),  // dstStageMask
-						vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentWrite),
-						vk::AccessFlags(),     // dstAccessMask
-						vk::DependencyFlags()  // dependencyFlags
-					),
-				}.data()
+	// color formats
+	if(dynamicRendering) {
+		vk::FormatProperties fp = vulkanInstance.getPhysicalDeviceFormatProperties(
+			physicalDevice, vk::Format::eR32G32B32A32Sfloat);
+		bool rgba32SfloatSupported =
+			bool(fp.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImage);
+		colorAttachmentFormatList[0] = vk::Format::eR16G16B16A16Sfloat;
+		colorAttachmentFormatList[1] = vk::Format::eUndefined;
+		colorAttachmentFormatList[2] = surfaceFormat.format;
+		colorAttachmentFormatList[3] =
+			rgba32SfloatSupported
+				? vk::Format::eR32G32B32A32Sfloat
+				: vk::Format::eR16G16B16A16Sfloat;
+		colorAttachmentFormatList[4] = vk::Format::eR16Sfloat;
+	}
+	else {
+		colorAttachmentFormatList[0] = vk::Format::eUndefined;
+		colorAttachmentFormatList[1] = vk::Format::eUndefined;
+		colorAttachmentFormatList[2] = vk::Format::eUndefined;
+		colorAttachmentFormatList[3] = vk::Format::eUndefined;
+		colorAttachmentFormatList[4] = vk::Format::eUndefined;
+	}
 
-			)
-		);
+	// setup colorRenderingAttachmentInfoList (for dynamic rendering)
+	// or renderPass (for render pass rendering)
+	if(dynamicRendering) {
+
+		// floating point multisampled color output
+		colorRenderingAttachmentInfoList[0].imageView = nullptr;
+		colorRenderingAttachmentInfoList[0].imageLayout = vk::ImageLayout::eRenderingLocalRead;
+		colorRenderingAttachmentInfoList[0].resolveMode = vk::ResolveModeFlagBits::eNone;
+		colorRenderingAttachmentInfoList[0].resolveImageView = nullptr;
+		colorRenderingAttachmentInfoList[0].resolveImageLayout = vk::ImageLayout::eUndefined;
+		colorRenderingAttachmentInfoList[0].loadOp = vk::AttachmentLoadOp::eClear;
+		colorRenderingAttachmentInfoList[0].storeOp = vk::AttachmentStoreOp::eDontCare;
+		colorRenderingAttachmentInfoList[0].clearValue.color = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
+
+		// id-buffer integer-based multisampled output
+		colorRenderingAttachmentInfoList[1].imageView = nullptr;
+		colorRenderingAttachmentInfoList[1].imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+		colorRenderingAttachmentInfoList[1].resolveMode = vk::ResolveModeFlagBits::eNone;
+		colorRenderingAttachmentInfoList[1].resolveImageView = nullptr;
+		colorRenderingAttachmentInfoList[1].resolveImageLayout = vk::ImageLayout::eUndefined;
+		colorRenderingAttachmentInfoList[1].loadOp = vk::AttachmentLoadOp::eClear;
+		colorRenderingAttachmentInfoList[1].storeOp = vk::AttachmentStoreOp::eStore;
+		colorRenderingAttachmentInfoList[1].clearValue.color = vk::ClearColorValue(array<uint32_t,4>{0, 0, 0, 0});
+
+		// resolved color output
+		colorRenderingAttachmentInfoList[2].imageView = nullptr;
+		colorRenderingAttachmentInfoList[2].imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+		colorRenderingAttachmentInfoList[2].resolveMode = vk::ResolveModeFlagBits::eAverage;
+		colorRenderingAttachmentInfoList[2].resolveImageView = nullptr;
+		colorRenderingAttachmentInfoList[2].resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+		colorRenderingAttachmentInfoList[2].loadOp = vk::AttachmentLoadOp::eDontCare;
+		colorRenderingAttachmentInfoList[2].storeOp = vk::AttachmentStoreOp::eDontCare;
+		colorRenderingAttachmentInfoList[2].clearValue.color = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
+
+		// transparency multisampled color output
+		colorRenderingAttachmentInfoList[3].imageView = nullptr;
+		colorRenderingAttachmentInfoList[3].imageLayout = vk::ImageLayout::eRenderingLocalRead;
+		colorRenderingAttachmentInfoList[3].resolveMode = vk::ResolveModeFlagBits::eNone;
+		colorRenderingAttachmentInfoList[3].resolveImageView = nullptr;
+		colorRenderingAttachmentInfoList[3].resolveImageLayout = vk::ImageLayout::eUndefined;
+		colorRenderingAttachmentInfoList[3].loadOp = vk::AttachmentLoadOp::eClear;
+		colorRenderingAttachmentInfoList[3].storeOp = vk::AttachmentStoreOp::eDontCare;
+		colorRenderingAttachmentInfoList[3].clearValue.color = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
+
+		// transparency multisampled count output
+		colorRenderingAttachmentInfoList[4].imageView = nullptr;
+		colorRenderingAttachmentInfoList[4].imageLayout = vk::ImageLayout::eRenderingLocalRead;
+		colorRenderingAttachmentInfoList[4].resolveMode = vk::ResolveModeFlagBits::eNone;
+		colorRenderingAttachmentInfoList[4].resolveImageView = nullptr;
+		colorRenderingAttachmentInfoList[4].resolveImageLayout = vk::ImageLayout::eUndefined;
+		colorRenderingAttachmentInfoList[4].loadOp = vk::AttachmentLoadOp::eClear;
+		colorRenderingAttachmentInfoList[4].storeOp = vk::AttachmentStoreOp::eDontCare;
+		colorRenderingAttachmentInfoList[4].clearValue.color = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
+
+		// multisampled depth
+		depthRenderingAttachmentInfo.imageView = nullptr;
+		depthRenderingAttachmentInfo.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+		depthRenderingAttachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
+		depthRenderingAttachmentInfo.resolveImageView = nullptr;
+		depthRenderingAttachmentInfo.resolveImageLayout = vk::ImageLayout::eUndefined;
+		depthRenderingAttachmentInfo.loadOp = vk::AttachmentLoadOp::eClear;
+		depthRenderingAttachmentInfo.storeOp = vk::AttachmentStoreOp::eStore;
+		depthRenderingAttachmentInfo.clearValue.depthStencil = vk::ClearDepthStencilValue(1.f, 0);
+
+		// multisampled stencil
+		stencilRenderingAttachmentInfo.imageView = nullptr;
+		stencilRenderingAttachmentInfo.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+		stencilRenderingAttachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
+		stencilRenderingAttachmentInfo.resolveImageView = nullptr;
+		stencilRenderingAttachmentInfo.resolveImageLayout = vk::ImageLayout::eUndefined;
+		stencilRenderingAttachmentInfo.loadOp = vk::AttachmentLoadOp::eClear;
+		stencilRenderingAttachmentInfo.storeOp = vk::AttachmentStoreOp::eDontCare;
+		stencilRenderingAttachmentInfo.clearValue.depthStencil = vk::ClearDepthStencilValue(0.f, 0);
+
+	}
+	else {
+
+		// render pass
+		renderPass =
+			device.createRenderPass(
+				vk::RenderPassCreateInfo(
+					vk::RenderPassCreateFlags(),  // flags
+					2,                            // attachmentCount
+					array<const vk::AttachmentDescription, 2>{  // pAttachments
+						vk::AttachmentDescription{  // color attachment
+							vk::AttachmentDescriptionFlags(),  // flags
+							surfaceFormat.format,              // format
+							vk::SampleCountFlagBits::e1,       // samples
+							vk::AttachmentLoadOp::eClear,      // loadOp
+							vk::AttachmentStoreOp::eStore,     // storeOp
+							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+							vk::ImageLayout::eUndefined,       // initialLayout
+							vk::ImageLayout::ePresentSrcKHR    // finalLayout
+						},
+						vk::AttachmentDescription{  // depth attachment
+							vk::AttachmentDescriptionFlags(),  // flags
+							depthFormat,                       // format
+							vk::SampleCountFlagBits::e1,       // samples
+							vk::AttachmentLoadOp::eClear,      // loadOp
+							vk::AttachmentStoreOp::eDontCare,  // storeOp
+							vk::AttachmentLoadOp::eDontCare,   // stencilLoadOp
+							vk::AttachmentStoreOp::eDontCare,  // stencilStoreOp
+							vk::ImageLayout::eUndefined,       // initialLayout
+							vk::ImageLayout::eDepthStencilAttachmentOptimal  // finalLayout
+						},
+					}.data(),
+					1,  // subpassCount
+					&(const vk::SubpassDescription&)vk::SubpassDescription(  // pSubpasses
+						vk::SubpassDescriptionFlags(),     // flags
+						vk::PipelineBindPoint::eGraphics,  // pipelineBindPoint
+						0,        // inputAttachmentCount
+						nullptr,  // pInputAttachments
+						1,        // colorAttachmentCount
+						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pColorAttachments
+							0,  // attachment
+							vk::ImageLayout::eColorAttachmentOptimal  // layout
+						),
+						nullptr,  // pResolveAttachments
+						&(const vk::AttachmentReference&)vk::AttachmentReference(  // pDepthStencilAttachment
+							1,  // attachment
+							vk::ImageLayout::eDepthStencilAttachmentOptimal  // layout
+						),
+						0,        // preserveAttachmentCount
+						nullptr   // pPreserveAttachments
+					),
+					2,  // dependencyCount
+					array{  // pDependencies
+						vk::SubpassDependency(
+							VK_SUBPASS_EXTERNAL,   // srcSubpass
+							0,                     // dstSubpass
+							vk::PipelineStageFlags(  // srcStageMask
+								vk::PipelineStageFlagBits::eColorAttachmentOutput |
+								vk::PipelineStageFlagBits::eComputeShader |
+								vk::PipelineStageFlagBits::eTransfer),
+							vk::PipelineStageFlags(  // dstStageMask
+								vk::PipelineStageFlagBits::eDrawIndirect | vk::PipelineStageFlagBits::eVertexInput |
+								vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader |
+								vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests |
+								vk::PipelineStageFlagBits::eColorAttachmentOutput),
+							vk::AccessFlags(vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eTransferWrite),  // srcAccessMask
+							vk::AccessFlags(  // dstAccessMask
+								vk::AccessFlagBits::eIndirectCommandRead | vk::AccessFlagBits::eIndexRead |
+								vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eColorAttachmentWrite |
+								vk::AccessFlagBits::eDepthStencilAttachmentWrite),
+							vk::DependencyFlags()  // dependencyFlags
+						),
+						vk::SubpassDependency(
+							0,                    // srcSubpass
+							VK_SUBPASS_EXTERNAL,  // dstSubpass
+							vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),
+							vk::PipelineStageFlags(vk::PipelineStageFlagBits::eBottomOfPipe),  // dstStageMask
+							vk::AccessFlags(vk::AccessFlagBits::eColorAttachmentWrite),
+							vk::AccessFlags(),     // dstAccessMask
+							vk::DependencyFlags()  // dependencyFlags
+						),
+					}.data()
+
+				)
+			);
+
+	}
 
 	// rendering semaphore and fence
 	imageAvailableSemaphore =
@@ -648,6 +1003,88 @@ void App::init()
 			)
 		);
 
+	// shaders and pipeline for final composition step during rendering
+	if(dynamicRendering)
+	{
+		fullScreenTriangleVertexShader =
+			device.createShaderModule(
+				vk::ShaderModuleCreateInfo(
+					vk::ShaderModuleCreateFlags(),  // flags
+					sizeof(fullScreenTriangleVertexShaderSpirv),  // codeSize
+					fullScreenTriangleVertexShaderSpirv  // pCode
+				)
+			);
+		composeFragmentShader =
+			device.createShaderModule(
+				vk::ShaderModuleCreateInfo(
+					vk::ShaderModuleCreateFlags(),  // flags
+					sizeof(composeFragmentShaderSpirv),  // codeSize
+					composeFragmentShaderSpirv  // pCode
+				)
+			);
+		composeDescriptorSetLayout =
+			device.createDescriptorSetLayout(
+				vk::DescriptorSetLayoutCreateInfo{
+					vk::DescriptorSetLayoutCreateFlags(),  // flags
+					3,  // bindingCount
+					array<vk::DescriptorSetLayoutBinding,3>{
+						vk::DescriptorSetLayoutBinding{
+							0,  // binding
+							vk::DescriptorType::eInputAttachment,  // descritorType
+							1,  // descritorCount
+							vk::ShaderStageFlagBits::eFragment,  // stageFlags
+							nullptr,  // pImmutableSamplers
+						},
+						vk::DescriptorSetLayoutBinding{
+							1,  // binding
+							vk::DescriptorType::eInputAttachment,  // descritorType
+							1,  // descritorCount
+							vk::ShaderStageFlagBits::eFragment,  // stageFlags
+							nullptr,  // pImmutableSamplers
+						},
+						vk::DescriptorSetLayoutBinding{
+							2,  // binding
+							vk::DescriptorType::eInputAttachment,  // descritorType
+							1,  // descritorCount
+							vk::ShaderStageFlagBits::eFragment,  // stageFlags
+							nullptr,  // pImmutableSamplers
+						},
+					}.data(),
+				}
+			);
+		composePipelineLayout =
+			device.createPipelineLayout(
+				vk::PipelineLayoutCreateInfo{
+					vk::PipelineLayoutCreateFlags(),  // flags
+					1,        // setLayoutCount
+					&composeDescriptorSetLayout,  // pSetLayouts
+					0,  // pushConstantRangeCount
+					nullptr,  // pPushConstantRanges
+				}
+			);
+		composeDescriptorPool =
+			device.createDescriptorPool(
+				vk::DescriptorPoolCreateInfo(
+					vk::DescriptorPoolCreateFlags(),  // flags
+					1,  // maxSets
+					1,  // poolSizeCount
+					array{  // pPoolSizes
+						vk::DescriptorPoolSize(
+							vk::DescriptorType::eInputAttachment,  // type
+							3  // descriptorCount
+						),
+					}.data()
+				)
+			);
+		composeDescriptorSet =
+			device.allocateDescriptorSets(
+				vk::DescriptorSetAllocateInfo(
+					composeDescriptorPool,  // descriptorPool
+					1,  // descriptorSetCount
+					&composeDescriptorSetLayout  // descriptorSetLayout
+				)
+			)[0];
+	}
 
 	// command buffer
 	commandPool =
@@ -2896,7 +3333,7 @@ void App::init()
 				.projectionHandling =
 					CadPL::ShaderState::ProjectionHandling::PerspectivePushAndSpecializationConstants,
 				.attribAccessInfo =
-					[=]() {
+					[&]() {
 						decltype(CadPL::ShaderState::attribAccessInfo) r;
 						uint16_t offset = 0x10;
 
@@ -2973,16 +3410,19 @@ void App::init()
 				.depthBiasSlopeFactor = 0.f,
 				.lineWidthDynamicState = false,
 				.lineWidth = 1.f,
-				.rasterizationSamples = vk::SampleCountFlagBits::e1,
+				.rasterizationSamples = numSamples,
 				.sampleShadingEnable = false,
 				.minSampleShading = 0.f,
 				.depthTestEnable = true,
 				.depthWriteEnable = true,
-				.numColorAttachments = 1,
+				.numColorAttachments = (dynamicRendering) ? 5u : 1u,
 				.blendState = { CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false }, { .blendEnable = false },
 					{ .blendEnable = false }, { .blendEnable = false }, { .blendEnable = false }, },
-				.renderPass = renderPass,
+				.renderPass = (dynamicRendering) ? nullptr : renderPass,
 				.subpass = 0,
+				.colorAttachmentFormats = colorAttachmentFormatList,
+				.depthAttachmentFormat = depthFormat,
+				.stencilAttachmentFormat = vk::Format::eUndefined,
 			};
 			CadR::StateSet& ss = pipelineSceneGraph.getOrCreateStateSet(shaderState, pipelineState);
 
@@ -3153,8 +3593,20 @@ void App::resize(VulkanWindow& window,
 	for(auto v : swapchainImageViews)  device.destroy(v);
 	swapchainImageViews.clear();
 	device.destroy(depthImage);
+	device.destroy(hdrColorImage);
+	device.destroy(finalMultisampledColorImage);
+	device.destroy(transparencyColorImage);
+	device.destroy(transparencyCountImage);
 	device.free(depthImageMemory);
+	device.free(hdrColorImageMemory);
+	device.free(finalMultisampledColorImageMemory);
+	device.free(transparencyColorImageMemory);
+	device.free(transparencyCountImageMemory);
 	device.destroy(depthImageView);
+	device.destroy(hdrColorImageView);
+	device.destroy(finalMultisampledColorImageView);
+	device.destroy(transparencyColorImageView);
+	device.destroy(transparencyCountImageView);
 	for(auto f : framebuffers)  device.destroy(f);
 	framebuffers.clear();
 
@@ -3193,7 +3645,7 @@ void App::resize(VulkanWindow& window,
 	swapchain = newSwapchain.release();
 
 	// swapchain images and image views
-	vector<vk::Image> swapchainImages = device.getSwapchainImagesKHR(swapchain);
+	swapchainImages = device.getSwapchainImagesKHR(swapchain);
 	swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image : swapchainImages)
 		swapchainImageViews.emplace_back(
@@ -3225,7 +3677,7 @@ void App::resize(VulkanWindow& window,
 				vk::Extent3D(newSurfaceExtent.width, newSurfaceExtent.height, 1),  // extent
 				1,                       // mipLevels
 				1,                       // arrayLayers
-				vk::SampleCountFlagBits::e1,  // samples
+				numSamples,              // samples
 				vk::ImageTiling::eOptimal,    // tiling
 				vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,  // usage
 				vk::SharingMode::eExclusive,  // sharingMode
@@ -3235,26 +3687,8 @@ void App::resize(VulkanWindow& window,
 			)
 		);
 
-	// memory for images
-	vk::PhysicalDeviceMemoryProperties memoryProperties = vulkanInstance.getPhysicalDeviceMemoryProperties(physicalDevice);
-	auto allocateMemory =
-		[](CadR::VulkanDevice& device, vk::Image image, vk::MemoryPropertyFlags requiredFlags,
-		   const vk::PhysicalDeviceMemoryProperties& memoryProperties) -> vk::DeviceMemory
-		{
-			vk::MemoryRequirements memoryRequirements = device.getImageMemoryRequirements(image);
-			for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
-				if(memoryRequirements.memoryTypeBits & (1<<i))
-					if((memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags)
-						return
-							device.allocateMemory(
-								vk::MemoryAllocateInfo(
-									memoryRequirements.size,  // allocationSize
-									i                         // memoryTypeIndex
-								)
-							);
-			throw std::runtime_error("No suitable memory type found for the image.");
-		};
-	depthImageMemory = allocateMemory(device, depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal, memoryProperties);
+	tie(depthImageMemory, ignore) =
+		renderer.allocateMemory(depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device.bindImageMemory(
 		depthImage,  // image
 		depthImageMemory,  // memory
@@ -3280,25 +3714,546 @@ void App::resize(VulkanWindow& window,
 			)
 		);
 
-	// framebuffers
-	framebuffers.reserve(swapchainImages.size());
-	for(size_t i=0, c=swapchainImages.size(); i<c; i++)
-		framebuffers.emplace_back(
-			device.createFramebuffer(
-				vk::FramebufferCreateInfo(
-					vk::FramebufferCreateFlags(),  // flags
-					renderPass,  // renderPass
-					2,  // attachmentCount
-					array{  // pAttachments
-						swapchainImageViews[i],
-						depthImageView,
-					}.data(),
-					newSurfaceExtent.width,  // width
-					newSurfaceExtent.height,  // height
-					1  // layers
+	// dynamic rendering:
+	// create hdrColorImage, finalMultisampledColorImage,
+	// transparency accumulation images and associated objects
+	if(dynamicRendering) {
+
+		hdrColorImage =
+			device.createImage(
+				vk::ImageCreateInfo(
+					vk::ImageCreateFlags(),  // flags
+					vk::ImageType::e2D,      // imageType
+					colorAttachmentFormatList[0],  // format
+					vk::Extent3D(newSurfaceExtent.width, newSurfaceExtent.height, 1),  // extent
+					1,                       // mipLevels
+					1,                       // arrayLayers
+					numSamples,              // samples
+					vk::ImageTiling::eOptimal,    // tiling
+					vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment |  // usage
+						vk::ImageUsageFlagBits::eTransientAttachment,
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr,                      // pQueueFamilyIndices
+					vk::ImageLayout::eUndefined   // initialLayout
 				)
+			);
+		finalMultisampledColorImage =
+			device.createImage(
+				vk::ImageCreateInfo(
+					vk::ImageCreateFlags(),  // flags
+					vk::ImageType::e2D,      // imageType
+					colorAttachmentFormatList[2],  // format
+					vk::Extent3D(newSurfaceExtent.width, newSurfaceExtent.height, 1),  // extent
+					1,                       // mipLevels
+					1,                       // arrayLayers
+					numSamples,              // samples
+					vk::ImageTiling::eOptimal,    // tiling
+					vk::ImageUsageFlagBits::eColorAttachment |  // usage
+						vk::ImageUsageFlagBits::eTransientAttachment,
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr,                      // pQueueFamilyIndices
+					vk::ImageLayout::eUndefined   // initialLayout
+				)
+			);
+		transparencyColorImage =
+			device.createImage(
+				vk::ImageCreateInfo(
+					vk::ImageCreateFlags(),  // flags
+					vk::ImageType::e2D,      // imageType
+					colorAttachmentFormatList[3],  // format
+					vk::Extent3D(newSurfaceExtent.width, newSurfaceExtent.height, 1),  // extent
+					1,                       // mipLevels
+					1,                       // arrayLayers
+					numSamples,              // samples
+					vk::ImageTiling::eOptimal,    // tiling
+					vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment |  // usage
+						vk::ImageUsageFlagBits::eTransientAttachment,
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr,                      // pQueueFamilyIndices
+					vk::ImageLayout::eUndefined   // initialLayout
+				)
+			);
+		transparencyCountImage =
+			device.createImage(
+				vk::ImageCreateInfo(
+					vk::ImageCreateFlags(),  // flags
+					vk::ImageType::e2D,      // imageType
+					colorAttachmentFormatList[4],  // format
+					vk::Extent3D(newSurfaceExtent.width, newSurfaceExtent.height, 1),  // extent
+					1,                       // mipLevels
+					1,                       // arrayLayers
+					numSamples,              // samples
+					vk::ImageTiling::eOptimal,    // tiling
+					vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eInputAttachment |  // usage
+						vk::ImageUsageFlagBits::eTransientAttachment,
+					vk::SharingMode::eExclusive,  // sharingMode
+					0,                            // queueFamilyIndexCount
+					nullptr,                      // pQueueFamilyIndices
+					vk::ImageLayout::eUndefined   // initialLayout
+				)
+			);
+
+		tie(hdrColorImageMemory, ignore) =
+			renderer.allocatePossiblyLazyMemory(hdrColorImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		device.bindImageMemory(
+			hdrColorImage,  // image
+			hdrColorImageMemory,  // memory
+			0  // memoryOffset
+		);
+		tie(finalMultisampledColorImageMemory, ignore) =
+			renderer.allocatePossiblyLazyMemory(finalMultisampledColorImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		device.bindImageMemory(
+			finalMultisampledColorImage,  // image
+			finalMultisampledColorImageMemory,  // memory
+			0  // memoryOffset
+		);
+		tie(transparencyColorImageMemory, ignore) =
+			renderer.allocatePossiblyLazyMemory(transparencyColorImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		device.bindImageMemory(
+			transparencyColorImage,  // image
+			transparencyColorImageMemory,  // memory
+			0  // memoryOffset
+		);
+		tie(transparencyCountImageMemory, ignore) =
+			renderer.allocatePossiblyLazyMemory(transparencyCountImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		device.bindImageMemory(
+			transparencyCountImage,  // image
+			transparencyCountImageMemory,  // memory
+			0  // memoryOffset
+		);
+
+		hdrColorImageView =
+			device.createImageView(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					hdrColorImage,               // image
+					vk::ImageViewType::e2D,      // viewType
+					colorAttachmentFormatList[0],  // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			);
+		finalMultisampledColorImageView =
+			device.createImageView(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					finalMultisampledColorImage,  // image
+					vk::ImageViewType::e2D,      // viewType
+					colorAttachmentFormatList[2],  // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			);
+		transparencyColorImageView =
+			device.createImageView(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					transparencyColorImage,      // image
+					vk::ImageViewType::e2D,      // viewType
+					colorAttachmentFormatList[3],  // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			);
+		transparencyCountImageView =
+			device.createImageView(
+				vk::ImageViewCreateInfo(
+					vk::ImageViewCreateFlags(),  // flags
+					transparencyCountImage,      // image
+					vk::ImageViewType::e2D,      // viewType
+					colorAttachmentFormatList[4],  // format
+					vk::ComponentMapping(),      // components
+					vk::ImageSubresourceRange(   // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1   // layerCount
+					)
+				)
+			);
+
+		device.beginCommandBuffer(
+			commandBuffer,  // commandBuffer
+			vk::CommandBufferBeginInfo(
+				vk::CommandBufferUsageFlags(),  // flags
+				nullptr  // pInheritanceInfo
 			)
 		);
+		device.cmdPipelineBarrier(
+			commandBuffer,
+			vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+			vk::PipelineStageFlagBits::eEarlyFragmentTests |  // dstStageMask
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,
+			vk::DependencyFlags(),  // dependencyFlags ?
+			0,  // memoryBarrierCount
+			nullptr,  // pMemoryBarriers
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers,
+			5,  // imageMemoryBarrierCount
+			array{  // pImageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask ?
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eRenderingLocalRead,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					hdrColorImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask ?
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eColorAttachmentOptimal,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					finalMultisampledColorImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentRead |  // dstAccessMask ?
+						vk::AccessFlagBits::eColorAttachmentWrite,
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eRenderingLocalRead,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					transparencyColorImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentRead |  // dstAccessMask ?
+						vk::AccessFlagBits::eColorAttachmentWrite,
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eRenderingLocalRead,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					transparencyCountImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eDepthStencilAttachmentRead |  // dstAccessMask ?
+						vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eDepthStencilAttachmentOptimal,// eRenderingLocalRead,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					depthImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eDepth,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+			}.data()
+		);
+		device.endCommandBuffer(commandBuffer);
+		device.queueSubmit(
+			graphicsQueue,  // queue
+			vk::SubmitInfo(
+				0, nullptr,  // waitSemaphoreCount + pWaitSemaphores +
+				nullptr,
+				1, &commandBuffer,  // commandBufferCount + pCommandBuffers
+				0, nullptr  // signalSemaphoreCount + pSignalSemaphores
+			),
+			nullptr  // fence
+		);
+
+		colorRenderingAttachmentInfoList[0].imageView = hdrColorImageView;
+		colorRenderingAttachmentInfoList[2].imageView = finalMultisampledColorImageView;
+		colorRenderingAttachmentInfoList[3].imageView = transparencyColorImageView;
+		colorRenderingAttachmentInfoList[4].imageView = transparencyCountImageView;
+		depthRenderingAttachmentInfo.imageView = depthImageView;
+
+		device.updateDescriptorSets(
+			1,  // descriptorWriteCount
+			array{  // pDescriptorWrites
+				vk::WriteDescriptorSet{
+					composeDescriptorSet,  // dstSet
+					0,  // dstBinding
+					0,  // dstArrayElement
+					3,  // descriptorCount
+					vk::DescriptorType::eInputAttachment,  // descriptorType
+					array{  // pImageInfo
+						vk::DescriptorImageInfo{
+							nullptr,  // sampler
+							hdrColorImageView,  // imageView
+							vk::ImageLayout::eRenderingLocalRead,  // imageLayout
+						},
+						vk::DescriptorImageInfo{
+							nullptr,  // sampler
+							transparencyColorImageView,  // imageView
+							vk::ImageLayout::eRenderingLocalRead,  // imageLayout
+						},
+						vk::DescriptorImageInfo{
+							nullptr,  // sampler
+							transparencyCountImageView,  // imageView
+							vk::ImageLayout::eRenderingLocalRead,  // imageLayout
+						},
+					}.data(),
+					nullptr,  // pBufferInfo
+					nullptr,  // pTexelBufferView
+				},
+			}.data(),
+			0,  // descriptorCopyCount
+			nullptr  // pDescriptorCopies
+		);
+
+		composePipeline =
+			device.createGraphicsPipeline(
+				nullptr,  // pipelineCache
+				vk::GraphicsPipelineCreateInfo(
+					vk::PipelineCreateFlags(),  // flags
+
+					// shader stages
+					2,  // stageCount
+					array{  // pStages
+						vk::PipelineShaderStageCreateInfo{
+							vk::PipelineShaderStageCreateFlags(),  // flags
+							vk::ShaderStageFlagBits::eVertex,      // stage
+							fullScreenTriangleVertexShader,  // module
+							"main",  // pName
+							nullptr,  // pSpecializationInfo
+						},
+						vk::PipelineShaderStageCreateInfo{
+							vk::PipelineShaderStageCreateFlags(),  // flags
+							vk::ShaderStageFlagBits::eFragment,    // stage
+							composeFragmentShader,  // module
+							"main",  // pName
+							nullptr,  // pSpecializationInfo
+						},
+					}.data(),
+
+					// vertex input
+					&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{
+						vk::PipelineVertexInputStateCreateFlags(),  // flags
+						0,  // vertexBindingDescriptionCount
+						nullptr,  // pVertexBindingDescriptions
+						0,  // vertexAttributeDescriptionCount
+						nullptr  // pVertexAttributeDescriptions
+					},
+
+					// input assembly
+					&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+						vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+						vk::PrimitiveTopology::eTriangleList,  // topology
+						VK_FALSE  // primitiveRestartEnable
+					},
+
+					// tessellation
+					nullptr, // pTessellationState
+
+					// viewport
+					&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+						vk::PipelineViewportStateCreateFlags(),  // flags
+						1,  // viewportCount
+						array{  // pViewports
+							vk::Viewport(0.f, 0.f, float(newSurfaceExtent.width), float(newSurfaceExtent.height), 0.f, 1.f),
+						}.data(),
+						1,  // scissorCount
+						array{  // pScissors
+							vk::Rect2D({0, 0}, newSurfaceExtent)
+						}.data(),
+					},
+
+					// rasterization
+					&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+						vk::PipelineRasterizationStateCreateFlags(),  // flags
+						VK_FALSE,  // depthClampEnable
+						VK_FALSE,  // rasterizerDiscardEnable
+						vk::PolygonMode::eFill,  // polygonMode
+						vk::CullModeFlagBits::eNone,  // cullMode
+						vk::FrontFace::eCounterClockwise,  // frontFace
+						VK_FALSE,  // depthBiasEnable
+						0.f,  // depthBiasConstantFactor
+						0.f,  // depthBiasClamp
+						0.f,  // depthBiasSlopeFactor
+						1.f   // lineWidth
+					},
+
+					// multisampling
+					&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+						vk::PipelineMultisampleStateCreateFlags(),  // flags
+						numSamples,  // rasterizationSamples
+						VK_FALSE,  // sampleShadingEnable
+						0.f,       // minSampleShading
+						nullptr,   // pSampleMask
+						VK_FALSE,  // alphaToCoverageEnable
+						VK_FALSE   // alphaToOneEnable
+					},
+
+					// depth and stencil
+					&(const vk::PipelineDepthStencilStateCreateInfo&)vk::PipelineDepthStencilStateCreateInfo{  // pDepthStencilState
+						vk::PipelineDepthStencilStateCreateFlags(),  // flags
+						VK_FALSE,  // depthTestEnable
+						VK_FALSE,  // depthWriteEnable
+						vk::CompareOp::eLess,  // depthCompareOp
+						VK_FALSE,  // depthBoundsTestEnable
+						VK_FALSE,  // stencilTestEnable
+						vk::StencilOpState(),  // front
+						vk::StencilOpState(),  // back
+						0.f,  // minDepthBounds
+						0.f   // maxDepthBounds
+					},
+
+					// blending
+					&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+						vk::PipelineColorBlendStateCreateFlags(),  // flags
+						VK_FALSE,  // logicOpEnable
+						vk::LogicOp::eClear,  // logicOp
+						uint32_t(colorAttachmentFormatList.size()),  // attachmentCount
+						array{  // pAttachments
+							vk::PipelineColorBlendAttachmentState{
+								VK_FALSE,  // blendEnable
+								vk::BlendFactor::eZero,  // srcColorBlendFactor
+								vk::BlendFactor::eZero,  // dstColorBlendFactor
+								vk::BlendOp::eAdd,       // colorBlendOp
+								vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+								vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+								vk::BlendOp::eAdd,       // alphaBlendOp
+								vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+									vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+							},
+							vk::PipelineColorBlendAttachmentState{
+								VK_FALSE,  // blendEnable
+								vk::BlendFactor::eZero,  // srcColorBlendFactor
+								vk::BlendFactor::eZero,  // dstColorBlendFactor
+								vk::BlendOp::eAdd,       // colorBlendOp
+								vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+								vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+								vk::BlendOp::eAdd,       // alphaBlendOp
+								vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+									vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+							},
+							vk::PipelineColorBlendAttachmentState{
+								VK_FALSE,  // blendEnable
+								vk::BlendFactor::eZero,  // srcColorBlendFactor
+								vk::BlendFactor::eZero,  // dstColorBlendFactor
+								vk::BlendOp::eAdd,       // colorBlendOp
+								vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+								vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+								vk::BlendOp::eAdd,       // alphaBlendOp
+								vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+									vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+							},
+							vk::PipelineColorBlendAttachmentState{
+								VK_FALSE,  // blendEnable
+								vk::BlendFactor::eZero,  // srcColorBlendFactor
+								vk::BlendFactor::eZero,  // dstColorBlendFactor
+								vk::BlendOp::eAdd,       // colorBlendOp
+								vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+								vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+								vk::BlendOp::eAdd,       // alphaBlendOp
+								vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+									vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+							},
+							vk::PipelineColorBlendAttachmentState{
+								VK_FALSE,  // blendEnable
+								vk::BlendFactor::eZero,  // srcColorBlendFactor
+								vk::BlendFactor::eZero,  // dstColorBlendFactor
+								vk::BlendOp::eAdd,       // colorBlendOp
+								vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+								vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+								vk::BlendOp::eAdd,       // alphaBlendOp
+								vk::ColorComponentFlagBits::eR|vk::ColorComponentFlagBits::eG|
+									vk::ColorComponentFlagBits::eB|vk::ColorComponentFlagBits::eA  // colorWriteMask
+							},
+						}.data(),
+						array<float,4>{0.f,0.f,0.f,0.f},  // blendConstants
+					},
+
+					nullptr,  // pDynamicState
+					composePipelineLayout,  // layout
+					nullptr,  // renderPass
+					0,  // subpass
+					vk::Pipeline(nullptr),  // basePipelineHandle
+					-1 // basePipelineIndex
+				).setPNext(
+					vk::PipelineRenderingCreateInfo{
+						0,  // viewMask
+						uint32_t(colorAttachmentFormatList.size()),  // colorAttachmentCount
+						colorAttachmentFormatList.data(),  // pColorAttachmentFormats
+						depthFormat,  // depthAttachmentFormat
+						vk::Format::eUndefined,  // stencilAttachmentFormat
+					}
+				)
+			);
+
+	}
+	else {
+
+		// framebuffers
+		framebuffers.reserve(swapchainImages.size());
+		for(size_t i=0, c=swapchainImages.size(); i<c; i++)
+			framebuffers.emplace_back(
+				device.createFramebuffer(
+					vk::FramebufferCreateInfo(
+						vk::FramebufferCreateFlags(),  // flags
+						renderPass,  // renderPass
+						2,  // attachmentCount
+						array{  // pAttachments
+							swapchainImageViews[i],
+							depthImageView,
+						}.data(),
+						newSurfaceExtent.width,  // width
+						newSurfaceExtent.height,  // height
+						1  // layers
+					)
+				)
+			);
+
+	}
 
 	// rendering finished semaphores
 	if(renderingFinishedSemaphores.size() != swapchainImages.size())
@@ -3454,20 +4409,94 @@ void App::frame(VulkanWindow&)
 			sceneDataAllocation.deviceAddress(),  // sceneDataPtr
 		}.data()
 	);
-	renderer.recordSceneRendering(
-		commandBuffer,  // commandBuffer
-		stateSetRoot,  // stateSetRoot
-		vk::RenderPassBeginInfo{
-			renderPass,  // renderPass
-			framebuffers[imageIndex],  // framebuffer
-			vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
-			2,  // clearValueCount
-			array<vk::ClearValue,2>{  // pClearValues
-				vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
-				vk::ClearDepthStencilValue(1.f, 0),
-			}.data()
-		}
-	);
+	if(dynamicRendering) {
+		colorRenderingAttachmentInfoList[2].resolveImageView =
+			swapchainImageViews[imageIndex];
+		device.cmdPipelineBarrier(
+			commandBuffer,  // commandBuffer
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStage
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // dstStage
+			vk::DependencyFlags(),  // dependencyFlags
+			0,  // memoryBarrierCount
+			nullptr,  // pMemoryBarriers
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers
+			1,  // imageMemoryBarrierCount
+			&(const vk::ImageMemoryBarrier&)vk::ImageMemoryBarrier(  // pImageMemoryBarriers
+				vk::AccessFlags(),  // srcAccessMask
+				vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
+				vk::ImageLayout::eUndefined,  // oldLayout
+				vk::ImageLayout::eColorAttachmentOptimal,  // newLayout
+				VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+				VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+				swapchainImages[imageIndex],  // image
+				vk::ImageSubresourceRange{  // subresourceRange
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1,  // layerCount
+				}
+			)
+		);
+		renderer.recordSceneRendering(
+			commandBuffer,  // commandBuffer
+			stateSetRoot,  // stateSetRoot
+			vk::RenderingInfo{
+				vk::RenderingFlags{},  // flags
+				vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+				1,  // layerCount
+				0,  // viewMask
+				uint32_t(colorRenderingAttachmentInfoList.size()),  // colorAttachmentCount
+				colorRenderingAttachmentInfoList.data(),  // pColorAttachment
+				&depthRenderingAttachmentInfo,  // pDepthAttachment
+				&stencilRenderingAttachmentInfo,  // pStencilAttachment
+			}
+		);
+		device.cmdPipelineBarrier(
+			commandBuffer,  // commandBuffer
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStage
+			vk::PipelineStageFlagBits::eBottomOfPipe,  // dstStage
+			vk::DependencyFlags(),  // dependencyFlags
+			0,  // memoryBarrierCount
+			nullptr,  // pMemoryBarriers
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers
+			1,  // imageMemoryBarrierCount
+			&(const vk::ImageMemoryBarrier&)vk::ImageMemoryBarrier(  // pImageMemoryBarriers
+				vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
+				vk::AccessFlags(),  // dstAccessMask
+				vk::ImageLayout::eColorAttachmentOptimal,  // oldLayout
+				vk::ImageLayout::ePresentSrcKHR,  // newLayout
+				VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+				VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+				swapchainImages[imageIndex],  // image
+				vk::ImageSubresourceRange{  // subresourceRange
+					vk::ImageAspectFlagBits::eColor,  // aspectMask
+					0,  // baseMipLevel
+					1,  // levelCount
+					0,  // baseArrayLayer
+					1,  // layerCount
+				}
+			)
+		);
+	}
+	else {
+		renderer.recordSceneRendering(
+			commandBuffer,  // commandBuffer
+			stateSetRoot,  // stateSetRoot
+			vk::RenderPassBeginInfo{
+				renderPass,  // renderPass
+				framebuffers[imageIndex],  // framebuffer
+				vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+				2,  // clearValueCount
+				array<vk::ClearValue,2>{  // pClearValues
+					vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
+					vk::ClearDepthStencilValue(1.f, 0),
+				}.data()
+			}
+		);
+	}
 
 	// end command buffer recording
 	renderer.endRecording(commandBuffer);
@@ -3476,6 +4505,7 @@ void App::frame(VulkanWindow&)
 	renderer.executeCopyOperations();
 
 	// submit frame
+	device.waitIdle();
 	vk::Semaphore renderingFinishedSemaphore = renderingFinishedSemaphores[imageIndex];
 	device.queueSubmit(
 		graphicsQueue,  // queue
@@ -3488,6 +4518,7 @@ void App::frame(VulkanWindow&)
 		),
 		renderingFinishedFence  // fence
 	);
+	device.waitIdle();
 
 	// present
 	r =

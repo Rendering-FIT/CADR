@@ -23,6 +23,12 @@ set(APP_INCLUDES
 	VulkanWindow.h
 	)
 
+# shaders
+set(APP_SHADER_DEPS)
+source_group("Shaders" FILES ${APP_SHADER_DEPS})
+add_shader(shaders/fullScreenTriangle.vert  ""  shaders/fullScreenTriangle.vert.spv  APP_SHADER_DEPS)
+add_shader(shaders/compose.frag  ""  shaders/compose.frag.spv  APP_SHADER_DEPS)
+
 # dependencies
 find_package(Vulkan REQUIRED)
 find_package(glm REQUIRED)
@@ -37,7 +43,7 @@ include(VulkanWindow.cmake)
 VulkanWindowConfigure(APP_SOURCES APP_INCLUDES libs defines includes)
 
 # executable
-add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
+add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 
 # target
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${includes})

@@ -21,14 +21,26 @@ Renderer::RequiredFeaturesStructChain Renderer::_requiredFeatures;
 namespace CadR {
 	struct RendererStaticInitializer {
 		RendererStaticInitializer() {
-			Renderer::_requiredFeatures.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect = true;
-			Renderer::_requiredFeatures.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 = true;
-			Renderer::_requiredFeatures.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters = true;
-			Renderer::_requiredFeatures.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress = true;
+			Renderer::setRequiredFeatures(Renderer::_requiredFeatures);
 		}
 	};
 }
 static CadR::RendererStaticInitializer initializer;
+void Renderer::setRequiredFeatures(RequiredFeaturesStructChain& featuresStructChain)
+{
+	featuresStructChain.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect = true;
+	featuresStructChain.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 = true;
+	featuresStructChain.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters = true;
+	featuresStructChain.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress = true;
+}
+bool Renderer::areRequiredFeaturesSupported(const RequiredFeaturesStructChain& featuresStructChain)
+{
+	return
+		featuresStructChain.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
+		featuresStructChain.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 &&
+		featuresStructChain.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+		featuresStructChain.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
+}
 
 // shader code in SPIR-V binary
 static const uint32_t processDrawablesL1ShaderSpirv[]={

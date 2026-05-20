@@ -110,6 +110,8 @@ public:
 	static inline void set(Renderer& r) noexcept;
 	static inline const vk::PhysicalDeviceFeatures2& requiredFeatures();
 	static inline const RequiredFeaturesStructChain& requiredFeaturesStructChain();
+	static void setRequiredFeatures(RequiredFeaturesStructChain& featuresStructChain);
+	static bool areRequiredFeaturesSupported(const RequiredFeaturesStructChain& featuresStructChain);
 
 	// deleted constructors and operators
 	Renderer(const Renderer&) = delete;
