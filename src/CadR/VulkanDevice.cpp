@@ -134,18 +134,19 @@ void VulkanDevice::create(VulkanInstance& instance,
                           const vk::PhysicalDeviceFeatures& enabledFeatures)
 {
 	size_t numQueues = (graphicsQueueFamily==presentationQueueFamily) ? 1 : 2;
+	const float queuePriority = 1.f;
 	std::array<vk::DeviceQueueCreateInfo, 2> queueInfos = {
 		vk::DeviceQueueCreateInfo{
 			vk::DeviceQueueCreateFlags(),  // flags
 			graphicsQueueFamily,  // queueFamilyIndex
 			1,  // queueCount
-			&(const float&)1.f,  // queuePriorities
+			&queuePriority,  // queuePriorities
 		},
 		{
 			vk::DeviceQueueCreateFlags(),  // flags
 			presentationQueueFamily,  // queueFamilyIndex
 			1,  // queueCount
-			&(const float&)1.f,  // queuePriorities
+			&queuePriority,  // queuePriorities
 		},
 	};
 	vk::DeviceCreateInfo createInfo(
@@ -167,18 +168,19 @@ void VulkanDevice::create(VulkanInstance& instance,
                           const vk::PhysicalDeviceFeatures2& enabledFeatures2)
 {
 	size_t numQueues = (graphicsQueueFamily==presentationQueueFamily) ? 1 : 2;
+	const float queuePriority = 1.f;
 	std::array<vk::DeviceQueueCreateInfo, 2> queueInfos = {
 		vk::DeviceQueueCreateInfo{
 			vk::DeviceQueueCreateFlags(),  // flags
 			graphicsQueueFamily,  // queueFamilyIndex
 			1,  // queueCount
-			&(const float&)1.f,  // queuePriorities
+			&queuePriority,  // queuePriorities
 		},
 		{
 			vk::DeviceQueueCreateFlags(),  // flags
 			presentationQueueFamily,  // queueFamilyIndex
 			1,  // queueCount
-			&(const float&)1.f,  // queuePriorities
+			&queuePriority,  // queuePriorities
 		},
 	};
 	vk::DeviceCreateInfo createInfo(
