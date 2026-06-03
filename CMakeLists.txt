@@ -9,6 +9,8 @@ cmake_minimum_required(VERSION 3.21.0) # arguments for discussion about minimal 
                                        # cmake_path was introduced in version 3.20,
                                        # Vulkan::Headers and Vulkan::glslangValidator targets are available since 3.21,
                                        # Ubuntu 22.04 LTS uses 3.22.1
+                                       # Vulkan::glslang and component handling added to FindVulkan in 3.24
+                                       # Ubuntu 24.04 LTS uses 3.28.3, Ubuntu 26.04 LTS uses 4.2.3
 cmake_policy(SET CMP0167 OLD) # for CMake 3.30 and newer, keep FindBoost.cmake working instead of new BoostConfig.cmake
 
 project(CADR)

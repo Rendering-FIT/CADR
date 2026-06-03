@@ -47,14 +47,24 @@
 
 using namespace std;
 
-using json = nlohmann::json;
 
-typedef CadR::LogicError GltfError;
+// global variables
+static const string_view executableName = "gltfReader";
+static const string_view fancyAppName = "glTF reader";
+static const uint32_t vulkanAppVersion = VK_MAKE_VERSION(0, 0, 0);
+static const string_view engineName = "CADR";
+static const uint32_t engineVersion = VK_MAKE_VERSION(0, 0, 0);
+static const uint32_t vulkanApiVersion = VK_API_VERSION_1_4;
 
 
 // constants
 static constexpr const unsigned defaultMaterialModel = 0x1;  // 0x1 for Blin-Phong and 0x2 for Metallic-roughness model
 static constexpr const vk::SampleCountFlagBits defaultNumSamples = vk::SampleCountFlagBits::e4;
+
+
+// types
+using json = nlohmann::json;
+typedef CadR::LogicError GltfError;
 
 
 // shader code in SPIR-V binary
@@ -207,6 +217,8 @@ public:
 	float startCameraHeading, startCameraElevation;
 	CadR::BoundingSphere sceneBoundingSphere;
 
+	// command-line options
+	string deviceNameFilter;
 	filesystem::path filePath;
 	string utf8FilePath;  // File path stored as utf-8. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
 	string utf8FileName;  // File name as utf-8. No parent directories and no file name suffix. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
@@ -391,15 +403,58 @@ App::App(int argc, char** argv)
 #endif
 
 	// process command-line arguments
-	if(argc < 2)
-		throw ExitWithMessage(99, "Please, specify glTF file to load.");
+	int filePathIndex = -1;
+	for(int i=1; i<argc; i++) {
+
+		// parse options starting with '-'
+		if(argv[i][0] == '-') {
+
+			// filter Vulkan devices
+			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+				throw
+					ExitWithMessage(99,
+						string(executableName) + " [options] [--] fileName\n"
+						"   -h --help  prints this screen\n"
+						"   --device <deviceNameFilter>  considers only Vulkan devices whose name\n"
+						"                                contains <deviceNameFilter> string");
+			}
+			else if(strcmp(argv[i], "--device") == 0)
+			{
+				if(argv[i+1] != nullptr) {
+					deviceNameFilter = argv[i+1];
+					i++;
+					continue;
+				}
+				else
+					throw ExitWithMessage(99, "No device name specified after --device parameter.");
+			}
+			else if(strcmp(argv[i], "--") == 0)
+			{
+				if(argv[i+1] == nullptr)
+					throw ExitWithMessage(99, "No glTF file name provided.");
+				filePathIndex = i+1;
+				if(argv[i+2] != nullptr)
+					throw ExitWithMessage(99, string("Extra argument after glTF file name: ") + argv[i+2] + ".");
+			}
+			else
+				throw ExitWithMessage(99, string("Invalid option ") + argv[i] + ".");
+
+		}
+		else {
+			filePathIndex = i;
+			if(argv[i+1] != nullptr)
+				throw ExitWithMessage(99, string("Extra argument after glTF file name: ") + argv[i+1] + ".");
+		}
+	}
+	if(filePathIndex == -1)
+		throw ExitWithMessage(99, "No glTF file name provided.");
 
 #ifdef _WIN32
-	filePath = wargv.get()[1];
+	filePath = wargv.get()[filePathIndex];
 	utf8FilePath = utf16ToUtf8(filePath.c_str());
 	utf8FileName = utf16ToUtf8(filePath.filename().c_str());
 #else
-	utf8FilePath = argv[1];
+	utf8FilePath = argv[filePathIndex];
 	filePath = utf8FilePath;
 	utf8FileName = filePath.filename();
 #endif
@@ -499,15 +554,15 @@ void App::init()
 	vulkanLib.load(CadR::VulkanLibrary::defaultName());
 	vulkanInstance.create(
 		vulkanLib,
-		"glTF reader",  // applicationName
-		0,  // applicationVersion
-		"CADR",  // engineName
-		0,  // engineVersion
-		VK_API_VERSION_1_4,  // apiVersion - maximum version that gltfReader might use
+		fancyAppName.data(),  // applicationName
+		vulkanAppVersion,  // applicationVersion
+		engineName.data(),  // engineName
+		engineVersion,  // engineVersion
+		vulkanApiVersion,  // apiVersion - maximum version that gltfReader might use
 		nullptr,  // enabledLayers
 		VulkanWindow::requiredExtensions()  // enabledExtensions
 	);
-	window.create(vulkanInstance.handle(), {1024,768}, "glTF reader - " + utf8FileName,
+	window.create(vulkanInstance.handle(), {1024,768}, string(fancyAppName) + " - " + utf8FileName,
 	              vulkanLib.vkGetInstanceProcAddr);
 
 	// choose device
@@ -526,6 +581,18 @@ void App::init()
 			vector<tuple<uint32_t,uint32_t>> compatibleQueues;
 			for(vk::PhysicalDevice pd : deviceList)
 			{
+				// deviceNameFilter
+				deviceProperties = vulkanInstance.getPhysicalDeviceProperties(pd);
+				if(!deviceNameFilter.empty()) {
+					string_view deviceName(deviceProperties.deviceName);
+					if(deviceName.find(deviceNameFilter) == string_view::npos)
+						continue;
+				}
+
+				// Vulkan 1.2 is hard requirement
+				if(deviceProperties.apiVersion < VK_API_VERSION_1_2)
+					continue;
+
 				// skip devices without VK_KHR_swapchain
 				vector<vk::ExtensionProperties> extensionList = vulkanInstance.enumerateDeviceExtensionProperties(pd);
 				for(vk::ExtensionProperties& e : extensionList)
@@ -569,11 +636,6 @@ void App::init()
 					// presentation and operations are supported on the different queues
 					compatibleQueues.emplace_back(operationsQueueFamily, presentationQueueFamily);
 			nextDevice:;
-
-				// Vulkan 1.2 is hard requirement
-				deviceProperties = vulkanInstance.getPhysicalDeviceProperties(pd);
-				if(deviceProperties.apiVersion < VK_API_VERSION_1_2)
-					continue;
 
 				// get supported features
 				CadR::Renderer::RequiredFeaturesStructChain features;
