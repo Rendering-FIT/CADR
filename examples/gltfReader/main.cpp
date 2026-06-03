@@ -219,6 +219,8 @@ public:
 
 	// command-line options
 	string deviceNameFilter;
+	bool forceDynamicRendering;
+	bool forceRenderPassRendering;
 	filesystem::path filePath;
 	string utf8FilePath;  // File path stored as utf-8. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
 	string utf8FileName;  // File name as utf-8. No parent directories and no file name suffix. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
@@ -403,6 +405,8 @@ App::App(int argc, char** argv)
 #endif
 
 	// process command-line arguments
+	forceDynamicRendering = false;
+	forceRenderPassRendering = false;
 	int filePathIndex = -1;
 	for(int i=1; i<argc; i++) {
 
@@ -413,10 +417,14 @@ App::App(int argc, char** argv)
 			if(strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 				throw
 					ExitWithMessage(99,
-						string(executableName) + " [options] [--] fileName\n"
+						string(executableName) + " [options] [--] <fileName>\n"
 						"   -h --help  prints this screen\n"
 						"   --device <deviceNameFilter>  considers only Vulkan devices whose name\n"
-						"                                contains <deviceNameFilter> string");
+						"                                contains <deviceNameFilter> string\n"
+						"   --dynamic-rendering      forces Vulkan dynamic rendering (modern approach)\n"
+						"   --render-pass-rendering  forces Vulkan render pass rendering (legacy approach)\n"
+						"   --          end of options; following parameter can be only <fileName>\n"
+						"   <fileName>  model to load");
 			}
 			else if(strcmp(argv[i], "--device") == 0)
 			{
@@ -427,6 +435,16 @@ App::App(int argc, char** argv)
 				}
 				else
 					throw ExitWithMessage(99, "No device name specified after --device parameter.");
+			}
+			else if(strcmp(argv[i], "--dynamic-rendering") == 0)
+			{
+				forceDynamicRendering = true;
+				forceRenderPassRendering = false;
+			}
+			else if(strcmp(argv[i], "--render-pass-rendering") == 0)
+			{
+				forceRenderPassRendering = true;
+				forceDynamicRendering = false;
 			}
 			else if(strcmp(argv[i], "--") == 0)
 			{
@@ -714,6 +732,12 @@ void App::init()
 			};
 
 		}();
+
+	// override dynamic rendering settings by command-line
+	if(forceDynamicRendering)
+		dynamicRendering = true;
+	if(forceRenderPassRendering)
+		dynamicRendering = false;
 
 	// num samples for multisampling
 	vk::PhysicalDeviceProperties deviceProperties = vulkanInstance.getPhysicalDeviceProperties(physicalDevice);
