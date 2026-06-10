@@ -98,6 +98,7 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkCmdDispatchIndirect=getProcAddr<PFN_vkCmdDispatchIndirect>("vkCmdDispatchIndirect");
 	vkCmdDispatchBase    =getProcAddr<PFN_vkCmdDispatchBase    >("vkCmdDispatchBase");
 	vkCmdPipelineBarrier =getProcAddr<PFN_vkCmdPipelineBarrier >("vkCmdPipelineBarrier");
+	vkCmdPipelineBarrier2=getProcAddr<PFN_vkCmdPipelineBarrier2>("vkCmdPipelineBarrier2");
 	vkCmdSetDepthBias    =getProcAddr<PFN_vkCmdSetDepthBias    >("vkCmdSetDepthBias");
 	vkCmdSetLineWidth    =getProcAddr<PFN_vkCmdSetLineWidth    >("vkCmdSetLineWidth");
 	vkCmdSetLineStippleEXT=getProcAddr<PFN_vkCmdSetLineStippleEXT>("vkCmdSetLineStippleEXT");

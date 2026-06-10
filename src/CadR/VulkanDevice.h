@@ -207,6 +207,7 @@ public:
 	inline void cmdDispatchIndirect(vk::CommandBuffer commandBuffer,vk::Buffer buffer,vk::DeviceSize offset) const  { commandBuffer.dispatchIndirect(buffer,offset,*this); }
 	inline void cmdDispatchBase(vk::CommandBuffer commandBuffer,uint32_t baseGroupX,uint32_t baseGroupY,uint32_t baseGroupZ,uint32_t groupCountX,uint32_t groupCountY,uint32_t groupCountZ) const  { commandBuffer.dispatchBase(baseGroupX,baseGroupY,baseGroupZ,groupCountX,groupCountY,groupCountZ,*this); }
 	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,uint32_t memoryBarrierCount,const vk::MemoryBarrier* pMemoryBarriers,uint32_t bufferMemoryBarrierCount,const vk::BufferMemoryBarrier* pBufferMemoryBarriers,uint32_t imageMemoryBarrierCount,const vk::ImageMemoryBarrier* pImageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarrierCount,pMemoryBarriers,bufferMemoryBarrierCount,pBufferMemoryBarriers,imageMemoryBarrierCount,pImageMemoryBarriers,*this); }
+	inline void cmdPipelineBarrier2(vk::CommandBuffer commandBuffer, const vk::DependencyInfo* pDependencyInfo) const  { commandBuffer.pipelineBarrier2(pDependencyInfo,*this); }
 	inline void cmdSetDepthBias(vk::CommandBuffer commandBuffer,float constantFactor,float clamp,float slopeFactor) const  { commandBuffer.setDepthBias(constantFactor,clamp,slopeFactor,*this); }
 	inline void cmdSetLineWidth(vk::CommandBuffer commandBuffer,float lineWidth) const  { commandBuffer.setLineWidth(lineWidth,*this); }
 	inline void cmdSetLineStippleEXT(vk::CommandBuffer commandBuffer,uint32_t factor,uint16_t pattern) const  { commandBuffer.setLineStippleEXT(factor,pattern,*this); }
@@ -384,6 +385,7 @@ public:
 	inline void cmdBindDescriptorSets(vk::CommandBuffer commandBuffer,vk::PipelineBindPoint pipelineBindPoint,vk::PipelineLayout layout,uint32_t firstSet,vk::ArrayProxy<const vk::DescriptorSet> descriptorSets,vk::ArrayProxy<const uint32_t> dynamicOffsets) const  { commandBuffer.bindDescriptorSets(pipelineBindPoint,layout,firstSet,descriptorSets,dynamicOffsets,*this); }
 	inline void cmdBindVertexBuffers(vk::CommandBuffer commandBuffer,uint32_t firstBinding,vk::ArrayProxy<const vk::Buffer> buffers,vk::ArrayProxy<const vk::DeviceSize> offsets) const  { commandBuffer.bindVertexBuffers(firstBinding,buffers,offsets,*this); }
 	inline void cmdPipelineBarrier(vk::CommandBuffer commandBuffer,vk::PipelineStageFlags srcStageMask,vk::PipelineStageFlags dstStageMask,vk::DependencyFlags dependencyFlags,vk::ArrayProxy<const vk::MemoryBarrier> memoryBarriers,vk::ArrayProxy<const vk::BufferMemoryBarrier> bufferMemoryBarriers,vk::ArrayProxy<const vk::ImageMemoryBarrier> imageMemoryBarriers) const  { commandBuffer.pipelineBarrier(srcStageMask,dstStageMask,dependencyFlags,memoryBarriers,bufferMemoryBarriers,imageMemoryBarriers,*this); }
+	inline void cmdPipelineBarrier2(vk::CommandBuffer commandBuffer,const vk::DependencyInfo& dependencyInfo) const  { commandBuffer.pipelineBarrier2(dependencyInfo,*this); }
 	inline vk::ResultValueType<void>::type queueSubmit(vk::Queue queue,vk::ArrayProxy<const vk::SubmitInfo> submits,vk::Fence fence) const  { return queue.submit(submits,fence,*this); }
 	inline vk::Result waitForFences(vk::ArrayProxy<const vk::Fence> fences,vk::Bool32 waitAll,uint64_t timeout) const  { return _device.waitForFences(fences,waitAll,timeout,*this); }
 	inline vk::ResultValueType<void>::type resetFences(vk::ArrayProxy<const vk::Fence> fences) const  { return _device.resetFences(fences,*this); }
@@ -597,6 +599,7 @@ public:
 	PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect;
 	PFN_vkCmdDispatchBase vkCmdDispatchBase;
 	PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
+	PFN_vkCmdPipelineBarrier2 vkCmdPipelineBarrier2;
 	PFN_vkCmdSetDepthBias vkCmdSetDepthBias;
 	PFN_vkCmdSetLineWidth vkCmdSetLineWidth;
 	PFN_vkCmdSetLineStippleEXT vkCmdSetLineStippleEXT;

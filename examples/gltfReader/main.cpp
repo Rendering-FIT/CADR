@@ -4525,6 +4525,38 @@ void App::frame(VulkanWindow&)
 				}
 			)
 		);
+		device.cmdPipelineBarrier(
+			commandBuffer,
+			vk::PipelineStageFlags(  // srcStageMask
+				vk::PipelineStageFlagBits::eComputeShader |  // output of preprocessDrawables compute shader
+				vk::PipelineStageFlagBits::eTransfer  // data updates
+			),
+			vk::PipelineStageFlags(  // dstStageMask
+				vk::PipelineStageFlagBits::eDrawIndirect |  // standard indirect rendering used by StateSets
+				vk::PipelineStageFlagBits::eVertexInput | // all other potential rendering (indices and attributes)
+				vk::PipelineStageFlagBits::eVertexShader  // all other data possibly read by vertex and following shaders
+			),
+			vk::DependencyFlagBits(),  // dependencyFlags
+			1,  // memoryBarrierCount
+			array{  // pMemoryBarriers
+				vk::MemoryBarrier{
+					vk::AccessFlags(  // srcAccessMask
+						vk::AccessFlagBits::eShaderWrite |  // preprocessDrawables compute shader writes
+						vk::AccessFlagBits::eTransferWrite  // data updates
+					),
+					vk::AccessFlags(  // dstAccessMask
+						vk::AccessFlagBits::eIndirectCommandRead |  // standard indirect rendering used by StateSets
+						vk::AccessFlagBits::eIndexRead |  // all other potential rendering (indices and attributes)
+						vk::AccessFlagBits::eVertexAttributeRead |  // all other potential rendering (indices and attributes)
+						vk::AccessFlagBits::eShaderRead  // all possible reads done by any graphics shader
+					),
+				},
+			}.data(),
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers,
+			0,  // imageMemoryBarrierCount
+			nullptr  // pImageMemoryBarriers
+		);
 		renderer.recordSceneRendering(
 			commandBuffer,  // commandBuffer
 			stateSetRoot,  // stateSetRoot
@@ -4591,7 +4623,6 @@ void App::frame(VulkanWindow&)
 	renderer.executeCopyOperations();
 
 	// submit frame
-	device.waitIdle();
 	vk::Semaphore renderingFinishedSemaphore = renderingFinishedSemaphores[imageIndex];
 	device.queueSubmit(
 		graphicsQueue,  // queue
@@ -4604,7 +4635,6 @@ void App::frame(VulkanWindow&)
 		),
 		renderingFinishedFence  // fence
 	);
-	device.waitIdle();
 
 	// present
 	r =
