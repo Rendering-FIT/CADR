@@ -4401,15 +4401,46 @@ void App::frame(VulkanWindow&)
 	CadR::StagingData sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
 	SceneGpuData* sceneData = sceneStagingData.data<SceneGpuData>();
 	sceneData->viewMatrix =
-		glm::lookAtLH(
-			sceneBoundingSphere.center + glm::vec3(  // eye
-				+cameraDistance*sin(-cameraHeading)*cos(cameraElevation),  // x
-				-cameraDistance*sin(cameraElevation),  // y
-				-cameraDistance*cos(cameraHeading)*cos(cameraElevation)  // z
-			),
-			sceneBoundingSphere.center,  // center
-			glm::vec3(0.f,1.f,0.f)  // up
-		);
+		[&]() {
+			// do lookAt
+			// (the following code is optimized equivalent of:
+			// glm::lookAtLH(
+			//    sceneBoundingSphere.center + glm::vec3(  // eye
+			//       -cameraDistance * sin(cameraHeading) * cos(cameraElevation),  // x
+			//       -cameraDistance * sin(cameraElevation),  // y
+			//       -cameraDistance * cos(cameraHeading) * cos(cameraElevation)  // z
+			//    ),
+			//    sceneBoundingSphere.center,  // center
+			//    glm::vec3(  // up
+			//       -sin(cameraHeading) * sin(cameraElevation),
+			//       +cos(cameraElevation),
+			//       -cos(cameraHeading) * sin(cameraElevation)
+			//    )
+			// );
+			float sinElevation = sin(cameraElevation);
+			float cosElevation = cos(cameraElevation);
+			float sinHeading = sin(cameraHeading);
+			float cosHeading = cos(cameraHeading);
+			const glm::vec3 forward(
+				sinHeading * cosElevation,  // x
+				sinElevation,  // y
+				cosHeading * cosElevation  // z
+			);
+			const glm::vec3 up(
+				-sinHeading * sinElevation,  // x
+				+cosElevation,  // y
+				-cosHeading * sinElevation  // z
+			);
+			const glm::vec3 side = cross(up, forward);
+			const glm::vec3 eye = sceneBoundingSphere.center - (forward * cameraDistance);
+			return
+				glm::mat4x4(
+					side.x, up.x, forward.x, 0.f,
+					side.y, up.y, forward.y, 0.f,
+					side.z, up.z, forward.z, 0.f,
+					-dot(side, eye), -dot(up, eye), -dot(forward, eye), 1.f
+				);
+		}();
 	float zFar = fabs(cameraDistance) + sceneBoundingSphere.radius;
 	float zNear = fabs(cameraDistance) - sceneBoundingSphere.radius;
 	float minZNear = zFar / maxZNearZFarRatio;
@@ -4669,6 +4700,7 @@ void App::mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseS
 	if(mouseState.buttons[VulkanWindow::MouseButton::Left]) {
 		cameraHeading = startCameraHeading + (mouseState.posX - startMouseX) * 0.01f;
 		cameraElevation = startCameraElevation + (mouseState.posY - startMouseY) * 0.01f;
+		cameraElevation = glm::clamp(cameraElevation, -glm::half_pi<decltype(cameraElevation)>(), glm::half_pi<decltype(cameraElevation)>());
 		window.scheduleFrame();
 	}
 }
@@ -4687,6 +4719,7 @@ void App::mouseButton(VulkanWindow& window, size_t button, VulkanWindow::ButtonS
 		else {
 			cameraHeading = startCameraHeading + (mouseState.posX - startMouseX) * 0.01f;
 			cameraElevation = startCameraElevation + (mouseState.posY - startMouseY) * 0.01f;
+			cameraElevation = glm::clamp(cameraElevation, -glm::half_pi<decltype(cameraElevation)>(), glm::half_pi<decltype(cameraElevation)>());
 			window.scheduleFrame();
 		}
 	}
