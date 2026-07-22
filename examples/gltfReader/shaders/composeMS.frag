@@ -4,9 +4,9 @@
 
 #version 460
 
-layout(input_attachment_index=0, set=0, binding=0) uniform subpassInput opaqueColorImage;
-layout(input_attachment_index=1, set=0, binding=1) uniform subpassInput transparencyColorImage;
-layout(input_attachment_index=2, set=0, binding=2) uniform subpassInput transparencyCountImage;
+layout(input_attachment_index=0, set=0, binding=0) uniform subpassInputMS opaqueColorImage;
+layout(input_attachment_index=1, set=0, binding=1) uniform subpassInputMS transparencyColorImage;
+layout(input_attachment_index=2, set=0, binding=2) uniform subpassInputMS transparencyCountImage;
 
 layout(location = 2) out vec4 outColor;
 
@@ -14,14 +14,14 @@ layout(location = 2) out vec4 outColor;
 void main()
 {
 	// opaque color
-	outColor = subpassLoad(opaqueColorImage);
+	outColor = subpassLoad(opaqueColorImage, gl_SampleID);
 
 	// any transparent objects?
-	float transparencyCount = subpassLoad(transparencyCountImage).r;
+	float transparencyCount = subpassLoad(transparencyCountImage, gl_SampleID).r;
 	if(transparencyCount != 0) {
 
 		// transparency color
-		vec4 transparencyColor = subpassLoad(transparencyColorImage);
+		vec4 transparencyColor = subpassLoad(transparencyColorImage, gl_SampleID);
 
 		// any transparency?
 		if(transparencyColor.a != 0) {

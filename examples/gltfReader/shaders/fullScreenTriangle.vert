@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+//
+// SPDX-License-Identifier: MIT
+
 #version 460
 
 const vec2 vertices2D[] = {

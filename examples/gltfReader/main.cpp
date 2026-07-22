@@ -74,6 +74,9 @@ static const uint32_t fullScreenTriangleVertexShaderSpirv[]={
 static const uint32_t composeFragmentShaderSpirv[]={
 #include "shaders/compose.frag.spv"
 };
+static const uint32_t composeMultisampledFragmentShaderSpirv[]={
+#include "shaders/composeMS.frag.spv"
+};
 
 
 // Shader data structures
@@ -939,11 +942,13 @@ void App::init()
 		// resolved color output
 		colorRenderingAttachmentInfoList[2].imageView = nullptr;
 		colorRenderingAttachmentInfoList[2].imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
-		colorRenderingAttachmentInfoList[2].resolveMode = vk::ResolveModeFlagBits::eAverage;
+		colorRenderingAttachmentInfoList[2].resolveMode =
+			numSamples != vk::SampleCountFlagBits::e1 ? vk::ResolveModeFlagBits::eAverage : vk::ResolveModeFlagBits::eNone;
 		colorRenderingAttachmentInfoList[2].resolveImageView = nullptr;
 		colorRenderingAttachmentInfoList[2].resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal;
 		colorRenderingAttachmentInfoList[2].loadOp = vk::AttachmentLoadOp::eDontCare;
-		colorRenderingAttachmentInfoList[2].storeOp = vk::AttachmentStoreOp::eDontCare;
+		colorRenderingAttachmentInfoList[2].storeOp =
+			numSamples != vk::SampleCountFlagBits::e1 ? vk::AttachmentStoreOp::eDontCare : vk::AttachmentStoreOp::eStore;
 		colorRenderingAttachmentInfoList[2].clearValue.color = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
 
 		// transparency multisampled color output
@@ -1104,8 +1109,10 @@ void App::init()
 			device.createShaderModule(
 				vk::ShaderModuleCreateInfo(
 					vk::ShaderModuleCreateFlags(),  // flags
-					sizeof(composeFragmentShaderSpirv),  // codeSize
-					composeFragmentShaderSpirv  // pCode
+					(numSamples == vk::SampleCountFlagBits::e1)  // codeSize
+						? sizeof(composeFragmentShaderSpirv) : sizeof(composeMultisampledFragmentShaderSpirv),
+					(numSamples == vk::SampleCountFlagBits::e1)  // pCode
+						? composeFragmentShaderSpirv : composeMultisampledFragmentShaderSpirv
 				)
 			);
 		composeDescriptorSetLayout =
@@ -3678,23 +3685,24 @@ void App::resize(VulkanWindow& window,
 	// clear resources
 	for(auto v : swapchainImageViews)  device.destroy(v);
 	swapchainImageViews.clear();
-	device.destroy(depthImage);
-	device.destroy(hdrColorImage);
-	device.destroy(finalMultisampledColorImage);
-	device.destroy(transparencyColorImage);
-	device.destroy(transparencyCountImage);
-	device.free(depthImageMemory);
-	device.free(hdrColorImageMemory);
-	device.free(finalMultisampledColorImageMemory);
-	device.free(transparencyColorImageMemory);
-	device.free(transparencyCountImageMemory);
-	device.destroy(depthImageView);
-	device.destroy(hdrColorImageView);
-	device.destroy(finalMultisampledColorImageView);
-	device.destroy(transparencyColorImageView);
-	device.destroy(transparencyCountImageView);
+	device.destroy(depthImage);  depthImage = nullptr;
+	device.destroy(hdrColorImage);  hdrColorImage = nullptr;
+	device.destroy(finalMultisampledColorImage);  finalMultisampledColorImage = nullptr;
+	device.destroy(transparencyColorImage);  transparencyColorImage = nullptr;
+	device.destroy(transparencyCountImage);  transparencyCountImage = nullptr;
+	device.free(depthImageMemory);  depthImageMemory = nullptr;
+	device.free(hdrColorImageMemory);  hdrColorImageMemory = nullptr;
+	device.free(finalMultisampledColorImageMemory);  finalMultisampledColorImageMemory = nullptr;
+	device.free(transparencyColorImageMemory);  transparencyColorImageMemory = nullptr;
+	device.free(transparencyCountImageMemory);  transparencyCountImageMemory = nullptr;
+	device.destroy(depthImageView);  depthImageView = nullptr;
+	device.destroy(hdrColorImageView);  hdrColorImageView = nullptr;
+	device.destroy(finalMultisampledColorImageView);  finalMultisampledColorImageView = nullptr;
+	device.destroy(transparencyColorImageView);  transparencyColorImageView = nullptr;
+	device.destroy(transparencyCountImageView);  transparencyCountImageView = nullptr;
 	for(auto f : framebuffers)  device.destroy(f);
 	framebuffers.clear();
+	device.destroy(composePipeline);  composePipeline = nullptr;
 
 	// print info
 	cout << "Recreating swapchain (extent: " << newSurfaceExtent.width << "x" << newSurfaceExtent.height
@@ -4527,8 +4535,12 @@ void App::frame(VulkanWindow&)
 		}.data()
 	);
 	if(dynamicRendering) {
-		colorRenderingAttachmentInfoList[2].resolveImageView =
-			swapchainImageViews[imageIndex];
+		if(numSamples != vk::SampleCountFlagBits::e1)
+			colorRenderingAttachmentInfoList[2].resolveImageView =
+				swapchainImageViews[imageIndex];
+		else
+			colorRenderingAttachmentInfoList[2].imageView =
+				swapchainImageViews[imageIndex];
 		device.cmdPipelineBarrier(
 			commandBuffer,  // commandBuffer
 			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStage

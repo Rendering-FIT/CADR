@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2019-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+# SPDX-FileCopyrightText: 2019-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
 #
 # SPDX-License-Identifier: MIT-0
 
@@ -28,6 +28,7 @@ set(APP_SHADER_DEPS)
 source_group("Shaders" FILES ${APP_SHADER_DEPS})
 add_shader(shaders/fullScreenTriangle.vert  ""  shaders/fullScreenTriangle.vert.spv  APP_SHADER_DEPS)
 add_shader(shaders/compose.frag  ""  shaders/compose.frag.spv  APP_SHADER_DEPS)
+add_shader(shaders/composeMS.frag  ""  shaders/composeMS.frag.spv  APP_SHADER_DEPS)
 
 # dependencies
 find_package(Vulkan REQUIRED)
