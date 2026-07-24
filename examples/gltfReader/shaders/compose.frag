@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
 //
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT-0
 
 #version 460
 
