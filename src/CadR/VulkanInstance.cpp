@@ -124,6 +124,7 @@ static vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, int>>
 	vector<tuple<uint32_t,uint32_t>> compatibleQueues;
 	for(vk::PhysicalDevice pd : deviceList)
 	{
+		compatibleQueues.clear();
 		if(!presentationSurface)
 		{
 			// iterate queue families
@@ -224,7 +225,6 @@ static vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, int>>
 
 			compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily, finalScore);
 		}
-		compatibleQueues.clear();
 	}
 
 	// sort devices
