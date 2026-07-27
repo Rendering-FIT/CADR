@@ -107,15 +107,17 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept
 }
 
 
-tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
+static vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, int>>
+	getCompatibleDevices(
+		VulkanInstance& vulkanInstance,
 		vk::QueueFlags queueOperations,
 		vk::SurfaceKHR presentationSurface,
 		const std::string& nameFilter,
-		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback,
-		int index)
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback
+	)
 {
 	// find compatible devices
-	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
+	vector<vk::PhysicalDevice> deviceList = vulkanInstance.enumeratePhysicalDevices();
 	vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, int>> compatibleDevices;
 	compatibleDevices.reserve(deviceList.size());
 	vk::PhysicalDeviceProperties deviceProperties;
@@ -125,7 +127,7 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		if(!presentationSurface)
 		{
 			// iterate queue families
-			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+			vector<vk::QueueFamilyProperties> queueFamilyList = vulkanInstance.getPhysicalDeviceQueueFamilyProperties(pd);
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
 				// test for queue operations support (graphics, compute, etc.)
@@ -138,7 +140,7 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		else
 		{
 			// skip devices without VK_KHR_swapchain
-			vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
+			vector<vk::ExtensionProperties> extensionList = vulkanInstance.enumerateDeviceExtensionProperties(pd);
 			for(vk::ExtensionProperties& e : extensionList)
 				if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
 					goto swapchainSupported;
@@ -148,11 +150,11 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 			// select queues for submitting operations and for presentation
 			uint32_t operationsQueueFamily = UINT32_MAX;
 			uint32_t presentationQueueFamily = UINT32_MAX;
-			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
+			vector<vk::QueueFamilyProperties> queueFamilyList = vulkanInstance.getPhysicalDeviceQueueFamilyProperties(pd);
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
 				// test for presentation support
-				if(pd.getSurfaceSupportKHR(i, presentationSurface, *this)) {
+				if(pd.getSurfaceSupportKHR(i, presentationSurface, vulkanInstance)) {
 
 					// test for queue operations support (graphics, compute, etc.)
 					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
@@ -181,8 +183,9 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 		nextDevice:;
 		}
 
+
 		// get device properties
-		deviceProperties = pd.getProperties(*this);
+		deviceProperties = pd.getProperties(vulkanInstance);
 
 		// filter by device name
 		if(!nameFilter.empty())
@@ -191,7 +194,7 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 
 		// filter by callback
 		if(filterCallback)
-			if(filterCallback(*this, pd) == false)
+			if(filterCallback(vulkanInstance, pd) == false)
 				continue;
 
 		// evaluate score callback
@@ -227,7 +230,22 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 	// sort devices
 	sort(compatibleDevices.begin(), compatibleDevices.end(),
 	     [](const decltype(compatibleDevices)::value_type& lhs, const decltype(compatibleDevices)::value_type& rhs)
-		     { return get<3>(lhs) < get<3>(rhs); });
+		     { return get<3>(lhs) > get<3>(rhs); });
+
+	return compatibleDevices;
+}
+
+
+tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
+		vk::QueueFlags queueOperations,
+		vk::SurfaceKHR presentationSurface,
+		const std::string& nameFilter,
+		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback,
+		int index)
+{
+	// compatible devices
+	auto compatibleDevices =
+		getCompatibleDevices(*this, queueOperations, presentationSurface, nameFilter, filterCallback);
 
 	// choose by index
 	if(index >= 0 && index < decltype(index)(compatibleDevices.size())) {
@@ -239,105 +257,23 @@ tuple<vk::PhysicalDevice, uint32_t, uint32_t> VulkanInstance::chooseDevice(
 }
 
 
-vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlagBits queueOperations,
+vector<string> VulkanInstance::getPhysicalDeviceNames(vk::QueueFlags queueOperations,
 	vk::SurfaceKHR presentationSurface, const std::string& nameFilter,
 	const function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback)
 {
-	// find compatible devices
-	vector<vk::PhysicalDevice> deviceList = enumeratePhysicalDevices();
-	vector<string> compatibleDevices;
-	if(!presentationSurface)
+	vector<string> r;
+
+	// compatible devices
+	auto compatibleDevices =
+		getCompatibleDevices(*this, queueOperations, presentationSurface, nameFilter, filterCallback);
+
+	for(const auto& d : compatibleDevices)
 	{
-		// filter devices by supported operations
-		for(vk::PhysicalDevice pd : deviceList)
-		{
-			// callback to filter out devices
-			if(filterCallback)
-				if(filterCallback(*this, pd) == false)
-					continue;
-
-			// iterate queue families
-			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
-			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
-
-				// test for queue operations support (graphics, compute, etc.)
-				if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
-					compatibleDevices.emplace_back(pd.getProperties(*this).deviceName.data());
-					break;
-				}
-			}
-		}
-	}
-	else
-	{
-		// filter devices by supported operations and presentation support
-		for(vk::PhysicalDevice pd : deviceList)
-		{
-			// filter out devices
-			if(filterCallback)
-			{
-				// callback
-				// (do not forget to test for VK_KHR_swapchain inside filterCallback)
-				if(filterCallback(*this, pd) == false)
-					continue;
-			}
-			else
-			{
-				// skip devices without VK_KHR_swapchain
-				vector<vk::ExtensionProperties> extensionList = enumerateDeviceExtensionProperties(pd);
-				for(vk::ExtensionProperties& e : extensionList)
-					if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
-						goto swapchainSupported;
-				continue;
-			swapchainSupported:;
-			}
-
-			// select queues for submitting operations and for presentation
-			uint32_t operationsQueueFamily = UINT32_MAX;
-			uint32_t presentationQueueFamily = UINT32_MAX;
-			vector<vk::QueueFamilyProperties> queueFamilyList = getPhysicalDeviceQueueFamilyProperties(pd);
-			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
-
-				// test for presentation support
-				if(pd.getSurfaceSupportKHR(i, presentationSurface, *this)) {
-
-					// test for queue operations support (graphics, compute, etc.)
-					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations) {
-						// if operations and presentation are supported on the same queue,
-						// we will use single queue
-						compatibleDevices.emplace_back(pd.getProperties(*this).deviceName.data());
-						goto nextDevice;
-					}
-					else
-						// if only presentation is supported, we store the first such queue
-						if(presentationQueueFamily == UINT32_MAX)
-							presentationQueueFamily = i;
-				}
-				else {
-					if((queueFamilyList[i].queueFlags & queueOperations) == queueOperations)
-						// if only operations are supported on the queue,
-						// we store the first such queue
-						if(operationsQueueFamily == UINT32_MAX)
-							operationsQueueFamily = i;
-				}
-			}
-
-			if(operationsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
-				// presentation and operations are supported on the different queues
-				compatibleDevices.emplace_back(pd.getProperties(*this).deviceName.data());
-		nextDevice:;
-		}
+		// device name
+		vk::PhysicalDevice pd = std::get<0>(d);
+		vk::PhysicalDeviceProperties deviceProperties = pd.getProperties(*this);
+		r.emplace_back(deviceProperties.deviceName.data());
 	}
 
-	// filter physical devices
-	if(!nameFilter.empty()) {
-		decltype(compatibleDevices) filteredDevices;
-		for(const string& s : compatibleDevices)
-			if(nameFilter.find(s) != string::npos)
-				filteredDevices.emplace_back(move(s));
-
-		compatibleDevices.swap(filteredDevices);
-	}
-
-	return compatibleDevices;
+	return r;
 }

@@ -26,7 +26,7 @@ public:
 		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {},
 		int index = 0);
 	std::vector<std::string> getPhysicalDeviceNames(
-		vk::QueueFlagBits queueOperations, vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "",
+		vk::QueueFlags queueOperations, vk::SurfaceKHR presentationSurface = {}, const std::string& nameFilter = "",
 		const std::function<bool (VulkanInstance&, vk::PhysicalDevice)>& filterCallback = {});
 
 	// constructors and destructor

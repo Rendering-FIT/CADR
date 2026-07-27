@@ -38,6 +38,22 @@ static const uint32_t engineVersion = VK_MAKE_VERSION(0, 0, 0);
 static const uint32_t vulkanApiVersion = VK_API_VERSION_1_2;
 
 
+static bool deviceFilterCallback(CadR::VulkanInstance& instance, vk::PhysicalDevice pd)
+{
+	if(instance.getPhysicalDeviceProperties(pd).apiVersion < VK_API_VERSION_1_2)
+		return false;
+	auto features =
+		instance.getPhysicalDeviceFeatures2<
+			vk::PhysicalDeviceFeatures2,
+			vk::PhysicalDeviceVulkan11Features,
+			vk::PhysicalDeviceVulkan12Features>(pd);
+	return features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
+			features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 &&
+			features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
+			features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
+}
+
+
 enum class RenderingSetup {
 	Performance = 0,
 	Picking = 1,
@@ -122,7 +138,7 @@ public:
 	bool useWindow = false;
 	bool rasterizerDiscard = false;
 	bool printFrameTimes = false;
-	int deviceIndex = -1;
+	int deviceIndex = 0;
 	string deviceNameFilter;
 	size_t requestedNumTriangles = 0;
 	bool calibratedTimestampsSupported = false;
@@ -301,6 +317,8 @@ App::App(int argc, char** argv)
 			if(argv[i][0] >= '0' && argv[i][0] <= '9') {
 				char* e = nullptr;
 				deviceIndex = strtoul(argv[i], &e, 10);
+				if(deviceIndex != 0)
+					deviceIndex--;  // device indices starts from 1 on command line
 				if(e == nullptr || *e != 0) {
 					cout << "Invalid parameter \"" << argv[i] << "\"" << endl;
 					printHelp = true;
@@ -316,12 +334,20 @@ App::App(int argc, char** argv)
 	if(printHelp || testType == TestType::Undefined)
 	{
 		// header
-		cout << appName << " tests various performance characteristics of CADR library.\n\n"
-		     << "Devices in this system:" << endl;
+		cout << appName << " tests various performance characteristics of CADR library.\n\n";
+		if(deviceNameFilter.empty() && deviceIndex == 0)
+			cout << "Compatible devices:" << endl;
+		else
+			cout << "Compatible devices (filtered by command line parameters):" << endl;
 
 		// get device names
 		try {
-			// initialize Vulkan and get device names
+
+			// init window
+			if(useWindow)
+				VulkanWindow::init();
+
+			// init Vulkan
 			library.load();
 			instance.create(
 				library,  // Vulkan library
@@ -331,16 +357,27 @@ App::App(int argc, char** argv)
 				engineVersion,  // engine version
 				vulkanApiVersion,  // api version
 				nullptr,  // enabled layers
-				nullptr  // enabled extensions
+				useWindow ? VulkanWindow::requiredExtensions()  // enabled extensions
+				          : vector<const char*>{}
 			);
-			vector<string> deviceNames = instance.getPhysicalDeviceNames(vk::QueueFlagBits::eGraphics);
+			if(useWindow)
+				window.create(instance.handle(), VkExtent2D(imageExtent), vulkanAppName, library.vkGetInstanceProcAddr);
+
+			// device names
+			vector<string> deviceNames =
+				instance.getPhysicalDeviceNames(
+					vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,  // queueOperations
+					useWindow ? window.surface() : nullptr,  // presentationSurface
+					deviceNameFilter,  // nameFilter
+					deviceFilterCallback  // filterCallback
+				);
 
 			// print device names
 			if(deviceNames.empty())
 				cout << "   < no devices found >" << endl;
 			else
 				for(size_t i=0, c=deviceNames.size(); i<c; i++)
-					cout << "   " << i << ": " << deviceNames[i] << endl;
+					cout << "   " << i+1 << ": " << deviceNames[i] << endl;
 		}
 		catch(vk::Error& e) {
 			cout << "   Vulkan initialization failed because of exception: " << e.what() << endl;
@@ -525,38 +562,34 @@ void App::init()
 	// select device
 	tie(physicalDevice, graphicsQueueFamily, presentationQueueFamily) =
 		instance.chooseDevice(
-			vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,
-			useWindow ? window.surface() : nullptr,
-			"",  // nameFilter
-			[](CadR::VulkanInstance& instance, vk::PhysicalDevice pd) -> bool  // filterCallback
-			{
-				if(instance.getPhysicalDeviceProperties(pd).apiVersion < VK_API_VERSION_1_2)
-					return false;
-				auto features =
-					instance.getPhysicalDeviceFeatures2<
-						vk::PhysicalDeviceFeatures2,
-						vk::PhysicalDeviceVulkan11Features,
-						vk::PhysicalDeviceVulkan12Features>(pd);
-				return features.get<vk::PhysicalDeviceFeatures2>().features.multiDrawIndirect &&
-				       features.get<vk::PhysicalDeviceFeatures2>().features.shaderInt64 &&
-				       features.get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters &&
-				       features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress;
-			},
+			vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,  // queueOperations
+			useWindow ? window.surface() : nullptr,  // presentationSurface
+			deviceNameFilter,  // nameFilter
+			deviceFilterCallback,  // filterCallback
 			deviceIndex  // index
 		);
 	cout << "Device:" << endl;
 	if(!physicalDevice) {
-		if(deviceIndex == -1 && deviceNameFilter.empty())
+		if(deviceIndex == 0 && deviceNameFilter.empty())
 			cout << "   < no devices found >" << endl;
 		else {
-			cout << "   < no device selected based on command line parameters >\n"
-			     << "Device list:" << endl;
-			vector<string> deviceNames = instance.getPhysicalDeviceNames(vk::QueueFlagBits::eGraphics);
+			cout << "   < no device selected based on command line parameters >\n";
+			if(deviceNameFilter.empty() && deviceIndex == 0)
+				cout << "Compatible devices:" << endl;
+			else
+				cout << "Compatible devices (filtered by command line parameters):" << endl;
+			vector<string> deviceNames =
+				instance.getPhysicalDeviceNames(
+					vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eCompute,  // queueOperations
+					useWindow ? window.surface() : nullptr,  // presentationSurface
+					deviceNameFilter,  // nameFilter
+					deviceFilterCallback  // filterCallback
+				);
 			if(deviceNames.empty())
 				cout << "   < no devices found >" << endl;
 			else
 				for(size_t i=0, c=deviceNames.size(); i<c; i++)
-					cout << "   " << i << ": " << deviceNames[i] << endl;
+					cout << "   " << i+1 << ": " << deviceNames[i] << endl;
 		}
 		exit(99);
 	}
