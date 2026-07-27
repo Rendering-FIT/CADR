@@ -149,6 +149,8 @@ public:
 	vk::PresentModeKHR presentationMode = vk::PresentModeKHR::eFifo;
 	list<FrameInfo> frameInfoList;
 	vector<double> sceneUpdateTimeList;
+	double sceneConstructionTime = 0.;
+	double sceneDestructionTime = 0.;
 	chrono::steady_clock::duration realTestTime;
 	uint32_t numStateSets;
 	vector<CadR::StateSet*> id2stateSetMap;
@@ -1355,8 +1357,14 @@ void App::resize(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Exte
 	// create new test scene
 	drawableList.clear();
 	geometryList.clear();
+	matrixLists.clear();
+	materialList.clear();
+	chrono::time_point startTime = chrono::high_resolution_clock::now();
 	createTestScene(testType, int(newExtent.width), int(newExtent.height),
 		renderer, stateSetRoot, geometryList, drawableList, matrixLists, materialList);
+	chrono::time_point finishTime = chrono::high_resolution_clock::now();
+	if(sceneConstructionTime == 0.)
+		sceneConstructionTime = chrono::duration<double>(finishTime - startTime).count();
 
 	// update image size
 	imageExtent = newExtent;
@@ -1610,6 +1618,16 @@ void App::mainLoop()
 		realTestTime = chrono::steady_clock::now() - startTime;
 		frameInfoList.push_back(renderer.getFrameInfo());
 	}
+
+	// destroy scene
+	chrono::time_point startTime = chrono::high_resolution_clock::now();
+	drawableList.clear();
+	geometryList.clear();
+	matrixLists.clear();
+	materialList.clear();
+	chrono::time_point finishTime = chrono::high_resolution_clock::now();
+	if(sceneDestructionTime == 0.)
+		sceneDestructionTime = chrono::duration<double>(finishTime - startTime).count();
 }
 
 
@@ -1723,6 +1741,23 @@ void App::printResults()
 	cout << "      Gpu preparation time:          " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuPreparations; }) * 1000 << "ms" << endl;
 	cout << "      Gpu drawable processing time:  " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuDrawableProcessing; }) * 1000 << "ms" << endl;
 	cout << "      Gpu rendering time:            " << median(frameTimeList, [](FrameTimeInfo& i) { return i.gpuRendering; }) * 1000 << "ms" << endl;
+	cout << "      Cpu scene update time:  ";
+	if(!sceneUpdateTimeList.empty()) {
+		std::nth_element(sceneUpdateTimeList.begin(),
+			sceneUpdateTimeList.begin() + sceneUpdateTimeList.size() / 2, sceneUpdateTimeList.end());
+		cout << sceneUpdateTimeList[sceneUpdateTimeList.size() / 2] * 1000 << "ms" << endl;
+	} else
+		cout << "n/a" << endl;
+	cout << "   Scene construction time:  ";
+	if(sceneConstructionTime != 0.)
+		cout << sceneConstructionTime * 1000 << "ms" << endl;
+	else
+		cout << "n/a" << endl;
+	cout << "   Scene destruction time:   ";
+	if(sceneDestructionTime != 0.)
+		cout << sceneDestructionTime * 1000 << "ms" << endl;
+	else
+		cout << "n/a" << endl;
 
 	// print frame times
 	auto printValue =
