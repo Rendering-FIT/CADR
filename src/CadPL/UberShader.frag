@@ -1008,7 +1008,7 @@ void main()
 						f0, baseColor, metalness, normal, a2, colorProduct);
 
 					// accumulate output color product over all lights
-					outColor.rgb += colorProduct * lightData.gltf.color * lightData.gltf.intensity;
+					outColor.rgb += colorProduct * lightData.gltf.color;
 
 				}
 				else {
@@ -1060,7 +1060,7 @@ void main()
 							}
 
 							// accumulate output color product over all lights
-							outColor.rgb += colorProduct * lightData.gltf.color * lightData.gltf.intensity;
+							outColor.rgb += colorProduct * lightData.gltf.color;
 						}
 					}
 				}

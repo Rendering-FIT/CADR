@@ -333,12 +333,12 @@ struct OpenGLLightData {
 };
 
 struct GltfLightData {
-	vec3 color;
-	float intensity;  // for point light and spotlight in candelas (lm/sr), and for directional light in luxes (lm/m2)
+	vec3 color;  // for point light and spotlight in candelas (lm/sr), and for directional light in luxes (lm/m2)
 	float range;
 	float constantAttenuation;
 	float linearAttenuation;
 	float quadraticAttenuation;
+	float padding;
 };
 
 struct SpotlightData {

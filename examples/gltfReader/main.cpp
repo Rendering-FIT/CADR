@@ -90,12 +90,12 @@ struct OpenGLLightGpuData {
 };
 static_assert(sizeof(OpenGLLightGpuData) == 48, "Wrong OpenGLLightGpuData data size");
 struct GltfLightGpuData {
-	glm::vec3 color;
-	float intensity;  // in candelas (lm/sr) for point light and spotlight and in luxes (lm/m2) for directional light
+	glm::vec3 color;  // in candelas (lm/sr) for point light and spotlight and in luxes (lm/m2) for directional light
 	float range;
 	float constantAttenuation;
 	float linearAttenuation;
 	float quadraticAttenuation;
+	float padding;
 };
 static_assert(sizeof(GltfLightGpuData) == 32, "Wrong GltfLightGpuData data size");
 struct SpotlightGpuData {
@@ -4515,8 +4515,7 @@ void App::frame(VulkanWindow&)
 		.quadraticAttenuation = 0.f,
 	};
 	sceneData->lights[0].gltf = {
-		.color = glm::vec3(1.f, 1.f, 1.f),
-		.intensity = 0.5f,
+		.color = glm::vec3(0.5f, 0.5f, 0.5f),
 		.range = numeric_limits<float>::infinity(),
 		.constantAttenuation = 1.f,
 		.linearAttenuation = 0.f,
