@@ -47,30 +47,7 @@ layout(location = 1) out uvec4 outId;
 
 // textures
 layout(set=0, binding=0) uniform sampler2D textureList[];
-#if 0
-layout(set=0, binding=0) uniform sampler2D baseColorTexture;  // RGB encoded with sRGB transfer function, A represents linear alpha, Hoops uses diffuseTexture (using MaterialKit) and baseColorMap (using PBRMaterialKit)
-layout(set=0, binding=1) uniform sampler2D metallicRoughnessTexture;  // B - metalness, G - roughness, both encoded with linear transfer function, Hoops uses MetalnessMap (in PBRMaterialKit) and RoughnessMap (in PBRMaterialKit)
-layout(set=0, binding=2) uniform sampler2D normalTexture;  // RGB represents XYZ components in tangent space encoded with linear transfer function, Hoops uses bump texture (in MaterialKit) and NormalMap (in PBRMaterialKit)
-layout(set=0, binding=3) uniform sampler2D occlusionTexture;  // R contains occlusion values using linear transfer function, Hoops uses OcclusionMap (in PBRMaterialKit)
-layout(set=0, binding=4) uniform sampler2D emissiveTexture;  // RGB represents color and intensity of the light being emitted encoded with sRGB transfer function, Hoops uses emission texture (using MaterialKit) and emissiveMap (using PBRMaterialKit)
-// from extensions:
-layout(set=0, binding=5) uniform sampler2D anisotropyTexture;  // RG represents anisotropy direction, B contains anisotropy strength
-layout(set=0, binding=6) uniform sampler2D clearcoatTexture;
-layout(set=0, binding=7) uniform sampler2D clearcoatRoughnessTexture;
-layout(set=0, binding=8) uniform sampler2D clearcoatNormalTexture;
-layout(set=0, binding=9) uniform sampler2D iridescenceTexture;  // R - iridiscence intensity
-layout(set=0, binding=10) uniform sampler2D iridescenceThicknessTexture;  // G - thickness
-layout(set=0, binding=11) uniform sampler2D sheenColorTexture;  // RGB encoded with sRGB transfer function
-layout(set=0, binding=12) uniform sampler2D sheenRoughnessTexture;  // A contains roughness
-layout(set=0, binding=13) uniform sampler2D specularTexture;  // A contains strength of the specular reflection, Hoops uses specular channel
-layout(set=0, binding=14) uniform sampler2D specularColorTexture;  // RGB specifies F0 color of the specular reflection encoded as sRGB
-layout(set=0, binding=15) uniform sampler2D transmissionTexture;  // R - transmission percentage, Hoops uses transmission texture in MaterialKit
-layout(set=0, binding=16) uniform sampler2D thicknessTexture;  // G - thickness
-// from Hoops:
-layout(set=0, binding=17) uniform samplerCube environmentCubeMap;
-layout(set=0, binding=18) uniform samplerCube environmentTexture;
-layout(set=0, binding=19) uniform sampler2D mirrorTexture;
-#endif
+
 
 const float Pi = 3.1415926536;
 float sqr(float v)  { return v * v; }
@@ -1013,8 +990,10 @@ void main()
 			uint64_t lightDataPtr = sceneDataPtr + getLightDataOffset();
 			LightRef lightData = LightRef(lightDataPtr);
 
+			// ambient light
+			outColor.rgb = scene.ambientLight * baseColor.rgb * occlusionTextureValue;
+
 			// iterate over all light sources
-			outColor.rgb = vec3(0);
 			uint lightSettings = lightData.settings;
 			while(lightSettings != 0) {
 

@@ -1570,7 +1570,9 @@ void App::init()
 		bool doubleSided;
 		glm::vec4 baseColorFactor;
 		TextureData baseColorTexture;
+		TextureData metallicRoughnessOcclusionTexture;
 		TextureData metallicRoughnessTexture;
+		TextureData occlusionTexture;
 		TextureData normalTexture;
 		TextureData emissiveTexture;
 
@@ -1726,9 +1728,8 @@ void App::init()
 		// normal texture
 		readTextureData(normalTexture, "normalTexture", material, numGltfTextures, "scale");
 
-		// not supported material properties
-		if(material.find("occlusionTexture") != material.end())
-			throw GltfError("Unsupported functionality: occlusion texture.");
+		// occlusion texture
+		readTextureData(occlusionTexture, "occlusionTexture", material, numGltfTextures, "strength");
 
 		// emissive texture
 		readTextureData(emissiveTexture, "emissiveTexture", material, numGltfTextures);
@@ -1750,6 +1751,36 @@ void App::init()
 
 		// alphaCutoff
 		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
+
+		// combine metallicRoughnessTexture and occlusionTexture
+		// into metallicRoughnessOcclusionTexture
+		if(metallicRoughnessTexture.textureID != ~unsigned(0) &&
+		   metallicRoughnessTexture.textureID == occlusionTexture.textureID &&
+		   metallicRoughnessTexture.coordIndex == occlusionTexture.coordIndex &&
+		   metallicRoughnessTexture.transformEnabled == occlusionTexture.transformEnabled &&
+		   (!metallicRoughnessTexture.transformEnabled ||
+		      (metallicRoughnessTexture.offset == occlusionTexture.offset &&
+		       metallicRoughnessTexture.rotation == occlusionTexture.rotation &&
+		       metallicRoughnessTexture.scale == occlusionTexture.scale)
+		   ))
+		{
+			metallicRoughnessOcclusionTexture.textureID = metallicRoughnessTexture.textureID;
+			metallicRoughnessOcclusionTexture.coordIndex = metallicRoughnessTexture.coordIndex;
+			metallicRoughnessOcclusionTexture.strength = occlusionTexture.strength;
+			metallicRoughnessOcclusionTexture.transformEnabled = metallicRoughnessTexture.transformEnabled;
+			metallicRoughnessOcclusionTexture.offset = metallicRoughnessTexture.offset;
+			metallicRoughnessOcclusionTexture.rotation = metallicRoughnessTexture.rotation;
+			metallicRoughnessOcclusionTexture.scale = metallicRoughnessTexture.scale;
+			metallicRoughnessTexture.textureID = ~unsigned(0);
+			metallicRoughnessTexture.coordIndex = ~unsigned(0);
+			occlusionTexture.textureID = ~unsigned(0);
+			occlusionTexture.coordIndex = ~unsigned(0);
+		}
+		else {
+			// do not use metallicRoughnessOcclusionTexture
+			metallicRoughnessOcclusionTexture.textureID = ~unsigned(0);
+			metallicRoughnessOcclusionTexture.coordIndex = ~unsigned(0);
+		}
 
 		// core material size
 		unsigned materialSize = unlit ? unlitMaterialDataSize :
@@ -1782,7 +1813,9 @@ void App::init()
 
 		// append texturing params to material size
 		materialSize += getMaterialTexturingParamsSize(baseColorTexture);
+		materialSize += getMaterialTexturingParamsSize(metallicRoughnessOcclusionTexture);
 		materialSize += getMaterialTexturingParamsSize(metallicRoughnessTexture);
+		materialSize += getMaterialTexturingParamsSize(occlusionTexture);
 		materialSize += getMaterialTexturingParamsSize(normalTexture);
 		materialSize += getMaterialTexturingParamsSize(emissiveTexture);
 
@@ -1928,9 +1961,17 @@ void App::init()
 			remapByTransferFunction(baseColorTexture, true);  // base texture uses sRGB transfer function
 			writeTexture(baseColorTexture, 1, p, ssm.shaderTextureSetup, textureIndex);
 		}
+		if(metallicRoughnessOcclusionTexture.textureID != ~unsigned(0)) {
+			remapByTransferFunction(metallicRoughnessOcclusionTexture, false);  // metallic-roughness-occlusion texture uses linear transfer function
+			writeTexture(metallicRoughnessOcclusionTexture, 2, p, ssm.shaderTextureSetup, textureIndex);
+		}
 		if(metallicRoughnessTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(metallicRoughnessTexture, false);  // metallic-roughness texture uses linear transfer function
 			writeTexture(metallicRoughnessTexture, 3, p, ssm.shaderTextureSetup, textureIndex);
+		}
+		if(occlusionTexture.textureID != ~unsigned(0)) {
+			remapByTransferFunction(occlusionTexture, false);  // occlusion texture uses linear transfer function
+			writeTexture(occlusionTexture, 4, p, ssm.shaderTextureSetup, textureIndex);
 		}
 		if(normalTexture.textureID != ~unsigned(0)) {
 			remapByTransferFunction(normalTexture, false);  // normal texture uses linear transfer function
@@ -4460,7 +4501,7 @@ void App::frame(VulkanWindow&)
 	sceneData->p22 = projectionMatrix[1][1];
 	sceneData->p33 = projectionMatrix[2][2];
 	sceneData->p43 = projectionMatrix[3][2];
-	sceneData->ambientLight = glm::vec3(0.2f, 0.2f, 0.2f);
+	sceneData->ambientLight = glm::vec3(0.5f, 0.5f, 0.5f);
 	sceneData->numLights = 1;
 	sceneData->padding = {};
 	sceneData->lights[0].eyePositionOrDirection = glm::vec3(0.f, 0.f, 0.f);
@@ -4468,14 +4509,14 @@ void App::frame(VulkanWindow&)
 	sceneData->lights[0].opengl = {
 		.ambient = glm::vec3(0.f, 0.f, 0.f),
 		.constantAttenuation = 1.f,
-		.diffuse = glm::vec3(0.6f, 0.6f, 0.6f),
+		.diffuse = glm::vec3(0.4f, 0.4f, 0.4f),
 		.linearAttenuation = 0.f,
-		.specular = glm::vec3(0.6f, 0.6f, 0.6f),
+		.specular = glm::vec3(0.4f, 0.4f, 0.4f),
 		.quadraticAttenuation = 0.f,
 	};
 	sceneData->lights[0].gltf = {
 		.color = glm::vec3(1.f, 1.f, 1.f),
-		.intensity = 1.f,
+		.intensity = 0.5f,
 		.range = numeric_limits<float>::infinity(),
 		.constantAttenuation = 1.f,
 		.linearAttenuation = 0.f,
