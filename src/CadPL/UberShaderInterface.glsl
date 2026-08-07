@@ -165,7 +165,7 @@ PhongMaterialRef {
 	// [... texturing params start at offset 64 or at offset 76 if reflection is used ...]
 };
 
-layout(buffer_reference, std430, buffer_reference_align=64) restrict readonly buffer
+layout(buffer_reference, std430, buffer_reference_align=16) restrict readonly buffer
 MetallicRoughnessMaterialRef {
 	layout(offset=0) vec4 baseColorFactor;
 	layout(offset=16) float alphaCutoff;
@@ -173,6 +173,7 @@ MetallicRoughnessMaterialRef {
 	layout(offset=24) float roughnessFactor;
 	layout(offset=32) vec3 emissiveFactor;
 
+#if 0
 	// 25 additional floats (100 bytes)
 	float anisotropyStrength;
 	float anisotropyRotation;
@@ -193,6 +194,7 @@ MetallicRoughnessMaterialRef {
 	float thicknessFactor;
 	float attenuationDistance;
 	vec3 attenuationColor;
+#endif
 };
 
 
