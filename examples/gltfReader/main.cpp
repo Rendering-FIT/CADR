@@ -1699,9 +1699,16 @@ void App::init()
 
 			// metallic-roughness texture
 			if(materialModel == MaterialModel::BlinPhong) {
+
 				// for Phong model, ignore metallic-roughness texture because it is not supported in the shader
 				metallicRoughnessTexture.textureID = ~unsigned(0);
 				metallicRoughnessTexture.coordIndex = ~unsigned(0);
+
+				// expect average value of metallic-roughness texture to be 0.5 =>
+				// multiply metallicFactor and roughnessFactor by 0.5
+				metallicFactor *= 0.5f;
+				roughnessFactor *= 0.5f;
+
 			}
 			else
 				readTextureData(metallicRoughnessTexture, "metallicRoughnessTexture", *pbrIt, numGltfTextures);
@@ -1841,7 +1848,7 @@ void App::init()
 			m->padding1 = 0;
 			m->diffuseAndAlpha = glm::vec4(glm::vec3(baseColorFactor) * (1.f - metallicFactor), baseColorFactor.a);  // very vague and imprecise conversion
 			m->specular = baseColorFactor * metallicFactor;  // very vague and imprecise conversion
-			m->shininess = (1.f - roughnessFactor) * (1.f - roughnessFactor) * 128.f;  // very vague and imprecise conversion
+			m->shininess = (1.f - (roughnessFactor * roughnessFactor)) * 128.f;  // very vague and imprecise conversion
 			m->emission = emissiveFactor * emissiveStrength;
 			m->alphaCutoff = alphaCutoff;
 		}
@@ -4515,9 +4522,9 @@ void App::frame(VulkanWindow&)
 	sceneData->lights[0].opengl = {
 		.ambient = glm::vec3(0.f, 0.f, 0.f),
 		.constantAttenuation = 1.f,
-		.diffuse = glm::vec3(0.4f, 0.4f, 0.4f),
+		.diffuse = glm::vec3(0.5f, 0.5f, 0.5f),
 		.linearAttenuation = 0.f,
-		.specular = glm::vec3(0.4f, 0.4f, 0.4f),
+		.specular = glm::vec3(0.5f, 0.5f, 0.5f),
 		.quadraticAttenuation = 0.f,
 	};
 	sceneData->lights[0].gltf = {
