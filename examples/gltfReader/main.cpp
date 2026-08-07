@@ -57,8 +57,12 @@ static const uint32_t engineVersion = VK_MAKE_VERSION(0, 0, 0);
 static const uint32_t vulkanApiVersion = VK_API_VERSION_1_4;
 
 
+// enums
+enum class MaterialModel { Unknown, BlinPhong = 0x1, MetallicRoughness = 0x2 };
+
+
 // constants
-static constexpr const unsigned defaultMaterialModel = 0x1;  // 0x1 for Blin-Phong and 0x2 for Metallic-roughness model
+static constexpr const MaterialModel defaultMaterialModel = MaterialModel::MetallicRoughness;
 static constexpr const vk::SampleCountFlagBits defaultNumSamples = vk::SampleCountFlagBits::e4;
 
 
@@ -224,6 +228,7 @@ public:
 	string deviceNameFilter;
 	bool forceDynamicRendering;
 	bool forceRenderPassRendering;
+	MaterialModel materialModel = defaultMaterialModel;
 	filesystem::path filePath;
 	string utf8FilePath;  // File path stored as utf-8. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
 	string utf8FileName;  // File name as utf-8. No parent directories and no file name suffix. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
@@ -449,6 +454,10 @@ App::App(int argc, char** argv)
 				forceRenderPassRendering = true;
 				forceDynamicRendering = false;
 			}
+			else if(strcmp(argv[i], "--pbr") == 0 || strcmp(argv[i], "--metallic-roughness") == 0)
+				materialModel = MaterialModel::MetallicRoughness;
+			else if(strcmp(argv[i], "--phong") == 0 || strcmp(argv[i], "--blin-phong") == 0)
+				materialModel = MaterialModel::BlinPhong;
 			else if(strcmp(argv[i], "--") == 0)
 			{
 				if(argv[i+1] == nullptr)
@@ -461,11 +470,8 @@ App::App(int argc, char** argv)
 				throw ExitWithMessage(99, string("Invalid option ") + argv[i] + ".");
 
 		}
-		else {
+		else
 			filePathIndex = i;
-			if(argv[i+1] != nullptr)
-				throw ExitWithMessage(99, string("Extra argument after glTF file name: ") + argv[i+1] + ".");
-		}
 	}
 	if(filePathIndex == -1)
 		throw ExitWithMessage(99, "No glTF file name provided.");
@@ -1504,7 +1510,7 @@ void App::init()
 		unsigned materialTexturingParamsOffset;
 		array<uint32_t,10> shaderTextureSetup;
 	};
-	if(defaultMaterialModel == 1) {
+	if(materialModel == MaterialModel::BlinPhong) {
 		// Phong material
 		CadR::StagingData sd = defaultMaterial.alloc(sizeof(PhongMaterialData));
 		PhongMaterialData* m = sd.data<PhongMaterialData>();
@@ -1692,7 +1698,7 @@ void App::init()
 			readTextureData(baseColorTexture, "baseColorTexture", *pbrIt, numGltfTextures);
 
 			// metallic-roughness texture
-			if(defaultMaterialModel == 0x1) {
+			if(materialModel == MaterialModel::BlinPhong) {
 				// for Phong model, ignore metallic-roughness texture because it is not supported in the shader
 				metallicRoughnessTexture.textureID = ~unsigned(0);
 				metallicRoughnessTexture.coordIndex = ~unsigned(0);
@@ -1784,7 +1790,7 @@ void App::init()
 
 		// core material size
 		unsigned materialSize = unlit ? unlitMaterialDataSize :
-			(defaultMaterialModel==1) ? phongMaterialDataSize : metallicRoughnessMaterialDataSize;
+			(materialModel==MaterialModel::BlinPhong) ? phongMaterialDataSize : metallicRoughnessMaterialDataSize;
 		if(unlit && alphaTest)
 			materialSize += 4;
 		unsigned coreMaterialSize = materialSize;
@@ -1829,7 +1835,7 @@ void App::init()
 			if(alphaTest)
 				m->alphaCutoff = alphaCutoff;
 		}
-		else if(defaultMaterialModel == 1) {
+		else if(materialModel == MaterialModel::BlinPhong) {
 			PhongMaterialData* m = reinterpret_cast<PhongMaterialData*>(p);
 			m->ambient = glm::vec3(baseColorFactor);
 			m->padding1 = 0;
@@ -3512,7 +3518,7 @@ void App::init()
 					(16u + (normalData ? 16 : 0) + (tangentData ? 16 : 0) +  // vertexDataSize
 						(colorData ? 16 : 0) + (uint32_t(texCoordAttribInfoList.size()) * 16)),
 				.materialSetup =
-					(ssMaterialData.unlit ? 0x0 : defaultMaterialModel) |  // Unlit vs Blin-Phong or Metallic-roughness
+					(ssMaterialData.unlit ? 0x0 : uint32_t(materialModel)) |  // Unlit vs Blin-Phong or Metallic-roughness
 					ssMaterialData.materialTexturingParamsOffset |  // texture params offset inside material
 					(ssMaterialData.doubleSided ? 0x0100 : 0) |  // two sided lighting
 					((mode <= 3) && (normalData == nullptr) ? 0x0200 : 0) |  // disable lighting for points and lines without normals
