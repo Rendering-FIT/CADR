@@ -1222,6 +1222,8 @@ void App::init()
 			return ref.get_ref<json::array_t&>();
 		};
 	auto& asset = glTF.at("asset");
+	auto& extensionsRequired = getRootItem(glTF, newGltfItems, "extensionsRequired");
+	auto& extensionsUsed = getRootItem(glTF, newGltfItems, "extensionsUsed");
 	auto& scenes = getRootItem(glTF, newGltfItems, "scenes");
 	auto& nodes = getRootItem(glTF, newGltfItems, "nodes");
 	auto& meshes = getRootItem(glTF, newGltfItems, "meshes");
@@ -1245,11 +1247,111 @@ void App::init()
 		};
 	cout << endl;
 	cout << "glTF info:" << endl;
-	cout << "   Version:     " << asset.at("version").get_ref<json::string_t&>() << endl;
-	cout << "   MinVersion:  " << getStringWithDefault(asset, "minVersion", "< none >") << endl;
 	cout << "   Generator:   " << getStringWithDefault(asset, "generator", "< none >") << endl;
 	cout << "   Copyright:   " << getStringWithDefault(asset, "copyright", "< none >") << endl;
+	cout << "   Version:     " << asset.at("version").get_ref<json::string_t&>() << endl;
+	cout << "   MinVersion:  " << getStringWithDefault(asset, "minVersion", "< none >") << endl;
+	cout << "   Required extensions:  ";
+	if(extensionsRequired.empty())
+		cout << "< none >" << endl;
+	else {
+		cout << extensionsRequired.front().get_ref<json::string_t&>();
+		for(auto it=extensionsRequired.begin()+1,e=extensionsRequired.end(); it!=e; it++)
+			cout << ", " << it->get_ref<json::string_t&>();
+		cout << endl;
+	}
+	cout << "   Optional extensions:  ";
+	{
+		auto isInList =
+			[&](const string& s){
+				for(auto it=extensionsRequired.begin(),e=extensionsRequired.end(); it!=e; it++)
+					if(s == it->get_ref<json::string_t&>())
+						return true;
+				return false;
+			};
+		auto it = extensionsUsed.begin();
+		auto e = extensionsUsed.end();
+		if(it == e)
+			cout << "< none >";
+		else
+			do {
+				string* extension = &it->get_ref<json::string_t&>();
+				it++;
+				if(!isInList(*extension)) {
+					cout << *extension;
+					while(it != e) {
+						extension = &it->get_ref<json::string_t&>();
+						it++;
+						if(!isInList(*extension))
+							cout << ", " << *extension;
+					}
+					break;
+				}
+				cout << "< none >";
+			} while(it != e);
+		cout << endl;
+	}
 	cout << endl;
+
+	// check model version and support of required extensions
+	{
+		auto parseVersion =
+			[](const string& s) -> tuple<int, int> {
+				const char* start = s.c_str();
+				const char* end = start + s.size();
+				char* pos;
+				long major = strtol(start, &pos, 10);
+				if(pos >= end || *pos != '.')
+					throw GltfError("Version string must be in the format <major>.<minor>.");
+				pos++;
+				if(pos >= end)
+					throw GltfError("Version string must be in the format <major>.<minor>.");
+				long minor = strtol(pos, &pos, 10);
+				if(pos != end)
+					throw GltfError("Version string must be in the format <major>.<minor>.");
+				return { int(major), int(minor) };
+			};
+		if(auto it=asset.find("minVersion"); it != asset.end()) {
+			// check minVersion
+			auto v = parseVersion(*it);
+			if(get<0>(v) > 2 || (get<0>(v) == 2 && get<1>(v) > 0))
+				throw GltfError(string("Unsupported glTF format. "
+					"Minimal version required is ") + it->get_ref<json::string_t&>() +
+					" while currently supported version is 2.0.");
+		}
+		else {
+			// check version
+			const string& s = asset.at("version").get_ref<json::string_t&>();
+			auto v = parseVersion(s);
+			if(get<0>(v) != 2)
+				throw GltfError(string("Unsupported glTF format ") + s +
+					" while currently supported version is 2.0.");
+		}
+
+		// check required extensions
+		if(!extensionsRequired.empty()) {
+			constexpr const array supportedExtensions{
+				"KHR_materials_unlit",
+				"KHR_texture_transform",
+				"KHR_materials_emissive_strength",
+			};
+			vector<string*> unsupportedExtensions;
+			for(auto it=extensionsRequired.begin(),e=extensionsRequired.end(); it!=e; it++)
+				if(find(supportedExtensions.begin(), supportedExtensions.end(), *it) == supportedExtensions.end())
+					unsupportedExtensions.push_back(it->get_ptr<json::string_t*>());
+			if(!unsupportedExtensions.empty()) {
+				string s;
+				if(unsupportedExtensions.size() == 1)
+					s = "Unsupported glTF extension: ";
+				else
+					s = "Unsupported glTF extensions: ";
+				s += *unsupportedExtensions[0];
+				for(size_t i=1,c=unsupportedExtensions.size(); i<c; i++)
+					s += ", " + *unsupportedExtensions[i];
+				throw GltfError(s);
+			}
+		}
+	}
 
 	// print stats
 	cout << "Stats:" << endl;
