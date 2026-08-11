@@ -1747,7 +1747,7 @@ void App::init()
 
 							// KHR_texture_transform.texCoord
 							if(auto texCoordIt = transformIt->find("texCoord"); texCoordIt != transformIt->end())
-								t.coordIndex = unsigned(texCoordIt->get_ref<json::number_integer_t&>());
+								t.coordIndex = unsigned(texCoordIt->get_ref<json::number_unsigned_t&>());
 						}
 						else
 							t.transformEnabled = false;
