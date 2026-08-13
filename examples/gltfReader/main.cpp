@@ -2658,7 +2658,7 @@ void App::init()
 	size_t numMeshes = meshes.size();
 	if(numMeshes == 0)
 		throw GltfError("No meshes in the model.");
-	vector<CadR::BoundingSphere> meshBoundingSphereList(numMeshes);
+	vector<CadR::BoundingSphere> meshBoundingSphereList(numMeshes, CadR::BoundingSphere::empty());
 	vector<CadR::BoundingSphere> primitiveSetBSList;
 	for(size_t meshIndex=0; meshIndex<numMeshes; meshIndex++) {
 
