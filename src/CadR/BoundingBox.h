@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+// SPDX-FileCopyrightText: 2024-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
 //
 // SPDX-License-Identifier: MIT
 
@@ -11,31 +11,24 @@ namespace CadR {
 
 
 struct BoundingBox {
+
 	glm::vec3 min;
 	glm::vec3 max;
 
-	glm::vec3 getCenter() const;
-	void setByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents);
-
-	static BoundingBox createByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents);
 	static BoundingBox empty();
 	void makeEmpty();
+	bool isEmpty() const;
+
+	glm::vec3 getCenter() const;
+
+	static BoundingBox createByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents);
+	void setByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents);
 	void extendBy(const BoundingBox& bb);
+
 };
 
 
 // inline functions
-inline glm::vec3 BoundingBox::getCenter() const  { return (min + max) / 2.f; }
-inline void BoundingBox::setByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents) {
-	min = center - halfExtents;
-	max = center + halfExtents;
-}
-inline BoundingBox BoundingBox::createByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents) {
-	return BoundingBox{
-		.min = center - halfExtents,
-		.max = center + halfExtents,
-	};
-}
 inline BoundingBox BoundingBox::empty() {
 	return {
 		{ +std::numeric_limits<float>::infinity(), +std::numeric_limits<float>::infinity(), +std::numeric_limits<float>::infinity() },
@@ -43,6 +36,22 @@ inline BoundingBox BoundingBox::empty() {
 	};
 }
 inline void BoundingBox::makeEmpty()  { *this = empty(); }
+inline bool BoundingBox::isEmpty() const {
+	return min.x == +std::numeric_limits<float>::infinity() && min.y == +std::numeric_limits<float>::infinity() &&
+	       min.z == +std::numeric_limits<float>::infinity() && max.x == -std::numeric_limits<float>::infinity() &&
+	       max.y == -std::numeric_limits<float>::infinity() && max.z == -std::numeric_limits<float>::infinity();
+}
+inline glm::vec3 BoundingBox::getCenter() const  { return (min + max) / 2.f; }
+inline BoundingBox BoundingBox::createByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents) {
+	return BoundingBox{
+		.min = center - halfExtents,
+		.max = center + halfExtents,
+	};
+}
+inline void BoundingBox::setByCenterAndHalfExtents(glm::vec3 center, glm::vec3 halfExtents) {
+	min = center - halfExtents;
+	max = center + halfExtents;
+}
 inline void BoundingBox::extendBy(const BoundingBox& bb) {
 	if(bb.min.x < min.x)
 		min.x = bb.min.x;

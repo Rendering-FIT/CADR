@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+// SPDX-FileCopyrightText: 2024-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
 //
 // SPDX-License-Identifier: MIT
 
@@ -10,6 +10,7 @@
 #include <glm/gtx/norm.hpp>  // glm::distance2()
 #include <algorithm>  // std::max()
 #include <cmath>  // std::sqrt()
+#include <limits>
 
 namespace CadR {
 
@@ -18,6 +19,10 @@ struct BoundingSphere {
 
 	glm::vec3 center;
 	float radius;
+
+	static BoundingSphere empty();
+	void makeEmpty();
+	bool isEmpty() const;
 
 	BoundingBox getBoundingBox() const;
 
@@ -31,6 +36,11 @@ BoundingSphere operator*(const glm::mat4& transformationMatrix, const BoundingSp
 
 
 // inline functions
+inline BoundingSphere BoundingSphere::empty() {
+	return BoundingSphere { .center = { 0.f, 0.f, 0.f }, .radius = -std::numeric_limits<float>::infinity() };
+}
+inline void BoundingSphere::makeEmpty()  { *this = empty(); }
+inline bool BoundingSphere::isEmpty() const  { return radius == -std::numeric_limits<float>::infinity(); }
 inline BoundingBox BoundingSphere::getBoundingBox() const {
 	return BoundingBox{
 		.min = center - radius,
@@ -47,9 +57,10 @@ inline void BoundingSphere::extendRadiusBy(BoundingSphere bs) {
 		radius = sqrt(d2) + bs.radius;
 }
 inline void BoundingSphere::extendRadiusBy(glm::vec3 point) {
-	float d2 = sqrt(glm::distance2(point, center));
-	if(d2 > radius)
-		radius = d2;
+	// avoid expensive sqrt and compute it only when really updating radius
+	float d2 = glm::distance2(point, center);
+	if(d2 > radius*radius)
+		radius = sqrt(d2);
 }
 inline void BoundingSphere::extendRadiusByPointUsingRadius2(glm::vec3 point) {
 	float d2 = glm::distance2(point, center);
@@ -61,9 +72,17 @@ inline BoundingSphere operator*(const glm::mat4& transformationMatrix, const Bou
 		BoundingSphere{
 			.center = glm::mat3(transformationMatrix) * bs.center + glm::vec3(transformationMatrix[3]),
 			.radius =
-				[](const glm::vec3 v) -> float {
-					return std::max(std::max(v.x, v.y), v.z);
-				}(glm::mat3(transformationMatrix) * glm::vec3(bs.radius))
+				[&]() -> float {
+					auto sqrLength =
+						[](const float x, const float y, const float z) -> float {
+							return x*x + y*y + z*z;
+						};
+					float maxSqrScale = std::max(std::max(
+						sqrLength(transformationMatrix[0][0], transformationMatrix[0][1], transformationMatrix[0][2]),
+						sqrLength(transformationMatrix[1][0], transformationMatrix[1][1], transformationMatrix[1][2])),
+						sqrLength(transformationMatrix[2][0], transformationMatrix[2][1], transformationMatrix[2][2]));
+					return sqrt(maxSqrScale) * bs.radius;
+				}()
 		};
 }
 

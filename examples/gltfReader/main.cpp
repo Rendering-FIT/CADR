@@ -2656,6 +2656,8 @@ void App::init()
 	// process meshes
 	cout << "Processing meshes..." << endl;
 	size_t numMeshes = meshes.size();
+	if(numMeshes == 0)
+		throw GltfError("No meshes in the model.");
 	vector<CadR::BoundingSphere> meshBoundingSphereList(numMeshes);
 	vector<CadR::BoundingSphere> primitiveSetBSList;
 	for(size_t meshIndex=0; meshIndex<numMeshes; meshIndex++) {
@@ -2671,6 +2673,8 @@ void App::init()
 		// process primitives
 		// (mesh.primitives are mandatory)
 		auto& primitives = mesh.at("primitives");
+		if(primitives.empty())
+			throw GltfError("No primitives in the mesh.");
 		primitiveSetBSList.clear();
 		primitiveSetBSList.reserve(primitives.size());
 		for(auto& primitive : primitives) {
@@ -2867,26 +2871,28 @@ void App::init()
 						                        numVertices, sizeof(glm::vec3));
 
 					// get min and max
+					// (they are always specified for POSITION attribute and,
+					// since count is always >=1, they always contain valid value)
 					if(auto it=accessor.find("min"); it!=accessor.end()) {
 						json::array_t& a = it->get_ref<json::array_t&>();
 						if(a.size() != 3)
-							throw GltfError("Accessor.min is not vector of three components.");
+							throw GltfError("POSITION's Accessor.min is not vector of three components.");
 						primitiveSetBB.min.x = float(a[0].get<json::number_float_t>());
 						primitiveSetBB.min.y = float(a[1].get<json::number_float_t>());
 						primitiveSetBB.min.z = float(a[2].get<json::number_float_t>());
 					}
 					else
-						throw GltfError("Accessor.min be defined for POSITION accessor.");
+						throw GltfError("Accessor.min must be defined for POSITION accessor.");
 					if(auto it=accessor.find("max"); it!=accessor.end()) {
 						json::array_t& a = it->get_ref<json::array_t&>();
 						if(a.size() != 3)
-							throw GltfError("Accessor.max is not vector of three components.");
+							throw GltfError("POSITION's Accessor.max is not vector of three components.");
 						primitiveSetBB.max.x = float(a[0].get<json::number_float_t>());
 						primitiveSetBB.max.y = float(a[1].get<json::number_float_t>());
 						primitiveSetBB.max.z = float(a[2].get<json::number_float_t>());
 					}
 					else
-						throw GltfError("Accessor.max be defined for POSITION accessor.");
+						throw GltfError("Accessor.max must be defined for POSITION accessor.");
 
 				}
 				else if(it.key() == "NORMAL") {
@@ -3140,6 +3146,9 @@ void App::init()
 			CadR::Geometry& g = geometryList.emplace_back(renderer);
 
 			// update mesh bounds
+			// (meshBB contains always valid value;
+			// this is guaranteed by primitiveSetBB being always valid unless POSITION attribute is not specified,
+			// which was tested above by numVertices being non-zero)
 			meshBB.extendBy(primitiveSetBB);
 
 			// prepare for computing primitiveSet bounding sphere
@@ -3687,6 +3696,7 @@ void App::init()
 			);
 
 			// mesh bounding sphere
+			// (meshBS is always valid)
 			CadR::BoundingSphere meshBS{
 				.center = meshBB.getCenter(),
 				.radius = 0.f,
@@ -3696,51 +3706,66 @@ void App::init()
 
 			// bounding box of all instances of particular mesh
 			const vector<glm::mat4>& matrices = meshMatrixList[meshIndex];
-			CadR::BoundingBox instancesBB =
-				CadR::BoundingBox::createByCenterAndHalfExtents(
-					glm::mat3(matrices[0]) * meshBS.center + glm::vec3(matrices[0][3]),  // center
-					glm::mat3(matrices[0]) * glm::vec3(meshBS.radius)  // halfExtents
-				);
-			for(size_t instanceIndex=1, instanceCount=matrices.size();
-			    instanceIndex<instanceCount; instanceIndex++)
-			{
-				const glm::mat4& m = matrices[instanceIndex];
-				instancesBB.extendBy(
+			if(matrices.empty())
+				meshBoundingSphereList[meshIndex] = CadR::BoundingSphere::empty();
+			else {
+
+				// first instance's bounding box
+				// (instancesBB is always valid except when matrices is empty)
+				CadR::BoundingBox instancesBB =
 					CadR::BoundingBox::createByCenterAndHalfExtents(
-						glm::mat3(m) * meshBS.center + glm::vec3(m[3]),  // center
-						glm::mat3(m) * glm::vec3(meshBS.radius)  // radius
-					)
-				);
-			}
+						glm::mat3(matrices[0]) * meshBS.center + glm::vec3(matrices[0][3]),  // center
+						glm::abs(glm::mat3(matrices[0]) * glm::vec3(meshBS.radius))  // halfExtents
+					);
 
-			// bounding sphere of all instances of particular mesh
-			CadR::BoundingSphere instancesBS{
-				.center = instancesBB.getCenter(),
-				.radius = 0.f,
-			};
-			for(size_t instanceIndex=0, instanceCount=matrices.size();
-			    instanceIndex<instanceCount; instanceIndex++)
-			{
-				instancesBS.extendRadiusBy(matrices[instanceIndex] * meshBS);
-			}
-			meshBoundingSphereList[meshIndex] = instancesBS;
+				// remaining instance's bounding boxes
+				for(size_t instanceIndex=1, instanceCount=matrices.size();
+					instanceIndex<instanceCount; instanceIndex++)
+				{
+					const glm::mat4& m = matrices[instanceIndex];
+					instancesBB.extendBy(
+						CadR::BoundingBox::createByCenterAndHalfExtents(
+							glm::mat3(m) * meshBS.center + glm::vec3(m[3]),  // center
+							glm::abs(glm::mat3(m) * glm::vec3(meshBS.radius))  // radius
+						)
+					);
+				}
 
+				// bounding sphere of all instances of particular mesh
+				// (instancesDB is always valid except when matrices is empty)
+				CadR::BoundingSphere instancesBS{
+					.center = instancesBB.getCenter(),
+					.radius = 0.f,
+				};
+				for(size_t instanceIndex=0, instanceCount=matrices.size();
+					instanceIndex<instanceCount; instanceIndex++)
+				{
+					instancesBS.extendRadiusBy(matrices[instanceIndex] * meshBS);
+				}
+				meshBoundingSphereList[meshIndex] = instancesBS;
+
+			}
 		}
 	}
 
 	// scene bounding box
+	// (sceneBB might be valid or even completely empty)
 	CadR::BoundingBox sceneBB = meshBoundingSphereList[0].getBoundingBox();
 	for(size_t i=1, c=meshBoundingSphereList.size(); i<c; i++)
 		sceneBB.extendBy(meshBoundingSphereList[i].getBoundingBox());
 
 	// scene bounding sphere
-	sceneBoundingSphere.center = sceneBB.getCenter();
-	sceneBoundingSphere.radius =
-		sqrt(glm::distance2(meshBoundingSphereList[0].center, sceneBoundingSphere.center)) +
-		meshBoundingSphereList[0].radius;
-	for(size_t i=1, c=meshBoundingSphereList.size(); i<c; i++)
-		sceneBoundingSphere.extendRadiusBy(meshBoundingSphereList[i]);
-	sceneBoundingSphere.radius *= 1.001f;  // increase radius to accommodate for all floating computations imprecisions
+	// (generate valid sceneBoundingSphere although sceneBB might be empty,
+	// and meshBoundingSphereList might contain empty spheres)
+	if(sceneBB.isEmpty())
+		sceneBoundingSphere = { .center = glm::vec3(0.f, 0.f, 0.f), .radius = 0.f };
+	else {
+		sceneBoundingSphere.center = sceneBB.getCenter();
+		sceneBoundingSphere.radius = 0.f;
+		for(size_t i=0, c=meshBoundingSphereList.size(); i<c; i++)
+			sceneBoundingSphere.extendRadiusBy(meshBoundingSphereList[i]);
+		sceneBoundingSphere.radius *= 1.001f;  // increase radius to accommodate for all floating computations imprecisions
+	}
 
 	// initial camera distance
 	float fovy2Clamped = glm::clamp(fovy / 2.f, 1.f / 180.f * glm::pi<float>(), 90.f / 180.f * glm::pi<float>());
