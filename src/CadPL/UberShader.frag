@@ -39,9 +39,14 @@ layout(location = 4) in flat uvec2 inId;
 # endif
 #endif
 
+#if !defined(TRANSPARENCY)
 layout(location = 0) out vec4 outColor;
-#ifdef ID_BUFFER
+# ifdef ID_BUFFER
 layout(location = 1) out uvec4 outId;
+# endif
+#else
+layout(location = 3) out vec4 outColor;
+layout(location = 4) out float outCount;
 #endif
 
 
@@ -1115,4 +1120,16 @@ void main()
 	outId[2] = inId[1];  // gl_InstanceIndex
 	outId[3] = gl_PrimitiveID;
 #endif
+
+
+#ifdef TRANSPARENCY
+
+	// make accumulation of transparent color weighted by alpha value
+	outColor.rgb *= outColor.a;
+
+	// transparency count buffer
+	outCount = 1.;
+
+#endif
+
 }

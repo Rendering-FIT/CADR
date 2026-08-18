@@ -1637,6 +1637,7 @@ void App::init()
 	struct StateSetMaterialData {
 		bool unlit;
 		bool doubleSided;
+		bool transparencyEnabled;
 		bool alphaTest;
 		unsigned materialTexturingParamsOffset;
 		array<uint32_t,10> shaderTextureSetup;
@@ -1665,6 +1666,7 @@ void App::init()
 	StateSetMaterialData defaultStateSetMaterialData {
 		.unlit = false,
 		.doubleSided = false,
+		.transparencyEnabled = false,
 		.alphaTest = false,
 		.materialTexturingParamsOffset = 0,
 		.shaderTextureSetup = { 0 },  // no textures
@@ -1717,6 +1719,7 @@ void App::init()
 		float roughnessFactor;
 		glm::vec3 emissiveFactor;
 		float emissiveStrength = 1.f;
+		bool transparencyEnabled;
 		bool alphaTest;
 		float alphaCutoff;
 
@@ -1881,17 +1884,27 @@ void App::init()
 		// alphaMode
 		if(auto it=material.find("alphaMode"); it != material.end()) {
 			string alphaMode = it->get_ref<json::string_t&>();
-			if(alphaMode == "OPAQUE")
+			if(alphaMode == "OPAQUE") {
+				transparencyEnabled = false;
 				alphaTest = false;
-			else if(alphaMode == "MASK")
+			}
+			else if(alphaMode == "BLEND") {
+				transparencyEnabled = true;
+				alphaTest = false;
+				if(!dynamicRendering || numSamples != vk::SampleCountFlagBits::e1)
+					throw GltfError("BLEND alpha mode is not yet supported for render pass rendering or when multisampling.");
+			}
+			else if(alphaMode == "MASK") {
+				transparencyEnabled = false;
 				alphaTest = true;
-			else if(alphaMode == "BLEND")
-				throw GltfError("Unsupported functionality: blend alpha mode.");
+			}
 			else
 				throw GltfError("Unknown alpha mode.");
 		}
-		else
+		else {
+			transparencyEnabled = false;
 			alphaTest = false;
+		}
 
 		// alphaCutoff
 		alphaCutoff = float(material.value<json::number_float_t>("alphaCutoff", 0.5));
@@ -1999,6 +2012,7 @@ void App::init()
 		auto& ssm = stateSetMaterialDataList[materialIndex];
 		ssm.unlit = unlit;
 		ssm.doubleSided = doubleSided;
+		ssm.transparencyEnabled = transparencyEnabled;
 		ssm.alphaTest = alphaTest;
 		ssm.materialTexturingParamsOffset =
 			(materialSize == coreMaterialSize)
@@ -3599,6 +3613,7 @@ void App::init()
 			// pipeline
 			CadPL::ShaderState shaderState{
 				.idBuffer = false,
+				.transparency = ssMaterialData.transparencyEnabled,
 				.primitiveTopology =
 					[](unsigned mode) -> vk::PrimitiveTopology
 					{
@@ -3678,6 +3693,21 @@ void App::init()
 				.lightSetup = { 2 },  // one light; we use point light at the position of camera and call it headlight
 				.optimizeFlags = CadPL::ShaderState::OptimizeNone,
 			};
+			auto transparencyBlendAttachmentState =
+				[]() {
+					return CadPL::PipelineState::BlendAttachmentState{
+						.blendEnable = true,
+						.srcColorBlendFactor = vk::BlendFactor::eOne,
+						.dstColorBlendFactor = vk::BlendFactor::eOne,
+						.colorBlendOp = vk::BlendOp::eAdd,
+						.srcAlphaBlendFactor = vk::BlendFactor::eOne,
+						.dstAlphaBlendFactor = vk::BlendFactor::eOne,
+						.alphaBlendOp = vk::BlendOp::eAdd,
+						.colorWriteMask =
+							vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+							vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
+					};
+				};
 			CadPL::PipelineState pipelineState{
 				.viewportAndScissorHandling = CadPL::PipelineState::ViewportAndScissorHandling::SetFunction,
 				.projectionIndex = 0,
@@ -3701,10 +3731,15 @@ void App::init()
 				.sampleShadingEnable = false,
 				.minSampleShading = 0.f,
 				.depthTestEnable = true,
-				.depthWriteEnable = true,
+				.depthWriteEnable = !ssMaterialData.transparencyEnabled,  // disable depth writes for transparent geometry
 				.numColorAttachments = (dynamicRendering) ? 5u : 1u,
-				.blendState = { CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false }, { .blendEnable = false },
-					{ .blendEnable = false }, { .blendEnable = false }, { .blendEnable = false }, },
+				.blendState = {
+					ssMaterialData.transparencyEnabled ? transparencyBlendAttachmentState() : CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false },
+					ssMaterialData.transparencyEnabled ? transparencyBlendAttachmentState() : CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false },
+					ssMaterialData.transparencyEnabled ? transparencyBlendAttachmentState() : CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false },
+					ssMaterialData.transparencyEnabled ? transparencyBlendAttachmentState() : CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false },
+					ssMaterialData.transparencyEnabled ? transparencyBlendAttachmentState() : CadPL::PipelineState::BlendAttachmentState{ .blendEnable = false },
+				},
 				.renderPass = (dynamicRendering) ? nullptr : renderPass,
 				.subpass = 0,
 				.colorAttachmentFormats = colorAttachmentFormatList,

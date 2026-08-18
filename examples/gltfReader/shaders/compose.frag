@@ -27,10 +27,14 @@ void main()
 		if(transparencyColor.a != 0) {
 
 			// compute final color using weighted average
-			vec3  avgColor = (transparencyColor.rgb) / transparencyColor.a;
-			float avgAlpha = transparencyColor.a / transparencyCount;
-			float t = pow(1 - avgAlpha, transparencyCount);
-			outColor.rgb = mix(avgColor, outColor.rgb, t);
+			vec3  avgColor = transparencyColor.rgb / transparencyColor.a;
+			if(transparencyCount == 1)
+				outColor.rgb = mix(outColor.rgb, avgColor, transparencyColor.a);
+			else {
+				float avgAlpha = transparencyColor.a / transparencyCount;
+				float t = pow(1.0 - avgAlpha, transparencyCount);
+				outColor.rgb = mix(avgColor, outColor.rgb, t);
+			}
 
 		}
 	}

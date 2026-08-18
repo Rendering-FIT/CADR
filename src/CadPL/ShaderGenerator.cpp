@@ -31,14 +31,20 @@ static const uint32_t geometryIdBufferUberShaderLinesSpirv[]={
 static const uint32_t fragmentUberShaderTrianglesSpirv[]={
 #include "shaders/UberShaderTriangles.frag.spv"
 };
-static const uint32_t fragmentUberShaderLinesSpirv[]={
-#include "shaders/UberShaderLines.frag.spv"
-};
 static const uint32_t fragmentIdBufferUberShaderTrianglesSpirv[]={
 #include "shaders/UberShaderTriangles-idBuffer.frag.spv"
 };
+static const uint32_t fragmentTransparencyUberShaderTrianglesSpirv[]={
+#include "shaders/UberShaderTriangles-transparency.frag.spv"
+};
+static const uint32_t fragmentUberShaderLinesSpirv[]={
+#include "shaders/UberShaderLines.frag.spv"
+};
 static const uint32_t fragmentIdBufferUberShaderLinesSpirv[]={
 #include "shaders/UberShaderLines-idBuffer.frag.spv"
+};
+static const uint32_t fragmentTransparencyUberShaderLinesSpirv[]={
+#include "shaders/UberShaderLines-transparency.frag.spv"
 };
 static const uint32_t vertexUberShaderPointsSpirv[]={
 #include "shaders/UberShaderPoints.vert.spv"
@@ -51,6 +57,9 @@ static const uint32_t fragmentUberShaderPointsSpirv[]={
 };
 static const uint32_t fragmentIdBufferUberShaderPointsSpirv[]={
 #include "shaders/UberShaderPoints-idBuffer.frag.spv"
+};
+static const uint32_t fragmentTransparencyUberShaderPointsSpirv[]={
+#include "shaders/UberShaderPoints-transparency.frag.spv"
 };
 
 
@@ -146,6 +155,10 @@ vk::ShaderModule ShaderGenerator::createFragmentShader(const ShaderState& state,
 			code = fragmentIdBufferUberShaderTrianglesSpirv;
 			size = sizeof(fragmentIdBufferUberShaderTrianglesSpirv);
 		}
+		else if(state.transparency) {
+			code = fragmentTransparencyUberShaderTrianglesSpirv;
+			size = sizeof(fragmentTransparencyUberShaderTrianglesSpirv);
+		}
 		else {
 			code = fragmentUberShaderTrianglesSpirv;
 			size = sizeof(fragmentUberShaderTrianglesSpirv);
@@ -157,6 +170,10 @@ vk::ShaderModule ShaderGenerator::createFragmentShader(const ShaderState& state,
 			code = fragmentIdBufferUberShaderLinesSpirv;
 			size = sizeof(fragmentIdBufferUberShaderLinesSpirv);
 		}
+		else if(state.transparency) {
+			code = fragmentTransparencyUberShaderLinesSpirv;
+			size = sizeof(fragmentTransparencyUberShaderLinesSpirv);
+		}
 		else {
 			code = fragmentUberShaderLinesSpirv;
 			size = sizeof(fragmentUberShaderLinesSpirv);
@@ -166,6 +183,10 @@ vk::ShaderModule ShaderGenerator::createFragmentShader(const ShaderState& state,
 		if(state.idBuffer) {
 			code = fragmentIdBufferUberShaderPointsSpirv;
 			size = sizeof(fragmentIdBufferUberShaderPointsSpirv);
+		}
+		else if(state.transparency) {
+			code = fragmentTransparencyUberShaderPointsSpirv;
+			size = sizeof(fragmentTransparencyUberShaderPointsSpirv);
 		}
 		else {
 			code = fragmentUberShaderPointsSpirv;

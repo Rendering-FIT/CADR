@@ -19,6 +19,7 @@ namespace CadPL {
 struct CADPL_EXPORT ShaderState {
 
 	bool idBuffer;
+	bool transparency;
 	vk::PrimitiveTopology primitiveTopology;
 	enum class ProjectionHandling { SceneMatrix, PerspectivePushAndSpecializationConstants };
 	ProjectionHandling projectionHandling = ProjectionHandling::SceneMatrix;
@@ -107,8 +108,8 @@ protected:
 		bool operator<(const GeometryShaderMapKey& rhs) const;
 	};
 	struct FragmentShaderMapKey {
-		enum class Type { Invalid, Triangles, TrianglesIdBuffer,
-			Lines, LinesIdBuffer, Points, PointsIdBuffer };
+		enum class Type : uint32_t { Invalid, Triangles, TrianglesIdBuffer, TrianglesTransparency,
+			Lines, LinesIdBuffer, LinesTransparency, Points, PointsIdBuffer, PointsTransparency };  // The items are in certain order. See the constructor code.
 		Type type;
 		FragmentShaderMapKey(const ShaderState& shaderState);
 		bool operator<(const FragmentShaderMapKey& rhs) const;

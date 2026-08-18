@@ -185,6 +185,8 @@ bool ShaderState::operator<(const ShaderState& rhs) const
 	if(lightSetup > rhs.lightSetup)  return false;
 	if(idBuffer < rhs.idBuffer)  return true;
 	if(idBuffer > rhs.idBuffer)  return false;
+	if(transparency < rhs.transparency)  return true;
+	if(transparency > rhs.transparency)  return false;
 	if(primitiveTopology < rhs.primitiveTopology)  return true;
 	if(primitiveTopology > rhs.primitiveTopology)  return false;
 	return projectionHandling < rhs.projectionHandling;
@@ -234,14 +236,20 @@ ShaderLibrary::FragmentShaderMapKey::FragmentShaderMapKey(const ShaderState& sha
 	case vk::PrimitiveTopology::eTriangleList:
 	case vk::PrimitiveTopology::eTriangleStrip:
 	case vk::PrimitiveTopology::eTriangleFan:
-		type = shaderState.idBuffer ? Type::TrianglesIdBuffer : Type::Triangles;
+		type = Type::Triangles;
+		if(shaderState.idBuffer)  type = Type(uint32_t(type) + 1);
+		if(shaderState.transparency)  type = Type(uint32_t(type) + 2);
 		break;
 	case vk::PrimitiveTopology::eLineList:
 	case vk::PrimitiveTopology::eLineStrip:
-		type = shaderState.idBuffer ? Type::LinesIdBuffer : Type::Lines;
+		type = Type::Lines;
+		if(shaderState.idBuffer)  type = Type(uint32_t(type) + 1);
+		if(shaderState.transparency)  type = Type(uint32_t(type) + 2);
 		break;
 	case vk::PrimitiveTopology::ePointList:
-		type = shaderState.idBuffer ? Type::PointsIdBuffer : Type::Points;
+		type = Type::Points;
+		if(shaderState.idBuffer)  type = Type(uint32_t(type) + 1);
+		if(shaderState.transparency)  type = Type(uint32_t(type) + 2);
 		break;
 	default:
 		type = Type::Invalid;

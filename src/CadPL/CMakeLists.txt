@@ -54,15 +54,18 @@ add_shader(UberShader.vert  "-DTRIANGLES;-DLINES;-DID_BUFFER"  shaders/UberShade
 add_shader(UberShaderPoints.vert  "-DPOINTS"  shaders/UberShaderPoints.vert.spv  CADPL_SHADER_DEPS)
 add_shader(UberShaderPoints.vert  "-DPOINTS;-DID_BUFFER"  shaders/UberShaderPoints-idBuffer.vert.spv  CADPL_SHADER_DEPS)
 add_shader(UberShader.geom  "-DTRIANGLES"  shaders/UberShaderTriangles.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  "-DTRIANGLES;-DID_BUFFER"  shaders/UberShaderTriangles-idBuffer.geom.spv  CADPL_SHADER_DEPS)
 add_shader(UberShader.geom  "-DLINES"      shaders/UberShaderLines.geom.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.geom  "-DID_BUFFER;-DTRIANGLES"  shaders/UberShaderTriangles-idBuffer.geom.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.geom  "-DID_BUFFER;-DLINES"      shaders/UberShaderLines-idBuffer.geom.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.geom  "-DLINES;-DID_BUFFER"      shaders/UberShaderLines-idBuffer.geom.spv  CADPL_SHADER_DEPS)
 add_shader(UberShader.frag  "-DTRIANGLES"  shaders/UberShaderTriangles.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DTRIANGLES;-DID_BUFFER"  shaders/UberShaderTriangles-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DTRIANGLES;-DTRANSPARENCY"  shaders/UberShaderTriangles-transparency.frag.spv  CADPL_SHADER_DEPS)
 add_shader(UberShader.frag  "-DLINES"      shaders/UberShaderLines.frag.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.frag  "-DID_BUFFER;-DTRIANGLES"  shaders/UberShaderTriangles-idBuffer.frag.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.frag  "-DID_BUFFER;-DLINES"      shaders/UberShaderLines-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DLINES;-DID_BUFFER"      shaders/UberShaderLines-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DLINES;-DTRANSPARENCY"   shaders/UberShaderLines-transparency.frag.spv  CADPL_SHADER_DEPS)
 add_shader(UberShader.frag  "-DPOINTS"  shaders/UberShaderPoints.frag.spv  CADPL_SHADER_DEPS)
-add_shader(UberShader.frag  "-DID_BUFFER;-DPOINTS"  shaders/UberShaderPoints-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DPOINTS;-DID_BUFFER"  shaders/UberShaderPoints-idBuffer.frag.spv  CADPL_SHADER_DEPS)
+add_shader(UberShader.frag  "-DPOINTS;-DTRANSPARENCY"  shaders/UberShaderPoints-transparency.frag.spv  CADPL_SHADER_DEPS)
 
 # CADR library
 add_library(${LIB_NAME}
