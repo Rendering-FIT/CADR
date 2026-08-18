@@ -179,6 +179,7 @@ public:
 	vk::Format depthFormat;
 	array<vk::Format, 5> colorAttachmentFormatList;
 	bool dynamicRendering;
+	uint32_t requestedNumSamples = 0;
 	vk::SampleCountFlagBits numSamples;
 	float maxSamplerAnisotropy;
 
@@ -458,6 +459,15 @@ App::App(int argc, char** argv)
 				materialModel = MaterialModel::MetallicRoughness;
 			else if(strcmp(argv[i], "--phong") == 0 || strcmp(argv[i], "--blin-phong") == 0)
 				materialModel = MaterialModel::BlinPhong;
+			else if(strcmp(argv[i], "--num-Samples") == 0 || strcmp(argv[i], "--samples") == 0) {
+				i++;
+				if(i >= argc)
+					throw ExitWithMessage(99, "Parameter --num-samples and --samples must be followed by a number.");
+				char* endp;
+				requestedNumSamples = strtoul(argv[i], &endp, 10);
+				if(*endp != 0 || requestedNumSamples == 0)
+					throw ExitWithMessage(99, "Parameter --num-samples and --samples must be followed by a positive non-zero number.");
+			}
 			else if(strcmp(argv[i], "--") == 0)
 			{
 				if(argv[i+1] == nullptr)
@@ -751,21 +761,40 @@ void App::init()
 	// num samples for multisampling
 	vk::PhysicalDeviceProperties deviceProperties = vulkanInstance.getPhysicalDeviceProperties(physicalDevice);
 	if(dynamicRendering) {
-		do {
-			vk::SampleCountFlagBits numSamplesBit = defaultNumSamples;
-			if((deviceProperties.limits.framebufferColorSampleCounts & numSamplesBit) &&
-			   (deviceProperties.limits.framebufferDepthSampleCounts & numSamplesBit) &&
-			   (deviceProperties.limits.framebufferStencilSampleCounts & numSamplesBit) &&
-			   (deviceProperties.limits.sampledImageColorSampleCounts & numSamplesBit) &&
-			   (deviceProperties.limits.sampledImageIntegerSampleCounts & numSamplesBit))
-			{
-				numSamples = numSamplesBit;
-				break;
-			}
-			if(numSamplesBit == vk::SampleCountFlagBits::e1)
+		auto sampleCountSupported =
+			[&](vk::SampleCountFlagBits n) {
+				return (deviceProperties.limits.framebufferColorSampleCounts & n) &&
+				       (deviceProperties.limits.framebufferDepthSampleCounts & n) &&
+				       (deviceProperties.limits.framebufferStencilSampleCounts & n) &&
+				       (deviceProperties.limits.sampledImageColorSampleCounts & n) &&
+				       (deviceProperties.limits.sampledImageIntegerSampleCounts & n);
+			};
+		auto highestSampleCountSupported =
+			[&](const vk::SampleCountFlagBits startMaxValue) {
+				vk::SampleCountFlagBits n = startMaxValue;
+				while(uint32_t(n) != 0) {
+					if(sampleCountSupported(n))
+						return n;
+					n = vk::SampleCountFlagBits(uint32_t(n) >> 1);
+				}
 				throw runtime_error("Multisampling setup error: Even one sample is not supported.");
-			numSamplesBit = vk::SampleCountFlagBits(uint32_t(numSamplesBit) >> 1);
-		} while(true);
+			};
+
+		if(requestedNumSamples != 0) {
+			if(sampleCountSupported(vk::SampleCountFlagBits(requestedNumSamples)))
+				numSamples = vk::SampleCountFlagBits(requestedNumSamples);
+			else
+				throw runtime_error(to_string(requestedNumSamples) +
+					" samples for multisampling is not supported by the device. " +
+					"The highest number of supported samples is " +
+					to_string(highestSampleCountSupported(vk::SampleCountFlagBits(0x80000000))));
+		}
+		else {
+			if(sampleCountSupported(defaultNumSamples))
+				numSamples = defaultNumSamples;
+			else
+				numSamples = highestSampleCountSupported(defaultNumSamples);
+		}
 	} else
 		numSamples = vk::SampleCountFlagBits::e1;
 
