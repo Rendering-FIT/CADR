@@ -182,6 +182,7 @@ public:
 	uint32_t requestedNumSamples = 0;
 	vk::SampleCountFlagBits numSamples;
 	float maxSamplerAnisotropy;
+	bool pipelineStatisticsSupported;
 
 	vk::Image depthImage;  //< Depth image, multisampled when using dynamic rendering, single sampled when using render pass.
 	vk::Image hdrColorImage;  //< R16G16B16A16_SFLOAT multisampled image.
@@ -233,6 +234,8 @@ public:
 	filesystem::path filePath;
 	string utf8FilePath;  // File path stored as utf-8. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
 	string utf8FileName;  // File name as utf-8. No parent directories and no file name suffix. MSVC has problems to convert some characters from utf-16 to utf-8. So we keep the extra string. See comment for utf16toUtf8() for more info.
+	bool printPipelineStatistics = false;
+	vk::QueryPool pipelineStatisticsQueryPool;
 
 	CadR::HandlelessAllocation sceneDataAllocation;
 	CadR::StateSet stateSetRoot;
@@ -431,8 +434,11 @@ App::App(int argc, char** argv)
 						"   --device <deviceNameFilter>  considers only Vulkan devices whose name\n"
 						"                                contains <deviceNameFilter> string\n"
 						"   --dynamic-rendering      forces Vulkan dynamic rendering (modern approach)\n"
-						"   --render-pass-rendering  forces Vulkan render pass rendering (legacy approach)\n"
-						"   --          end of options; following parameter can be only <fileName>\n"
+						"   --render-pass-rendering  forces Vulkan render pass rendering\n"
+						"                            (legacy approach)\n"
+						"   --print-pipeline-statistics  prints pipeline statistics of the first frame\n"
+						"                                rendering\n"
+						"   --  end of options; following parameter can be only <fileName>\n"
 						"   <fileName>  model to load");
 			}
 			else if(strcmp(argv[i], "--device") == 0)
@@ -468,6 +474,8 @@ App::App(int argc, char** argv)
 				if(*endp != 0 || requestedNumSamples == 0)
 					throw ExitWithMessage(99, "Parameter --num-samples and --samples must be followed by a positive non-zero number.");
 			}
+			else if(strcmp(argv[i], "--print-pipeline-statistics") == 0)
+				printPipelineStatistics = true;
 			else if(strcmp(argv[i], "--") == 0)
 			{
 				if(argv[i+1] == nullptr)
@@ -532,6 +540,7 @@ App::~App()
 		sceneDataAllocation.free();
 		device.destroy(commandPool);
 		renderer.finalize();
+		device.destroy(pipelineStatisticsQueryPool);
 		device.destroy(renderingFinishedFence);
 		device.destroy(imageAvailableSemaphore);
 		for(auto f : framebuffers)  device.destroy(f);
@@ -805,6 +814,14 @@ void App::init()
 	else
 		cout << ", render pass (legacy) rendering, no antialiasing.\n" << endl;
 
+	// pipeline statistics queries
+	vk::PhysicalDeviceFeatures deviceFeatures = vulkanInstance.getPhysicalDeviceFeatures(physicalDevice);
+	pipelineStatisticsSupported = deviceFeatures.pipelineStatisticsQuery;
+	if(printPipelineStatistics && !pipelineStatisticsSupported) {
+		printPipelineStatistics = false;
+		cout << "--print-pipeline-statistics specified, but it is not supported by the device.\n" << endl;
+	}
+
 	// init device and renderer
 	device.create(
 		vulkanInstance, physicalDevice, graphicsQueueFamily, presentationQueueFamily,
@@ -821,6 +838,7 @@ void App::init()
 			CadR::Renderer::setRequiredFeatures(features);
 			features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy = true;  // required by samplers, or disable it in samplers when the feature is not available
 			features.get<vk::PhysicalDeviceFeatures2>().features.geometryShader = true;  // required by CadPL
+			features.get<vk::PhysicalDeviceFeatures2>().features.pipelineStatisticsQuery = printPipelineStatistics;  // required by gltfReader if --print-pipeline-statistics is specified
 			features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray = true;  // required by CadPL
 			features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind = true;  // required by CadPL
 			features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingUpdateUnusedWhilePending = true;  // required by CadPL
@@ -4649,6 +4667,56 @@ void App::frame(VulkanWindow&)
 	}
 	device.resetFences(renderingFinishedFence);
 
+	// pipeline statistics
+	if(printPipelineStatistics) {
+		if(pipelineStatisticsQueryPool == nullptr) {
+
+			// initialize query pool
+			pipelineStatisticsQueryPool =
+				device.createQueryPool(
+					vk::QueryPoolCreateInfo(
+						vk::QueryPoolCreateFlags(),  // flags
+						vk::QueryType::ePipelineStatistics,  // queryType
+						1,  // queryCount
+						vk::QueryPipelineStatisticFlagBits::eVertexShaderInvocations |  // pipelineStatistics
+						vk::QueryPipelineStatisticFlagBits::eGeometryShaderInvocations |
+						vk::QueryPipelineStatisticFlagBits::eFragmentShaderInvocations |
+						vk::QueryPipelineStatisticFlagBits::eComputeShaderInvocations
+					)
+				);
+
+			// schedule the second frame because calling this function again will print pipeline statistics
+			window.scheduleFrame();
+
+		}
+		else {
+
+			// read and print results
+			array<uint32_t,4> queryData;
+			device.getQueryPoolResults(
+				pipelineStatisticsQueryPool,  // queryPool
+				0,  // firstQuery
+				1,  // queryCount
+				queryData.size() * sizeof(uint32_t),  // dataSize
+				queryData.data(),  // pData
+				0,  // stride
+				vk::QueryResultFlags()  // flags
+			);
+			cout << "The first frame statistics:\n"
+			        "   Number of vertex shader invocations:    " << queryData[0] << "\n"
+			        "   Number of geometry shader invocations:  " << queryData[1] << "\n"
+			        "   Number of fragment shader invocations:  " << queryData[2] << "\n"
+			        "   Number of compute shader invocations:   " << queryData[3] << endl;
+
+			// clean up after the query
+			// and make no more pipeline statistics on following frames
+			device.destroy(pipelineStatisticsQueryPool);
+			pipelineStatisticsQueryPool = nullptr;
+			printPipelineStatistics = false;
+
+		}
+	}
+
 	// _sceneDataAllocation
 	uint32_t sceneDataSize = 192 + 2*lightGpuDataSize;  // 192 is for basic scene data plus light data while one additional light is used as terminating element
 	CadR::StagingData sceneStagingData = sceneDataAllocation.alloc(sceneDataSize);
@@ -4760,6 +4828,17 @@ void App::frame(VulkanWindow&)
 
 	// begin command buffer recording
 	renderer.beginRecording(commandBuffer);
+
+	// begin pipeline statistics query
+	if(printPipelineStatistics) {
+		device.cmdResetQueryPool(
+			commandBuffer,  // commandBuffer
+			pipelineStatisticsQueryPool,  // queryPool
+			0,  // firstQuery
+			1  // queryCount
+		);
+		device.cmdBeginQuery(commandBuffer, pipelineStatisticsQueryPool, 0, vk::QueryControlFlagBits());
+	}
 
 	// prepare recording
 	size_t numDrawables = renderer.prepareSceneRendering(stateSetRoot);
@@ -4902,6 +4981,10 @@ void App::frame(VulkanWindow&)
 			}
 		);
 	}
+
+	// end pipeline statistics query
+	if(printPipelineStatistics)
+		device.cmdEndQuery(commandBuffer, pipelineStatisticsQueryPool, 0);
 
 	// end command buffer recording
 	renderer.endRecording(commandBuffer);

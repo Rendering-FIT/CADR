@@ -221,6 +221,8 @@ public:
 	inline void cmdResetQueryPool(vk::CommandBuffer commandBuffer,vk::QueryPool queryPool,uint32_t firstQuery,uint32_t queryCount) const  { commandBuffer.resetQueryPool(queryPool,firstQuery,queryCount,*this); }
 	inline void cmdWriteTimestamp(vk::CommandBuffer commandBuffer,vk::PipelineStageFlagBits pipelineStage,vk::QueryPool queryPool, uint32_t query) const  { commandBuffer.writeTimestamp(pipelineStage,queryPool,query,*this); }
 	inline vk::Result getQueryPoolResults(vk::QueryPool queryPool,uint32_t firstQuery,uint32_t queryCount,size_t dataSize,void* pData,vk::DeviceSize stride,vk::QueryResultFlags flags) const  { return _device.getQueryPoolResults(queryPool,firstQuery,queryCount,dataSize,pData,stride,flags,*this); }
+	inline void cmdBeginQuery(vk::CommandBuffer commandBuffer,vk::QueryPool queryPool,uint32_t query,vk::QueryControlFlags flags)  { return commandBuffer.beginQuery(queryPool,query,flags,*this); }
+	inline void cmdEndQuery(vk::CommandBuffer commandBuffer,vk::QueryPool queryPool,uint32_t query)  { return commandBuffer.endQuery(queryPool,query,*this); }
 #ifdef VULKAN_HPP_DISABLE_ENHANCED_MODE
 	inline vk::Result bindBufferMemory(vk::Buffer buffer,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindBufferMemory(buffer,memory,memoryOffset,*this); }
 	inline vk::Result bindImageMemory(vk::Image image,vk::DeviceMemory memory,vk::DeviceSize memoryOffset) const  { return _device.bindImageMemory(image,memory,memoryOffset,*this); }
@@ -614,6 +616,8 @@ public:
 	PFN_vkCreateQueryPool vkCreateQueryPool;
 	PFN_vkDestroyQueryPool vkDestroyQueryPool;
 	PFN_vkGetQueryPoolResults vkGetQueryPoolResults;
+	PFN_vkCmdBeginQuery vkCmdBeginQuery;
+	PFN_vkCmdEndQuery vkCmdEndQuery;
 
 private:
 	VulkanDevice(const VulkanDevice&) = default;  ///< Private copy contructor. Object copies not allowed. Only internal use.

@@ -113,6 +113,8 @@ void VulkanDevice::init(VulkanInstance& instance, vk::PhysicalDevice physicalDev
 	vkCreateQueryPool    =getProcAddr<PFN_vkCreateQueryPool    >("vkCreateQueryPool");
 	vkDestroyQueryPool   =getProcAddr<PFN_vkDestroyQueryPool   >("vkDestroyQueryPool");
 	vkGetQueryPoolResults=getProcAddr<PFN_vkGetQueryPoolResults>("vkGetQueryPoolResults");
+	vkCmdBeginQuery      =getProcAddr<PFN_vkCmdBeginQuery      >("vkCmdBeginQuery");
+	vkCmdEndQuery        =getProcAddr<PFN_vkCmdEndQuery        >("vkCmdEndQuery");
 }
 
 
