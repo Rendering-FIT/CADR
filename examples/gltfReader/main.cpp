@@ -623,6 +623,7 @@ void App::init()
 			vector<vk::PhysicalDevice> deviceList = vulkanInstance.enumeratePhysicalDevices();
 			vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, bool, int>> compatibleDevices;
 			compatibleDevices.reserve(deviceList.size());
+			bool noDeviceNameMatch = true;
 			vk::PhysicalDeviceProperties deviceProperties;
 			vector<tuple<uint32_t,uint32_t>> compatibleQueues;
 			for(vk::PhysicalDevice pd : deviceList)
@@ -634,6 +635,7 @@ void App::init()
 					if(deviceName.find(deviceNameFilter) == string_view::npos)
 						continue;
 				}
+				noDeviceNameMatch = false;
 
 				// Vulkan 1.2 is hard requirement
 				if(deviceProperties.apiVersion < VK_API_VERSION_1_2)
@@ -736,16 +738,18 @@ void App::init()
 				if(dynamicRenderingCapable)
 					score += 100;
 				for(auto [operationsQueueFamily, presentationQueueFamily] : compatibleQueues) {
-					if(operationsQueueFamily == presentationQueueFamily)
-						score++;
+					int finalScore = (operationsQueueFamily == presentationQueueFamily) ? score+1 : score;
 					compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily,
-					                               dynamicRenderingCapable, score);
+					                               dynamicRenderingCapable, finalScore);
 				}
 			}
 
 			// handle no compatible devices
 			if(compatibleDevices.empty())
-				throw ExitWithMessage(2, "No compatible Vulkan device found.");
+				if(!deviceNameFilter.empty() && noDeviceNameMatch)
+					throw ExitWithMessage(2, "No Vulkan device found that matches \"" + deviceNameFilter + "\" in its name.");
+				else
+					throw ExitWithMessage(2, "No compatible Vulkan device found.");
 
 			// get item with the best score
 			auto it =
@@ -796,7 +800,7 @@ void App::init()
 				throw runtime_error(to_string(requestedNumSamples) +
 					" samples for multisampling is not supported by the device. " +
 					"The highest number of supported samples is " +
-					to_string(highestSampleCountSupported(vk::SampleCountFlagBits(0x80000000))));
+					to_string(highestSampleCountSupported(vk::SampleCountFlagBits(0x80000000))) + ".");
 		}
 		else {
 			if(sampleCountSupported(defaultNumSamples))
