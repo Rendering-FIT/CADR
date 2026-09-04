@@ -1913,8 +1913,8 @@ void App::init()
 			else if(alphaMode == "BLEND") {
 				transparencyEnabled = true;
 				alphaTest = false;
-				if(!dynamicRendering || numSamples != vk::SampleCountFlagBits::e1)
-					throw GltfError("BLEND alpha mode is not yet supported for render pass rendering or when multisampling.");
+				if(!dynamicRendering)
+					throw GltfError("BLEND alpha mode is not yet supported for render pass rendering.");
 			}
 			else if(alphaMode == "MASK") {
 				transparencyEnabled = false;
@@ -4432,7 +4432,20 @@ void App::resize(VulkanWindow& window,
 							vk::ShaderStageFlagBits::eFragment,    // stage
 							composeFragmentShader,  // module
 							"main",  // pName
-							nullptr,  // pSpecializationInfo
+							(numSamples == vk::SampleCountFlagBits::e1)  // pSpecializationInfo
+								? nullptr
+								: &(const vk::SpecializationInfo&)vk::SpecializationInfo{
+									  1,  // mapEntryCount
+									  array{  // pMapEntries
+										  vk::SpecializationMapEntry{
+											  0,  // constantID
+											  0,  // offset
+											  sizeof(int32_t),  // size
+										  },
+									  }.data(),
+									  sizeof(int32_t),  // dataSize
+									  &(const int32_t&)int32_t(numSamples),  // pData
+								  },
 						},
 					}.data(),
 
