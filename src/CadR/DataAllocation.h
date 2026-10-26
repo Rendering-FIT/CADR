@@ -59,13 +59,15 @@ public:
 	inline DataAllocation(DataAllocation&&) noexcept;  ///< Move constructor.
 	DataAllocation(const DataAllocation&) = delete;  ///< No copy constructor.
 	inline ~DataAllocation() noexcept;  ///< Destructor.
+	inline void init();
+	inline void init(DataStorage& storage);
+	inline void finalize() noexcept;
 
 	// operators
 	inline DataAllocation& operator=(DataAllocation&&) noexcept;  ///< Move assignment operator.
 	DataAllocation& operator=(const DataAllocation&) = delete;  ///< No copy assignment.
 
 	// alloc and free
-	inline void init(DataStorage& storage);
 	StagingData alloc(size_t numBytes);
 	StagingData alloc();
 	inline void free() noexcept;
@@ -108,13 +110,14 @@ public:
 	inline HandlelessAllocation(HandlelessAllocation&&) noexcept;  ///< Move constructor.
 	HandlelessAllocation(const HandlelessAllocation&) = delete;  ///< No copy constructor.
 	inline ~HandlelessAllocation() noexcept;  ///< Destructor.
+	inline void init(DataStorage& storage);
+	inline void finalize() noexcept;
 
 	// operators
 	inline HandlelessAllocation& operator=(HandlelessAllocation&&) noexcept;  ///< Move assignment operator.
 	HandlelessAllocation& operator=(const HandlelessAllocation&) = delete;  ///< No copy assignment.
 
 	// alloc and free
-	inline void init(DataStorage& storage);
 	StagingData alloc(size_t size);
 	StagingData alloc();
 	inline void free() noexcept;
@@ -164,17 +167,20 @@ inline DataAllocation::DataAllocation(Renderer& r)  : DataAllocation(r.dataStora
 inline DataAllocation::DataAllocation(Renderer& r, noHandle_t) noexcept  : DataAllocation(r.dataStorage(), noHandle) {}
 inline DataAllocation::DataAllocation(DataAllocation&& other) noexcept  : _record(other._record), _handle(other._handle) { _record->recordPointer=&this->_record; other._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); other._handle=0; }
 inline DataAllocation::~DataAllocation() noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); }
+inline void DataAllocation::init()  { DataStorage& storage=dataStorage(); if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); _handle=storage.createHandle(); }
+inline void DataAllocation::init(DataStorage& storage)  { destroyHandle(); if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); _handle=storage.createHandle(); }
+inline void DataAllocation::finalize() noexcept  { free(); if(_handle!=0) { dataStorage().destroyHandle(_handle); _handle = 0; } }
 inline HandlelessAllocation::HandlelessAllocation(nullptr_t) noexcept  : _record(&DataAllocationRecord::nullRecord) {}
 inline HandlelessAllocation::HandlelessAllocation(DataStorage& storage) noexcept  { _record = storage.zeroSizeAllocationRecord(); }
 inline HandlelessAllocation::HandlelessAllocation(Renderer& r) noexcept  : HandlelessAllocation(r.dataStorage()) {}
 inline HandlelessAllocation::HandlelessAllocation(HandlelessAllocation&& other) noexcept  : _record(other._record) { other._record->recordPointer=&this->_record; other._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); }
 inline HandlelessAllocation::~HandlelessAllocation() noexcept  { free(); }
+inline void HandlelessAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
+inline void HandlelessAllocation::finalize() noexcept  { free(); }
 
 inline DataAllocation& DataAllocation::operator=(DataAllocation&& rhs) noexcept  { free(); if(_handle!=0) dataStorage().destroyHandle(_handle); _record=rhs._record; _handle = rhs._handle; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); rhs._handle=0; return *this; }
 inline HandlelessAllocation& HandlelessAllocation::operator=(HandlelessAllocation&& rhs) noexcept  { free(); _record=rhs._record; rhs._record->recordPointer=&this->_record; rhs._record=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); return *this; }
 
-inline void DataAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
-inline void HandlelessAllocation::init(DataStorage& storage)  { if(_record->size!=0) DataMemory::free(_record); _record=storage.zeroSizeAllocationRecord(); }
 inline void DataAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
 inline void HandlelessAllocation::free() noexcept { if(_record->size==0) return; auto zeroRecord=_record->dataMemory->dataStorage().zeroSizeAllocationRecord(); DataMemory::free(_record); _record=zeroRecord; }
 inline StagingData DataAllocation::createStagingData()  { return alloc(); }

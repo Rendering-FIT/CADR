@@ -27,9 +27,15 @@ protected:
 	inline void initZeroField(void* p, size_t numMatrices);
 public:
 
+	enum class noInit_t : int;
+	static constexpr const noInit_t noInit = noInit_t(0);
 	inline MatrixList(Renderer& r);
+	inline MatrixList(Renderer& r, noInit_t) noexcept;
 	inline MatrixList(MatrixList&& other) = default;
+	inline void init();
+	inline void finalize() noexcept;
 
+	inline void setMatrix(const glm::mat4& matrix);
 	inline void setMatrices(const glm::mat4& matrix);
 	inline void setMatrices(const std::vector<glm::mat4>& matrices);
 	inline void setMatrices(const glm::mat4* matrices, size_t numMatrices);
@@ -53,6 +59,10 @@ namespace CadR {
 
 inline void MatrixList::initZeroField(void* p, size_t numMatrices)  { reinterpret_cast<uint32_t*>(p)[0]=uint32_t(numMatrices); reinterpret_cast<uint32_t*>(p)[1]=uint32_t(numMatrices); for(unsigned i=1; i<8; i++) reinterpret_cast<uint64_t*>(p)[i]=0; }
 inline MatrixList::MatrixList(Renderer& r)  : _matrixList(r.dataStorage()) {}
+inline MatrixList::MatrixList(Renderer& r, MatrixList::noInit_t) noexcept  : _matrixList(r.dataStorage(), DataAllocation::noHandle) {}
+inline void MatrixList::init()  { _matrixList.init(); }
+inline void MatrixList::finalize() noexcept  { _matrixList.finalize(); }
+inline void MatrixList::setMatrix(const glm::mat4& matrix)  { setMatrices(matrix); }
 inline void MatrixList::setMatrices(const glm::mat4& matrix)  { StagingData sd=_matrixList.alloc(sizeof(matrix)*2); glm::mat4* m=sd.data<glm::mat4>(); initZeroField(m, 1); m[1]=matrix; }
 inline void MatrixList::setMatrices(const std::vector<glm::mat4>& matrices)  { size_t n=matrices.size(); size_t s=sizeof(glm::mat4)*n; StagingData sd=_matrixList.alloc(s+sizeof(glm::mat4)); glm::mat4* m=sd.data<glm::mat4>(); initZeroField(m, n); memcpy(m+1, matrices.data(), s); }
 inline void MatrixList::setMatrices(const glm::mat4* matrices, size_t numMatrices)  { size_t s=sizeof(glm::mat4)*numMatrices; StagingData sd=_matrixList.alloc(s+sizeof(glm::mat4)); glm::mat4* m=sd.data<glm::mat4>(); initZeroField(m, numMatrices); memcpy(m+1, matrices, s); }

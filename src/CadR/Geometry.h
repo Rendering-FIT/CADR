@@ -44,10 +44,15 @@ protected:
 public:
 
 	// construction and destruction
+	enum class noInit_t : int;
+	static constexpr const noInit_t noInit = noInit_t(0);
 	inline Geometry(Renderer& r);  ///< Constructs the object without allocating or reserving any memory.
+	inline Geometry(Renderer& r, noInit_t) noexcept;  ///< Constructs the object without initializing it. Geometry::init() shall be called to properly initialize it. This function allows to construct Geometry while Renderer is still not properly initialized.
 	Geometry(const Geometry&) = delete;  ///< No copy constructor.
 	Geometry(Geometry&& other) = default;  ///< Move constructor.
 	inline ~Geometry();  ///< Destructor.
+	inline void init();
+	inline void finalize() noexcept;
 
 	// operators
 	Geometry& operator=(const Geometry&) = delete;  ///< No copy assignment.
@@ -99,8 +104,11 @@ public:
 # include <CadR/StagingData.h>
 namespace CadR {
 
-inline Geometry::Geometry(Renderer& r) : _vertices(r.dataStorage()), _indices(r.dataStorage()), _primitiveSets(r.dataStorage())  {}
+inline Geometry::Geometry(Renderer& r)  : _vertices(r.dataStorage()), _indices(r.dataStorage()), _primitiveSets(r.dataStorage()) {}
+inline Geometry::Geometry(Renderer& r, Geometry::noInit_t) noexcept  : _vertices(r.dataStorage(), DataAllocation::noHandle), _indices(r.dataStorage(), DataAllocation::noHandle), _primitiveSets(r.dataStorage(), DataAllocation::noHandle) {}
 inline Geometry::~Geometry()  {}
+inline void Geometry::init()  { DataStorage& ds=_vertices.dataStorage(); _vertices.init(ds); _indices.init(ds); _primitiveSets.init(ds); }
+inline void Geometry::finalize() noexcept  { _vertices.finalize(); _indices.finalize(); _primitiveSets.finalize(); }
 
 inline Renderer& Geometry::renderer() const  { return _vertices.dataStorage().renderer(); }
 inline DataStorage& Geometry::dataStorage() const  { return _vertices.dataStorage(); }

@@ -696,7 +696,7 @@ void App::init()
 				// gltfReader mandatory features
 				bool hasRequiredFeatures =
 					CadR::Renderer::areRequiredFeaturesSupported(features) &&
-					features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&  // required by gltfRader samplers; alternatively, consider disableing it in samplers it in samplers if the feature is not available
+					features.get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&  // required by gltfRader samplers; alternatively, consider disableing it in samplers if the feature is not available
 					features.get<vk::PhysicalDeviceFeatures2>().features.geometryShader &&  // required by CadPL
 					features.get<vk::PhysicalDeviceVulkan12Features>().runtimeDescriptorArray &&  // required by CadPL for texturing
 					features.get<vk::PhysicalDeviceVulkan12Features>().descriptorBindingSampledImageUpdateAfterBind &&  // required by CadPL for texturing
