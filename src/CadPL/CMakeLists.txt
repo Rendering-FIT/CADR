@@ -25,11 +25,12 @@ set(CADPL_PUBLIC_HEADERS
 	PipelineLibrary.h
 	ShaderGenerator.h
 	ShaderLibrary.h
-	)
+	VulkanSupport.h
+)
 
 # private headers
 set(CADPL_PRIVATE_HEADERS
-	)
+)
 
 # sources
 set(CADPL_SOURCES
@@ -37,7 +38,8 @@ set(CADPL_SOURCES
 	PipelineLibrary.cpp
 	ShaderGenerator.cpp
 	ShaderLibrary.cpp
-	)
+	VulkanSupport.cpp
+)
 
 # grouping of source files
 source_group("Code" FILES ${CADPL_PUBLIC_HEADERS} ${CADPL_PRIVATE_HEADERS} ${CADPL_SOURCES})
@@ -74,7 +76,7 @@ add_library(${LIB_NAME}
 	${CADPL_PRIVATE_HEADERS}
 	${CADPL_SOURCES}
 	${CADPL_SHADER_DEPS}
-	)
+)
 
 # compile definitions
 if(WIN32)
@@ -103,7 +105,7 @@ get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set_target_properties(${LIB_NAME} PROPERTIES
 	INCLUDE_DIRECTORIES "${parent_dir}"
 	INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
-	)
+)
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # target libraries
@@ -111,16 +113,3 @@ target_link_libraries(${LIB_NAME} Vulkan::Headers glm CadR)
 
 # other target settings
 set_property(TARGET ${LIB_NAME} PROPERTY CXX_STANDARD 17)
-
-# headers installation
-install(FILES
-	${CADPL_PUBLIC_HEADERS}
-	DESTINATION include/${LIB_NAME}
-	)
-
-# libraries installation
-install(TARGETS ${LIB_NAME}
-	LIBRARY DESTINATION lib
-	ARCHIVE DESTINATION lib
-	RUNTIME DESTINATION bin
-	)

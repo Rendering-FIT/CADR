@@ -52,11 +52,12 @@ set(CADR_PUBLIC_HEADERS
 	VulkanDevice.h
 	VulkanInstance.h
 	VulkanLibrary.h
-	)
+	VulkanSupport.h
+)
 
 # private headers
 set(CADR_PRIVATE_HEADERS
-	)
+)
 
 # sources
 set(CADR_SOURCES
@@ -82,7 +83,8 @@ set(CADR_SOURCES
 	VulkanDevice.cpp
 	VulkanInstance.cpp
 	VulkanLibrary.cpp
-	)
+	VulkanSupport.cpp
+)
 
 # grouping of source files
 source_group("Code" FILES ${CADR_PUBLIC_HEADERS} ${CADR_PRIVATE_HEADERS} ${CADR_SOURCES})
@@ -104,7 +106,7 @@ add_library(${LIB_NAME}
 	${CADR_PRIVATE_HEADERS}
 	${CADR_SOURCES}
 	${CADR_SHADER_DEPS}
-	)
+)
 
 # compile definitions
 if(WIN32)
@@ -133,7 +135,7 @@ get_filename_component(parent_dir "${CMAKE_CURRENT_SOURCE_DIR}" DIRECTORY)
 set_target_properties(${LIB_NAME} PROPERTIES
 	INCLUDE_DIRECTORIES "${parent_dir}"
 	INTERFACE_INCLUDE_DIRECTORIES "${parent_dir}"
-	)
+)
 target_include_directories(${LIB_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # target libraries
