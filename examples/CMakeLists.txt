@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2018-2025 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
+# SPDX-FileCopyrightText: 2018-2026 PCJohn (Jan Pečiva, peciva@fit.vut.cz)
 #
 # SPDX-License-Identifier: MIT-0
 
@@ -6,6 +6,7 @@
 set(examples_folder_name "Examples")
 
 set(PACKAGES
+	HelloTriangle
 	OpenGLInteroperability
 	RenderingPerformance
 	VulkanInfo
