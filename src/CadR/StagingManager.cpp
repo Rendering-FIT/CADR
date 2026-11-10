@@ -24,6 +24,26 @@ void StagingManager::cleanUp() noexcept
 }
 
 
+void StagingManager::leakResources() noexcept
+{
+	// create temporary list
+	// that will steal all the content of all memory lists;
+	// the temporary list will never be destroyed with the explicit purpose to leak the resources
+	// (the temporary list is created on the stack to avoid throwing any exceptions)
+	alignas(StagingMemoryList) char buf[sizeof(StagingMemoryList)];
+	new(buf) StagingMemoryList;
+	StagingMemoryList& l = *reinterpret_cast<StagingMemoryList*>(buf);
+	l.splice(l.begin(), _smallMemoryInUseList);
+	l.splice(l.begin(), _smallMemoryAvailableList);
+	l.splice(l.begin(), _mediumMemoryInUseList);
+	l.splice(l.begin(), _mediumMemoryAvailableList);
+	l.splice(l.begin(), _largeMemoryInUseList);
+	l.splice(l.begin(), _largeMemoryAvailableList);
+	l.splice(l.begin(), _superSizeMemoryInUseList);
+	l.splice(l.begin(), _superSizeMemoryAvailableList);
+}
+
+
 StagingMemory& StagingManager::reuseOrAllocStagingMemory(StagingMemoryList& availableList, StagingMemoryList& inUseList, size_t size)
 {
 	if(!availableList.empty()) {

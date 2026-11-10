@@ -376,12 +376,12 @@ void Renderer::finalize()
 }
 
 
-void Renderer::leakResources()
+void Renderer::leakResources() noexcept
 {
 	// release storage and staging resources before we assign nullptr to _device
-	_dataStorage.cleanUp();
-	_imageStorage.cleanUp();
-	_stagingManager.cleanUp();
+	_dataStorage.leakResources();
+	_imageStorage.leakResources();
+	_stagingManager.leakResources();
 
 	_device = nullptr;
 }

@@ -127,7 +127,7 @@ public:
 	void init(VulkanDevice& device, VulkanInstance& instance, vk::PhysicalDevice physicalDevice,
 	          uint32_t graphicsQueueFamily, bool makeDefault = true);
 	void finalize();
-	void leakResources();
+	void leakResources() noexcept;
 
 	// frame API
 	size_t beginFrame();  ///< Call this method to mark the beginning of the frame rendering. It returns the frame number assigned to this frame. It is the same number as frameNumber() will return from now on until the next call to beginFrame().

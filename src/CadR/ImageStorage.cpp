@@ -29,6 +29,18 @@ void ImageStorage::cleanUp() noexcept
 }
 
 
+void ImageStorage::leakResources() noexcept
+{
+	// create temporary vector
+	// that will swap content with _dataMemoryList;
+	// the vector will be never destroyed with the explicit purpose to leak the resources
+	// (the temporary vector is created on the stack to avoid throwing any exceptions)
+	alignas(decltype(_memoryTypeManagementList)) char buf[sizeof(decltype(_memoryTypeManagementList))];
+	new(buf) decltype(_memoryTypeManagementList);
+	_memoryTypeManagementList.swap(*reinterpret_cast<decltype(_memoryTypeManagementList)*>(buf));
+}
+
+
 bool ImageStorage::allocInternalFromMemoryType(ImageAllocationRecord*& recPtr, size_t numBytes, size_t alignment, uint32_t memoryTypeIndex)
 {
 	MemoryTypeManagement& mtm = _memoryTypeManagementList[memoryTypeIndex];

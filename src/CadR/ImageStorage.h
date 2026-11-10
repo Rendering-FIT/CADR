@@ -68,6 +68,7 @@ public:
 	inline ~ImageStorage() noexcept;
 	inline void init(StagingManager& stagingManager, uint32_t memoryTypeCount);
 	void cleanUp() noexcept;
+	void leakResources() noexcept;
 
 	// deleted constructors and operators
 	ImageStorage(const ImageStorage&) = delete;

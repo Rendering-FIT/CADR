@@ -28,6 +28,20 @@ void DataStorage::cleanUp() noexcept
 }
 
 
+void DataStorage::leakResources() noexcept
+{
+	_handleTable.leakResources();
+
+	// create temporary vector
+	// that will swap content with _dataMemoryList;
+	// the vector will be never destroyed with the explicit purpose to leak the resources
+	// (the temporary vector is created on the stack to avoid throwing any exceptions)
+	alignas(decltype(_dataMemoryList)) char buf[sizeof(decltype(_dataMemoryList))];
+	new(buf) decltype(_dataMemoryList);
+	_dataMemoryList.swap(*reinterpret_cast<decltype(_dataMemoryList)*>(buf));
+}
+
+
 DataAllocationRecord* DataStorage::allocInternal(size_t numBytes)
 {
 	// make sure we have _firstAllocMemory

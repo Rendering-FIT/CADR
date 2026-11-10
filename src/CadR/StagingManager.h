@@ -49,6 +49,7 @@ public:
 	inline StagingManager(Renderer& r) noexcept;
 	inline ~StagingManager() noexcept;
 	void cleanUp() noexcept;
+	void leakResources() noexcept;
 
 	inline StagingMemory& reuseOrAllocSmallStagingMemory();
 	inline StagingMemory& reuseOrAllocMediumStagingMemory();

@@ -68,6 +68,7 @@ public:
 	inline ~DataStorage() noexcept;
 	inline void init(StagingManager& stagingManager);
 	void cleanUp() noexcept;
+	void leakResources() noexcept;
 
 	// deleted constructors and operators
 	DataStorage(const DataStorage&) = delete;
