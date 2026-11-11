@@ -7,6 +7,7 @@ set(examples_folder_name "Examples")
 
 set(PACKAGES
 	HelloTriangle
+	DynamicRenderingAndMultisampling
 	OpenGLInteroperability
 	RenderingPerformance
 	VulkanInfo
