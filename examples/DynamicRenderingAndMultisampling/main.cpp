@@ -84,6 +84,7 @@ public:
 	CadR::VulkanDevice device;
 	vk::Queue graphicsQueue;
 	vk::Queue presentationQueue;
+	bool dynamicRendering = true;
 	vk::SampleCountFlagBits sampleCount = vk::SampleCountFlagBits::e4;
 	vk::SurfaceFormatKHR surfaceFormat;
 	vk::Format depthFormat;
@@ -93,9 +94,12 @@ public:
 	vk::CommandBuffer commandBuffer;
 	vk::RenderPass renderPass;
 	vector<vk::Framebuffer> framebuffers;
+	vk::RenderingAttachmentInfo colorRenderingAttachmentInfo;
+	vk::RenderingAttachmentInfo depthRenderingAttachmentInfo;
 	vector<vk::Semaphore> renderingFinishedSemaphores;
 	vk::Semaphore imageAvailableSemaphore;
 	vk::Fence renderingFinishedFence;
+	vk::Fence resizeFence;
 	vk::SwapchainKHR swapchain;
 	vector<vk::Image> swapchainImages;
 	vector<vk::ImageView> swapchainImageViews;
@@ -145,6 +149,8 @@ App::App(int argc, char** argv)
 					"   deviceNameFilter  considers only Vulkan devices whose name\n"
 					"                     contains <deviceNameFilter> string\n"
 					"   -<deviceIndex>  use device on particular index\n"
+					"   --dynamic-rendering  use dynamic rendering instead of render pass objects\n"
+					"   --render-pass  use render pass objects instead of dynamic rendering\n"
 					"   -s<number> --samples <number>  number of samples for multisampling");
 		};
 
@@ -174,12 +180,16 @@ App::App(int argc, char** argv)
 				}
 				char* endp = nullptr;
 				unsigned long n = strtoul(s, &endp, 10);
-				if(n == 0 || endp == s || (endp && *endp != 0))
+				if(endp == s || endp == nullptr || *endp != '\0')
 					printHelp(string("Wrong sample count parameter \"") + argv[i] + "\". Usage:\n");
 				if(n != 1 && n != 2 && n != 4 && n != 8 && n != 16 && n != 32 && n != 64)
 					printHelp(string("Sample count must be one of the following values: 1,2,4,8,16,32,64. Usage:\n"));
 				sampleCount = vk::SampleCountFlagBits(n);
 			}
+			else if(strcmp(argv[i], "--dynamic-rendering") == 0)
+				dynamicRendering = true;
+			else if(strcmp(argv[i], "--render-pass") == 0)
+				dynamicRendering = false;
 			else
 				printHelp(string("Wrong parameter \"") + argv[i] + "\". Usage:\n");
 		}
@@ -208,6 +218,7 @@ App::~App()
 		device.destroy(fragmentShader);
 		device.destroy(commandPool);
 		renderer.finalize();
+		device.destroy(resizeFence);
 		device.destroy(renderingFinishedFence);
 		device.destroy(imageAvailableSemaphore);
 		for(auto f : framebuffers)  device.destroy(f);
@@ -243,6 +254,12 @@ App::~App()
 
 void App::init()
 {
+	// introductory info
+	cout << executableName << " demonstrates how to use CADR\n"
+		"with dynamic rendering, rendering using render pass objects,\n"
+		"multisampling (MSAA) and single-sampling (NoAA).\n"
+		"Use -h or --help for all command-line options.\n" << endl;
+
 	// init Vulkan and window
 	VulkanWindow::init();
 	vulkanLib.load(CadR::VulkanLibrary::defaultName());
@@ -262,7 +279,8 @@ void App::init()
 	// choose device
 	vk::PhysicalDeviceProperties deviceProperties;
 	CadR::DeviceFeatures deviceFeatures;
-	tie(physicalDevice, graphicsQueueFamily, presentationQueueFamily, std::ignore,
+	bool dynamicRenderingSupported;
+	tie(physicalDevice, graphicsQueueFamily, presentationQueueFamily, dynamicRenderingSupported,
 	    deviceProperties, deviceFeatures, std::ignore) =
 		[&]() {
 
@@ -360,17 +378,10 @@ void App::init()
 
 				if(incompatibilityReasons.empty()) {
 
-					// features required for dynamic rendering
-					bool dynamicRenderingCapable;
-					if(deviceProperties.apiVersion < VK_API_VERSION_1_4)  // Vulkan 1.4 is here since 2024-12-03, supported by Nvidia since Maxwell (GTX 9xx), by AMD since Radeon RX 5000 series on Windows and GCN3 (many cards of RX 3xx series) on Linux, on Intel since Gen11 (on desktop since Rocket Lake, e.g. Core 11xxx) and since Skylake on Linux
-						dynamicRenderingCapable = false;
-					else {
-						dynamicRenderingCapable =
-							deviceFeatures.vulkan10.features.sampleRateShading &&
-							deviceFeatures.vulkan13.dynamicRendering &&  // dynamic rendering as introduced in Vulkan 1.3
-							deviceFeatures.vulkan14.dynamicRenderingLocalRead &&  // allows local reads by subsequent fragment shaders
-							deviceProperties.limits.maxColorAttachments >= 5;  // Vulkan 1.4 guarantees 8, Vulkan 1.0 only 4; this test is superfluous for 1.4
-					}
+					// dynamic rendering support
+					bool dynamicRenderingSupported =
+						(deviceProperties.apiVersion >= VK_API_VERSION_1_3)
+							? deviceFeatures.vulkan13.dynamicRendering : false;
 
 					// compute device score considering:
 					// - device type
@@ -389,13 +400,13 @@ void App::init()
 						score = deviceTypeScore[deviceType];
 					else
 						score = 0;
-					if(dynamicRenderingCapable)
+					if(dynamicRenderingSupported)
 						score += 100;
 					if(operationsQueueFamily == presentationQueueFamily)
 						score++;
 
 					compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily,
-					                               dynamicRenderingCapable, deviceProperties, deviceFeatures, score);
+					                               dynamicRenderingSupported, deviceProperties, deviceFeatures, score);
 
 				} else {
 					incompatibleDevices.emplace_back(pd, deviceProperties, move(incompatibilityReasons));
@@ -433,10 +444,15 @@ void App::init()
 		}();
 
 	// print used device
-	cout << "\nUsing device:\n"
-	        "   " << deviceProperties.deviceName << '\n' << endl;
+	cout << "\nUsed device:\n   " << deviceProperties.deviceName;
+	cout << "\nRendering type:\n   " << (dynamicRendering ? "Dynamic rendering" : "Render pass objects");
+	cout << "\nSample count:\n   " << uint32_t(sampleCount) << '\n' << endl;
 
-	// verify that sampleCount is supported
+	// dynamic rendering support
+	if(dynamicRendering && !dynamicRenderingSupported)
+		throw ExitWithMessage(2, "Dynamic rendering was requested but it is not supported by the device.\n");
+
+	// sampleCount supported
 	if((deviceProperties.limits.framebufferColorSampleCounts &
 	    deviceProperties.limits.framebufferDepthSampleCounts &
 	    sampleCount) == vk::SampleCountFlagBits(0))
@@ -458,6 +474,7 @@ void App::init()
 			CadR::DeviceFeatures features(deviceProperties.apiVersion);
 #endif
 			CadR::setRequiredFeatures(features);
+			features.vulkan13.dynamicRendering = dynamicRenderingSupported;
 			return features;
 		}().vulkan10
 	);
@@ -512,6 +529,10 @@ void App::init()
 			}
 			throw CadR::LogicError("No suitable depth buffer format.");
 		}(physicalDevice, vulkanInstance);
+
+	// setup renderPass (for render pass rendering) or
+	// color+depthRenderingAttachmentInfos (for dynamic rendering)
+	if(!dynamicRendering)
 
 		// render passes
 		renderPass =
@@ -619,6 +640,32 @@ void App::init()
 				)
 			);
 
+	else {
+
+		// color attachment
+		colorRenderingAttachmentInfo.imageView = nullptr;  // will be set during resize
+		colorRenderingAttachmentInfo.imageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+		colorRenderingAttachmentInfo.resolveMode =
+			(sampleCount == vk::SampleCountFlagBits::e1) ? vk::ResolveModeFlagBits::eNone : vk::ResolveModeFlagBits::eAverage;
+		colorRenderingAttachmentInfo.resolveImageView = nullptr;  // will be set during resize
+		colorRenderingAttachmentInfo.resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal;
+		colorRenderingAttachmentInfo.loadOp = vk::AttachmentLoadOp::eClear;
+		colorRenderingAttachmentInfo.storeOp =
+			(sampleCount == vk::SampleCountFlagBits::e1) ? vk::AttachmentStoreOp::eStore : vk::AttachmentStoreOp::eDontCare;
+		colorRenderingAttachmentInfo.clearValue.color = vk::ClearColorValue(0.f, 0.f, 0.f, 0.f);
+
+		// depth attachment
+		depthRenderingAttachmentInfo.imageView = nullptr;  // will be set during resize
+		depthRenderingAttachmentInfo.imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+		depthRenderingAttachmentInfo.resolveMode = vk::ResolveModeFlagBits::eNone;
+		depthRenderingAttachmentInfo.resolveImageView = nullptr;  // not used
+		depthRenderingAttachmentInfo.resolveImageLayout = vk::ImageLayout::eUndefined;
+		depthRenderingAttachmentInfo.loadOp = vk::AttachmentLoadOp::eClear;
+		depthRenderingAttachmentInfo.storeOp = vk::AttachmentStoreOp::eDontCare;
+		depthRenderingAttachmentInfo.clearValue.depthStencil = vk::ClearDepthStencilValue(1.f, 0);
+
+	}
+
 	// rendering semaphore and fence
 	imageAvailableSemaphore =
 		device.createSemaphore(
@@ -632,6 +679,13 @@ void App::init()
 				vk::FenceCreateFlagBits::eSignaled  // flags
 			)
 		);
+	if(dynamicRendering)
+		resizeFence =
+			device.createFence(
+				vk::FenceCreateInfo(
+					vk::FenceCreateFlags()  // flags
+				)
+			);
 
 	vertexShader =
 		device.createShaderModule(
@@ -822,7 +876,7 @@ void App::resize(VulkanWindow& window,
 			);
 
 		tie(colorImageMemory, ignore) =
-			renderer.allocateMemory(colorImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
+			renderer.allocatePossiblyLazyMemory(colorImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
 		device.bindImageMemory(
 			colorImage,  // image
 			colorImageMemory,  // memory
@@ -847,6 +901,7 @@ void App::resize(VulkanWindow& window,
 					)
 				)
 			);
+
 	}
 
 	// depth image
@@ -870,7 +925,7 @@ void App::resize(VulkanWindow& window,
 		);
 
 	tie(depthImageMemory, ignore) =
-		renderer.allocateMemory(depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		renderer.allocatePossiblyLazyMemory(depthImage, vk::MemoryPropertyFlagBits::eDeviceLocal);
 	device.bindImageMemory(
 		depthImage,  // image
 		depthImageMemory,  // memory
@@ -896,29 +951,111 @@ void App::resize(VulkanWindow& window,
 			)
 		);
 
-	// framebuffers
-	framebuffers.reserve(swapchainImages.size());
-	for(size_t i=0, c=swapchainImages.size(); i<c; i++)
-		framebuffers.emplace_back(
-			device.createFramebuffer(
-				vk::FramebufferCreateInfo(
-					vk::FramebufferCreateFlags(),  // flags
-					renderPass,  // renderPass
-					(sampleCount==vk::SampleCountFlagBits::e1)  // attachmentCount
-						? 2 : 3,
-					array{  // pAttachments
-						(sampleCount==vk::SampleCountFlagBits::e1)
-							? swapchainImageViews[i]
-							: colorImageView,
-						depthImageView,
-						swapchainImageViews[i],
-					}.data(),
-					newSurfaceExtent.width,  // width
-					newSurfaceExtent.height,  // height
-					1  // layers
+	// re-create framebuffers (render pass rendering) or
+	// layout transitions and attachment info update (dynamic rendering)
+	if(!dynamicRendering) {
+
+		// framebuffers
+		framebuffers.reserve(swapchainImages.size());
+		for(size_t i=0, c=swapchainImages.size(); i<c; i++)
+			framebuffers.emplace_back(
+				device.createFramebuffer(
+					vk::FramebufferCreateInfo(
+						vk::FramebufferCreateFlags(),  // flags
+						renderPass,  // renderPass
+						(sampleCount == vk::SampleCountFlagBits::e1)  // attachmentCount
+							? 2 : 3,
+						array{  // pAttachments
+							(sampleCount == vk::SampleCountFlagBits::e1)
+								? swapchainImageViews[i]
+								: colorImageView,
+							depthImageView,
+							swapchainImageViews[i],
+						}.data(),
+						newSurfaceExtent.width,  // width
+						newSurfaceExtent.height,  // height
+						1  // layers
+					)
 				)
+			);
+
+	} else {
+
+		// update attachment's image views
+		if(sampleCount == vk::SampleCountFlagBits::e1)
+			colorRenderingAttachmentInfo.resolveImageView = nullptr;
+		else
+			colorRenderingAttachmentInfo.imageView = colorImageView;
+		depthRenderingAttachmentInfo.imageView = depthImageView;
+
+		// layout transition
+		device.beginCommandBuffer(
+			commandBuffer,  // commandBuffer
+			vk::CommandBufferBeginInfo(
+				vk::CommandBufferUsageFlags(),  // flags
+				nullptr  // pInheritanceInfo
 			)
 		);
+		device.cmdPipelineBarrier(
+			commandBuffer,
+			vk::PipelineStageFlagBits::eTopOfPipe,  // srcStageMask
+			vk::PipelineStageFlagBits::eEarlyFragmentTests |  // dstStageMask
+				vk::PipelineStageFlagBits::eColorAttachmentOutput,
+			vk::DependencyFlags(),  // dependencyFlags ?
+			0,  // memoryBarrierCount
+			nullptr,  // pMemoryBarriers
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers,
+			(sampleCount == vk::SampleCountFlagBits::e1) ? 1 : 2,  // imageMemoryBarrierCount
+			array{  // pImageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eDepthStencilAttachmentRead |  // dstAccessMask
+						vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eDepthStencilAttachmentOptimal,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					depthImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eDepth,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eColorAttachmentOptimal,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					colorImage,  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+			}.data()
+		);
+		device.endCommandBuffer(commandBuffer);
+		device.queueSubmit(
+			graphicsQueue,  // queue
+			vk::SubmitInfo(
+				0, nullptr,  // waitSemaphoreCount + pWaitSemaphores +
+				nullptr,
+				1, &commandBuffer,  // commandBufferCount + pCommandBuffers
+				0, nullptr  // signalSemaphoreCount + pSignalSemaphores
+			),
+			resizeFence  // fence
+		);
+
+	}
 
 	// rendering finished semaphores
 	if(renderingFinishedSemaphores.size() != swapchainImages.size())
@@ -1061,8 +1198,36 @@ void App::resize(VulkanWindow& window,
 				vk::Pipeline(nullptr),  // basePipelineHandle
 				-1 // basePipelineIndex
 			)
+			.setPNext(
+				!dynamicRendering
+					? nullptr
+					: vk::PipelineRenderingCreateInfo{
+						  0,  // viewMask
+						  1,  // colorAttachmentCount
+						  &surfaceFormat.format,  // pColorAttachmentFormats
+						  depthFormat,  // depthAttachmentFormat
+						  vk::Format::eUndefined,  // stencilAttachmentFormat
+					  }
+			)
 		)
 	);
+
+	// wait for submitted work
+	if(dynamicRendering)
+	{
+		vk::Result r =
+			device.waitForFences(
+				resizeFence,  // fences
+				VK_TRUE,  // waitAll
+				uint64_t(1.5e9)  // timeout
+			);
+		if(r != vk::Result::eSuccess) {
+			if(r == vk::Result::eTimeout)
+				throw CadR::Timeout("GPU timeout. Task is probably hanging on GPU.");
+			throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+		}
+		device.resetFences(resizeFence);
+	}
 }
 
 
@@ -1122,20 +1287,147 @@ void App::frame(VulkanWindow&)
 	// record compute shader preprocessing
 	renderer.recordDrawableProcessing(commandBuffer, numDrawables);
 
-	renderer.recordSceneRendering(
-		commandBuffer,  // commandBuffer
-		stateSet,  // stateSetRoot
-		vk::RenderPassBeginInfo{
-			renderPass,  // renderPass
-			framebuffers[imageIndex],  // framebuffer
-			vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
-			2,  // clearValueCount
-			array<vk::ClearValue,2>{  // pClearValues
-				vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
-				vk::ClearDepthStencilValue(1.f, 0),
+	// record scene rendering
+	if(!dynamicRendering) {
+
+		// record render-pass rendering
+		renderer.recordSceneRendering(
+			commandBuffer,  // commandBuffer
+			stateSet,  // stateSetRoot
+			vk::RenderPassBeginInfo{
+				renderPass,  // renderPass
+				framebuffers[imageIndex],  // framebuffer
+				vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+				2,  // clearValueCount
+				array<vk::ClearValue,2>{  // pClearValues
+					vk::ClearColorValue(array<float,4>{0.f, 0.f, 0.f, 1.f}),
+					vk::ClearDepthStencilValue(1.f, 0),
+				}.data()
+			}
+		);
+
+	}
+	else {
+
+		// color buffer layout transition
+		device.cmdPipelineBarrier(
+			commandBuffer,
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStageMask
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags ?
+			0,  // memoryBarrierCount
+			nullptr,  // pMemoryBarriers
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers,
+			1,  // imageMemoryBarrierCount
+			array{  // pImageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlags(),  // srcAccessMask
+					vk::AccessFlagBits::eColorAttachmentWrite,  // dstAccessMask
+					vk::ImageLayout::eUndefined,  // oldLayout
+					vk::ImageLayout::eColorAttachmentOptimal,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					swapchainImages[imageIndex],  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
 			}.data()
-		}
-	);
+		);
+
+		// barrier to wait for compute shader and transfers
+		device.cmdPipelineBarrier(
+			commandBuffer,
+			vk::PipelineStageFlags(  // srcStageMask
+				vk::PipelineStageFlagBits::eComputeShader |  // output of preprocessDrawables compute shader
+				vk::PipelineStageFlagBits::eTransfer  // data updates
+			),
+			vk::PipelineStageFlags(  // dstStageMask
+				vk::PipelineStageFlagBits::eDrawIndirect |  // standard indirect rendering used by StateSets
+				vk::PipelineStageFlagBits::eVertexInput | // all other potential rendering (indices and attributes)
+				vk::PipelineStageFlagBits::eVertexShader  // all other data possibly read by vertex and following shaders
+			),
+			vk::DependencyFlagBits(),  // dependencyFlags
+			1,  // memoryBarrierCount
+			array{  // pMemoryBarriers
+				vk::MemoryBarrier{
+					vk::AccessFlags(  // srcAccessMask
+						vk::AccessFlagBits::eShaderWrite |  // preprocessDrawables compute shader writes
+						vk::AccessFlagBits::eTransferWrite  // data updates
+					),
+					vk::AccessFlags(  // dstAccessMask
+						vk::AccessFlagBits::eIndirectCommandRead |  // standard indirect rendering used by StateSets
+						vk::AccessFlagBits::eIndexRead |  // all other potential rendering (indices and attributes)
+						vk::AccessFlagBits::eVertexAttributeRead |  // all other potential rendering (indices and attributes)
+						vk::AccessFlagBits::eShaderRead  // all possible reads done by any graphics shader
+					),
+				},
+			}.data(),
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers,
+			0,  // imageMemoryBarrierCount
+			nullptr  // pImageMemoryBarriers
+		);
+
+		// update colorRenderingAttachmentInfo by image view of the current swapchain image
+		if(sampleCount == vk::SampleCountFlagBits::e1)
+			colorRenderingAttachmentInfo.imageView = swapchainImageViews[imageIndex];
+		else
+			colorRenderingAttachmentInfo.resolveImageView = swapchainImageViews[imageIndex];
+
+		// record dynamic rendering
+		renderer.recordSceneRendering(
+			commandBuffer,  // commandBuffer
+			stateSet,  // stateSetRoot
+			vk::RenderingInfo{
+				vk::RenderingFlags{},  // flags
+				vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+				1,  // layerCount
+				0,  // viewMask
+				1,  // colorAttachmentCount
+				&colorRenderingAttachmentInfo,  // pColorAttachment
+				&depthRenderingAttachmentInfo,  // pDepthAttachment
+				nullptr,  // pStencilAttachment
+			}
+		);
+
+		// color buffer layout transition
+		device.cmdPipelineBarrier(
+			commandBuffer,
+			vk::PipelineStageFlagBits::eColorAttachmentOutput,  // srcStageMask
+			vk::PipelineStageFlagBits::eBottomOfPipe,  // dstStageMask
+			vk::DependencyFlags(),  // dependencyFlags ?
+			0,  // memoryBarrierCount
+			nullptr,  // pMemoryBarriers
+			0,  // bufferMemoryBarrierCount
+			nullptr,  // pBufferMemoryBarriers,
+			1,  // imageMemoryBarrierCount
+			array{  // pImageMemoryBarriers
+				vk::ImageMemoryBarrier{
+					vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite,  // srcAccessMask
+					vk::AccessFlags(),  // dstAccessMask
+					vk::ImageLayout::eColorAttachmentOptimal,  // oldLayout
+					vk::ImageLayout::ePresentSrcKHR,  // newLayout
+					VK_QUEUE_FAMILY_IGNORED,  // srcQueueFamilyIndex
+					VK_QUEUE_FAMILY_IGNORED,  // dstQueueFamilyIndex
+					swapchainImages[imageIndex],  // image
+					vk::ImageSubresourceRange{  // subresourceRange
+						vk::ImageAspectFlagBits::eColor,  // aspectMask
+						0,  // baseMipLevel
+						1,  // levelCount
+						0,  // baseArrayLayer
+						1,  // layerCount
+					}
+				},
+			}.data()
+		);
+
+	}
 
 	// end command buffer recording
 	renderer.endRecording(commandBuffer);

@@ -32,6 +32,6 @@ CADR_EXPORT void setRequiredAndOptionalFeatures(const DeviceFeatures& supportedF
 
 // inline functions
 inline DeviceFeatures::DeviceFeatures(uint32_t vulkanVersion)  { link(vulkanVersion); }
-inline void DeviceFeatures::link(uint32_t vulkanVersion)  { vulkan10.pNext=vulkanVersion>=VK_API_VERSION_1_1?&vulkan11:nullptr; vulkan11.pNext=vulkanVersion>=VK_API_VERSION_1_2?&vulkan12:nullptr; vulkan12.pNext=vulkanVersion>=VK_API_VERSION_1_3?&vulkan13:nullptr; vulkan13.pNext=vulkanVersion>=VK_API_VERSION_1_4?&vulkan14:nullptr; vulkan14.pNext=nullptr; }
+inline void DeviceFeatures::link(uint32_t vulkanVersion)  { vulkan10.pNext=vulkanVersion>=VK_API_VERSION_1_2/*really 1.2 here*/?&vulkan11:nullptr; vulkan11.pNext=vulkanVersion>=VK_API_VERSION_1_2?&vulkan12:nullptr; vulkan12.pNext=vulkanVersion>=VK_API_VERSION_1_3?&vulkan13:nullptr; vulkan13.pNext=vulkanVersion>=VK_API_VERSION_1_4?&vulkan14:nullptr; vulkan14.pNext=nullptr; }
 
 }
