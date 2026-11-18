@@ -77,12 +77,12 @@ public:
 	VulkanWindow window;
 
 	// Vulkan variables, handles and objects
-	// (they need to be destructed in non-arbitrary order in the destructor)
+	// (non-arbitrary order of destruction is required for some of them in the destructor)
 	vk::PhysicalDevice physicalDevice;
-	uint32_t graphicsQueueFamily;
+	uint32_t renderingQueueFamily;
 	uint32_t presentationQueueFamily;
 	CadR::VulkanDevice device;
-	vk::Queue graphicsQueue;
+	vk::Queue renderingQueue;
 	vk::Queue presentationQueue;
 	bool dynamicRendering = true;
 	vk::SampleCountFlagBits sampleCount = vk::SampleCountFlagBits::e4;
@@ -280,7 +280,7 @@ void App::init()
 	vk::PhysicalDeviceProperties deviceProperties;
 	CadR::DeviceFeatures deviceFeatures;
 	bool dynamicRenderingSupported;
-	tie(physicalDevice, graphicsQueueFamily, presentationQueueFamily, dynamicRenderingSupported,
+	tie(physicalDevice, renderingQueueFamily, presentationQueueFamily, dynamicRenderingSupported,
 	    deviceProperties, deviceFeatures, std::ignore) =
 		[&]() {
 
@@ -332,8 +332,8 @@ void App::init()
 				incompatibilityReasons += ", VK_KHR_swapchain extension is required";
 			swapchainSupported:;
 
-				// select queues for submitting operations and for presentation
-				uint32_t operationsQueueFamily = UINT32_MAX;
+				// select queues for rendering and presentation
+				uint32_t renderingQueueFamily = UINT32_MAX;
 				uint32_t presentationQueueFamily = UINT32_MAX;
 				vector<vk::QueueFamilyProperties> queueFamilyList = vulkanInstance.getPhysicalDeviceQueueFamilyProperties(pd);
 				for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
@@ -347,17 +347,17 @@ void App::init()
 						// test for presentation support
 						if(vulkanInstance.getPhysicalDeviceSurfaceSupportKHR(pd, i, presentationSurface)) {
 
-							// if operations and presentation are supported on the same queue,
+							// if rendering and presentation are supported on the same queue,
 							// we will use just one queue
-							operationsQueueFamily = i;
+							renderingQueueFamily = i;
 							presentationQueueFamily = i;
 							goto queueFamiliesFound;
 						}
 						else
-							// if only operations and timestamps are supported,
+							// if only rendering is supported on the queue,
 							// we store the first such queue
-							if(operationsQueueFamily == UINT32_MAX)
-								operationsQueueFamily = i;
+							if(renderingQueueFamily == UINT32_MAX)
+								renderingQueueFamily = i;
 					}
 					else {
 						// test for presentation support
@@ -369,7 +369,7 @@ void App::init()
 					}
 				}
 
-				if(operationsQueueFamily == UINT32_MAX)
+				if(renderingQueueFamily == UINT32_MAX)
 					incompatibilityReasons += ", no queue with required functionalities";
 				if(presentationQueueFamily == UINT32_MAX)
 					incompatibilityReasons += ", no presentation queue";
@@ -386,7 +386,7 @@ void App::init()
 					// compute device score considering:
 					// - device type
 					// - capability to use dynamic rendering in the context of CADR
-					// - having operations queue the same as present queue
+					// - having rendering and presentation supported on the same queue
 					int score;
 					constexpr const array deviceTypeScore = {
 						 10, // vk::PhysicalDeviceType::eOther         - lowest score
@@ -402,10 +402,10 @@ void App::init()
 						score = 0;
 					if(dynamicRenderingSupported)
 						score += 100;
-					if(operationsQueueFamily == presentationQueueFamily)
+					if(renderingQueueFamily == presentationQueueFamily)
 						score++;
 
-					compatibleDevices.emplace_back(pd, operationsQueueFamily, presentationQueueFamily,
+					compatibleDevices.emplace_back(pd, renderingQueueFamily, presentationQueueFamily,
 					                               dynamicRenderingSupported, deviceProperties, deviceFeatures, score);
 
 				} else {
@@ -462,7 +462,7 @@ void App::init()
 
 	// init device and renderer
 	device.create(
-		vulkanInstance, physicalDevice, graphicsQueueFamily, presentationQueueFamily,
+		vulkanInstance, physicalDevice, renderingQueueFamily, presentationQueueFamily,
 #if 0 // enable validation extensions and features
 		{"VK_KHR_swapchain", "VK_KHR_shader_non_semantic_info"},
 		[&]() {
@@ -479,10 +479,10 @@ void App::init()
 		}().vulkan10
 	);
 	window.setDevice(device.handle(), physicalDevice);
-	renderer.init(device, vulkanInstance, physicalDevice, graphicsQueueFamily);
+	renderer.init(device, vulkanInstance, physicalDevice, renderingQueueFamily);
 
 	// get queues
-	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
+	renderingQueue = device.getQueue(renderingQueueFamily, 0);
 	presentationQueue = device.getQueue(presentationQueueFamily, 0);
 
 	// choose surface format
@@ -728,7 +728,7 @@ void App::init()
 		device.createCommandPool(
 			vk::CommandPoolCreateInfo(
 				vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,  // flags
-				graphicsQueueFamily  // queueFamilyIndex
+				renderingQueueFamily  // queueFamilyIndex
 			)
 		);
 	commandBuffer =
@@ -817,9 +817,9 @@ void App::resize(VulkanWindow& window,
 				newSurfaceExtent,               // imageExtent
 				1,                              // imageArrayLayers
 				vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
-				(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
+				(renderingQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
 				uint32_t(2),  // queueFamilyIndexCount
-				array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+				array<uint32_t, 2>{ renderingQueueFamily, presentationQueueFamily }.data(),  // pQueueFamilyIndices
 				surfaceCapabilities.currentTransform,    // preTransform
 				vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 				vk::PresentModeKHR::eFifo,  // presentMode
@@ -1045,7 +1045,7 @@ void App::resize(VulkanWindow& window,
 		);
 		device.endCommandBuffer(commandBuffer);
 		device.queueSubmit(
-			graphicsQueue,  // queue
+			renderingQueue,  // queue
 			vk::SubmitInfo(
 				0, nullptr,  // waitSemaphoreCount + pWaitSemaphores +
 				nullptr,
@@ -1271,10 +1271,12 @@ void App::frame(VulkanWindow&)
 		if(r == vk::Result::eSuboptimalKHR) {
 			window.scheduleResize();
 			return;
-		} else if(r == vk::Result::eErrorOutOfDateKHR) {
+		}
+		else if(r == vk::Result::eErrorOutOfDateKHR) {
 			window.scheduleResize();
 			return;
-		} else
+		}
+		else
 			throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
 	}
 
@@ -1438,7 +1440,7 @@ void App::frame(VulkanWindow&)
 	// submit frame
 	vk::Semaphore renderingFinishedSemaphore = renderingFinishedSemaphores[imageIndex];
 	device.queueSubmit(
-		graphicsQueue,  // queue
+		renderingQueue,  // queue
 		vk::SubmitInfo(
 			1, &imageAvailableSemaphore,  // waitSemaphoreCount + pWaitSemaphores +
 			&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
